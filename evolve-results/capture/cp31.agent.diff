@@ -1,0 +1,185 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b9d17de8..cc3fea65 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,6 +6,7 @@ import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, keepsFigure, overdu
+ import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
+ import { DatedGrade, GRADES, RateStore, gradeOn, sumSkippingNa } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
++import { Summary, SummaryPerson } from '../summary/summary';
+ 
+ interface Person {
+   id: number;
+@@ -39,9 +40,10 @@ interface StatementView {
+ // The people on the active sheet: one form adds a person or, with an editor open, saves one.
+ @Component({
+   selector: 'app-people',
+-  imports: [Claims, Periods],
++  imports: [Claims, Periods, Summary],
+   template: `
+     <app-periods [figures]="countedFigures()" />
++    <app-summary [people]="summaryPeople()" [figures]="countedFigures()" [statuses]="claimStatuses()" />
+ 
+     <section aria-label="People">
+       <h2>People</h2>
+@@ -307,6 +309,16 @@ export class People {
+       return { date: c.date, figure: dueOf(c, rates.get(grade) ?? [], floor, late) };
+     });
+   });
++  // Each person as the summary counts them: grade today, due-total and whether retired.
++  protected readonly summaryPeople = computed<SummaryPerson[]>(() => {
++    const due = this.dueBy();
++    return this.people().map((p) => ({
++      grade: this.gradeToday(p),
++      dueTotal: due.get(p.id) ?? null,
++      retired: p.retiredFrom !== null,
++    }));
++  });
++  protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));
+   // Each person's patrons' names, sorted and comma separated; a person with none is not in the map.
+   protected readonly patronNamesBy = computed(() => {
+     const names = new Map(this.people().map((p) => [p.id, p.name]));
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index d15a5e06..a5a073ef 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -33,6 +33,24 @@ export function inClosedPeriod(periods: readonly PeriodView[], date: string): bo
+   return periodOn(periods, date)?.closed ?? false;
+ }
+ 
++/**
++ * Each period's due-total, by period id: a closed one's fixed total, else the figures of the counted claims dated
++ * in it, skipping n/a.
++ */
++export function periodDueTotals(
++  periods: readonly PeriodView[],
++  figures: readonly DatedFigure[],
++): Map<number, string> {
++  const by = new Map<number, (string | null)[]>();
++  for (const p of periods) by.set(p.id, []);
++  for (const f of figures) {
++    const p = periodOn(periods, f.date);
++    if (p) by.get(p.id)?.push(f.figure);
++  }
++  const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '']));
++  return new Map([...by].map(([id, list]) => [id, closed.get(id) ?? sumSkippingNa(list)]));
++}
++
+ // The periods of the active sheet, by from-date.
+ @Injectable({ providedIn: 'root' })
+ export class PeriodStore {
+@@ -161,17 +179,7 @@ export class Periods {
+ 
+   // Each period's due-total: a closed one's fixed total, else the figures of the counted claims dated in it,
+   // skipping n/a.
+-  protected readonly dueBy = computed(() => {
+-    const by = new Map<number, (string | null)[]>();
+-    const periods = this.store.list();
+-    for (const p of periods) by.set(p.id, []);
+-    for (const f of this.figures()) {
+-      const p = periodOn(periods, f.date);
+-      if (p) by.get(p.id)?.push(f.figure);
+-    }
+-    const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '']));
+-    return new Map([...by].map(([id, list]) => [id, closed.get(id) ?? sumSkippingNa(list)]));
+-  });
++  protected readonly dueBy = computed(() => periodDueTotals(this.store.list(), this.figures()));
+ 
+   protected async close(p: PeriodView): Promise<void> {
+     this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+new file mode 100644
+index 00000000..40ed377e
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -0,0 +1,90 @@
++import { Component, computed, inject, input } from '@angular/core';
++import { DatedFigure, PeriodStore, periodDueTotals } from '../periods/periods';
++import { GRADES, sumSkippingNa } from '../rates/rates';
++
++/** A person as the summary counts them: their grade today, their due-total (null for n/a) and whether retired. */
++export interface SummaryPerson {
++  grade: string;
++  dueTotal: string | null;
++  retired: boolean;
++}
++
++// Every status a claim's count is shown for.
++const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
++
++// The sheet's figures at a glance, each worked out the same way as the list shows it.
++@Component({
++  selector: 'app-summary',
++  template: `
++    <section aria-label="Summary">
++      <h2>Summary</h2>
++      <table>
++        <caption>By grade</caption>
++        <thead>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (g of byGrade(); track g.grade) {
++            <tr>
++              <th scope="row">{{ g.grade }}</th>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>By period</caption>
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (p of byPeriod(); track p.name) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>By status</caption>
++        <thead>
++          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
++        </thead>
++        <tbody>
++          @for (s of byStatus(); track s.status) {
++            <tr>
++              <th scope="row">{{ s.status }}</th>
++              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Summary {
++  private readonly periods = inject(PeriodStore);
++
++  readonly people = input<readonly SummaryPerson[]>([]);
++  // The counted claims of the sheet: each one's date and figure, as the periods total them.
++  readonly figures = input<readonly DatedFigure[]>([]);
++  // The status of every claim on the sheet.
++  readonly statuses = input<readonly string[]>([]);
++
++  // Per grade: the people on it today, leaving out retired ones, and their due-totals added up, skipping n/a.
++  protected readonly byGrade = computed(() =>
++    GRADES.map((grade) => {
++      const on = this.people().filter((p) => !p.retired && p.grade === grade);
++      return { grade, count: on.length, dueTotal: sumSkippingNa(on.map((p) => p.dueTotal)) };
++    }),
++  );
++  protected readonly byPeriod = computed(() => {
++    const totals = periodDueTotals(this.periods.list(), this.figures());
++    return this.periods.list().map((p) => ({ name: p.name, dueTotal: totals.get(p.id) ?? '' }));
++  });
++  protected readonly byStatus = computed(() =>
++    STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),
++  );
++}
