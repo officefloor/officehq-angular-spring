@@ -258,7 +258,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         <app-people-columns />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (cols.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Grade</th><th scope="col">Change grade</th>@if (cols.shown('terms')) {<th scope="col">Terms</th>}@if (cols.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th>@if (cols.shown('claimed')) {<th scope="col">Claimed</th>}@if (cols.shown('due-total')) {<th scope="col">Due</th>}<th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}@if (cols.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (cols.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Grade</th><th scope="col">Change grade</th>@if (cols.shown('terms')) {<th scope="col">Terms</th>}@if (cols.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th>@if (cols.shown('claimed')) {<th scope="col">Claimed</th>}@if (cols.shown('due-total')) {<th scope="col">Due</th>}<th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}@if (cols.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Flag</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -365,6 +365,17 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                     #holdTo (input)="clearPersonError(p.id)" />
                   <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom, holdTo)"
                     [disabled]="holding() === p.id" [attr.aria-label]="'Hold ' + p.name">Hold</button>
+                </td>
+                <td>
+                  <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span>
+                  <label [for]="'person-flag-reason-' + p.id" class="visually-hidden">Flag {{ p.name }} because</label>
+                  <input type="text" [id]="'person-flag-reason-' + p.id" data-testid="person-flag-reason"
+                    #flagReason (input)="clearPersonError(p.id)" placeholder="Reason" />
+                  <label [for]="'person-flag-until-' + p.id" class="visually-hidden">Flag {{ p.name }} until</label>
+                  <input type="date" [id]="'person-flag-until-' + p.id" data-testid="person-flag-until"
+                    #flagUntil (input)="clearPersonError(p.id)" />
+                  <button type="button" data-testid="person-flag" (click)="flag(p, flagReason, flagUntil)"
+                    [disabled]="flagging() === p.id" [attr.aria-label]="'Flag ' + p.name">Flag</button>
                 </td>
                 <td>
                   @if (cols.shown('statement-count')) { <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
@@ -524,6 +535,8 @@ export class People {
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** The person a hold is being put on. */
   protected readonly holding = signal<number | null>(null);
+  /** The person a flag is being put on. */
+  protected readonly flagging = signal<number | null>(null);
   /** The holds of each person, by id. */
   private readonly holdsById = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
   /** The retirement date of each retired person, by id. */
@@ -1325,6 +1338,38 @@ export class People {
       }
     } finally {
       this.addingPatron.set(null);
+    }
+  }
+
+  /** Flag the person with the row's reason until its until-date (blank: the sheet's today). */
+  protected async flag(person: PersonView, reasonInput: HTMLInputElement, untilInput: HTMLInputElement): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet || this.flagging() !== null) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const reason = reasonInput.value.trim();
+    const until = untilInput.value.trim();
+    if (reason === '') {
+      this.personError.set({ id: person.id, message: 'Give the flag a reason.' });
+      return;
+    }
+    if (until !== '' && !DATE.test(until)) {
+      this.personError.set({ id: person.id, message: 'Enter the until date as yyyy-mm-dd.' });
+      return;
+    }
+    this.flagging.set(person.id);
+    try {
+      const changed = await this.api.flag(sheet.id, person.id, reason, until === '' ? null : until);
+      if (this.session.sheet()?.id !== sheet.id) return;
+      this.people.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+      reasonInput.value = '';
+      untilInput.value = '';
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.personError.set({ id: person.id, message: 'The person could not be flagged.' });
+      }
+    } finally {
+      this.flagging.set(null);
     }
   }
 

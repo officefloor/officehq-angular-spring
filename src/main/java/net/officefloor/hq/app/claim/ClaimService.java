@@ -293,6 +293,11 @@ public class ClaimService {
         }
         String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonToVoid(sheetId, reason) : null;
         Person person = person(sheetId, claim.getPersonId());
+        if (next == ClaimStatus.OPEN && person.isFlaggedOn(sheets.today(sheetId))
+                && settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The person is flagged; only a steward may open their claim.");
+        }
         // Worked out while the claim is still open: settling freezes the due, its late charge included.
         BigDecimal dueNow = next == ClaimStatus.SETTLED ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseIfUnproven(sheetId, person, claim, dueNow);

@@ -83,6 +83,8 @@ export interface PersonView {
   tags: string[];
   /** One line per snapshot written for the person, oldest first: the day being left and their due-total. */
   snapshots: string[];
+  /** The reason of the person's flag while it is in force on the sheet's today, or null. */
+  flag: string | null;
 }
 
 /** A new person's fields: their grade applies from the beginning of time; their terms are whole days,
@@ -194,6 +196,11 @@ export class PeopleApi {
   /** Retire the person from a date; null means the sheet's today. */
   retire(sheetId: string, id: number, from: string | null): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/retire`, { from }));
+  }
+
+  /** Flag the person with a reason until a date (null: the sheet's today); a steward only. */
+  flag(sheetId: string, id: number, reason: string, until: string | null): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheetId)}/${id}/flag`, { reason, until }));
   }
 
   /** Put a hold on the person from a date (null: the sheet's today) to a date (null: no end);

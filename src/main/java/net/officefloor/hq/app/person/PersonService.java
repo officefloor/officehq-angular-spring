@@ -15,7 +15,10 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.SheetTag;
 import net.officefloor.hq.app.claim.SheetTagRepository;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -35,10 +38,11 @@ public class PersonService {
     private final Rollup rollup;
     private final Audit audit;
     private final SheetTagRepository sheetTags;
+    private final ObjectProvider<SettingService> settings;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
             PersonAliasRepository aliases, SheetService sheets, NameTree tree, Rollup rollup, Audit audit,
-            SheetTagRepository sheetTags) {
+            SheetTagRepository sheetTags, ObjectProvider<SettingService> settings) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -48,6 +52,7 @@ public class PersonService {
         this.rollup = rollup;
         this.audit = audit;
         this.sheetTags = sheetTags;
+        this.settings = settings;
     }
 
     /** The sheet's people in list order. */
@@ -266,7 +271,8 @@ public class PersonService {
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         boolean contactChanged = !Objects.equals(person.getContact(), contactKey);
-        boolean termsChanged = termsFrom != null || !Objects.equals(person.getTerms(), terms);
+        boolean termsChanged = termsFrom != null || !Objects.equals(person.getTerms(), terms)
+                || !Objects.equals(person.termsOn(sheets.today(sheetId)), terms);
         person.setName(name);
         person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId), sheets.today(sheetId),
                 explicitGrade);
@@ -371,6 +377,27 @@ public class PersonService {
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " from=" + dated);
         rollup.recordChanges(user, before);
+        return saved;
+    }
+
+    /** Flag a person with a reason until a date (none: the sheet's today), replacing any earlier flag;
+     *  refused unless the user is a steward of the sheet, and for a blank reason. While the sheet's
+     *  today is on or before the until-date, only a steward may open a claim of the person. */
+    @Transactional
+    public Person flag(String sheetId, String user, long id, String reason, LocalDate until) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (settings.getObject().roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can flag a person.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give the flag a reason.");
+        }
+        LocalDate dated = until != null ? until : sheets.today(sheetId);
+        person.flag(reason, dated);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " reason=" + saved.getFlagReason() + " until=" + dated);
         return saved;
     }
 

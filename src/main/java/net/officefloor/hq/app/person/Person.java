@@ -100,6 +100,14 @@ public class Person {
     @Column(name = "arrived_on")
     private LocalDate arrivedOn;
 
+    /** The reason of the steward's flag on the person; null when never flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day the flag is in force; null when never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** Bumped on each save; an edit made from an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -155,6 +163,8 @@ public class Person {
         for (PersonTerms t : datedTerms) copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFrom()));
         copy.contact = contact;
         copy.tags = tags;
+        copy.flagReason = flagReason;
+        copy.flagUntil = flagUntil;
         getAliases().forEach(copy::addAlias);
         return copy;
     }
@@ -396,6 +406,26 @@ public class Person {
     /** The sheet the person was transferred from, or null when they were added on this sheet. */
     public String getOriginSheetId() {
         return originSheetId;
+    }
+
+    /** Flag the person with a reason until a date, replacing any earlier flag. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason.trim();
+        this.flagUntil = until;
+    }
+
+    public String getFlagReason() {
+        return flagReason;
+    }
+
+    /** Whether the person's flag is in force on the sheet's today: on or before its until-date. */
+    public boolean isFlaggedOn(LocalDate today) {
+        return flagReason != null && flagUntil != null && today != null && !today.isAfter(flagUntil);
+    }
+
+    /** The flag's reason while it is in force on the sheet's today; null otherwise. */
+    public String flagOn(LocalDate today) {
+        return isFlaggedOn(today) ? flagReason : null;
     }
 
     public long getVersion() {

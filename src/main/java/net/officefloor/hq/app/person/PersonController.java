@@ -47,11 +47,12 @@ public class PersonController {
      *  user watches them; clashing whether their name or an alias is used on another sheet of the
      *  sheet's tree; terms their own terms in force on the sheet's today, ownTerms those from the
      *  beginning of time; origin the sheet they were transferred from, null when added here; snapshots
-     *  one line per snapshot written for them, oldest first: the day being left and their due-total. */
+     *  one line per snapshot written for them, oldest first: the day being left and their due-total;
+     *  flag the reason of their flag while it is in force on the sheet's today, else null. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, List<RetirementView> retirements, boolean held, List<HoldView> holds,
             List<Long> patronIds, boolean watched, Integer terms, Integer ownTerms, String contact, List<String> aliases, boolean clashing,
-            String origin, List<String> tags, List<String> snapshots) {
+            String origin, List<String> tags, List<String> snapshots, String flag) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today, boolean watched, boolean clashing) {
             return of(person, List.of(), today, watched, clashing);
@@ -68,13 +69,13 @@ public class PersonController {
                     person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
                     watched, person.termsOn(today), person.getTerms(), person.getContact(), person.getAliases(), clashing,
-                    person.getOriginSheetId(), person.getTags(), List.of());
+                    person.getOriginSheetId(), person.getTags(), List.of(), person.flagOn(today));
         }
 
         /** The same person with these snapshot lines. */
         public PersonView withSnapshots(List<String> lines) {
             return new PersonView(id, name, grade, grades, version, retired, retiredFrom, retirements, held, holds,
-                    patronIds, watched, terms, ownTerms, contact, aliases, clashing, origin, tags, lines);
+                    patronIds, watched, terms, ownTerms, contact, aliases, clashing, origin, tags, lines, flag);
         }
     }
 
@@ -121,6 +122,10 @@ public class PersonController {
 
     /** A hold; no from-date means the sheet's today, no to-date no end. */
     public record HoldForm(LocalDate from, LocalDate to) {
+    }
+
+    /** A flag; no until-date means the sheet's today. */
+    public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
     }
 
     /** The people selected to be given a grade together, from the from-date (none: the sheet's today). */
@@ -272,6 +277,13 @@ public class PersonController {
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody HoldForm form) {
         return view(service.hold(sheetId.trim(), SignedInUser.name(user), id, form.from(), form.to()), user);
+    }
+
+    /** Flag a person with a reason until a date; a steward only. */
+    @PostMapping("/{id}/flag")
+    public PersonView flag(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid FlagForm form) {
+        return view(service.flag(sheetId.trim(), SignedInUser.name(user), id, form.reason(), form.until()), user);
     }
 
     /** Name another person on the sheet as one of the person's patrons. */
