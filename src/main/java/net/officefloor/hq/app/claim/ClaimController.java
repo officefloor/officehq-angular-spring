@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.session.SessionController;
+import net.officefloor.hq.app.settings.ViewerPasses;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -110,6 +111,7 @@ public class ClaimController {
     }
 
     @PostMapping("/claims/bulk-open")
+    @ViewerPasses
     public BulkOpenView bulkOpen(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody BulkForm form, @SessionAttribute(SessionController.USER) String user) {
@@ -122,6 +124,7 @@ public class ClaimController {
     }
 
     @PostMapping("/claims/bulk-settle")
+    @ViewerPasses
     public BulkSettleView bulkSettle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody BulkForm form, @SessionAttribute(SessionController.USER) String user) {

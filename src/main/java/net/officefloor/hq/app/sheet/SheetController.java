@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import net.officefloor.hq.app.session.SessionController;
+import net.officefloor.hq.app.settings.ViewerPasses;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -37,6 +38,7 @@ public class SheetController {
 
     /** Load a sheet by id, starting it empty if it was never loaded before. */
     @PutMapping("/{id}")
+    @ViewerPasses
     public SheetView load(@PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String id) {
         return SheetView.of(service.load(id));
     }

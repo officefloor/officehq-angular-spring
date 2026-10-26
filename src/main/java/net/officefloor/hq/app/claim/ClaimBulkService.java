@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.function.Function;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.settings.SettingsService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -23,11 +24,14 @@ public class ClaimBulkService {
     private final ClaimService claims;
     private final ClaimRepository repository;
     private final PersonRepository people;
+    private final SettingsService settings;
 
-    public ClaimBulkService(ClaimService claims, ClaimRepository repository, PersonRepository people) {
+    public ClaimBulkService(ClaimService claims, ClaimRepository repository, PersonRepository people,
+            SettingsService settings) {
         this.claims = claims;
         this.repository = repository;
         this.people = people;
+        this.settings = settings;
     }
 
     /**
@@ -36,7 +40,7 @@ public class ClaimBulkService {
      * not a claim of the sheet, is left as it is and counted as refused.
      */
     public Result open(String by, String sheetId, Set<Long> ids) {
-        return each(sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.OPEN));
+        return each(by, sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.OPEN));
     }
 
     /**
@@ -45,11 +49,17 @@ public class ClaimBulkService {
      * not a claim of the sheet, is left as it is and counted as refused.
      */
     public Result settle(String by, String sheetId, Set<Long> ids) {
-        return each(sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.SETTLED));
+        return each(by, sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.SETTLED));
     }
 
-    /** Applies the change to each of the sheet's claims among the ids in list order, counting the refused ones. */
-    private Result each(String sheetId, Set<Long> ids, Function<Long, Claim> change) {
+    /**
+     * Applies the change to each of the sheet's claims among the ids in list order, counting the refused ones. A
+     * viewer changes none: every one is refused.
+     */
+    private Result each(String by, String sheetId, Set<Long> ids, Function<Long, Claim> change) {
+        if (settings.isViewer(sheetId, by)) {
+            return new Result(List.of(), ids.size());
+        }
         Map<Long, Integer> personOrder = new HashMap<>();
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
             personOrder.put(p.getId(), personOrder.size());

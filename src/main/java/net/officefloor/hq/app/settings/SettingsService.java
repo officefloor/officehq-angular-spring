@@ -61,11 +61,11 @@ public class SettingsService {
         return roles.findBySheetIdAndUser(sheetId, user).map(SheetRole::getRole).orElse(SheetRole.CLERK);
     }
 
-    /** Sets the user's role on the sheet; refused unless it is clerk or steward. */
+    /** Sets the user's role on the sheet; refused unless it is clerk, steward or viewer. */
     @Transactional
     public SheetRole setRole(String by, String sheetId, String user, String role) {
-        if (!SheetRole.CLERK.equals(role) && !SheetRole.STEWARD.equals(role)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A role is clerk or steward.");
+        if (!SheetRole.CLERK.equals(role) && !SheetRole.STEWARD.equals(role) && !SheetRole.VIEWER.equals(role)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A role is clerk, steward or viewer.");
         }
         sheets.lock(sheetId);
         SheetRole r = roles.findBySheetIdAndUser(sheetId, user).orElseGet(() -> new SheetRole(sheetId, user, role));
@@ -248,6 +248,12 @@ public class SettingsService {
             return false;
         }
         return !isSteward(sheetId, user);
+    }
+
+    /** Whether the user is a viewer of the sheet, who changes nothing. */
+    @Transactional(readOnly = true)
+    public boolean isViewer(String sheetId, String user) {
+        return SheetRole.VIEWER.equals(roleOf(sheetId, user));
     }
 
     /** Whether the user is a steward of the sheet. */

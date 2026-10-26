@@ -41,7 +41,9 @@ interface DatedSetting {
 /** A dated setting's key as the form and its fields name it. */
 export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | `terms-${string}`;
 
-export const ROLES = ['clerk', 'steward'];
+export const ROLES = ['clerk', 'steward', 'viewer'];
+/** The roles the permission matrix can list; a viewer may take no action. */
+export const PERMISSION_ROLES = ['clerk', 'steward'];
 
 /** The actions of the permission matrix, with the roles that may take each while none are set (the standing rule). */
 export const PERMISSIONS: readonly { action: string; standing: string }[] = [
@@ -438,7 +440,7 @@ export class SettingsStore {
           [value]="user()"
           (input)="user.set(value($event)); roleError.set(null)"
         />
-        <label for="role-role">Role (clerk or steward)</label>
+        <label for="role-role">Role (clerk, steward or viewer)</label>
         <input
           id="role-role"
           data-testid="role-form-role"
@@ -645,7 +647,7 @@ export class Settings {
     const perms = new Map<string, string>();
     for (const a of this.permsChanged) {
       const typed = (this.perms()[a] ?? '').trim();
-      if (typed && typed.split(',').some((r) => !ROLES.includes(r.trim()))) {
+      if (typed && typed.split(',').some((r) => !PERMISSION_ROLES.includes(r.trim()))) {
         this.settingsError.set(`List the roles that may ${a} as clerk, steward or both, separated by commas, or leave it blank.`);
         return;
       }
@@ -737,7 +739,7 @@ export class Settings {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.roleError.set('Choose a role of clerk or steward.');
+      this.roleError.set('Choose a role of clerk, steward or viewer.');
       return;
     }
     this.submitting = true;
