@@ -1,0 +1,64 @@
+{
+  "checkpoint": 211,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp211_score-lines",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "686bba07bd82b3de3ed918705261a4107218997b",
+  "reset_sha": "",
+  "preagent_sha": "c39e9f0cdce425bddd0b5ff5383c4e8bcd2b23e0",
+  "prev_sha": "c39e9f0cdce425bddd0b5ff5383c4e8bcd2b23e0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0621283999999998,
+    "input_tokens": 60,
+    "output_tokens": 12530,
+    "cache_read_tokens": 1410842,
+    "cache_creation_tokens": 66140,
+    "num_turns": 31,
+    "duration_ms": 665027,
+    "duration_api_ms": 187929,
+    "model": "claude-opus-5-5",
+    "session_id": "c9d9472d-87cc-4c3b-843f-2564e8214b56",
+    "stop_reason": "success",
+    "result_text": "The score log switch is in, and all 4 tests in `bin/e2e` pass.\n\n**How it works:**\n- **Setting:** `score-log` is a new undated setting. It accepts `on` or blank (off) and is stored like the other key/value settings, so no migration was needed. Saving it writes `SETTING_CHANGED key=score-log value=on` or `value=`. Any other value is refused and shows `settings-error`.\n- **Score lines:** while the switch is on, changing the sheet's today writes one `SCORE name=<name> score=<score>` line per person, in list order, before the `SNAPSHOT` lines. Each score is taken from the figures as they stood on the day being left.\n- **Score on the server:** until now the score was only calculated in the browser (`people.ts`). I added a matching server copy in `Rollup.java`: settled figures \u00f7 100, minus 5 per overdue claim, rounded half to even. The browser's version is unchanged, so the two now need to be kept in step if the rule ever changes.\n- **Screen:** the settings form has a `setting-score-log` input and shows the current value in `setting-score-log-current`.\n\n**One change outside the request:** scenario 2 failed on plans, not on the score log. The test pauses a plan and still expects its next dates to show `2026-04-01`, but the app hid every date covered by an open pause, so the list came out empty. I changed `Plan.datesAfter` in `Plan.java` so the \"next dates\" list follows the plan's schedule even while it is paused. Generating claims still skips paused dates. This does change existing behaviour, so it's worth a look if paused plans were meant to hide their upcoming dates.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0621283999999998,
+        "num_turns": 31,
+        "duration_ms": 665027,
+        "duration_api_ms": 187929,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp211.agent.jsonl",
+  "agent_diff_file": "cp211.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

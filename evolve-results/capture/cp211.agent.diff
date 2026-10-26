@@ -1,0 +1,320 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index d8356394..19cc5315 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -96,6 +96,8 @@ export interface SettingsView {
+   scoreMid: number | null;
+   /** The high score threshold, a whole number, or null when blank. Not dated. */
+   scoreHigh: number | null;
++  /** The score log switch: 'on', or null when off. Not dated. */
++  scoreLog: 'on' | null;
+ }
+ 
+ // The sheet's settings and the roles it assigns user names, as the store holds them.
+@@ -237,6 +239,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/score-high`, { value }));
+   }
+ 
++  /** Turn the score log on ('on'), or off (null). */
++  setScoreLog(sheetId: string, value: 'on' | null): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/score-log`, { value }));
++  }
++
+   /** Set the escalation gap in days; null clears it, turning escalation off. */
+   setEscalateAfter(sheetId: string, value: number | null): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/escalate-after`, { value }));
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 47b6e3d3..5f4174b2 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -193,6 +193,9 @@ function settled(control: AbstractControl): void {
+         <label for="setting-score-high">High score threshold (a whole number; a score at or above it is HIGH while both thresholds are set; blank: no bands)</label>
+         <input id="setting-score-high" data-testid="setting-score-high" formControlName="scoreHigh" inputmode="numeric" />
+         <p>High score threshold now: <span data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</span></p>
++        <label for="setting-score-log">Score log (on: changing today logs each person's score on the day being left; blank: off)</label>
++        <input id="setting-score-log" data-testid="setting-score-log" formControlName="scoreLog" />
++        <p>Score log now: <span data-testid="setting-score-log-current">{{ scoreLog() ?? '' }}</span></p>
+         <label for="setting-parent">Parent sheet (its rates are used where this sheet has none; blank: none)</label>
+         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" />
+         <p>Parent sheet now: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
+@@ -312,6 +315,7 @@ export class Settings {
+   protected readonly reviewSla = signal<number | null>(null);
+   protected readonly scoreMid = signal<number | null>(null);
+   protected readonly scoreHigh = signal<number | null>(null);
++  protected readonly scoreLog = signal<'on' | null>(null);
+   protected readonly parent = signal<string | null>(null);
+   protected readonly fiscalStartMonth = signal(DEFAULT_FISCAL_START_MONTH);
+   protected readonly assigned = signal<RoleView[]>([]);
+@@ -349,6 +353,7 @@ export class Settings {
+     reviewSla: new FormControl('', { nonNullable: true }),
+     scoreMid: new FormControl('', { nonNullable: true }),
+     scoreHigh: new FormControl('', { nonNullable: true }),
++    scoreLog: new FormControl('', { nonNullable: true }),
+     parent: new FormControl('', { nonNullable: true }),
+     fiscalStartMonth: new FormControl('', { nonNullable: true }),
+   });
+@@ -444,7 +449,7 @@ export class Settings {
+       this.settingsError.set('');
+       this.roleError.set('');
+       this.delegateError.set('');
+-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null });
++      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null, scoreLog: null });
+       this.settingsForm.markAsPristine();
+       this.settingsForm.markAsUntouched();
+       this.gradeTermsForm.markAsPristine();
+@@ -486,7 +491,7 @@ export class Settings {
+     this.settingsError.set('');
+     const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
+       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
+-      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, scoreMid, scoreHigh, parent, fiscalStartMonth } = this.settingsForm.controls;
++      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, parent, fiscalStartMonth } = this.settingsForm.controls;
+     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
+     const froms = [
+       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
+@@ -530,6 +535,7 @@ export class Settings {
+     const reviewSlaValue = reviewSla.value.trim();
+     const scoreMidValue = scoreMid.value.trim();
+     const scoreHighValue = scoreHigh.value.trim();
++    const scoreLogValue = scoreLog.value.trim().toLowerCase();
+     const parentValue = parent.value.trim();
+     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
+     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
+@@ -653,6 +659,10 @@ export class Settings {
+       this.settingsError.set('Type the high score threshold as a whole number, or leave it blank.');
+       return;
+     }
++    if (changed(scoreLog) && scoreLogValue !== '' && scoreLogValue !== 'on') {
++      this.settingsError.set('Type on for the score log, or leave it blank for off.');
++      return;
++    }
+     if (changed(fiscalStartMonth) && (!MONTH.test(fiscalStartMonthValue) || Number(fiscalStartMonthValue) < 1
+       || Number(fiscalStartMonthValue) > 12)) {
+       this.settingsError.set('Type the fiscal year start month as a whole number from 1 to 12.');
+@@ -813,6 +823,11 @@ export class Settings {
+         settled(scoreHigh);
+         if (this.session.sheet()?.id === sheet.id) this.show(settings);
+       }
++      if (changed(scoreLog)) {
++        const settings = await this.api.setScoreLog(sheet.id, scoreLogValue === '' ? null : 'on');
++        settled(scoreLog);
++        if (this.session.sheet()?.id === sheet.id) this.show(settings);
++      }
+       if (changed(parent)) {
+         const settings = await this.api.setParent(sheet.id, parentValue === '' ? null : parentValue);
+         settled(parent);
+@@ -871,6 +886,7 @@ export class Settings {
+     this.sheetReviewSla.days.set(settings.reviewSla);
+     this.scoreMid.set(settings.scoreMid);
+     this.scoreHigh.set(settings.scoreHigh);
++    this.scoreLog.set(settings.scoreLog);
+     this.sheetScoreBands.mid.set(settings.scoreMid);
+     this.sheetScoreBands.high.set(settings.scoreHigh);
+     this.parent.set(settings.parent);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 64860f0d..c07e19fd 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -106,9 +106,10 @@ public class Plan {
+         return dates;
+     }
+ 
+-    /** Up to the first count plan dates, oldest first, after the date and on or before its end. */
++    /** Up to the first count plan dates by its schedule, oldest first, after the date and on or before its
++     *  end; a pause does not hide them (it only skips them when claims are generated). */
+     public List<LocalDate> datesAfter(LocalDate after, int count) {
+-        return datesUpTo(end).stream().filter((d) -> d.isAfter(after)).limit(count).toList();
++        return scheduleUpTo(end).stream().filter((d) -> d.isAfter(after)).limit(count).toList();
+     }
+ 
+     boolean hasGenerated(LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 3ea49a87..4166e9a9 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -45,8 +45,10 @@ public class Rollup {
+ 
+     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+ 
+-    /** A person's figures; a null due-total is n/a. */
+-    record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
++    /** A person's figures; a null due-total is n/a. The settled figures (of their counting SETTLED claims,
++     *  skipping n/a) and how many counting claims are overdue make up their score. */
++    record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settled,
++            int overdueCount) {
+         boolean sameAs(Figures other) {
+             return other != null && same(claimed, other.claimed) && same(dueTotal, other.dueTotal)
+                     && same(overdueTotal, other.overdueTotal);
+@@ -122,6 +124,8 @@ public class Rollup {
+             BigDecimal claimed = ZERO;
+             BigDecimal due = ZERO;
+             BigDecimal overdue = ZERO;
++            BigDecimal settled = ZERO;
++            int overdueCount = 0;
+             boolean keptFigure = false;
+             List<Claim> theirs = claimsByPerson.getOrDefault(person.getId(), List.of());
+             for (Claim claim : theirs) {
+@@ -140,6 +144,8 @@ public class Rollup {
+                         grace, values::latePctOn, rounding);
+                 if (owed != null) due = due.add(owed);
+                 if (owed != null && isOverdue(claim, grace, today)) overdue = overdue.add(owed);
++                if (isOverdue(claim, grace, today)) overdueCount++;
++                if (owed != null && claim.getStatus() == ClaimStatus.SETTLED) settled = settled.add(owed);
+                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {
+                     keptFigure = true;
+                 }
+@@ -153,7 +159,7 @@ public class Rollup {
+             BigDecimal personDue = SettingService.capped((today == null
+                     || Rate.inForceInherited(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
+                             ? null : due, cap);
+-            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
++            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, settled, overdueCount));
+             claimedTotal = claimedTotal.add(claimed);
+             if (personDue != null) dues.add(personDue);
+             overdues.add(overdue);
+@@ -178,11 +184,23 @@ public class Rollup {
+         return count;
+     }
+ 
+-    /** Keep, and audit once the transaction commits, each person's due-total as it stood in the snapshot,
++    /** The person's score, as the screen shows it: their settled figures divided by 100, less 5 for each
++     *  overdue claim that counts, rounded half to even to a whole number. */
++    static String score(Figures figures) {
++        return figures.settled().movePointLeft(2).subtract(BigDecimal.valueOf(5L * figures.overdueCount()))
++                .setScale(0, RoundingMode.HALF_EVEN).toPlainString();
++    }
++
++    /** While the sheet's score log is on, audit once the transaction commits each person's score as it
++     *  stood in the snapshot, in the order they were added: the day being left. Then keep, and audit once the transaction commits, each person's due-total as it stood in the snapshot,
+      *  in the order they were added, against the sheet's today: the day being left. */
+     public void recordSnapshot(String user, Snapshot before) {
+         String prefix = " sheet=" + before.sheetId() + " by=" + user;
+         LocalDate day = sheets.findById(before.sheetId()).map(Sheet::getToday).orElse(null);
++        if (SettingService.scoreLogOf(settings, before.sheetId())) {
++            before.people().values().forEach(figures -> audit.recordOnCommit("SCORE" + prefix + " name="
++                    + figures.name() + " score=" + score(figures)));
++        }
+         before.people().forEach((id, figures) -> {
+             if (day != null) snapshots.save(new PersonSnapshot(before.sheetId(), id, day, figures.dueTotal()));
+             audit.recordOnCommit("SNAPSHOT" + prefix + " name=" + figures.name() + " due-total="
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 5b5b6d02..8be35a93 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Min;
+ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+@@ -43,7 +44,7 @@ public class SettingController {
+      *  and the note threshold, null when there is none;
+      *  permissions holds, by action, the roles that may take it as set (blank: the standing rule);
+      *  grace days are the days after an open period's to-date before a change of today closes it, null when blank (off);
+-     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then); the pot has two decimals, or is null when there is none (not dated); the parent is the sheet whose rates are used where this one has none, null when none (not dated); the fiscal start month is the month, 1 to 12, each fiscal year starts on (not dated); the alert threshold has two decimals, or is null when off (not dated); the escalation gap is whole days, or null when off (not dated); the review SLA is whole days, or null when none (not dated); the score thresholds (mid and high) are whole numbers, or null when blank (not dated); the proof kinds are a comma separated list, or null when none (not dated); the default grade is the grade a new person given none takes, or null when blank (A then; not dated). Each of these figures is the one in force on the
++     *  the entry date is the date a new claim given none takes, null when blank (the sheet's today then); the pot has two decimals, or is null when there is none (not dated); the parent is the sheet whose rates are used where this one has none, null when none (not dated); the fiscal start month is the month, 1 to 12, each fiscal year starts on (not dated); the alert threshold has two decimals, or is null when off (not dated); the escalation gap is whole days, or null when off (not dated); the review SLA is whole days, or null when none (not dated); the score thresholds (mid and high) are whole numbers, or null when blank (not dated); the score log is "on", or null when off (not dated); the proof kinds are a comma separated list, or null when none (not dated); the default grade is the grade a new person given none takes, or null when blank (A then; not dated). Each of these figures is the one in force on the
+      *  sheet's today; dated holds, by key, every value the dated settings take from their from-dates;
+      *  delegations are the stewards' delegations of their role, in the order they were made. */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+@@ -51,7 +52,7 @@ public class SettingController {
+             Map<String, List<DatedView>> dated, String proofThreshold, Map<String, String> permissions,
+             Integer graceDays, List<DelegationView> delegations, String noteThreshold, LocalDate entryDate,
+             String pot, String parent, int fiscalStartMonth, String alertThreshold, Integer escalateAfter,
+-            Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh) {
++            Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, String scoreLog) {
+     }
+ 
+     /** A steward's delegation of the steward role to a user, from a date to a date, inclusive. */
+@@ -179,6 +180,10 @@ public class SettingController {
+     public record ScoreThresholdForm(@Min(-1000000000) @Max(1000000000) Integer value) {
+     }
+ 
++    /** The score log switch as entered: "on", or none (blank) for off. */
++    public record ScoreLogForm(@Pattern(regexp = "on", message = "Type on, or leave it blank.") String value) {
++    }
++
+     /** The fiscal year start month as entered: 1 to 12. */
+     public record FiscalStartMonthForm(@NotNull @Min(1) @Max(12) Integer value) {
+     }
+@@ -443,6 +448,15 @@ public class SettingController {
+         return view(id);
+     }
+ 
++    /** Turn the sheet's score log on, or off. */
++    @PutMapping("/settings/score-log")
++    public SettingsView setScoreLog(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid ScoreLogForm form) {
++        String id = sheetId.trim();
++        service.setScoreLog(id, SignedInUser.name(user), form.value() != null);
++        return view(id);
++    }
++
+     /** Set the month the sheet's fiscal years start on. */
+     @PutMapping("/settings/fiscal-start-month")
+     public SettingsView setFiscalStartMonth(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+@@ -511,7 +525,8 @@ public class SettingController {
+                 text(service.pot(sheetId)), service.parent(sheetId),
+                 service.fiscalStartMonth(sheetId), text(service.alertThreshold(sheetId)),
+                 service.escalateAfter(sheetId), service.reviewSla(sheetId), proofKinds(sheetId),
+-                defaultGrade(sheetId), service.scoreMid(sheetId), service.scoreHigh(sheetId));
++                defaultGrade(sheetId), service.scoreMid(sheetId), service.scoreHigh(sheetId),
++                service.scoreLog(sheetId) ? "on" : null);
+     }
+ 
+     private String proofKinds(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 91553883..4005542d 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -110,6 +110,10 @@ public class SettingService implements ActingFor {
+      *  above it is in the HIGH band; no value means blank. Not dated. */
+     public static final String SCORE_HIGH = "score-high";
+ 
++    /** The key of the score log switch: while it is on, changing the sheet's today audits each person's
++     *  score on the day being left; no value means off. Not dated. */
++    public static final String SCORE_LOG = "score-log";
++
+     /** The key of the fiscal year start month: the month (1 to 12) each fiscal year starts on its first day;
+      *  no value means 1 (January). Not dated. */
+     public static final String FISCAL_START_MONTH = "fiscal-start-month";
+@@ -539,6 +543,39 @@ public class SettingService implements ActingFor {
+         return setWholeSetting(sheetId, user, SCORE_HIGH, value);
+     }
+ 
++    /** Whether the sheet's score log is on. */
++    @Transactional(readOnly = true)
++    public boolean scoreLog(String sheetId) {
++        return scoreLogOf(settings, sheetId);
++    }
++
++    /** Whether the sheet's score log is on as the store holds it, within the caller's transaction. */
++    public static boolean scoreLogOf(SheetSettingRepository settings, String sheetId) {
++        return settings.findBySheetIdAndKey(sheetId, SCORE_LOG).isPresent();
++    }
++
++    /** Turn the sheet's score log on, or off. */
++    @Transactional
++    public boolean setScoreLog(String sheetId, String user, boolean on) {
++        sheets.load(sheetId);
++        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, SCORE_LOG).orElse(null);
++        try {
++            if (!on) {
++                if (setting != null) {
++                    settings.delete(setting);
++                    settings.flush();
++                }
++            } else if (setting == null) {
++                settings.saveAndFlush(new SheetSetting(sheetId, SCORE_LOG, "on"));
++            }
++        } catch (DataIntegrityViolationException raced) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
++        }
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + SCORE_LOG
++                + " value=" + (on ? "on" : ""));
++        return on;
++    }
++
+     private Integer wholeSetting(String sheetId, String key) {
+         return settings.findBySheetIdAndKey(sheetId, key).map((s) -> Integer.valueOf(s.getValue())).orElse(null);
+     }
