@@ -49,6 +49,7 @@ public class CloneService {
         COPIED.put("void_reason", "reason");
         COPIED.put("claim_template", "name, amount, note");
         COPIED.put("sheet_tag", "name");
+        COPIED.put("retired_grade", "grade");
         // Every period comes across open.
         COPIED.put("period", "name, name_key, from_date, to_date");
     }

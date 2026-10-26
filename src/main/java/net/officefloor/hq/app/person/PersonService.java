@@ -39,10 +39,13 @@ public class PersonService {
     private final Audit audit;
     private final SheetTagRepository sheetTags;
     private final ObjectProvider<SettingService> settings;
+    private final RetiredGradeRepository retiredGrades;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonWatchRepository watches,
             PersonAliasRepository aliases, SheetService sheets, NameTree tree, Rollup rollup, Audit audit,
-            SheetTagRepository sheetTags, ObjectProvider<SettingService> settings) {
+            SheetTagRepository sheetTags, ObjectProvider<SettingService> settings,
+            RetiredGradeRepository retiredGrades) {
+        this.retiredGrades = retiredGrades;
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -154,6 +157,14 @@ public class PersonService {
         return person;
     }
 
+    /** Refuse a grade retired on the sheet: it cannot be given to anyone, by an add or an edit. */
+    private void refuseRetired(String sheetId, Grade grade) {
+        if (grade != null && retiredGrades.existsBySheetIdAndGrade(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Grade " + grade + " is retired; choose another grade.");
+        }
+    }
+
     private static ResponseStatusException alreadyPatron() {
         return new ResponseStatusException(HttpStatus.CONFLICT, "That person is already a patron.");
     }
@@ -186,6 +197,7 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, Grade grade, Integer terms, LocalDate termsFrom,
             String contact, String tags) {
         sheets.load(sheetId);
+        refuseRetired(sheetId, grade);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))
                 || aliases.existsBySheetIdAndAliasKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();
@@ -254,6 +266,7 @@ public class PersonService {
         if (person.getVersion() != version) {
             throw changedMeanwhile();
         }
+        refuseRetired(sheetId, grade);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheets.today(sheetId);
         person.setGrade(grade, gradeFrom != null ? gradeFrom : today, today, true);
@@ -275,6 +288,7 @@ public class PersonService {
         if (person.getVersion() != version) {
             throw changedMeanwhile();
         }
+        refuseRetired(sheetId, grade);
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.keyOf(name), id)
                 || aliases.existsBySheetIdAndAliasKey(sheetId, Person.keyOf(name))) {
             throw nameInUse();

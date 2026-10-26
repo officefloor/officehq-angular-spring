@@ -26,8 +26,11 @@ public class ImportPeopleService {
     private final PersonService service;
     private final PersonRepository repository;
     private final SheetSettingRepository settings;
+    private final RetiredGradeRepository retiredGrades;
 
-    public ImportPeopleService(PersonService service, PersonRepository repository, SheetSettingRepository settings) {
+    public ImportPeopleService(PersonService service, PersonRepository repository, SheetSettingRepository settings,
+            RetiredGradeRepository retiredGrades) {
+        this.retiredGrades = retiredGrades;
         this.service = service;
         this.repository = repository;
         this.settings = settings;
@@ -63,7 +66,7 @@ public class ImportPeopleService {
         if (lines.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Paste at least one line.");
         }
-        Grade defaultGrade = SettingService.defaultGradeOf(settings, sheetId);
+        Grade defaultGrade = SettingService.defaultGradeOf(settings, retiredGrades, sheetId);
         List<Person> people = new ArrayList<>();
         Set<Long> updatedIds = new HashSet<>();
         int added = 0;

@@ -16,6 +16,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Grade;
+import net.officefloor.hq.app.person.RetiredGradeRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -710,10 +711,11 @@ public class SettingService implements ActingFor {
     }
 
     /** The grade a new person given none takes on the sheet, within the caller's transaction: its default
-     *  grade, else A. */
-    public static Grade defaultGradeOf(SheetSettingRepository settings, String sheetId) {
+     *  grade, else A; A too when the default grade is retired. */
+    public static Grade defaultGradeOf(SheetSettingRepository settings, RetiredGradeRepository retired,
+            String sheetId) {
         return settings.findBySheetIdAndKey(sheetId, DEFAULT_GRADE).map((s) -> Grade.valueOf(s.getValue()))
-                .orElse(Grade.A);
+                .filter((g) -> !retired.existsBySheetIdAndGrade(sheetId, g)).orElse(Grade.A);
     }
 
     /** Set the sheet's default grade, or clear it (blank) to leave A; refused for anything but a grade. Changes

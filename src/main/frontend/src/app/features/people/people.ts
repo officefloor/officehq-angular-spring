@@ -30,6 +30,7 @@ import { SheetHeader } from '../summary/sheet-header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
+import { Grades } from '../grades/grades-api';
 import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, nameWithGrade } from './people-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -517,6 +518,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
 })
 export class People {
   protected readonly session = inject(Session);
+  private readonly gradeStore = inject(Grades);
   protected readonly cols = inject(PeopleColumns);
   protected readonly voidReasons = inject(VoidReasons);
   private readonly api = inject(PeopleApi);
@@ -1307,6 +1309,10 @@ export class People {
     const grade = gradeSelect.value as Grade;
     if (!GRADES.includes(grade)) {
       this.personError.set({ id: person.id, message: 'Choose a grade of A, B or C.' });
+      return;
+    }
+    if (this.gradeStore.retired().has(grade)) {
+      this.personError.set({ id: person.id, message: `Grade ${grade} is retired; choose another grade.` });
       return;
     }
     this.inlineGrading.set(person.id);
@@ -2127,6 +2133,10 @@ export class People {
       this.error.set('Choose a grade of A, B or C.');
       return;
     }
+    if (this.gradeStore.retired().has(value.grade)) {
+      this.error.set(`Grade ${value.grade} is retired; choose another grade.`);
+      return;
+    }
     const id = this.editingId();
     const gradeFrom = value.gradeFrom.trim();
     if (id !== null && gradeFrom !== '' && !DATE.test(gradeFrom)) {
@@ -2181,6 +2191,9 @@ export class People {
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
         const message: unknown = e.error?.message;
         this.error.set(typeof message === 'string' && message ? message : 'That name is already in use on the sheet.');
+      } else if (e instanceof HttpErrorResponse && e.status === 422 && typeof e.error?.message === 'string'
+        && e.error.message) {
+        this.error.set(e.error.message);
       } else {
         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }

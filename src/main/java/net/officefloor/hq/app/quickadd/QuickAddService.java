@@ -6,6 +6,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.person.RetiredGradeRepository;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.setting.SheetSettingRepository;
 import org.springframework.stereotype.Service;
@@ -22,9 +23,11 @@ public class QuickAddService {
     private final PersonService personService;
     private final ClaimService claimService;
     private final SheetSettingRepository settings;
+    private final RetiredGradeRepository retiredGrades;
 
     public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService,
-            SheetSettingRepository settings) {
+            SheetSettingRepository settings, RetiredGradeRepository retiredGrades) {
+        this.retiredGrades = retiredGrades;
         this.people = people;
         this.personService = personService;
         this.claimService = claimService;
@@ -38,7 +41,7 @@ public class QuickAddService {
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         Person person = people.findByNameOrAlias(sheetId, Person.keyOf(name))
                 .orElseGet(() -> personService.add(sheetId, user, name,
-                        SettingService.defaultGradeOf(settings, sheetId), null));
+                        SettingService.defaultGradeOf(settings, retiredGrades, sheetId), null));
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null, null, null);
         return new Added(person, claim);
     }
