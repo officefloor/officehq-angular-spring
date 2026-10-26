@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -14,10 +15,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -26,17 +29,19 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String name, String grade) {
+    public Person add(String by, String sheetId, String name, String grade) {
         sheets.load(sheetId);
         String trimmed = name.strip();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
-        return save(new Person(sheetId, trimmed, grade));
+        Person added = save(new Person(sheetId, trimmed, grade));
+        audit.recordOnCommit(record("PERSON_ADDED", by, added));
+        return added;
     }
 
     @Transactional
-    public Person update(String sheetId, Long id, String name, String grade) {
+    public Person update(String by, String sheetId, Long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         String trimmed = name.strip();
@@ -45,7 +50,9 @@ public class PersonService {
         }
         person.setName(trimmed);
         person.setGrade(grade);
-        return save(person);
+        Person saved = save(person);
+        audit.recordOnCommit(record("PERSON_EDITED", by, saved));
+        return saved;
     }
 
     /** Saves the person; the store's unique index refuses a name another request took meanwhile. */
@@ -55,6 +62,10 @@ public class PersonService {
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
+    }
+
+    private static String record(String event, String by, Person p) {
+        return event + " sheet=" + p.getSheetId() + " by=" + by + " name=" + p.getName() + " grade=" + p.getGrade();
     }
 
     private static ResponseStatusException nameInUse() {

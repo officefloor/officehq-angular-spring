@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.session.SessionController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.SessionAttribute;
 
 @RestController
 @Validated
@@ -52,14 +54,16 @@ public class ClaimController {
     @PostMapping("/people/{personId}/claims")
     public ClaimView add(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable Long personId, @Valid @RequestBody ClaimForm form) {
-        return ClaimView.of(service.add(sheetId, personId, form.amount(), form.date(), form.note()));
+            @PathVariable Long personId, @Valid @RequestBody ClaimForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.add(user, sheetId, personId, form.amount(), form.date(), form.note()));
     }
 
     @PutMapping("/claims/{id}")
     public ClaimView update(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable Long id, @Valid @RequestBody ClaimForm form) {
-        return ClaimView.of(service.update(sheetId, id, form.amount(), form.date(), form.note()));
+            @PathVariable Long id, @Valid @RequestBody ClaimForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.update(user, sheetId, id, form.amount(), form.date(), form.note()));
     }
 }
