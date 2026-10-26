@@ -135,6 +135,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         </label>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+        <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
         <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
         <p>Due in total: <strong data-testid="rollup-due-total">{{ sheetDueTotal() | figure }}</strong></p>
         <p>Settled in total: <strong data-testid="rollup-settled-total">{{ money(sheetSettledOpen().settled) | figure }}</strong>,
@@ -1795,6 +1796,16 @@ export class People {
           periodOf(this.periods(), c.dueBy)?.name ?? ''];
       }))];
     this.download('claims.csv', lines);
+  }
+
+  /** Downloads each person's figures per period: people in list order, each with every period in the order
+   *  added, with their due-total and carried figure for it as their row shows them. */
+  protected async exportPeriods(): Promise<void> {
+    await this.session.settled();
+    const periods = [...this.periods()].sort((a, b) => a.id - b.id);
+    this.download('periods.csv', [['person', 'period', 'figure', 'carried'],
+      ...this.people().flatMap((p) => periods.map((q) =>
+        [p.name, q.name, this.personPeriodDue(p.id, q.id), this.personPeriodCarried(p.id, q.id)]))]);
   }
 
   /** Downloads the person's statement: each claim of theirs their last statement bound, oldest first, with
