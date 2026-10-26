@@ -1,0 +1,64 @@
+{
+  "checkpoint": 189,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp189_default-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b9b5606b1dc6d46d751cd1f7203be87af68a9ed8",
+  "reset_sha": "",
+  "preagent_sha": "bd714cd8a81897558ef029c7f596088ea8c5d17c",
+  "prev_sha": "bd714cd8a81897558ef029c7f596088ea8c5d17c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5587788,
+    "input_tokens": 76,
+    "output_tokens": 17850,
+    "cache_read_tokens": 2441934,
+    "cache_creation_tokens": 89136,
+    "num_turns": 39,
+    "duration_ms": 428695,
+    "duration_api_ms": 214488,
+    "model": "claude-opus-5-5",
+    "session_id": "32027930-f663-4c2a-8e56-71014f9a5225",
+    "stop_reason": "success",
+    "result_text": "I've added the sheet's default grade. The main \"default grade\" test and scenarios 2 and 3 pass. **Scenario 1 still fails**, and I believe the cause has nothing to do with this change (explained below), so I stopped there.\n\n**What I changed**\n- **Server, setting:** `SettingService` now stores a `default-grade` setting, which is not dated. It accepts A, B or C; a blank value clears it, which means A, and anything else is refused. Each change writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=default-grade value=<grade>`, with an empty value when cleared. Changing it doesn't touch anyone's existing grade. It is saved through `PUT /settings/default-grade` in `SettingController` and returned with the other settings as `defaultGrade`.\n- **Quick add** (`QuickAddService`): a new person now gets the sheet's default grade instead of always A.\n- **Import** (`ImportPeopleService`): a line with a blank grade, such as `Ben,`, now takes the default grade. An invalid grade is still refused. For a line that matches an existing person, I also apply the default. That's my literal reading of \"an import line with a blank grade uses it\", and it is the one judgement call here. The other choice would be to keep that person's current grade, which is a small change if you prefer it.\n- **Front end:** the settings form has a new field (`setting-default-grade`) and shows the value in force (`setting-default-grade-current`). A value that isn't a grade is refused on screen with `settings-error`, so nothing is saved or audited. I also updated the quick-add comment and the import label to mention the default grade.\n\nNo database migration was needed: the value lives in the existing settings table.\n\n**The scenario 1 failure**\nIt fails at `acceptance.spec.ts:376`: Ada's share of crew C1 shows 50.00 instead of 100.00. Nothing in that scenario sets a default grade or imports anyone. The sequence is:\n1. Ben leads crew C1 and Ada is a member.\n2. Ben is merged into Cam.\n3. Cam is retired.\n\nThe test then expects C1 to have no lead and Ada to hold 100%. The app instead hands Ben's lead role to Cam when they merge, as the comment on `MergeService.merge` says it should. Retiring Cam doesn't remove them from the crew either, so the share is split 50/50.\n\nI don't have an unmodified copy of the app to prove this failed before my change, but nothing I touched affects crews, pools, merging or retiring. Making it pass would mean changing how merging or retiring affects crews, a separate behaviour change that goes against what the code says it should do. So I left it alone. Tell me if you want it done anyway, and whether a merged lead should leave the crew or a retired person should drop out of crews.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5587788,
+        "num_turns": 39,
+        "duration_ms": 428695,
+        "duration_api_ms": 214488,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp189.agent.jsonl",
+  "agent_diff_file": "cp189.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
