@@ -6,6 +6,7 @@ import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, keepsFigure, overdu
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, gradeOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
+import { Summary, SummaryPerson } from '../summary/summary';
 
 interface Person {
   id: number;
@@ -39,9 +40,10 @@ interface StatementView {
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods],
+  imports: [Claims, Periods, Summary],
   template: `
     <app-periods [figures]="countedFigures()" />
+    <app-summary [people]="summaryPeople()" [figures]="countedFigures()" [statuses]="claimStatuses()" />
 
     <section aria-label="People">
       <h2>People</h2>
@@ -307,6 +309,16 @@ export class People {
       return { date: c.date, figure: dueOf(c, rates.get(grade) ?? [], floor, late) };
     });
   });
+  // Each person as the summary counts them: grade today, due-total and whether retired.
+  protected readonly summaryPeople = computed<SummaryPerson[]>(() => {
+    const due = this.dueBy();
+    return this.people().map((p) => ({
+      grade: this.gradeToday(p),
+      dueTotal: due.get(p.id) ?? null,
+      retired: p.retiredFrom !== null,
+    }));
+  });
+  protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));
   // Each person's patrons' names, sorted and comma separated; a person with none is not in the map.
   protected readonly patronNamesBy = computed(() => {
     const names = new Map(this.people().map((p) => [p.id, p.name]));

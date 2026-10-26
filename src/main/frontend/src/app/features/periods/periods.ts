@@ -33,6 +33,24 @@ export function inClosedPeriod(periods: readonly PeriodView[], date: string): bo
   return periodOn(periods, date)?.closed ?? false;
 }
 
+/**
+ * Each period's due-total, by period id: a closed one's fixed total, else the figures of the counted claims dated
+ * in it, skipping n/a.
+ */
+export function periodDueTotals(
+  periods: readonly PeriodView[],
+  figures: readonly DatedFigure[],
+): Map<number, string> {
+  const by = new Map<number, (string | null)[]>();
+  for (const p of periods) by.set(p.id, []);
+  for (const f of figures) {
+    const p = periodOn(periods, f.date);
+    if (p) by.get(p.id)?.push(f.figure);
+  }
+  const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '']));
+  return new Map([...by].map(([id, list]) => [id, closed.get(id) ?? sumSkippingNa(list)]));
+}
+
 // The periods of the active sheet, by from-date.
 @Injectable({ providedIn: 'root' })
 export class PeriodStore {
@@ -161,17 +179,7 @@ export class Periods {
 
   // Each period's due-total: a closed one's fixed total, else the figures of the counted claims dated in it,
   // skipping n/a.
-  protected readonly dueBy = computed(() => {
-    const by = new Map<number, (string | null)[]>();
-    const periods = this.store.list();
-    for (const p of periods) by.set(p.id, []);
-    for (const f of this.figures()) {
-      const p = periodOn(periods, f.date);
-      if (p) by.get(p.id)?.push(f.figure);
-    }
-    const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '']));
-    return new Map([...by].map(([id, list]) => [id, closed.get(id) ?? sumSkippingNa(list)]));
-  });
+  protected readonly dueBy = computed(() => periodDueTotals(this.store.list(), this.figures()));
 
   protected async close(p: PeriodView): Promise<void> {
     this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
