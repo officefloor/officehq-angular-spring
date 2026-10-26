@@ -1,0 +1,80 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index baa81ec6..66330cde 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,8 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { Claim, Claims, claimedTotal } from '../claims/claims';
+-import { GRADES, RateStore, dueOn, sumSkippingNa } from '../rates/rates';
++import { Claim, Claims, claimedTotal, counts } from '../claims/claims';
++import { GRADES, RateStore, dueOn, rateOn, sumSkippingNa } from '../rates/rates';
+ 
+ interface Person {
+   id: number;
+@@ -111,11 +111,22 @@ export class People {
+     return by;
+   });
+   protected readonly claimedTotal = computed(() => claimedTotal(this.claims()));
+-  // Each person's due-total: their claimed times their grade's rate in force today; null (n/a) with none.
++  // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
++  // its live due, skipping n/a. With no rate in force today for their grade it is null (n/a), unless a
++  // settled claim keeps a figure.
+   protected readonly dueBy = computed(() => {
+     const by = new Map<number, string | null>();
+-    const rates = this.rates.current();
+-    for (const p of this.people()) by.set(p.id, dueOn(this.claimedBy().get(p.id) ?? '0.00', rates.get(p.grade)));
++    const current = this.rates.current();
++    const rates = this.rates.rates();
++    for (const p of this.people()) {
++      const counted = (this.claimsBy().get(p.id) ?? []).filter(counts);
++      if (!current.has(p.grade) && !counted.some((c) => c.settledDue !== null)) {
++        by.set(p.id, null);
++        continue;
++      }
++      const list = rates.get(p.grade) ?? [];
++      by.set(p.id, sumSkippingNa(counted.map((c) => c.settledDue ?? dueOn(c.amount, rateOn(list, c.date)))));
++    }
+     return by;
+   });
+   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 7bb334a8..1e105378 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -22,12 +22,15 @@ function cents(value: string): bigint {
+ 
+ /**
+  * The due on an amount at a rate (both two-decimal strings): amount times rate divided by 100,
+- * rounded half up to two decimals; null (n/a) when there is no rate. Worked in whole numbers so
+- * nothing drifts.
++ * rounded half to even to two decimals; null (n/a) when there is no rate. Worked in whole numbers
++ * so nothing drifts.
+  */
+ export function dueOn(amount: string, pct: string | undefined): string | null {
+   if (pct === undefined) return null;
+-  const due = (cents(amount) * cents(pct) + 5000n) / 10000n;
++  const product = cents(amount) * cents(pct);
++  let due = product / 10000n;
++  const rest = product % 10000n;
++  if (rest > 5000n || (rest === 5000n && due % 2n === 1n)) due += 1n;
+   return formatCents(due);
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 938dadb1..12cd60dd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -116,9 +116,9 @@ public class ClaimService {
+                 + (number != null ? " number=" + number : "");
+     }
+ 
+-    /** The due on an amount at a rate: amount times rate divided by 100, rounded half up to two decimals. */
++    /** The due on an amount at a rate: amount times rate divided by 100, rounded half to even to two decimals. */
+     private static BigDecimal dueOn(BigDecimal amount, BigDecimal pct) {
+-        return amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
++        return amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+     }
+ 
+     private LocalDate dateOrToday(String sheetId, LocalDate date) {
