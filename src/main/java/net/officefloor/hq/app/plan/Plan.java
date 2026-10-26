@@ -54,6 +54,11 @@ public class Plan {
     @Column(name = "end_date", nullable = false)
     private LocalDate end;
 
+    /** The descendant sheet its claims are made on, for the person of the same name there; null for its own
+     *  sheet and person. */
+    @Column(name = "target_sheet_id")
+    private String targetSheetId;
+
     /** The plan dates it has made a claim for. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_plan_date", joinColumns = @JoinColumn(name = "plan_id"))
@@ -76,7 +81,7 @@ public class Plan {
     }
 
     Plan(String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
-            LocalDate end) {
+            LocalDate end, String targetSheetId) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -84,6 +89,7 @@ public class Plan {
         this.every = every;
         this.day = day;
         this.end = end;
+        this.targetSheetId = targetSheetId;
     }
 
     /** The plan dates, oldest first, on or before both its end and the date, those a pause skips left out. */
@@ -176,6 +182,10 @@ public class Plan {
 
     public LocalDate getEnd() {
         return end;
+    }
+
+    public String getTargetSheetId() {
+        return targetSheetId;
     }
 
     /** How many claims the plan has made so far. */

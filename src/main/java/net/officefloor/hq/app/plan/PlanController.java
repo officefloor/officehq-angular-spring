@@ -32,18 +32,19 @@ public class PlanController {
      *  of its amount changes, oldest first: the day, then amount=the new amount. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every,
             Integer day, LocalDate end, int generated, List<LocalDate> nextDates, boolean paused,
-            List<String> changes) {
+            List<String> changes, String sheet) {
         static PlanView of(Plan plan, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
                     plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGeneratedCount(),
-                    plan.datesAfter(today, 5), plan.isPaused(), plan.changeLines());
+                    plan.datesAfter(today, 5), plan.isPaused(), plan.changeLines(), plan.getTargetSheetId());
         }
     }
 
     /** A plan's fields as entered on the person's row; no start means the sheet's today. A plan has either
-     *  every (days) or day (of the month, for a monthly plan). */
+     *  every (days) or day (of the month, for a monthly plan). Sheet names a descendant sheet to make its
+     *  claims on; none means this sheet. */
     public record PlanForm(@NotNull Long personId, @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
-            LocalDate start, Integer every, Integer day, @NotNull LocalDate end) {
+            LocalDate start, Integer every, Integer day, @NotNull LocalDate end, @Size(max = 100) String sheet) {
     }
 
     /** A plan's new amount as entered. */
@@ -75,7 +76,7 @@ public class PlanController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PlanForm form) {
         String id = sheetId.trim();
         return PlanView.of(service.add(id, SignedInUser.name(user), form.personId(), form.amount(),
-                form.start(), form.every(), form.day(), form.end()), service.today(id));
+                form.start(), form.every(), form.day(), form.end(), form.sheet()), service.today(id));
     }
 
     /** Pause the plan from the sheet's today. */

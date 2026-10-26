@@ -19,7 +19,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <li [attr.data-testid]="'plan-row-' + pl.id">
           <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span>
           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
-          from {{ pl.start }} to {{ pl.end }}; made <span data-testid="plan-generated">{{ pl.generated }}</span>;
+          from {{ pl.start }} to {{ pl.end }}@if (pl.sheet) { on sheet {{ pl.sheet }}}; made <span data-testid="plan-generated">{{ pl.generated }}</span>;
           next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>;
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="plan-pause" (click)="pause(pl.id, true)" [disabled]="pausing() === pl.id">
@@ -51,6 +51,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <input [id]="'plan-form-every-' + personId()" data-testid="plan-form-every" formControlName="every" inputmode="numeric" />
       <label [for]="'plan-form-day-' + personId()">Or day of month</label>
       <input [id]="'plan-form-day-' + personId()" data-testid="plan-form-day" formControlName="day" inputmode="numeric" />
+      <label [for]="'plan-form-sheet-' + personId()">On sheet (a descendant)</label>
+      <input [id]="'plan-form-sheet-' + personId()" data-testid="plan-form-sheet" formControlName="sheet" />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input [id]="'plan-form-end-' + personId()" type="date" data-testid="plan-form-end" formControlName="end" />
       <button type="submit" data-testid="plan-form-submit" [disabled]="saving()">Add plan</button>
@@ -75,6 +77,7 @@ export class PersonPlans {
     every: new FormControl('', { nonNullable: true }),
     day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
+    sheet: new FormControl('', { nonNullable: true }),
   });
   protected readonly saving = signal(false);
   protected readonly error = signal('');
@@ -91,7 +94,7 @@ export class PersonPlans {
       this.error.set('');
       this.rowError.set(null);
       this.amounts.set({});
-      this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+      this.form.reset({ amount: '', start: '', every: '', day: '', end: '', sheet: '' }, { emitEvent: false });
     });
   }
 
@@ -155,6 +158,7 @@ export class PersonPlans {
     const every = v.every.trim();
     const day = v.day.trim();
     const end = v.end.trim();
+    const target = v.sheet.trim();
     if (!AMOUNT.test(amount) || Number(amount) <= 0) {
       this.error.set('Enter an amount above 0.00 with up to two decimals.');
       return;
@@ -181,7 +185,7 @@ export class PersonPlans {
     }
     this.saving.set(true);
     try {
-      await this.store.add(sheet.id, this.personId(), { amount, start: start || null, every: every || null, day: day || null, end });
+      await this.store.add(sheet.id, this.personId(), { amount, start: start || null, every: every || null, day: day || null, end, sheet: target || null });
     } catch {
       if (this.session.sheet()?.id === sheet.id) this.error.set('The plan could not be added.');
     } finally {

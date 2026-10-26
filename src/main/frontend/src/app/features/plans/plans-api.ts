@@ -24,15 +24,19 @@ export interface PlanView {
   paused: boolean;
   /** Its amount changes, oldest first, each as `<date> amount=<amount>`. */
   changes: string[];
+  /** The descendant sheet its claims are made on, for the person of the same name there; null for this one. */
+  sheet: string | null;
 }
 
-/** A plan's fields as entered; a null start is the sheet's today. A plan has either every or day. */
+/** A plan's fields as entered; a null start is the sheet's today. A plan has either every or day. A
+ *  sheet names one of the sheet's descendants to make its claims on; null is the sheet itself. */
 export interface PlanFields {
   amount: string;
   start: string | null;
   every: string | null;
   day: string | null;
   end: string;
+  sheet: string | null;
 }
 
 /** What a generate made: how many claims, the claims oldest first, and the sheet's plans then. */
@@ -58,10 +62,10 @@ export class PlansApi {
 
   /** Add a plan to a person: refused for an amount not above 0.00 with up to two decimals, neither or
    *  both of an interval and a day of the month, an interval that is not a whole number of at least 1, a
-   *  day of the month outside 1 to 31, or an end before the start. */
+   *  day of the month outside 1 to 31, an end before the start, or a sheet that is not a descendant. */
   add(sheetId: string, personId: number, f: PlanFields): Promise<PlanView> {
     return firstValueFrom(this.http.post<PlanView>(this.url(sheetId),
-      { personId, amount: f.amount, start: f.start, every: f.every, day: f.day, end: f.end }));
+      { personId, amount: f.amount, start: f.start, every: f.every, day: f.day, end: f.end, sheet: f.sheet }));
   }
 
   /** Pause (true) or resume (false) a plan on the sheet's today: refused for pausing a paused plan or

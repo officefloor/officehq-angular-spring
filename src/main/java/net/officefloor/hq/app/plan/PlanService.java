@@ -2,8 +2,12 @@ package net.officefloor.hq.app.plan;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -11,6 +15,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.setting.SheetParentLink;
+import net.officefloor.hq.app.setting.SheetParentRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -30,10 +36,13 @@ public class PlanService {
     private final ClaimService claims;
     private final Audit audit;
     private final SettingService settings;
+    private final SheetParentRepository parents;
     private final TransactionTemplate transaction;
 
     public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
-            ClaimService claims, Audit audit, SettingService settings, PlatformTransactionManager transactions) {
+            ClaimService claims, Audit audit, SettingService settings, SheetParentRepository parents,
+            PlatformTransactionManager transactions) {
+        this.parents = parents;
         this.plans = plans;
         this.people = people;
         this.sheets = sheets;
@@ -58,10 +67,11 @@ public class PlanService {
 
     /** Add a plan to a person: refused for an amount not above 0.00, neither or both of an interval and a
      *  day of the month, an interval below 1 day, a day of the month outside 1 to 31, or an end before the
-     *  start. No start means the sheet's today. */
+     *  start, or a sheet that is not one of the sheet's descendants. No start means the sheet's today; no
+     *  sheet means the plan's claims are made on its own sheet. */
     @Transactional
     public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String sheet) {
         sheets.load(sheetId);
         sheetRows.findForUpdate(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
@@ -72,10 +82,14 @@ public class PlanService {
         if (day != null && (day < 1 || day > 31)) throw refused("The day of the month must be 1 to 31.");
         LocalDate from = start != null ? start : sheets.today(sheetId);
         if (end.isBefore(from)) throw refused("The end date cannot be before the start date.");
+        String target = sheet == null || sheet.isBlank() ? null : sheet.trim();
+        if (target != null && !descendantsOf(sheetId).contains(target))
+            throw refused("The sheet is not one of this sheet's descendants.");
         Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount.setScale(2), from, every, day,
-                end));
+                end, target));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " amount=" + plan.getAmount().toPlainString() + " start=" + from + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+                + " amount=" + plan.getAmount().toPlainString() + " start=" + from + (day != null ? " day=" + day : " every=" + every) + " end=" + end
+                + (target != null ? " sheet=" + target : ""));
         return plan;
     }
 
@@ -122,7 +136,9 @@ public class PlanService {
     /** For every plan on the sheet, in the order they were added, make a DRAFT claim of its amount, dated
      *  the plan date with an empty note, for each plan date up to its end and the sheet's today that has
      *  none yet and no pause skips. Each claim is added by the claim form's rules, on its own: a date the form refuses is
-     *  skipped and tried again next time. The claims made, oldest first; a viewer makes none. */
+     *  skipped and tried again next time. A plan naming a descendant sheet makes its claims on that sheet, by
+     *  its rules and in its audit, for the person of the same name there; none while there is no such person.
+     *  The claims made, oldest first; a viewer makes none. */
     public List<Claim> generate(String sheetId, String user) {
         sheets.load(sheetId);
         if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
@@ -146,10 +162,32 @@ public class PlanService {
     private Claim generateOn(String sheetId, String user, long planId, LocalDate date) {
         Plan plan = plans.findForUpdate(planId).orElse(null);
         if (plan == null || plan.hasGenerated(date)) return null;
-        Claim claim = claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), date, "", null, null, null);
+        String target = plan.getTargetSheetId();
+        Long personId = plan.getPersonId();
+        if (target != null) {
+            Person person = people.findByIdAndSheetId(personId, sheetId).orElse(null);
+            if (person == null) return null;
+            Person there = people.findBySheetIdAndNameKey(target, Person.keyOf(person.getName())).orElse(null);
+            if (there == null) return null;
+            personId = there.getId();
+        }
+        Claim claim = claims.add(target != null ? target : sheetId, user, personId, plan.getAmount(), date, "",
+                null, null, null);
         plan.markGenerated(date);
         plans.saveAndFlush(plan);
         return claim;
+    }
+
+    /** The sheet's descendants: the sheets naming it as their parent, then theirs, and so on. */
+    private Set<String> descendantsOf(String sheetId) {
+        Set<String> found = new HashSet<>();
+        Deque<String> next = new ArrayDeque<>(List.of(sheetId));
+        while (!next.isEmpty()) {
+            for (SheetParentLink child : parents.findByParentId(next.pop())) {
+                if (!child.getSheetId().equals(sheetId) && found.add(child.getSheetId())) next.add(child.getSheetId());
+            }
+        }
+        return found;
     }
 
     private static ResponseStatusException refused(String why) {
