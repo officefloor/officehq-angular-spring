@@ -46,13 +46,17 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
-    /** Adds a claim for the person; a missing date takes the sheet's today. Refused when dated in a closed period. */
+    /**
+     * Adds a claim for the person; a missing date takes the sheet's today. Refused when dated in a closed period or
+     * after the person's retirement date.
+     */
     @Transactional
     public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
         LocalDate on = dateOrToday(sheetId, date);
         refuseInClosedPeriod(sheetId, on);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = person(sheetId, personId);
+        refuseAfterRetirement(person, on);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note)));
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
         rollup.recordChanges(by, sheetId, before);
@@ -73,6 +77,7 @@ public class ClaimService {
         }
         refuseInClosedPeriod(sheetId, claim.getDate());
         refuseInClosedPeriod(sheetId, on);
+        refuseAfterRetirement(person(sheetId, claim.getPersonId()), on);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(scaled(amount));
         claim.setDate(on);
@@ -153,6 +158,14 @@ public class ClaimService {
         sheets.lock(sheetId);
         if (periods.existsBySheetIdAndClosedTrueAndFromLessThanEqualAndToGreaterThanEqual(sheetId, date, date)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is dated in a closed period.");
+        }
+    }
+
+    /** Refuses a claim for the person dated after their retirement date; one on or before it is allowed. */
+    private static void refuseAfterRetirement(Person person, LocalDate date) {
+        if (person.getRetiredFrom() != null && date.isAfter(person.getRetiredFrom())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "That claim is dated after the person's retirement.");
         }
     }
 

@@ -148,6 +148,8 @@ export class Claims {
   readonly claims = input.required<Claim[]>();
   // Every rate set for the person's grade; a claim's due uses the one in force on its date.
   readonly rates = input<readonly RateView[]>([]);
+  // The date the person is retired from; no claim dated after it can be added or saved. Null while not retired.
+  readonly retiredFrom = input<string | null>(null);
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -242,6 +244,12 @@ export class Claims {
     const periods = this.periods.list();
     if ((was && inClosedPeriod(periods, was.date)) || inClosedPeriod(periods, date || (this.session.sheetToday() ?? ''))) {
       this.error.set(CLOSED);
+      return;
+    }
+    const retiredFrom = this.retiredFrom();
+    const on = date || (this.session.sheetToday() ?? '');
+    if (retiredFrom !== null && on > retiredFrom) {
+      this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
       return;
     }
     const form = { amount, date: date || null, note: this.note().trim() };

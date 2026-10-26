@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -63,6 +64,21 @@ public class PersonService {
         person.setGrade(grade);
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", by, saved));
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /** Retires the person from the date; a missing date takes the sheet's today. Their claims keep counting. */
+    @Transactional
+    public Person retire(String by, String sheetId, Long id, LocalDate from) {
+        LocalDate on = from != null ? from : sheets.load(sheetId).getToday();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = people.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        person.setRetiredFrom(on);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
+                + " from=" + on);
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }

@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.time.LocalDate;
 
 /** A person on a sheet, with a name (unique on the sheet, ignoring case) and a grade (A, B or C). */
 @Entity
@@ -25,6 +26,9 @@ public class Person {
 
     @Column(name = "grade", nullable = false)
     private String grade;
+
+    @Column(name = "retired_from")
+    private LocalDate retiredFrom;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -61,6 +65,20 @@ public class Person {
 
     public void setGrade(String grade) {
         this.grade = grade;
+    }
+
+    /** The date the person is retired from; null while they are not retired. */
+    public LocalDate getRetiredFrom() {
+        return retiredFrom;
+    }
+
+    public void setRetiredFrom(LocalDate retiredFrom) {
+        this.retiredFrom = retiredFrom;
+    }
+
+    /** A person with a retirement date set is retired at once, whatever the date. */
+    public boolean isRetired() {
+        return retiredFrom != null;
     }
 
     /** The version of the person as stored, raised on each save. */
