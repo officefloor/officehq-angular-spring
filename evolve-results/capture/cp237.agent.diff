@@ -1,0 +1,74 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index 45c0ee62..5c3714f7 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -13,7 +13,7 @@ export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
+ export type Role = (typeof ROLES)[number];
+ 
+ /** The actions the sheet's permission matrix names, each set under perm-<action>. */
+-export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
++export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
+ export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
+ 
+ export interface RoleView {
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 94bacaef..741c2122 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -300,7 +300,7 @@ export class Settings {
+   /** Who may take each action while its permission is blank. */
+   protected readonly standing: Record<PermissionAction, string> = {
+     open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward', close: 'clerk,steward',
+-    reassign: 'steward', reopen: 'steward',
++    reassign: 'steward', reopen: 'steward', today: 'clerk,steward',
+   };
+   /** By key, the values the dated settings take from their from-dates. */
+   private readonly dated = signal<Partial<Record<string, DatedValue[]>>>({});
+@@ -431,6 +431,7 @@ export class Settings {
+     reassign: new FormControl('', { nonNullable: true }),
+     close: new FormControl('', { nonNullable: true }),
+     reopen: new FormControl('', { nonNullable: true }),
++    today: new FormControl('', { nonNullable: true }),
+   } satisfies Record<PermissionAction, FormControl<string>>);
+   protected readonly roleForm = new FormGroup({
+     user: new FormControl('', { nonNullable: true }),
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 3b1153be..1a97a4c3 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -155,13 +155,14 @@ public class SettingService implements ActingFor {
+     public static final int PARENT_LEVELS = 3;
+ 
+     /** The actions the sheet's permission matrix names, each set under perm-<action>. */
+-    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
++    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen", "today");
+ 
+     /** The roles that may take an action whose permission is blank: the standing rule. */
+     private static final Map<String, Set<Role>> STANDING_PERMISSIONS = Map.of(
+             "open", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD), "settle", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD),
+             "void", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD), "close", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD),
+-            "reassign", EnumSet.of(Role.STEWARD), "reopen", EnumSet.of(Role.STEWARD));
++            "reassign", EnumSet.of(Role.STEWARD), "reopen", EnumSet.of(Role.STEWARD),
++            "today", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD));
+ 
+     private final SheetSettingRepository settings;
+     private final SheetSettingDatedRepository dated;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index fab14689..18f98ed3 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -65,11 +65,13 @@ public class SheetService {
+     }
+ 
+     /** Change the sheet's today; it has no audit line of its own: first a snapshot of each person's
+-     *  due-total on the day being left, then what it sets off (such as the periods it closes) and then
++     *  due-total on the day being left (refused to a role the
++     *  permission matrix does not allow to change it), then what it sets off (such as the periods it closes) and then
+      *  the figures it moves. */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = load(id);
++        settings.getObject().refuseUnlessPermitted(id, user, "today", "Your role may not change the sheet's today.");
+         Rollup.Snapshot before = rollup.snapshot(id);
+         rollup.recordSnapshot(user, before);
+         sheet.setToday(today);
