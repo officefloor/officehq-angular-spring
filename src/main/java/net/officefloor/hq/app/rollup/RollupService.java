@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -73,8 +74,8 @@ public class RollupService {
         }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
-        BigDecimal dueTotal = ZERO;
-        BigDecimal overdueSum = ZERO;
+        List<BigDecimal> dues = new ArrayList<>();
+        List<BigDecimal> overdues = new ArrayList<>();
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
             // an open claim dated within one of the person's holds counts in no live total, unless a statement binds it;
             // nor does one deferred on the sheet's today
@@ -116,12 +117,21 @@ public class RollupService {
             }
             figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue));
             claimedTotal = claimedTotal.add(claimed);
-            overdueSum = overdueSum.add(overdue);
+            overdues.add(overdue);
             if (due != null) {
-                dueTotal = dueTotal.add(due);
+                dues.add(due);
             }
         }
-        return new Snapshot(figures, claimedTotal, dueTotal, overdueSum);
+        return new Snapshot(figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+    }
+
+    /** The sheet-total of the people's figures: with three or more, the single highest and lowest are left out. */
+    static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        BigDecimal sum = figures.stream().reduce(ZERO, BigDecimal::add);
+        if (figures.size() >= 3) {
+            sum = sum.subtract(Collections.max(figures)).subtract(Collections.min(figures));
+        }
+        return sum;
     }
 
     /**

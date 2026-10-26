@@ -77,6 +77,21 @@ export function sumSkippingNa(values: readonly (string | null)[]): string {
 }
 
 /**
+ * The sheet-total of two-decimal figures, skipping n/a: with three or more figures, the single highest and the
+ * single lowest are left out.
+ */
+export function trimmedSum(values: readonly (string | null)[]): string {
+  const figures = values.filter((v): v is string => v !== null).map(cents);
+  let sum = figures.reduce((total, c) => total + c, 0n);
+  if (figures.length >= 3) {
+    const max = figures.reduce((a, b) => (b > a ? b : a));
+    const min = figures.reduce((a, b) => (b < a ? b : a));
+    sum -= max + min;
+  }
+  return formatCents(sum);
+}
+
+/**
  * The percent of the rate in force on the date among one grade's rates: the one with the latest
  * from-date on or before it, a rate with no from-date applying from the beginning of time;
  * undefined (n/a) when none applies yet, or when the date is past that one's to-date.

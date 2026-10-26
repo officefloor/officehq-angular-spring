@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, claimedTotal, counts, deferred, dueOf, isBound, isOpen, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
-import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa } from '../rates/rates';
+import { DatedGrade, GRADES, RateStore, atMost, excessOver, gradeOn, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { Header } from '../header/header';
 import { Summary, SummaryPerson } from '../summary/summary';
@@ -506,7 +506,8 @@ export class People {
     for (const [id, list] of lists) by.set(id, sumSkippingNa(list));
     return by;
   });
-  protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
+  // The sheet's due-total: trimmed of the highest and lowest person's figure when three or more have one.
+  protected readonly dueTotal = computed(() => trimmedSum([...this.dueBy().values()]));
   // The claims counted live that are overdue: open and due by a date before the sheet's today.
   protected readonly overdueClaims = computed(() => {
     const today = this.session.sheetToday();
@@ -530,7 +531,11 @@ export class People {
     }
     return by;
   });
-  protected readonly overdueTotal = computed(() => sumSkippingNa([...this.overdueTotalBy().values()]));
+  // The sheet's overdue-total: every person has a figure (0.00 with nothing overdue), trimmed like the due-total.
+  protected readonly overdueTotal = computed(() => {
+    const by = this.overdueTotalBy();
+    return trimmedSum(this.people().map((p) => by.get(p.id) ?? '0.00'));
+  });
 
   constructor() {
     // Re-read the people from the store each time a sheet is loaded.
