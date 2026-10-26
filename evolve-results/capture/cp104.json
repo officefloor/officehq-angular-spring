@@ -1,0 +1,102 @@
+{
+  "checkpoint": 104,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp104_reassign-renumbers",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    37,
+    38,
+    43,
+    47,
+    52,
+    53,
+    54,
+    56,
+    59,
+    74,
+    81,
+    90,
+    93,
+    95,
+    99,
+    100,
+    102
+  ],
+  "replaced_tests": [
+    "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 1",
+    "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 3",
+    "cp102_aliases.spec.ts::aliases scenario 3",
+    "cp37_reassign-claim.spec.ts::reassign claim",
+    "cp38_terms-per-grade.spec.ts::terms per grade scenario 2",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp47_person-period-figures.spec.ts::person period figures scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp53_permission-matrix.spec.ts::permission matrix",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 3",
+    "cp54_viewer-role.spec.ts::viewer role scenario 3",
+    "cp56_late-per-boundary.spec.ts::late per boundary scenario 3",
+    "cp59_period-templates.spec.ts::period templates scenario 2",
+    "cp74_as-of-view.spec.ts::as of view scenario 3",
+    "cp81_remind.spec.ts::remind scenario 1",
+    "cp90_void-reasons.spec.ts::void reasons scenario 3",
+    "cp93_bulk-reassign.spec.ts::bulk reassign",
+    "cp95_rate-preview.spec.ts::rate preview scenario 1",
+    "cp99_person-contact.spec.ts::person contact scenario 1"
+  ],
+  "request": {
+    "spec": "A claim that is moved to another person now receives the next number in the sequence it would be\nnumbered in (the sheet's, or its period's when per-period numbering is on), and its old number is\nnever used again; a draft, having no number, gets none. CLAIM_REASSIGNED carries the new number.\nMoving claims together follows the same rule, in list order.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim that is moved to another person now receives the next number in the sequence it would be\nnumbered in (the sheet's, or its period's when per-period numbering is on), and its old number is\nnever used again; a draft, having no number, gets none. CLAIM_REASSIGNED carries the new number.\nMoving claims together follows the same rule, in list order.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8b33f00c8da2279cb849363fd463a0f9914fa3a9",
+  "reset_sha": "",
+  "preagent_sha": "82031eef434c45f9917a3a301ad0ae6e5aa13cf1",
+  "prev_sha": "82031eef434c45f9917a3a301ad0ae6e5aa13cf1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.49649740000000003,
+    "input_tokens": 36,
+    "output_tokens": 5650,
+    "cache_read_tokens": 602727,
+    "cache_creation_tokens": 32851,
+    "num_turns": 18,
+    "duration_ms": 241761,
+    "duration_api_ms": 64522,
+    "model": "claude-opus-5-5",
+    "session_id": "29d0dbe9-15a6-44a5-8ec4-6888bbdf499a",
+    "stop_reason": "success",
+    "result_text": "A claim moved to another person now gets the next number in its sequence, and its old number is never given out again. All 4 tests in `bin/e2e` pass.\n\nThe change is all on the server, in `ClaimService.reassign`:\n\n- **Numbered claims:** a new `renumber` step strips the claim's number and runs it through the same numbering that opening a claim uses. That means the sheet's next number, or the next one in its period's sequence when per-period numbering is on.\n- **Drafts:** a draft has no number, so it is left alone.\n- **Old numbers:** a period number that is given up is written to the existing `claim_number_retired` table, which the \"last number in sequence\" lookup already reads. That table was there but unused until now. This matters when the numbering mode changes: if the highest period number is moved, that number could otherwise be handed out again. Sheet numbers don't need this because the sheet's counter only goes up.\n- **Moving several at once:** this works without extra code, because the bulk move already handles claims one at a time in list order through the same reassign method.\n- **The audit record:** `CLAIM_REASSIGNED` already included the claim's number, so it now shows the new one. In the record the number sits before `from=`/`to=`, not at the end of the line. That differs from the add-new-fields-at-the-end rule in `AGENTS.md`, but it is the order the test expects and how the existing record was already built.\n\nI also added a small `clearNumber()` helper to `Claim.java` and updated the reassign doc comment, which still said a moved claim keeps its number.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.49649740000000003,
+        "num_turns": 18,
+        "duration_ms": 241761,
+        "duration_api_ms": 64522,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp104.agent.jsonl",
+  "agent_diff_file": "cp104.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
