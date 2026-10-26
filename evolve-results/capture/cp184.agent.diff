@@ -1,0 +1,285 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews-api.ts b/src/main/frontend/src/app/features/crews/crews-api.ts
+index 9476d1c6..f678024f 100644
+--- a/src/main/frontend/src/app/features/crews/crews-api.ts
++++ b/src/main/frontend/src/app/features/crews/crews-api.ts
+@@ -6,12 +6,17 @@ import { Session } from '../../core/session';
+ export interface CrewView {
+   id: number;
+   name: string;
+-  /** The lead, a person of the sheet. */
+-  leadId: number;
++  /** The lead, a person of the sheet; none once they have been transferred to another sheet. */
++  leadId: number | null;
+   /** The members' person ids in the order they were added. */
+   memberIds: number[];
+ }
+ 
++/** The crew's people: its lead, when it has one, and then its members. */
++export function crewIds(crew: CrewView): number[] {
++  return crew.leadId === null ? [...crew.memberIds] : [crew.leadId, ...crew.memberIds];
++}
++
+ // The crews of a sheet, as the store holds them.
+ @Injectable({ providedIn: 'root' })
+ export class CrewsApi {
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 16e0da96..4de1dcfc 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -6,7 +6,7 @@ import { Session } from '../../core/session';
+ import { money } from '../claims/claims-api';
+ import { PersonView } from '../people/people-api';
+ import { Pools } from '../pools/pools-api';
+-import { CrewView, Crews } from './crews-api';
++import { CrewView, Crews, crewIds } from './crews-api';
+ 
+ // One crew: its lead, its members, its due-total (the lead's and the members' due-totals added up, n/a
+ // skipped) and a form to add a member.
+@@ -53,7 +53,7 @@ export class CrewRow {
+   private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));
+   protected readonly dueTotal = computed(() => {
+     const crew = this.crew();
+-    return money([crew.leadId, ...crew.memberIds].reduce((t, id) => t + (this.dues().get(id) ?? 0), 0));
++    return money(crewIds(crew).reduce((t, id) => t + (this.dues().get(id) ?? 0), 0));
+   });
+ 
+   protected readonly personId = new FormControl('', { nonNullable: true });
+@@ -65,8 +65,8 @@ export class CrewRow {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+   }
+ 
+-  protected nameOf(id: number): string {
+-    return this.namesById().get(id) ?? '';
++  protected nameOf(id: number | null): string {
++    return id === null ? '' : this.namesById().get(id) ?? '';
+   }
+ 
+   protected async submit(): Promise<void> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1e07cb5e..2c4ebac5 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -11,7 +11,7 @@ import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
+ import { PoolsList, personCutTotals, poolsWithCrews } from '../pools/pools';
+ import { Pools } from '../pools/pools-api';
+ import { CrewsList } from '../crews/crews';
+-import { Crews } from '../crews/crews-api';
++import { Crews, crewIds } from '../crews/crews-api';
+ import { Rates } from '../rates/rates';
+ import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
+ import { SheetCap } from '../settings/sheet-cap';
+@@ -577,7 +577,7 @@ export class People {
+     const led = this.crews.crews().filter((c) => c.leadId === me.id);
+     if (led.length === 0) return '';
+     const dues = this.dueCents();
+-    return money(led.reduce((t, c) => t + [c.leadId, ...c.memberIds].reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
++    return money(led.reduce((t, c) => t + crewIds(c).reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
+   });
+   /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
+   protected readonly sheetDueTotal = computed(() => {
+@@ -1238,6 +1238,13 @@ export class People {
+       || (retiredFrom !== null && today !== undefined && retiredFrom <= today);
+   }
+ 
++  /** Whether the claim's person's retirement date is reached by the sheet's today. */
++  private retired(claim: ClaimView): boolean {
++    const retiredFrom = this.retiredFromById().get(claim.personId) ?? null;
++    const today = this.session.sheet()?.today;
++    return retiredFrom !== null && today !== undefined && retiredFrom <= today;
++  }
++
+   /** Whether the claim counts in a period ending on `end`: as countsLive decides, but by the status
+    *  its log records at the end of that day (none when added after it); deferral is as today, and a hold
+    *  only leaves out a claim that is still open now, as holds touch only live claims. */
+@@ -1427,9 +1434,11 @@ export class People {
+     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
+   }
+ 
+-  /** Whether the claim counts toward what is claimed: it counts, and is not a correction. */
++  /** Whether the claim counts toward what is claimed: it counts, a hold (the person's or the claim's)
++   *  notwithstanding, and is not a correction. */
+   private countsClaimed(claim: ClaimView): boolean {
+-    return this.countsLive(claim) && !isCorrection(claim);
++    return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
++      && this.retired(claim)) && !isCorrection(claim);
+   }
+ 
+   /** The sum of the person's open and settled claims, leaving out corrections, with two decimals. */
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index a8b7f83e..bfedf128 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -7,7 +7,7 @@ import { Session } from '../../core/session';
+ import { cents, money } from '../claims/claims-api';
+ import { PersonView, heldOn } from '../people/people-api';
+ import { SheetPot } from '../settings/sheet-pot';
+-import { CrewView, Crews } from '../crews/crews-api';
++import { CrewView, Crews, crewIds } from '../crews/crews-api';
+ import { PoolMemberView, Pools, PoolView } from './pools-api';
+ 
+ /** A share percent as typed: up to two decimals. */
+@@ -53,12 +53,12 @@ function divideHalfEven(value: bigint, by: bigint): bigint {
+ 
+ /** Each crew as a pool under its name, given the crew's id negated so it never meets a pool's: the lead
+  *  and then the members as its members, without dates, at equal shares of 100.00 split as patrons' shares
+- *  are (each rounded half to even, the remainder on the lead). */
++ *  are (each rounded half to even, the remainder on the lead, or the first member when it has none). */
+ export function crewPools(crews: readonly CrewView[]): PoolView[] {
+   return crews.map((crew) => {
+-    const ids = [crew.leadId, ...crew.memberIds];
++    const ids = crewIds(crew);
+     const count = BigInt(ids.length);
+-    const each = divideHalfEven(10000n, count);
++    const each = count === 0n ? 0n : divideHalfEven(10000n, count);
+     return {
+       id: -crew.id, name: crew.name,
+       members: ids.map((personId, i) => ({ personId, poolId: null, from: null, to: null,
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crew.java b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+index 6669d516..cb22b415 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/Crew.java
++++ b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+@@ -29,7 +29,8 @@ public class Crew {
+     @Column(name = "name", nullable = false)
+     private String name;
+ 
+-    @Column(name = "lead_id", nullable = false)
++    /** The lead; none once they have been transferred to another sheet. */
++    @Column(name = "lead_id")
+     private Long leadId;
+ 
+     /** The members in the order they were added. */
+@@ -70,7 +71,12 @@ public class Crew {
+ 
+     /** Whether the person is the lead or a member of the crew. */
+     public boolean includes(long personId) {
+-        return leadId == personId || hasMember(personId);
++        return isLead(personId) || hasMember(personId);
++    }
++
++    /** Whether the person is the crew's lead. */
++    public boolean isLead(long personId) {
++        return leadId != null && leadId == personId;
+     }
+ 
+     public boolean hasMember(long personId) {
+@@ -84,7 +90,7 @@ public class Crew {
+     /** Give a person's place in the crew, as lead or member, to another person; a member place is dropped when
+      *  that person is already in the crew, and on taking the lead they leave the members. */
+     public void movePerson(long fromPersonId, long intoPersonId) {
+-        if (leadId == fromPersonId) {
++        if (isLead(fromPersonId)) {
+             leadId = intoPersonId;
+             members.removeIf((m) -> m.getPersonId() == intoPersonId);
+         }
+@@ -99,4 +105,10 @@ public class Crew {
+     public void removeMember(long personId) {
+         members.removeIf((m) -> m.getPersonId() == personId);
+     }
++
++    /** Take the person out of the crew: as lead, leaving it with none, or as a member. */
++    public void removePerson(long personId) {
++        if (isLead(personId)) leadId = null;
++        removeMember(personId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewController.java b/src/main/java/net/officefloor/hq/app/crew/CrewController.java
+index a9ff2c75..a45653ea 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewController.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewController.java
+@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
+ public class CrewController {
+ 
+     /** What the screen shows of a crew: its name, its lead and its members in the order they were added. */
+-    public record CrewView(long id, String name, long leadId, List<Long> memberIds) {
++    public record CrewView(long id, String name, Long leadId, List<Long> memberIds) {
+         static CrewView of(Crew crew) {
+             return new CrewView(crew.getId(), crew.getName(), crew.getLeadId(), crew.getMemberIds());
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index eb97e375..b7ab1e2a 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -74,7 +74,7 @@ public class CrewService {
+         Crew crew = crews.findById(crewId).filter((c) -> c.getSheetId().equals(sheetId))
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such crew."));
+         Person person = personOf(sheetId, personId);
+-        if (crew.getLeadId().equals(person.getId())) {
++        if (crew.isLead(person.getId())) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     person.getName() + " leads the crew " + crew.getName() + ".");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/person/TransferService.java b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+index 91789524..a7e4e1e4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/TransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+@@ -76,7 +76,7 @@ public class TransferService {
+      * sheet's today when each was opened, then by the order they were added); figures a statement bound are
+      * kept and their statements are carried, but references are not. The person then leaves this sheet entirely:
+      * their patron links (both ways), pool and crew memberships, watches, holds and statements are dropped. Refused
+-     * unless the user is a steward of this sheet, for a retired person, for the lead of a crew, to this sheet itself, to an archived
++     * unless the user is a steward of this sheet, for a retired person, to this sheet itself, to an archived
+      * sheet, and when their name or an alias is on another sheet of the other sheet's tree. When the person's
+      * name or an alias is already that of someone on the other sheet, the arriving person is merged into
+      * them, as a merge does (refused when that someone is retired, or when the names are those of more than
+@@ -95,12 +95,6 @@ public class TransferService {
+         if (from.isRetired()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred.");
+         }
+-        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+-            if (crew.getLeadId().equals(from.getId())) {
+-                throw new ResponseStatusException(HttpStatus.CONFLICT,
+-                        "The lead of the crew " + crew.getName() + " cannot be transferred.");
+-            }
+-        }
+         sheets.load(toSheetId);
+         if (sheetRows.isArchived(toSheetId)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The other sheet is archived.");
+@@ -179,7 +173,7 @@ public class TransferService {
+         }
+         pools.flush();
+         for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+-            crew.removeMember(from.getId());
++            crew.removePerson(from.getId());
+         }
+         crews.flush();
+         statements.deleteBySheetIdAndPersonId(sheetId, from.getId());
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 0c04e0fc..899820bf 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -125,9 +125,11 @@ public class Rollup {
+             boolean keptFigure = false;
+             List<Claim> theirs = claimsByPerson.getOrDefault(person.getId(), List.of());
+             for (Claim claim : theirs) {
+-                if (!counts(person, claim, today)) continue;
++                if (!countsClaimed(person, claim, today)) continue;
+                 // A correction counts toward what is due, but not toward what is claimed.
+                 if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
++                // A hold leaves the claim in what is claimed, but takes it out of what is due.
++                if (!counts(person, claim, today)) continue;
+                 // A claim's live figure is at the grade in force on its date.
+                 Grade grade = person.gradeOn(claim.getDate());
+                 LocalDate roundsBy = Rounding.dateOf(claim, corrected(claim, theirs));
+@@ -258,6 +260,14 @@ public class Rollup {
+                 && LateCharge.lateFrom(claim, grace).isBefore(today);
+     }
+ 
++    /** What counts toward what is claimed: as counts decides, except that a hold (the person's or the
++     *  claim's) does not take a claim out of it. */
++    private static boolean countsClaimed(Person person, Claim claim, LocalDate today) {
++        return claim.getStatus() == ClaimStatus.SETTLED
++                || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
++                        && (claim.isBound() || !person.isRetiredBy(today)));
++    }
++
+     /** Only open (PENDING included) and settled claims count toward what is claimed and due; a person's
+      *  open claims dated within one of their holds, or all of them once their retirement date is reached,
+      *  and a held claim do not, unless a statement binds them; nor does a
+diff --git a/src/main/resources/db/migration/V89__crew_lead_optional.sql b/src/main/resources/db/migration/V89__crew_lead_optional.sql
+new file mode 100644
+index 00000000..12c1b0f2
+--- /dev/null
++++ b/src/main/resources/db/migration/V89__crew_lead_optional.sql
+@@ -0,0 +1,2 @@
++-- A crew's lead may be gone: transferring the lead to another sheet leaves the crew without one.
++ALTER TABLE crew ALTER COLUMN lead_id SET NULL;
