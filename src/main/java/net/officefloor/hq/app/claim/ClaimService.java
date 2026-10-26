@@ -667,8 +667,8 @@ public class ClaimService {
      * The figure (null for n/a) of the claim, with a late charge added for every full 30 days it is overdue (past its
      * late-from: its due-by plus its grace) by the sheet's today: for each such boundary (its late-from plus 30, 60,
      * 90 ... days), the sheet's late
-     * percent in force on that boundary date of the figure, rounded like its due; a boundary whose percent is 0.00
-     * adds nothing. A deferred claim is not overdue. The charge is never bound by a statement: it keeps following the
+     * percent in force on that boundary date of the figure plus the charges of the boundaries before it (it
+     * compounds), rounded like its due; a boundary whose percent is 0.00 adds nothing. A deferred claim is not overdue. The charge is never bound by a statement: it keeps following the
      * sheet's today and its policy date.
      */
     public static BigDecimal withLateCharge(BigDecimal figure, Claim claim, Person person, Sheet sheet) {
@@ -683,7 +683,7 @@ public class ClaimService {
         for (long k = 1; k <= periods; k++) {
             BigDecimal latePct = sheet.latePctOn(lateFrom.plusDays(30 * k));
             if (latePct.signum() != 0) {
-                due = due.add(dueOn(figure, latePct, rounding));
+                due = due.add(dueOn(due, latePct, rounding));
             }
         }
         return due;

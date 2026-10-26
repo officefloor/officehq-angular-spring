@@ -183,8 +183,8 @@ export function plusDays(date: string, days: number): string {
 /**
  * The due a claim shows and totals: a settled claim's frozen due; else its live due, the greater of the floor in
  * force on its date and its figure plus the late charge: for an overdue claim, for each full 30 days it is overdue,
- * the late percent in force on that boundary date (its due-by plus its grace, plus 30, 60, 90 ... days) of the figure, rounded like
- * the claim; a boundary whose percent is 0.00 adds nothing. Neither the charge nor the floor is bound by a
+ * the late percent in force on that boundary date (its due-by plus its grace, plus 30, 60, 90 ... days) of the figure
+ * plus the charges of the boundaries before it (it compounds), rounded like the claim; a boundary whose percent is 0.00 adds nothing. Neither the charge nor the floor is bound by a
  * statement. A correction has neither.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness, grace = 0): string | null {
@@ -194,10 +194,11 @@ export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late
   const from = lateFrom(c, grace);
   const periods = Math.floor(daysBetween(from, late.today!) / 30);
   const halfUp = roundsHalfUp(c, late.policyDate);
-  const charges = Array.from({ length: Math.max(periods, 0) }, (_, k) =>
-    dueOn(figure, late.latePct(plusDays(from, 30 * (k + 1))), halfUp),
-  );
-  return atLeast(sumSkippingNa([figure, ...charges]), floor(c.date));
+  let due = figure;
+  for (let k = 1; k <= periods; k++) {
+    due = sumSkippingNa([due, dueOn(due, late.latePct(plusDays(from, 30 * k)), halfUp)]);
+  }
+  return atLeast(due, floor(c.date));
 }
 
 const CLOSED = 'That claim is due by a date in a closed period, so it cannot change.';
