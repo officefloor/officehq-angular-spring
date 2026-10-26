@@ -114,7 +114,7 @@ public class PeriodService {
     }
 
     /**
-     * Closes the period, fixing each person's due-total for it now (the figures of their claims dated in it that
+     * Closes the period, fixing each person's due-total for it now (the figures of their claims due by a date in it that
      * counted at the end of its last day, skipping n/a) and its own, the sum of those.
      * Refused unless the user's role may close, and when it is already closed.
      */
@@ -132,7 +132,7 @@ public class PeriodService {
     }
 
     /**
-     * Soft-closes the period, fixing its figures as a close does while claims dated in it can still change. Refused
+     * Soft-closes the period, fixing its figures as a close does while claims due by a date in it can still change. Refused
      * unless the user's role may close, and when it is already closed or soft-closed.
      */
     @Transactional
@@ -191,20 +191,20 @@ public class PeriodService {
     }
 
     /**
-     * Each person's due-total for the period now: the figures of their claims dated in it that counted at the end of
+     * Each person's due-total for the period now: the figures of their claims due by a date in it that counted at the end of
      * its last day, skipping n/a; 0.00 for a person with none.
      */
     private Map<Long, BigDecimal> personTotals(String sheetId, Period period, LocalDate today) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        // every person on the sheet now gets a figure, 0.00 when none of their counted claims is dated in it
+        // every person on the sheet now gets a figure, 0.00 when none of their counted claims is due by a date in it
         Map<Long, BigDecimal> personTotals = new HashMap<>();
         for (Long personId : byId.keySet()) {
             personTotals.put(personId, BigDecimal.ZERO.setScale(2));
         }
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
-            if (person == null || !person.countsAtEndOf(c, period.getTo(), today) || !period.contains(c.getDate())) {
+            if (person == null || !person.countsAtEndOf(c, period.getTo(), today) || !period.contains(c.getDueBy())) {
                 continue;
             }
             BigDecimal figure = claimService.due(sheetId, person, c);

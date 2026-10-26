@@ -19,7 +19,7 @@ import java.util.Map;
 /**
  * A period of a sheet: a name unique on the sheet and a from and to date, inclusive. A closed period keeps the
  * due-total it had when it was closed, and each person's due-total for it then. A soft-closed period keeps them
- * the same way, but claims dated in it can still change.
+ * the same way, but claims due by a date in it can still change.
  */
 @Entity
 @Table(name = "period")
@@ -116,7 +116,7 @@ public class Period {
         this.softClosed = false;
     }
 
-    /** Soft-closes the period, fixing its due-total and each person's; claims dated in it can still change. */
+    /** Soft-closes the period, fixing its due-total and each person's; claims due by a date in it can still change. */
     public void softClose(BigDecimal total, Map<Long, BigDecimal> personTotals) {
         fix(total, personTotals);
         this.softClosed = true;

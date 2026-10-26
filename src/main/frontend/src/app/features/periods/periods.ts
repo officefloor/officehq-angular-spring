@@ -11,9 +11,9 @@ export interface PeriodView {
   // Both inclusive (yyyy-mm-dd).
   from: string;
   to: string;
-  // A closed period keeps the due-total fixed when it was closed; no claim dated in it can change.
+  // A closed period keeps the due-total fixed when it was closed; no claim due by a date in it can change.
   closed: boolean;
-  // A soft-closed period keeps its due-total fixed the same way, but claims dated in it can still change.
+  // A soft-closed period keeps its due-total fixed the same way, but claims due by a date in it can still change.
   softClosed: boolean;
   closedTotal: string | null;
   // Each person's due-total fixed when it was closed or soft-closed, by person id; empty while it is open.
@@ -21,12 +21,12 @@ export interface PeriodView {
 }
 
 /**
- * A claim the live rules do not leave out (deferred or held): its person, date, the figure it totals now (null for
- * n/a), and its status and log, which decide whether it counted at the end of a period.
+ * A claim the live rules do not leave out (deferred or held): its person, its due-by (which decides its period), the
+ * figure it totals now (null for n/a), and its status and log, which decide whether it counted at the end of a period.
  */
 export interface DatedFigure {
   personId: number;
-  date: string;
+  dueBy: string;
   figure: string | null;
   status: ClaimStatus;
   log: ClaimLogLine[];
@@ -52,7 +52,7 @@ export function inClosedPeriod(periods: readonly PeriodView[], date: string): bo
 
 /**
  * The person's due-total for each period, by period id: a closed one's figure fixed for them when it was closed
- * (0.00 for a person added since), else the figures now of their claims dated in it that counted at the end of its
+ * (0.00 for a person added since), else the figures now of their claims due by a date in it that counted at the end of its
  * last day, skipping n/a.
  */
 export function personPeriodDueTotals(
@@ -64,7 +64,7 @@ export function personPeriodDueTotals(
   for (const p of periods) by.set(p.id, []);
   for (const f of figures) {
     if (f.personId !== personId) continue;
-    const p = periodOn(periods, f.date);
+    const p = periodOn(periods, f.dueBy);
     if (p && countedAtEndOf(f, p.to)) by.get(p.id)?.push(f.figure);
   }
   return new Map(
@@ -264,7 +264,7 @@ export class Periods {
   // A submit in flight: a second submit before it answers is ignored, so it stores one period.
   private submitting = false;
 
-  // Each period's due-total: a closed or soft-closed one's fixed total, else the figures of the claims dated in it that counted at
+  // Each period's due-total: a closed or soft-closed one's fixed total, else the figures of the claims due by a date in it that counted at
   // the end of its last day, skipping n/a.
   protected readonly dueBy = computed(() => periodDueTotals(this.store.list(), this.figures()));
 
@@ -288,7 +288,7 @@ export class Periods {
     }
   }
 
-  /** Soft-closes the period: its figures are fixed now, but claims dated in it can still change. */
+  /** Soft-closes the period: its figures are fixed now, but claims due by a date in it can still change. */
   protected async softClose(p: PeriodView): Promise<void> {
     this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
     const sheet = this.session.sheetId();

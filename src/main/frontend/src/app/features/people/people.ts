@@ -528,7 +528,7 @@ export class People {
     for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, cap));
     return by;
   });
-  // Every claim the live rules do not leave out: its person, its date, the figure it totals and its log, for the
+  // Every claim the live rules do not leave out: its person, its due-by, the figure it totals and its log, for the
   // periods' due-totals, which count it by its status at each period's end.
   protected readonly countedFigures = computed<DatedFigure[]>(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
@@ -542,7 +542,7 @@ export class People {
         const grade = gradeOn(grades.get(c.personId) ?? [], c.date);
         return {
           personId: c.personId,
-          date: c.date,
+          dueBy: c.dueBy,
           figure: dueOf(c, rates.get(grade) ?? [], floor, late),
           status: c.status,
           log: c.log,
@@ -550,7 +550,7 @@ export class People {
       });
   });
   // Each person's due-total for each period, by person id then period id: a closed period's figure fixed for them
-  // when it closed, else their counted claims' figures dated in it, skipping n/a.
+  // when it closed, else their counted claims' figures due by a date in it, skipping n/a.
   protected readonly periodDueBy = computed(() => {
     const periods = this.periods.list();
     const figures = this.countedFigures();
@@ -1155,7 +1155,7 @@ export class People {
     } catch (err) {
       this.quickError.set(
         err instanceof HttpErrorResponse && err.status === 409
-          ? 'That claim is dated in a closed period, so it cannot be added.'
+          ? 'That claim is due by a date in a closed period, so it cannot be added.'
           : 'Could not quick add that claim.',
       );
     } finally {

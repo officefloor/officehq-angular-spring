@@ -180,7 +180,7 @@ export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late
   return atLeast(sumSkippingNa([figure, ...charges]), floor(c.date));
 }
 
-const CLOSED = 'That claim is dated in a closed period, so it cannot change.';
+const CLOSED = 'That claim is due by a date in a closed period, so it cannot change.';
 const LOCKED = 'Another user is editing this claim; try again once they are done.';
 
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
@@ -270,7 +270,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-status">{{ c.status }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
-            <td data-testid="claim-period">{{ periodName(c.date) }}</td>
+            <td data-testid="claim-period">{{ periodName(c) }}</td>
             <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</td>
             <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
             <td data-testid="claim-proofs">{{ c.proofs }}</td>
@@ -462,9 +462,9 @@ export class Claims {
     return (e.target as HTMLInputElement).checked;
   }
 
-  /** The name of the period the date falls in; empty when none does. */
-  protected periodName(date: string): string {
-    return periodOn(this.periods.list(), date)?.name ?? '';
+  /** The name of the period the claim belongs to, the one its due-by falls in; empty when none does. */
+  protected periodName(c: Claim): string {
+    return periodOn(this.periods.list(), c.dueBy)?.name ?? '';
   }
 
   /** Opens the claim's editor, which holds the claim for this user until it is saved or cancelled. */
@@ -482,7 +482,7 @@ export class Claims {
       this.setRowError(c.id, `A ${c.status} claim cannot be edited; only a draft can. Void it and add a new one.`);
       return;
     }
-    if (inClosedPeriod(this.periods.list(), c.date)) {
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
       this.setRowError(c.id, CLOSED);
       return;
     }
@@ -542,7 +542,7 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
-    if (inClosedPeriod(this.periods.list(), c.date)) {
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
       this.setRowError(c.id, CLOSED);
       return;
     }
@@ -590,7 +590,7 @@ export class Claims {
       this.setRowError(c.id, `A ${c.status} claim cannot take a proof.`);
       return;
     }
-    if (inClosedPeriod(this.periods.list(), c.date)) {
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
       this.setRowError(c.id, CLOSED);
       return;
     }
@@ -622,7 +622,7 @@ export class Claims {
       this.setRowError(c.id, `A ${c.status} claim cannot be deferred; only an OPEN one can.`);
       return;
     }
-    if (inClosedPeriod(this.periods.list(), c.date)) {
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
       this.setRowError(c.id, CLOSED);
       return;
     }
@@ -642,8 +642,8 @@ export class Claims {
   }
 
   /**
-   * A steward re-dates an OPEN or PENDING claim to the typed date: refused for a claim or a new date in a closed
-   * period and for a date after the person's retirement.
+   * A steward re-dates an OPEN or PENDING claim to the typed date; its due-by, and so its period, stay as fixed.
+   * Refused for a claim whose due-by falls in a closed period and for a date after the person's retirement.
    */
   protected async redate(c: Claim): Promise<void> {
     this.clearRowError(c.id);
@@ -658,7 +658,7 @@ export class Claims {
       this.setRowError(c.id, `A ${c.status} claim cannot be re-dated; only an OPEN or PENDING one can.`);
       return;
     }
-    if (inClosedPeriod(this.periods.list(), c.date) || inClosedPeriod(this.periods.list(), date)) {
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
       this.setRowError(c.id, CLOSED);
       return;
     }
@@ -694,7 +694,7 @@ export class Claims {
       this.setRowError(c.id, `Only an OPEN claim that is not deferred can be split.`);
       return;
     }
-    if (inClosedPeriod(this.periods.list(), c.date)) {
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
       this.setRowError(c.id, CLOSED);
       return;
     }
@@ -732,7 +732,7 @@ export class Claims {
       this.setRowError(c.id, `A ${c.status} claim cannot move.`);
       return;
     }
-    if (inClosedPeriod(this.periods.list(), c.date)) {
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
       this.setRowError(c.id, CLOSED);
       return;
     }
@@ -810,8 +810,8 @@ export class Claims {
     }
     const editing = this.editingId();
     const was = this.claims().find((c) => c.id === editing);
-    const periods = this.periods.list();
-    if ((was && inClosedPeriod(periods, was.date)) || inClosedPeriod(periods, date || (this.session.sheetToday() ?? ''))) {
+    // a claim's period is the one its due-by falls in: an edit leaves it as fixed, and the store judges a new claim's
+    if (was && inClosedPeriod(this.periods.list(), was.dueBy)) {
       this.error.set(CLOSED);
       return;
     }
@@ -831,11 +831,12 @@ export class Claims {
           : await firstValueFrom(this.http.put<Claim>(`${base}/claims/${editing}`, form));
       this.saved.emit(claim);
       this.reset();
-    } catch {
+    } catch (e) {
+      const conflict = e instanceof HttpErrorResponse && e.status === 409;
       this.error.set(
         correction
           ? `Claim no. ${corrects} is not a settled claim of ${this.personName()}, so it cannot be corrected.`
-          : editing === null ? 'Could not add that claim.' : 'Could not save that claim.',
+          : editing === null ? (conflict ? CLOSED : 'Could not add that claim.') : 'Could not save that claim.',
       );
     } finally {
       this.submitting = false;
