@@ -201,15 +201,19 @@ export function money(total: number): string {
   return (total / 100).toFixed(2);
 }
 
-/** Whether the claim's live figures round half up: the date that decides it (for a correction, the
- *  date of the claim of `claims` it corrects; else its own) is before the policy date. Otherwise they
- *  round half to even. */
-export function roundsHalfUp(claim: ClaimView, claims: readonly ClaimView[], policyDate: string | undefined): boolean {
-  if (policyDate === undefined) return false;
+/** Whether the claim's live figures round half up: by the rounding mode in force (`rounding`) on the date
+ *  that decides it (for a correction, the date of the claim of `claims` it corrects; else its own) when there
+ *  is one, else when that date is before the policy date. Otherwise they round half to even. */
+export function roundsHalfUp(claim: ClaimView, claims: readonly ClaimView[], policyDate: string | undefined,
+  rounding: (date: string) => string | null = () => null): boolean {
   const corrected = isCorrection(claim) && claim.corrects !== null
     ? claims.find((c) => c.personId === claim.personId && c.number === claim.corrects)
     : undefined;
-  return (corrected ?? claim).date < policyDate;
+  const date = (corrected ?? claim).date;
+  const mode = rounding(date);
+  if (mode !== null) return mode === 'half-up';
+  if (policyDate === undefined) return false;
+  return date < policyDate;
 }
 
 /** The figure under the claim's due, in cents: the due fixed when it was settled, else the figure its
@@ -265,12 +269,13 @@ export const DAYS_PER_CHARGE = 30;
 
 /** What the late charge depends on: the sheet's today and its late percent in force on a date; the grace
  *  days of a claim (its person's grade's, in force on its date); and the policy date in force (the sheet's,
- *  else its today) that decides how a claim's figures round. */
+ *  else its today) and the rounding mode in force on a date (null: none) that decide how a claim's figures round. */
 export interface Lateness {
   today: string | undefined;
   latePct: (date: string) => string;
   grace: (claim: ClaimView) => number;
   policyDate: string | undefined;
+  rounding: (date: string) => string | null;
 }
 
 /** The late charge on the claim of `figureCents`, in cents: for every full 30 days the claim is overdue, the
@@ -291,12 +296,12 @@ export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lat
 /** What is due on the claim now, in cents: the due fixed when it was settled; else its figure (see
  *  claimFigureCents) with the late charge on it while it is open and overdue, as no statement binds the
  *  charge, and at least `floorCents` (the floor in force on its date), the floor applied last; a correction
- *  has no floor and no charge. Both round as roundsHalfUp decides by the policy date, `claims` holding the
+ *  has no floor and no charge. Both round as roundsHalfUp decides by the rounding mode and the policy date, `claims` holding the
  *  claim a correction corrects. Null when the figure is n/a. */
 export function claimOwedCents(claim: ClaimView, gradeRates: readonly RateView[], floorCents: number, late: Lateness,
   claims: readonly ClaimView[]): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
-  const halfUp = roundsHalfUp(claim, claims, late.policyDate);
+  const halfUp = roundsHalfUp(claim, claims, late.policyDate, late.rounding);
   const figure = claimFigureCents(claim, gradeRates, halfUp);
   if (figure === null) return null;
   if (isCorrection(claim)) return figure;

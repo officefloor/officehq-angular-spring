@@ -23,6 +23,7 @@ import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.setting.DatedSettings;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -920,11 +921,18 @@ public class ClaimService {
     /** How the claim's figures round under the sheet's policy date with the date given standing in for
      *  the sheet's today. */
     public RoundingMode rounding(String sheetId, Claim claim, LocalDate today) {
+        return rounding(sheetId, claim, today, settings.dated(sheetId));
+    }
+
+    /** How the claim's figures round by the rounding mode of the dated settings given in force on the date
+     *  that decides it, else under the sheet's policy date with the date given standing in for its today. */
+    public RoundingMode rounding(String sheetId, Claim claim, LocalDate today, DatedSettings dated) {
         Claim corrected = claim.isCorrection() && claim.getCorrects() != null
                 ? claims.findBySheetIdAndPersonIdAndNumber(sheetId, claim.getPersonId(), claim.getCorrects()).orElse(null)
                 : null;
-        return Rounding.of(Rounding.dateOf(claim, corrected),
-                Rounding.policyDate(settings.policyDate(sheetId), today));
+        LocalDate roundsBy = Rounding.dateOf(claim, corrected);
+        return Rounding.of(roundsBy, Rounding.policyDate(settings.policyDate(sheetId), today),
+                dated.roundingOn(roundsBy));
     }
 
     /** The audit field of the reason a claim was voided with; blank when there is none. */

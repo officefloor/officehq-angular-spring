@@ -102,6 +102,10 @@ public class SettingController {
             LocalDate from) {
     }
 
+    /** The rounding mode as entered: half-up or half-even; none means none (the policy date decides). */
+    public record RoundingForm(@Size(max = 20) String value, LocalDate from) {
+    }
+
     /** The terms as entered: whole business days. */
     public record TermsForm(@NotNull @Min(0) @Max(36500) Integer value, LocalDate from) {
     }
@@ -185,6 +189,15 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid FloorForm form) {
         String id = sheetId.trim();
         service.setFloor(id, SignedInUser.name(user), form.value(), form.from());
+        return view(id);
+    }
+
+    /** Set the sheet's rounding mode, or clear it: a claim dated while one is in force rounds its live figures by it. */
+    @PutMapping("/settings/rounding")
+    public SettingsView setRounding(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid RoundingForm form) {
+        String id = sheetId.trim();
+        service.setRounding(id, SignedInUser.name(user), form.value(), form.from());
         return view(id);
     }
 

@@ -7,6 +7,7 @@ import { DEFAULT_TERMS, DelegationView, PERMISSION_ACTIONS, PermissionAction, RO
 import { SheetCap } from './sheet-cap';
 import { DEFAULT_FISCAL_START_MONTH, SheetFiscal } from './sheet-fiscal';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
+import { ROUNDING_MODES, SheetRounding } from './sheet-rounding';
 import { SheetGrace } from './sheet-grace';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
 import { SheetParent } from './sheet-parent';
@@ -51,7 +52,7 @@ function settled(control: AbstractControl): void {
 // threshold (a claim whose person's grade on its date has one in force then uses it instead; blank: the sheet's), and the roles it assigns user names, with one form for each.
 // A steward can delegate the steward role to a user from a date (blank: the sheet's today) to a date, inclusive;
 // while the sheet's today is inside the range the user acts as a steward.
-// The settings that carry a figure (the clerk limit, the floor, the terms, each grade's terms, the late
+// The settings that carry a figure (the clerk limit, the floor, the rounding mode (half-up or half-even; blank: the policy date decides), the terms, each grade's terms, the late
 // percent, each grade's grace, the cap, the proof threshold and each grade's proof threshold) are dated: each has a from-date field (blank: the sheet's today), and saving records
 // its value from that date, keeping the values recorded from other dates. Each shows the value in force on
 // the sheet's today.
@@ -84,6 +85,11 @@ function settled(control: AbstractControl): void {
         <label for="setting-floor-from">Floor from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-floor-from" data-testid="setting-floor-from" formControlName="floorFrom" />
         <p>Floor now: <span data-testid="setting-floor-current">{{ floor() }}</span></p>
+        <label for="setting-rounding">Rounding mode (half-up or half-even; blank: the policy date decides)</label>
+        <input id="setting-rounding" data-testid="setting-rounding" formControlName="rounding" />
+        <label for="setting-rounding-from">Rounding mode from (yyyy-mm-dd; blank: the sheet's today)</label>
+        <input id="setting-rounding-from" data-testid="setting-rounding-from" formControlName="roundingFrom" />
+        <p>Rounding mode now: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
         <label for="setting-terms">Terms (business days after a claim's date it is due by)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <label for="setting-terms-from">Terms from (yyyy-mm-dd; blank: the sheet's today)</label>
@@ -222,6 +228,7 @@ export class Settings {
   private readonly api = inject(SettingsApi);
   private readonly sheetFloor = inject(SheetFloor);
   private readonly sheetLatePct = inject(SheetLatePct);
+  private readonly sheetRounding = inject(SheetRounding);
   private readonly sheetPolicyDate = inject(SheetPolicyDate);
   private readonly sheetCap = inject(SheetCap);
   private readonly sheetGrace = inject(SheetGrace);
@@ -245,6 +252,7 @@ export class Settings {
   }
   protected readonly clerkLimit = computed(() => this.now('clerk-limit'));
   protected readonly floor = computed(() => this.now('floor') ?? (DEFAULT_FLOOR_CENTS / 100).toFixed(2));
+  protected readonly rounding = computed(() => this.now('rounding'));
   protected readonly terms = computed(() => Number(this.now('terms') ?? DEFAULT_TERMS));
   protected readonly latePct = computed(() => this.now('late-pct') ?? DEFAULT_LATE_PCT);
   protected readonly policyDate = signal<string | null>(null);
@@ -267,6 +275,8 @@ export class Settings {
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
+    rounding: new FormControl('', { nonNullable: true }),
+    roundingFrom: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
@@ -400,12 +410,13 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.settingsError.set('');
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
       noteThreshold, noteThresholdFrom, graceDays, entryDate, pot, alertThreshold, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
+      { label: 'rounding mode', control: roundingFrom },
       { label: 'terms', control: termsFrom }, { label: 'late percent', control: latePctFrom },
       { label: 'cap', control: capFrom }, { label: 'proof threshold', control: proofThresholdFrom },
       { label: 'note threshold', control: noteThresholdFrom },
@@ -424,6 +435,7 @@ export class Settings {
     const dirty = (value: AbstractControl, from: AbstractControl): boolean => changed(value) || changed(from);
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
+    const roundingValue = rounding.value.trim();
     const termsValue = terms.value.trim();
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
@@ -443,6 +455,11 @@ export class Settings {
     }
     if (dirty(floor, floorFrom) && !MONEY.test(floorValue)) {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (dirty(rounding, roundingFrom) && roundingValue !== ''
+      && !ROUNDING_MODES.some((m) => m === roundingValue)) {
+      this.settingsError.set('Type a rounding mode of half-up or half-even, or leave it blank for none.');
       return;
     }
     if (dirty(terms, termsFrom) && (!DAYS.test(termsValue) || Number(termsValue) > 36500)) {
@@ -542,6 +559,12 @@ export class Settings {
         const settings = await this.api.setFloor(sheet.id, floorValue, fromOf(floorFrom));
         settled(floor);
         settled(floorFrom);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
+      if (dirty(rounding, roundingFrom)) {
+        const settings = await this.api.setRounding(sheet.id, roundingValue, fromOf(roundingFrom));
+        settled(rounding);
+        settled(roundingFrom);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
       if (dirty(terms, termsFrom)) {
@@ -665,6 +688,7 @@ export class Settings {
     this.dated.set(settings.dated);
     this.sheetFloor.history.set(settings.dated['floor'] ?? []);
     this.sheetLatePct.history.set(settings.dated['late-pct'] ?? []);
+    this.sheetRounding.history.set(settings.dated['rounding'] ?? []);
     this.sheetCap.history.set(settings.dated['cap'] ?? []);
     this.sheetGrace.history.set(Object.fromEntries(GRADES.map((g) => [g, settings.dated[`grace-${g}`] ?? []])));
     this.policyDate.set(settings.policyDate);

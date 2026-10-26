@@ -9,6 +9,7 @@ import { SheetFloor } from '../settings/sheet-floor';
 import { SheetGrace } from '../settings/sheet-grace';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
+import { SheetRounding } from '../settings/sheet-rounding';
 import { Templates, TemplatesApi } from '../templates/templates-api';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { ClaimEditors } from './claim-editors';
@@ -206,6 +207,7 @@ export class PersonClaims {
   private readonly latePct = inject(SheetLatePct);
   private readonly sheetGrace = inject(SheetGrace);
   private readonly policyDate = inject(SheetPolicyDate);
+  private readonly rounding = inject(SheetRounding);
   protected readonly voidReasons = inject(VoidReasons);
   protected readonly templates = inject(Templates);
   private readonly templatesApi = inject(TemplatesApi);
@@ -288,7 +290,8 @@ export class PersonClaims {
     const due = claimOwedCents(claim, this.rates().filter((r) => r.grade === grade), this.floor.centsOn(claim.date),
       { today: this.session.sheet()?.today, latePct: (date: string) => this.latePct.pctOn(date),
         grace: (c: ClaimView) => this.graceOf(c),
-        policyDate: this.policyDate.date() ?? this.session.sheet()?.today }, this.claims());
+        policyDate: this.policyDate.date() ?? this.session.sheet()?.today,
+        rounding: (date: string) => this.rounding.modeOn(date) }, this.claims());
     return due === null ? 'n/a' : money(due);
   }
 

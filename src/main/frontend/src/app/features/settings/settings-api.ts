@@ -124,6 +124,11 @@ export class SettingsApi {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/floor`, { value, from }));
   }
 
+  /** Record the rounding mode (half-up or half-even) from a date (null: the sheet's today); blank clears it from then. */
+  setRounding(sheetId: string, value: string, from: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/rounding`, { value, from }));
+  }
+
   /** Record the terms, in days, from a date (null: the sheet's today). */
   setTerms(sheetId: string, value: number, from: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/terms`, { value, from }));

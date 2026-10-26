@@ -18,6 +18,7 @@ import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetParent } from '../settings/sheet-parent';
 import { SheetPot } from '../settings/sheet-pot';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
+import { SheetRounding } from '../settings/sheet-rounding';
 import { StatementView, StatementsApi } from '../statements/statements-api';
 import { SheetHeader } from '../summary/sheet-header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
@@ -429,12 +430,14 @@ export class People {
   private readonly sheetGrace = inject(SheetGrace);
   private readonly sheetParent = inject(SheetParent);
   private readonly policyDate = inject(SheetPolicyDate);
+  private readonly rounding = inject(SheetRounding);
   private readonly document = inject(DOCUMENT);
   /** What the late charges depend on now. */
   private readonly lateness = computed<Lateness>(() =>
     ({ today: this.session.sheet()?.today, latePct: (date: string) => this.latePct.pctOn(date),
       grace: (claim: ClaimView) => this.graceOf(claim),
-      policyDate: this.policyDate.date() ?? this.session.sheet()?.today }));
+      policyDate: this.policyDate.date() ?? this.session.sheet()?.today,
+      rounding: (date: string) => this.rounding.modeOn(date) }));
 
   protected readonly grades = GRADES;
   protected readonly name = new FormControl('', { nonNullable: true });

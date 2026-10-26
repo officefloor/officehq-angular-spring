@@ -172,7 +172,7 @@ public class StatementService {
         boolean counts = status == ClaimStatus.SETTLED || (status.isOpen() && !deferred
                 && (binding != null || !person.isLeftOutAsOf(claim.getDate(), asOf)));
         if (!counts) return null;
-        RoundingMode rounding = claimService.rounding(sheetId, claim, asOf);
+        RoundingMode rounding = claimService.rounding(sheetId, claim, asOf, dated);
         Grade grade = person.gradeOn(claim.getDate(), asOf);
         BigDecimal figure;
         if (settled != null) {

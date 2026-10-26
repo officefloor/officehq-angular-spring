@@ -121,7 +121,8 @@ public class Rollup {
                 if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
                 // A claim's live figure is at the grade in force on its date.
                 Grade grade = person.gradeOn(claim.getDate());
-                RoundingMode rounding = Rounding.of(Rounding.dateOf(claim, corrected(claim, theirs)), policyDate);
+                LocalDate roundsBy = Rounding.dateOf(claim, corrected(claim, theirs));
+                RoundingMode rounding = Rounding.of(roundsBy, policyDate, values.roundingOn(roundsBy));
                 BigDecimal figure = figure(claim, ratesByGrade.getOrDefault(grade, List.of()), rounding);
                 int grace = values.graceOn(grade, claim.getDate());
                 BigDecimal owed = LateCharge.dueOf(claim, figure, values.floorOn(claim.getDate()), today,

@@ -1,11 +1,13 @@
 package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Grade;
 
 /**
@@ -13,7 +15,7 @@ import net.officefloor.hq.app.person.Grade;
  * their from-dates, in date order. The value in force on a date is the one of the latest from-date on or
  * before it; before every from-date, and from a blank value, a key has its starting value (the floor
  * {@link SettingService#DEFAULT_FLOOR}, the late percent {@link SettingService#DEFAULT_LATE_PCT}, the terms
- * {@link SettingService#DEFAULT_TERMS}; none for the clerk limit, the proof threshold, a grade's own proof threshold, the note threshold, the cap, a grade's own terms and a grade's grace days).
+ * {@link SettingService#DEFAULT_TERMS}; none for the rounding mode, the clerk limit, the proof threshold, a grade's own proof threshold, the note threshold, the cap, a grade's own terms and a grade's grace days).
  */
 public final class DatedSettings {
 
@@ -65,6 +67,11 @@ public final class DatedSettings {
     public BigDecimal floorOn(LocalDate date) {
         BigDecimal floor = decimalOn(SettingService.FLOOR, date);
         return floor == null ? SettingService.DEFAULT_FLOOR : floor;
+    }
+
+    /** The rounding mode in force on the date, or null when there is none (the policy date decides then). */
+    public RoundingMode roundingOn(LocalDate date) {
+        return Rounding.mode(on(SettingService.ROUNDING, date));
     }
 
     /** The late percent in force on the date, with two decimals. */

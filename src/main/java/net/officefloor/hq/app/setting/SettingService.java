@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.ActingFor;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -54,6 +55,10 @@ public class SettingService implements ActingFor {
 
     /** The late percent of a sheet that has not set one. */
     public static final BigDecimal DEFAULT_LATE_PCT = new BigDecimal("0.00");
+
+    /** The key of the rounding mode: half-up or half-even, how a claim dated while it is in force rounds
+     *  its live figures; with no value the policy date decides. */
+    public static final String ROUNDING = "rounding";
 
     /** The key of the policy date: a claim dated before it rounds half up, one dated on or after it half
      *  to even; with no value the policy date is the sheet's today. */
@@ -178,6 +183,21 @@ public class SettingService implements ActingFor {
         BigDecimal value = floor.setScale(2);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         record(sheetId, user, FLOOR, value.toPlainString(), from);
+        rollup.recordChanges(user, before);
+        return value;
+    }
+
+    /** Record the sheet's rounding mode (half-up or half-even) from a date (blank: the sheet's today); blank
+     *  clears it from then, leaving the policy date to decide; anything else is refused. The live dues it
+     *  moves are audited after it. */
+    @Transactional
+    public String setRounding(String sheetId, String user, String mode, LocalDate from) {
+        String value = mode == null ? "" : mode.trim();
+        if (!value.isEmpty() && Rounding.mode(value) == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The rounding mode is half-up or half-even.");
+        }
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        record(sheetId, user, ROUNDING, value, from);
         rollup.recordChanges(user, before);
         return value;
     }
