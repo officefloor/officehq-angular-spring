@@ -727,7 +727,7 @@ export class People {
   });
   /** Each person's claims that count, by person: the sum of the figures of their SETTLED claims (at
    *  their frozen figures) and of their open (PENDING included) ones, in cents, skipping those that are
-   *  n/a; together their due-total before the cap. */
+   *  n/a; together their due-total before the cap. Scored is the settled sum leaving out corrections. */
   private readonly settledOpenByPerson = computed(() => {
     const by = new Map<number, SettledOpen>();
     const byId = new Map(this.people().map((p) => [p.id, p]));
@@ -735,8 +735,9 @@ export class People {
       const person = byId.get(c.personId);
       if (person === undefined || !this.countsLive(c)) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims()) ?? 0;
-      const was = by.get(c.personId) ?? { settled: 0, open: 0 };
-      if (c.status === 'SETTLED') by.set(c.personId, { ...was, settled: was.settled + due });
+      const was = by.get(c.personId) ?? { settled: 0, open: 0, scored: 0 };
+      if (c.status === 'SETTLED') by.set(c.personId, { ...was, settled: was.settled + due,
+        scored: was.scored + (isCorrection(c) ? 0 : due) });
       else if (isOpen(c)) by.set(c.personId, { ...was, open: was.open + due });
     }
     return by;
@@ -1584,11 +1585,11 @@ export class People {
     return this.overdueByPerson().get(personId) ?? { count: 0, cents: 0 };
   }
 
-  /** The person's score: their settled figures divided by 100, less 5 for each overdue claim that
+  /** The person's score: their settled figures (of SETTLED claims that correct nothing) divided by 100, less 5 for each overdue claim that
    *  counts, rounded half to even to a whole number. */
   protected scoreOf(personId: number): string {
-    // In cents, the score times 10000: the settled cents less 50000 per overdue claim.
-    const scaled = this.settledOpenOf(personId).settled - 50000 * this.overdueOf(personId).count;
+    // In cents, the score times 10000: the scored settled cents less 50000 per overdue claim.
+    const scaled = this.settledOpenOf(personId).scored - 50000 * this.overdueOf(personId).count;
     const floor = Math.floor(scaled / 10000);
     const rest = scaled - floor * 10000;
     const whole = rest > 5000 || (rest === 5000 && floor % 2 !== 0) ? floor + 1 : floor;
@@ -1607,7 +1608,7 @@ export class People {
 
   /** The due of the person's settled and of their open claims that count, in cents. */
   protected settledOpenOf(personId: number): SettledOpen {
-    return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0 };
+    return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0, scored: 0 };
   }
 
   /** The due of the person's open claims that count, in cents, by age. */
@@ -2159,7 +2160,7 @@ export class People {
 interface Aged { upTo30: number; upTo60: number; over60: number }
 
 /** The due of a person's settled claims and of their open ones, in cents. */
-interface SettledOpen { settled: number; open: number }
+interface SettledOpen { settled: number; open: number; scored: number }
 
 /** The person's own terms from the beginning of time as the form shows them: blank when they have none. */
 function termsText(person: PersonView): string {

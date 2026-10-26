@@ -45,8 +45,8 @@ public class Rollup {
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
-    /** A person's figures; a null due-total is n/a. The settled figures (of their counting SETTLED claims,
-     *  skipping n/a) and how many counting claims are overdue make up their score. */
+    /** A person's figures; a null due-total is n/a. The settled figures (of their counting SETTLED claims
+     *  that correct nothing, skipping n/a) and how many counting claims are overdue make up their score. */
     record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settled,
             int overdueCount) {
         boolean sameAs(Figures other) {
@@ -145,7 +145,7 @@ public class Rollup {
                 if (owed != null) due = due.add(owed);
                 if (owed != null && isOverdue(claim, grace, today)) overdue = overdue.add(owed);
                 if (isOverdue(claim, grace, today)) overdueCount++;
-                if (owed != null && claim.getStatus() == ClaimStatus.SETTLED) settled = settled.add(owed);
+                if (owed != null && claim.getStatus() == ClaimStatus.SETTLED && !claim.isCorrection()) settled = settled.add(owed);
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) {
                     keptFigure = true;
                 }
@@ -184,7 +184,8 @@ public class Rollup {
         return count;
     }
 
-    /** The person's score, as the screen shows it: their settled figures divided by 100, less 5 for each
+    /** The person's score, as the screen shows it: their settled figures (of SETTLED claims that correct
+     *  nothing) divided by 100, less 5 for each
      *  overdue claim that counts, rounded half to even to a whole number. */
     static String score(Figures figures) {
         return figures.settled().movePointLeft(2).subtract(BigDecimal.valueOf(5L * figures.overdueCount()))

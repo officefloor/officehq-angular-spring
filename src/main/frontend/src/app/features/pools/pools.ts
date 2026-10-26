@@ -102,7 +102,7 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen 
 // shares: each cuts the pot times their share over the shares of the members with a cut added up. The pot
 // less the cuts added up goes to the member with a cut with the largest share, the earliest added on a
 // tie, so the cuts total exactly the pot. Neither a hold nor a retirement changes the total share or the
-// balance. A pool whose every member is retired shows no cuts.
+// balance. A pool whose every member is retired or held shows no cuts.
 // A membership may have a from-date and a to-date: a member whose dates do not include the sheet's today
 // is left out entirely, counting toward neither the total share nor the balance, and shows no cut.
 // A pool that is a member of none has the sheet's pot; a pool that is a member of another has its cut
@@ -309,7 +309,7 @@ function allCuts(pools: readonly PoolView[], people: readonly PersonView[], pot:
     else if (depth <= pools.length) potCents = cutsFor(parent, depth + 1)?.get(`pool-${pool.name}`) ?? null;
     const members = membersOf(pool, people, poolsById, today);
     const inForce = members.filter((m) => m.inForce);
-    const result = potCents === null || totalCents(members) !== 10000 || inForce.every((m) => m.retired) ? null
+    const result = potCents === null || totalCents(members) !== 10000 || inForce.every((m) => m.retired || m.held) ? null
       : new Map(cutsOf(potCents, inForce));
     out.set(pool.id, result);
     return result;
