@@ -13,8 +13,10 @@ export interface PeriodView {
   to: string;
   // A closed period keeps the due-total fixed when it was closed; no claim dated in it can change.
   closed: boolean;
+  // A soft-closed period keeps its due-total fixed the same way, but claims dated in it can still change.
+  softClosed: boolean;
   closedTotal: string | null;
-  // Each person's due-total fixed when it was closed, by person id; empty while it is open.
+  // Each person's due-total fixed when it was closed or soft-closed, by person id; empty while it is open.
   closedPersonTotals: Record<string, string>;
 }
 
@@ -68,7 +70,7 @@ export function personPeriodDueTotals(
   return new Map(
     periods.map((p) => [
       p.id,
-      p.closed ? (p.closedPersonTotals[personId] ?? '0.00') : sumSkippingNa(by.get(p.id) ?? []),
+      p.closed || p.softClosed ? (p.closedPersonTotals[personId] ?? '0.00') : sumSkippingNa(by.get(p.id) ?? []),
     ]),
   );
 }
@@ -119,6 +121,13 @@ export class PeriodStore {
   async close(sheet: string, id: number): Promise<void> {
     const p = await firstValueFrom(
       this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${id}/close`, null),
+    );
+    this.put(sheet, p);
+  }
+
+  async softClose(sheet: string, id: number): Promise<void> {
+    const p = await firstValueFrom(
+      this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${id}/soft-close`, null),
     );
     this.put(sheet, p);
   }
@@ -211,10 +220,13 @@ export class PeriodStore {
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueBy().get(p.id) }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="period-soft-close" (click)="softClose(p)">
+                  Soft-close<span class="visually-hidden"> period {{ p.name }}</span>
                 </button>
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)">
                   Reopen<span class="visually-hidden"> period {{ p.name }}</span>
@@ -252,7 +264,7 @@ export class Periods {
   // A submit in flight: a second submit before it answers is ignored, so it stores one period.
   private submitting = false;
 
-  // Each period's due-total: a closed one's fixed total, else the figures of the claims dated in it that counted at
+  // Each period's due-total: a closed or soft-closed one's fixed total, else the figures of the claims dated in it that counted at
   // the end of its last day, skipping n/a.
   protected readonly dueBy = computed(() => periodDueTotals(this.store.list(), this.figures()));
 
@@ -276,11 +288,32 @@ export class Periods {
     }
   }
 
+  /** Soft-closes the period: its figures are fixed now, but claims dated in it can still change. */
+  protected async softClose(p: PeriodView): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (p.closed || p.softClosed) {
+      this.setRowError(p.id, 'That period is already closed.');
+      return;
+    }
+    try {
+      await this.store.softClose(sheet, p.id);
+    } catch (err) {
+      this.setRowError(
+        p.id,
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Your role may not close a period on this sheet.'
+          : 'Could not soft-close that period.',
+      );
+    }
+  }
+
   protected async reopen(p: PeriodView): Promise<void> {
     this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    if (!p.closed) {
+    if (!p.closed && !p.softClosed) {
       this.setRowError(p.id, 'That period is not closed.');
       return;
     }

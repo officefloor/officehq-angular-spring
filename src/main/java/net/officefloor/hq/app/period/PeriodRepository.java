@@ -18,6 +18,10 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
     boolean existsBySheetIdAndClosedTrueAndFromLessThanEqualAndToGreaterThanEqual(String sheetId, LocalDate date,
             LocalDate sameDate);
 
+    /** Whether a soft-closed period of the sheet contains the date. */
+    boolean existsBySheetIdAndSoftClosedTrueAndFromLessThanEqualAndToGreaterThanEqual(String sheetId, LocalDate date,
+            LocalDate sameDate);
+
     /** The period of the sheet that contains the date; periods never overlap, so there is at most one. */
     Optional<Period> findFirstBySheetIdAndFromLessThanEqualAndToGreaterThanEqual(String sheetId, LocalDate date,
             LocalDate sameDate);

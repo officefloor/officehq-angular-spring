@@ -40,6 +40,8 @@ export interface Claim {
   log: ClaimLogLine[];
   // The user whose open editor holds the claim, so no one else may edit it; null while none does.
   lockedBy: string | null;
+  // Whether the claim was added while its period was soft-closed.
+  lateEntry: boolean;
 }
 
 // A status the claim came to have: who made the change, the sheet's today then, and the claim's due then (null
@@ -240,7 +242,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -269,6 +271,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
             <td data-testid="claim-period">{{ periodName(c.date) }}</td>
+            <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</td>
             <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
             <td data-testid="claim-proofs">{{ c.proofs }}</td>
             <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>

@@ -65,7 +65,8 @@ public class ClaimService {
     }
 
     /**
-     * Adds a claim for the person; a missing date takes the sheet's today. Refused when dated in a closed period or
+     * Adds a claim for the person; a missing date takes the sheet's today; one dated in a soft-closed period is a late
+     * entry. Refused when dated in a closed period or
      * after the person's retirement date, and a correction (a negative amount) unless it corrects a settled claim of
      * the person.
      */
@@ -82,9 +83,14 @@ public class ClaimService {
         claim.setCorrects(corrected);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setDueBy(on.plusDays(termsFor(sheetId, person, on)));
+        claim.setLateEntry(periods.existsBySheetIdAndSoftClosedTrueAndFromLessThanEqualAndToGreaterThanEqual(sheetId,
+                on, on));
         logStatus(by, sheetId, person, claim);
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
+        if (added.isLateEntry()) {
+            audit.recordOnCommit(record("LATE_ENTRY", by, person, added));
+        }
         rollup.recordChanges(by, sheetId, before);
         return added;
     }

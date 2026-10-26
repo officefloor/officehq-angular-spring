@@ -25,15 +25,15 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 public class PeriodController {
 
     /**
-     * A period as the screen shows it; a closed one carries the due-total fixed when it was closed, and each person's
+     * A period as the screen shows it; a closed or soft-closed one carries the due-total fixed when it was closed, and each person's
      * then, by person id.
      */
-    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal,
-            Map<Long, String> closedPersonTotals) {
+    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+            String closedTotal, Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period p) {
             Map<Long, String> personTotals = new TreeMap<>();
             p.getClosedPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
-            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(),
+            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(), p.isSoftClosed(),
                     p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), personTotals);
         }
     }
@@ -80,6 +80,13 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
         return PeriodView.of(service.close(user, sheetId, id));
+    }
+
+    @PostMapping("/{id}/soft-close")
+    public PeriodView softClose(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return PeriodView.of(service.softClose(user, sheetId, id));
     }
 
     @PostMapping("/{id}/reopen")

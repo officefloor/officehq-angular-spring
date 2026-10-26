@@ -111,6 +111,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** Whether the claim was added while its period was soft-closed. */
+    @Column(name = "late_entry", nullable = false)
+    private boolean lateEntry;
+
     /** How many proofs the claim has; raised by one at a time. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -163,6 +167,14 @@ public class Claim {
      */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public boolean isLateEntry() {
+        return lateEntry;
+    }
+
+    public void setLateEntry(boolean lateEntry) {
+        this.lateEntry = lateEntry;
     }
 
     public int getProofs() {

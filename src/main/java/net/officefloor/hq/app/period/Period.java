@@ -18,7 +18,8 @@ import java.util.Map;
 
 /**
  * A period of a sheet: a name unique on the sheet and a from and to date, inclusive. A closed period keeps the
- * due-total it had when it was closed, and each person's due-total for it then.
+ * due-total it had when it was closed, and each person's due-total for it then. A soft-closed period keeps them
+ * the same way, but claims dated in it can still change.
  */
 @Entity
 @Table(name = "period")
@@ -42,6 +43,9 @@ public class Period {
 
     @Column(name = "closed", nullable = false)
     private boolean closed;
+
+    @Column(name = "soft_closed", nullable = false)
+    private boolean softClosed;
 
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
@@ -86,7 +90,11 @@ public class Period {
         return closed;
     }
 
-    /** The due-total fixed when the period was closed; null while it is open. */
+    public boolean isSoftClosed() {
+        return softClosed;
+    }
+
+    /** The due-total fixed when the period was closed or soft-closed; null while it is open. */
     public BigDecimal getClosedTotal() {
         return closedTotal;
     }
@@ -103,15 +111,27 @@ public class Period {
 
     /** Closes the period, fixing its due-total and each person's. */
     public void close(BigDecimal total, Map<Long, BigDecimal> personTotals) {
+        fix(total, personTotals);
         this.closed = true;
+        this.softClosed = false;
+    }
+
+    /** Soft-closes the period, fixing its due-total and each person's; claims dated in it can still change. */
+    public void softClose(BigDecimal total, Map<Long, BigDecimal> personTotals) {
+        fix(total, personTotals);
+        this.softClosed = true;
+    }
+
+    private void fix(BigDecimal total, Map<Long, BigDecimal> personTotals) {
         this.closedTotal = total;
         this.closedPersonTotals.clear();
         this.closedPersonTotals.putAll(personTotals);
     }
 
-    /** Reopens the period: its due-total is live again. */
+    /** Reopens the period, closed or soft-closed: its due-total is live again. */
     public void reopen() {
         this.closed = false;
+        this.softClosed = false;
         this.closedTotal = null;
         this.closedPersonTotals.clear();
     }

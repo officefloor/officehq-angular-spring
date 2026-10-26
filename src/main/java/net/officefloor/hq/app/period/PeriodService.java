@@ -132,6 +132,28 @@ public class PeriodService {
     }
 
     /**
+     * Soft-closes the period, fixing its figures as a close does while claims dated in it can still change. Refused
+     * unless the user's role may close, and when it is already closed or soft-closed.
+     */
+    @Transactional
+    public Period softClose(String by, String sheetId, Long id) {
+        LocalDate today = sheets.lock(sheetId).getToday();
+        Period period = periods.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
+        settings.refuseUnlessMay(sheetId, by, "close");
+        if (period.isClosed() || period.isSoftClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
+        }
+        Map<Long, BigDecimal> personTotals = personTotals(sheetId, period, today);
+        BigDecimal total = sum(personTotals);
+        period.softClose(total, personTotals);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
+                + " total=" + total.toPlainString());
+        return saved;
+    }
+
+    /**
      * Once the sheet's today is changed while it has grace days, closes every open period whose to-date plus them is
      * before the new today, by to-date, each as a close by hand would.
      */
@@ -151,6 +173,24 @@ public class PeriodService {
     }
 
     private Period close(String by, String sheetId, Period period, LocalDate today, String auditSuffix) {
+        Map<Long, BigDecimal> personTotals = personTotals(sheetId, period, today);
+        BigDecimal total = sum(personTotals);
+        period.close(total, personTotals);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
+                + " total=" + total.toPlainString() + auditSuffix);
+        return saved;
+    }
+
+    private static BigDecimal sum(Map<Long, BigDecimal> personTotals) {
+        return personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /**
+     * Each person's due-total for the period now: the figures of their claims dated in it that counted at the end of
+     * its last day, skipping n/a; 0.00 for a person with none.
+     */
+    private Map<Long, BigDecimal> personTotals(String sheetId, Period period, LocalDate today) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         // every person on the sheet now gets a figure, 0.00 when none of their counted claims is dated in it
@@ -168,16 +208,11 @@ public class PeriodService {
                 personTotals.merge(person.getId(), figure, BigDecimal::add);
             }
         }
-        BigDecimal total = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        period.close(total, personTotals);
-        Period saved = periods.saveAndFlush(period);
-        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
-                + " total=" + total.toPlainString() + auditSuffix);
-        return saved;
+        return personTotals;
     }
 
     /**
-     * Reopens a closed period, making its due-total live again. Refused unless the user's role may reopen (a steward by
+     * Reopens a closed or soft-closed period, making its due-total live again. Refused unless the user's role may reopen (a steward by
      * the standing rule), or when the period is not closed.
      */
     @Transactional
@@ -186,7 +221,7 @@ public class PeriodService {
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
         settings.refuseUnlessMay(sheetId, by, "reopen");
-        if (!period.isClosed()) {
+        if (!period.isClosed() && !period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed.");
         }
         period.reopen();
