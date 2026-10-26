@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.sheet;
 
+import java.time.LocalDate;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,14 @@ public class SheetService {
 
     public Sheet load(String id) {
         return sheets.findById(id).orElseGet(() -> create(id));
+    }
+
+    /** Change the sheet's today; every date decision on the sheet follows it. */
+    @Transactional
+    public Sheet setToday(String id, LocalDate today) {
+        Sheet sheet = load(id);
+        sheet.setToday(today);
+        return sheets.saveAndFlush(sheet);
     }
 
     private Sheet create(String id) {
