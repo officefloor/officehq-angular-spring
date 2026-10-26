@@ -6,7 +6,7 @@ import { AMOUNT } from '../claims/claims-api';
 import { PeopleApi, QuickAddView } from './people-api';
 
 // A bar that adds a draft claim of an amount, dated the sheet's today, to a person by name, adding
-// the person with grade A first when no one on the sheet has that name.
+// the person with the sheet's default grade first when no one on the sheet has that name.
 @Component({
   selector: 'app-quick-add',
   imports: [ReactiveFormsModule],

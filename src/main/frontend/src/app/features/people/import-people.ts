@@ -12,7 +12,7 @@ import { PeopleApi, PersonView } from './people-api';
   imports: [ReactiveFormsModule],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Import people">
-      <label for="import-people">Import people, one per line: name,grade,terms,contact</label>
+      <label for="import-people">Import people, one per line: name,grade,terms,contact (a blank grade takes the sheet's default grade)</label>
       <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
       <button type="submit" data-testid="import-submit" [disabled]="saving()">Import people</button>
       @if (count(); as c) {

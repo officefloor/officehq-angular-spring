@@ -3,10 +3,11 @@ package net.officefloor.hq.app.quickadd;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
-import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.setting.SheetSettingRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,20 +21,24 @@ public class QuickAddService {
     private final PersonRepository people;
     private final PersonService personService;
     private final ClaimService claimService;
+    private final SheetSettingRepository settings;
 
-    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService) {
+    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService,
+            SheetSettingRepository settings) {
         this.people = people;
         this.personService = personService;
         this.claimService = claimService;
+        this.settings = settings;
     }
 
     /** Add a draft claim of the amount, dated the sheet's entry date (else its today) with an empty note, to the person of
-     *  that name, adding the person with grade A first when no one on the sheet has it. One change: a
+     *  that name, adding the person with the sheet's default grade first when no one on the sheet has it. One change: a
      *  refused claim rolls back the person added for it, and writes nothing. */
     @Transactional
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         Person person = people.findByNameOrAlias(sheetId, Person.keyOf(name))
-                .orElseGet(() -> personService.add(sheetId, user, name, Grade.A, null));
+                .orElseGet(() -> personService.add(sheetId, user, name,
+                        SettingService.defaultGradeOf(settings, sheetId), null));
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null, null, null);
         return new Added(person, claim);
     }

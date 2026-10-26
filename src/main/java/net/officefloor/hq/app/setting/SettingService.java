@@ -125,6 +125,10 @@ public class SettingService implements ActingFor {
      *  are used for a grade and date that have none in force on this sheet; no value means none. Not dated. */
     public static final String PARENT = "parent";
 
+    /** The key of the default grade: the grade the quick-add bar gives a new person, and an imported line with a
+     *  blank grade takes; no value means {@link Grade#A}. Not dated. */
+    public static final String DEFAULT_GRADE = "default-grade";
+
     /** How many levels up the sheet's parents are looked to for a rate. */
     public static final int PARENT_LEVELS = 3;
 
@@ -563,6 +567,55 @@ public class SettingService implements ActingFor {
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + POT
                 + " value=" + (value == null ? "" : value.toPlainString()));
+        return value;
+    }
+
+    /** The sheet's default grade as set, or null when it is blank (grade A then). */
+    @Transactional(readOnly = true)
+    public Grade defaultGradeSet(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, DEFAULT_GRADE).map((s) -> Grade.valueOf(s.getValue()))
+                .orElse(null);
+    }
+
+    /** The grade a new person given none takes on the sheet, within the caller's transaction: its default
+     *  grade, else A. */
+    public static Grade defaultGradeOf(SheetSettingRepository settings, String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, DEFAULT_GRADE).map((s) -> Grade.valueOf(s.getValue()))
+                .orElse(Grade.A);
+    }
+
+    /** Set the sheet's default grade, or clear it (blank) to leave A; refused for anything but a grade. Changes
+     *  no one's grade. */
+    @Transactional
+    public Grade setDefaultGrade(String sheetId, String user, String grade) {
+        Grade value = null;
+        if (grade != null && !grade.isBlank()) {
+            try {
+                value = Grade.valueOf(grade.trim());
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "\"" + grade.trim() + "\" is not a grade; the default grade is A, B or C.");
+            }
+        }
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, DEFAULT_GRADE).orElse(null);
+        try {
+            if (value == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, DEFAULT_GRADE, value.name()));
+            } else {
+                setting.setValue(value.name());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + DEFAULT_GRADE
+                + " value=" + (value == null ? "" : value.name()));
         return value;
     }
 

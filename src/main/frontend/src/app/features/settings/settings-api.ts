@@ -89,6 +89,9 @@ export interface SettingsView {
   /** The proof kinds a claim above the proof threshold needs a proof of each of, as a comma separated
    *  list, or null when none. Not dated. */
   proofKinds: string | null;
+  /** The grade a new person given none takes (quick add, an import line with a blank grade), or null when
+   *  blank (A then). Not dated. */
+  defaultGrade: string | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -188,6 +191,11 @@ export class SettingsApi {
   /** Set the proof kinds as a comma separated list; null clears them. */
   setProofKinds(sheetId: string, value: string | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/proof-kinds`, { value }));
+  }
+
+  /** Set the default grade; null clears it, leaving A. */
+  setDefaultGrade(sheetId: string, value: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/default-grade`, { value }));
   }
 
   /** Set the alert threshold; null clears it, turning alerts off. */
