@@ -92,6 +92,10 @@ public class PersonController {
     public record AliasForm(@NotBlank @Size(max = 200) String alias) {
     }
 
+    /** A merge: the id of the other person on the sheet the person is merged into. */
+    public record MergeForm(@NotNull Long intoId) {
+    }
+
     /** A retirement: the date it takes effect; a missing date takes the sheet's today. */
     public record RetireForm(LocalDate from) {
     }
@@ -118,11 +122,14 @@ public class PersonController {
     }
 
     private final PersonService service;
+    private final PersonMergeService merges;
     private final WatchService watches;
     private final SettingsService settings;
 
-    public PersonController(PersonService service, WatchService watches, SettingsService settings) {
+    public PersonController(PersonService service, PersonMergeService merges, WatchService watches,
+            SettingsService settings) {
         this.service = service;
+        this.merges = merges;
         this.watches = watches;
         this.settings = settings;
     }
@@ -161,6 +168,18 @@ public class PersonController {
             @PathVariable Long id, @Valid @RequestBody AliasForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId, service.addAlias(user, sheetId, id, form.alias()));
+    }
+
+    /**
+     * A steward merges the person into another person of the sheet, who takes what they had; the merged person
+     * leaves the sheet. Refused for the same person, or when either of them is retired. The person merged into.
+     */
+    @PostMapping("/{id}/merge")
+    public PersonView merge(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody MergeForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return view(sheetId, merges.merge(user, sheetId, id, form.intoId()));
     }
 
     @PostMapping("/{id}/retire")

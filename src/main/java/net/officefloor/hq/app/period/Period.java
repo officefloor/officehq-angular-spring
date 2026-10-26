@@ -104,6 +104,17 @@ public class Period {
         return Map.copyOf(closedPersonTotals);
     }
 
+    /**
+     * Folds the due-total fixed for one person into another's (a person with none fixed takes it as theirs): the
+     * merged person leaves the period, their figure kept under the person they were merged into.
+     */
+    public void mergePersonTotal(Long from, Long into) {
+        BigDecimal moved = closedPersonTotals.remove(from);
+        if (moved != null) {
+            closedPersonTotals.merge(into, moved, BigDecimal::add);
+        }
+    }
+
     /** Whether the date falls in the period. */
     public boolean contains(LocalDate date) {
         return !date.isBefore(from) && !date.isAfter(to);

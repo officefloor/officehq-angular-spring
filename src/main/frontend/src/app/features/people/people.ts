@@ -446,6 +446,20 @@ interface StatementView {
                 @if (patronErrors()[p.id]; as err) {
                   <p role="alert" data-testid="person-patron-error">{{ err }}</p>
                 }
+                <label [for]="'merge-into-' + p.id">Merge into<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <select
+                  [id]="'merge-into-' + p.id"
+                  data-testid="person-merge-into"
+                  (change)="setMergeChoice(p.id, value($event))"
+                >
+                  <option value="" [selected]="!mergeChoices()[p.id]">Choose a person</option>
+                  @for (q of people(); track q.id) {
+                    <option [value]="q.id" [selected]="mergeChoices()[p.id] === '' + q.id">{{ q.name }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-merge" (click)="merge(p)">
+                  Merge<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
               </td>
               <td>
                 <app-claims
@@ -527,6 +541,8 @@ export class People {
   // The alias typed on each row, by person id.
   protected readonly aliasInputs = signal<Record<number, string>>({});
   protected readonly patronErrors = signal<Record<number, string>>({});
+  // The person chosen on each row to merge that row's person into (a person id, by person id).
+  protected readonly mergeChoices = signal<Record<number, string>>({});
   // Each person's statements, by person id; a person with none is not in the map.
   protected readonly statements = signal<StatementView[]>([]);
   protected readonly statementsBy = computed(() => new Map(this.statements().map((s) => [s.personId, s])));
@@ -844,6 +860,7 @@ export class People {
         this.patronChoices.set({});
         this.aliasInputs.set({});
         this.patronErrors.set({});
+        this.mergeChoices.set({});
         this.rowErrors.set({});
         this.retireDates.set({});
         this.statementAsOfs.set({});
@@ -952,6 +969,49 @@ export class People {
           : 'Could not add that patron.',
       );
     }
+  }
+
+  protected setMergeChoice(id: number, intoId: string): void {
+    this.mergeChoices.update((c) => ({ ...c, [id]: intoId }));
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  /**
+   * A steward merges the person into the chosen one, who takes their claims, names, patrons and pool memberships;
+   * the merged person leaves the sheet. Never into themselves, nor when either is retired.
+   */
+  protected async merge(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const intoId = Number(this.mergeChoices()[p.id] ?? '');
+    const refuse = (message: string) => this.rowErrors.update((e) => ({ ...e, [p.id]: message }));
+    if (!intoId) {
+      refuse('Choose a person to merge into.');
+      return;
+    }
+    if (intoId === p.id) {
+      refuse('A person cannot be merged into themselves.');
+      return;
+    }
+    const into = this.people().find((q) => q.id === intoId);
+    if (p.retiredFrom !== null || (into !== undefined && into.retiredFrom !== null)) {
+      refuse('A retired person cannot be merged.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/merge`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, { intoId }));
+    } catch (err) {
+      refuse(
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can merge people.'
+          : 'Could not merge this person.',
+      );
+      return;
+    }
+    // the merge moves claims, patrons and pool memberships: every view re-reads the sheet
+    if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
   }
 
   protected setAliasInput(id: number, alias: string): void {

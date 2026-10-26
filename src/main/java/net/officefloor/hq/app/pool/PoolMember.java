@@ -58,4 +58,13 @@ public class PoolMember {
     public BigDecimal getShare() {
         return share;
     }
+
+    public void setShare(BigDecimal share) {
+        this.share = share;
+    }
+
+    /** Moves the membership to another person, keeping its place in the order members were added. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
 }

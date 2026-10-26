@@ -49,4 +49,14 @@ public class Patron {
     public Long getPatronId() {
         return patronId;
     }
+
+    /** Moves the naming to another person, keeping its place in the order patrons were named. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    /** Names another person as the patron instead, keeping its place in the order patrons were named. */
+    public void setPatronId(Long patronId) {
+        this.patronId = patronId;
+    }
 }
