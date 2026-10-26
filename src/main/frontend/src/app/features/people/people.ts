@@ -1417,9 +1417,15 @@ export class People {
     });
   }
 
-  /** A paste's claims, in the order of their lines: the last line's claim is the newest. */
+  /** A paste's claims, in the order of their lines: those it updated replace their rows, the rest are
+   *  added, the last line's claim the newest. */
   protected pasted(claims: ClaimView[]): void {
-    this.claims.update((list) => [...[...claims].reverse(), ...list]);
+    const changed = new Map(claims.map((c) => [c.id, c]));
+    this.claims.update((list) => {
+      const known = new Set(list.map((c) => c.id));
+      const added = claims.filter((c) => !known.has(c.id)).reverse();
+      return [...added, ...list.map((c) => changed.get(c.id) ?? c)];
+    });
   }
 
   protected selectClaim(id: number, on: boolean): void {

@@ -11,6 +11,7 @@ import java.util.Set;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.http.HttpStatus;
@@ -36,14 +37,21 @@ public class PasteClaimsService {
         this.claimService = claimService;
     }
 
-    /** Add a draft claim per pasted line of name,amount,date,note, in order. Every line is read first,
-     *  then each is added with the claim form's rules; one change: when any line is refused, nothing is
-     *  added and nothing is written. Blank lines are skipped; a paste with no lines is refused, as is one
-     *  giving a reference already used on the sheet or by an earlier line, compared without regard to case. */
+    /** Add and open a claim per pasted line of name,amount,date,note, in order. Every line is read first,
+     *  then each is added with the claim form's rules and opened by the user as the open button would;
+     *  one change: when any line is refused, nothing is added and nothing is written. A line whose person,
+     *  date and note match one of their claims as it stood before the paste updates that claim instead: a
+     *  DRAFT is edited to the line's amount (when it differs) and opened; a claim in any other status is
+     *  refused. Blank lines are skipped; a paste with no lines is refused, as is one giving a reference
+     *  already used on the sheet or by an earlier line, compared without regard to case. Returns the
+     *  lines' claims, in the order of their lines. */
     @Transactional
     public List<Claim> paste(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
+        List<Claim> matches = new ArrayList<>();
         Set<String> refs = new HashSet<>();
+        List<Claim> existing = claims.findBySheetIdOrderByListedDesc(sheetId);
+        LocalDate undated = claimService.entryDateOr(sheetId);
         int number = 0;
         for (String raw : text.split("\\r?\\n")) {
             number++;
@@ -53,17 +61,39 @@ public class PasteClaimsService {
                     || claims.refUsed(sheetId, line.ref(), null))) {
                 throw refused(number, "the reference '" + line.ref() + "' is already used");
             }
+            Claim match = match(existing, line, line.date() != null ? line.date() : undated);
+            if (match != null && match.getStatus() != ClaimStatus.DRAFT) {
+                throw refused(number, "it matches a " + match.getStatus() + " claim, which cannot be updated");
+            }
             lines.add(line);
+            matches.add(match);
         }
         if (lines.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Paste at least one line.");
         }
-        List<Claim> added = new ArrayList<>();
-        for (Line line : lines) {
-            added.add(claimService.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null,
-                    line.ref(), null));
+        List<Claim> done = new ArrayList<>();
+        for (int i = 0; i < lines.size(); i++) {
+            Line line = lines.get(i);
+            Claim claim = matches.get(i);
+            if (claim == null) {
+                claim = claimService.add(sheetId, user, line.person().getId(), line.amount(), line.date(),
+                        line.note(), null, line.ref(), null);
+            } else if (claim.getAmount().compareTo(line.amount()) != 0) {
+                claim = claimService.update(sheetId, user, claim.getId(), line.amount(), claim.getDate(),
+                        claim.getNote(), claim.getCorrects(), line.ref() != null ? line.ref() : claim.getRef(),
+                        String.join(",", claim.getTags()));
+            }
+            done.add(claimService.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
         }
-        return added;
+        return done;
+    }
+
+    /** The person's claim, as it stood before the paste, dated the date with the line's note; null when none. */
+    private static Claim match(List<Claim> existing, Line line, LocalDate date) {
+        return existing.stream()
+                .filter((c) -> c.getPersonId().equals(line.person().getId()) && date.equals(c.getDate())
+                        && line.note().equals(c.getNote()))
+                .findFirst().orElse(null);
     }
 
     /** A line of name,amount,date,note; the note may hold commas, the date may be blank and the note absent.

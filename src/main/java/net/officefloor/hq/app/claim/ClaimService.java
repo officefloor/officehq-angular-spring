@@ -969,7 +969,7 @@ public class ClaimService {
     }
 
     /** The date a new claim given none takes: the sheet's entry date while it is set, else its today. */
-    private LocalDate entryDateOr(String sheetId) {
+    public LocalDate entryDateOr(String sheetId) {
         LocalDate entry = settings.entryDate(sheetId);
         return entry != null ? entry : sheets.today(sheetId);
     }

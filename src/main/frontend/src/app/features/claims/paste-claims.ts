@@ -4,8 +4,9 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { ClaimView, ClaimsApi } from './claims-api';
 
-// A box that takes lines of name,amount,date,note and adds a draft claim per line, in order, to the
-// named people; every line is checked first, and when any is refused nothing is added.
+// A box that takes lines of name,amount,date,note and adds and opens a claim per line, in order, for the
+// named people; a line matching a person's draft by date and note updates and opens that draft instead.
+// Every line is checked first, and when any is refused nothing is changed.
 @Component({
   selector: 'app-paste-claims',
   imports: [ReactiveFormsModule],
@@ -15,7 +16,7 @@ import { ClaimView, ClaimsApi } from './claims-api';
       <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
       <button type="submit" data-testid="paste-submit" [disabled]="saving()">Add pasted claims</button>
       @if (count() !== null) {
-        <p>Added: <strong data-testid="paste-added">{{ count() }}</strong></p>
+        <p>Went through: <strong data-testid="paste-added">{{ count() }}</strong></p>
       }
       @if (error()) {
         <p role="alert" data-testid="paste-error">{{ error() }}</p>
@@ -69,7 +70,7 @@ export class PasteClaims {
       if (this.session.sheet()?.id !== sheet.id) return;
       const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message
         ? ' ' + e.error.message : '';
-      this.error.set('No claims were added: a line was refused.' + reason);
+      this.error.set('No claims were pasted: a line was refused.' + reason);
     } finally {
       this.saving.set(false);
     }
