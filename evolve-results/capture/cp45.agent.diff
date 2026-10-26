@@ -1,0 +1,144 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 06f6d174..06f1ff09 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -150,6 +150,16 @@ interface StatementView {
+         @if (bulkError(); as err) {
+           <p role="alert" data-testid="bulk-open-error">{{ err }}</p>
+         }
++        <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
++        @if (bulkSettled(); as result) {
++          <p role="status">
++            Settled: <strong data-testid="bulk-settled">{{ result.settled }}</strong>
++            Refused: <strong data-testid="bulk-settle-refused">{{ result.refused }}</strong>
++          </p>
++        }
++        @if (bulkSettleError(); as err) {
++          <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
++        }
+       </div>
+ 
+       <table>
+@@ -326,6 +336,10 @@ export class People {
+   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
+   protected readonly bulkError = signal<string | null>(null);
+   private bulkOpening = false;
++  // The last bulk settle's counts (none while one runs); a claim made PENDING counts as settled.
++  protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
++  protected readonly bulkSettleError = signal<string | null>(null);
++  private bulkSettling = false;
+   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
+   // dated within one of their person's holds that no statement binds.
+   protected readonly liveClaims = computed(() => {
+@@ -698,6 +712,36 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Settles the selected claims together: the store settles each that can be settled in list order, by the rules
++   * of settling one, and leaves each that cannot as it is; shows how many were settled and how many refused.
++   */
++  protected async bulkSettle(): Promise<void> {
++    if (this.bulkSettling) return;
++    this.bulkSettled.set(null);
++    this.bulkSettleError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const ids = [...this.selectedClaims()];
++    this.bulkSettling = true;
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ settled: Claim[]; refused: number }>(
++          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-settle`,
++          { ids },
++        ),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      for (const c of result.settled) this.claimSaved(c);
++      this.selectedClaims.set(new Set());
++      this.bulkSettled.set({ settled: result.settled.length, refused: result.refused });
++    } catch {
++      this.bulkSettleError.set('Could not settle the selected claims.');
++    } finally {
++      this.bulkSettling = false;
++    }
++  }
++
+   protected reset(): void {
+     this.editingId.set(null);
+     this.name.set('');
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index 9d4ddf68..ce06b3e0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -6,6 +6,7 @@ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.function.Function;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import org.springframework.stereotype.Service;
+@@ -35,6 +36,20 @@ public class ClaimBulkService {
+      * not a claim of the sheet, is left as it is and counted as refused.
+      */
+     public Result open(String by, String sheetId, Set<Long> ids) {
++        return each(sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.OPEN));
++    }
++
++    /**
++     * Settles each of the claims that can be settled, in list order, by the rules of settling one claim: one the
++     * clerk limit makes PENDING counts as settled. Each is settled in its own transaction: one that is refused, or is
++     * not a claim of the sheet, is left as it is and counted as refused.
++     */
++    public Result settle(String by, String sheetId, Set<Long> ids) {
++        return each(sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.SETTLED));
++    }
++
++    /** Applies the change to each of the sheet's claims among the ids in list order, counting the refused ones. */
++    private Result each(String sheetId, Set<Long> ids, Function<Long, Claim> change) {
+         Map<Long, Integer> personOrder = new HashMap<>();
+         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             personOrder.put(p.getId(), personOrder.size());
+@@ -45,15 +60,15 @@ public class ClaimBulkService {
+                         .thenComparing(Claim::getListed, Comparator.reverseOrder())
+                         .thenComparing(Claim::getId, Comparator.reverseOrder()))
+                 .map(Claim::getId).toList();
+-        List<Claim> opened = new ArrayList<>();
++        List<Claim> changed = new ArrayList<>();
+         int refused = ids.size() - ordered.size();
+         for (Long id : ordered) {
+             try {
+-                opened.add(claims.changeStatus(by, sheetId, id, ClaimStatus.OPEN));
++                changed.add(change.apply(id));
+             } catch (ResponseStatusException e) {
+                 refused++;
+             }
+         }
+-        return new Result(opened, refused);
++        return new Result(changed, refused);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index a0d02dd2..97e1d76a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -116,6 +116,18 @@ public class ClaimController {
+         return new BulkOpenView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
+     }
+ 
++    /** The claims a bulk settle settled or made PENDING, in the order it took them, and how many it refused. */
++    public record BulkSettleView(List<ClaimView> settled, int refused) {
++    }
++
++    @PostMapping("/claims/bulk-settle")
++    public BulkSettleView bulkSettle(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @Valid @RequestBody BulkForm form, @SessionAttribute(SessionController.USER) String user) {
++        ClaimBulkService.Result result = bulk.settle(user, sheetId, form.ids());
++        return new BulkSettleView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
++    }
++
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
