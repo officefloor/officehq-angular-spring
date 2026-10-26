@@ -32,6 +32,11 @@ public class TreeSearchService {
     public record Found(String sheetId, String name, String dueTotal) {
     }
 
+    /** A person of the tree as exported: their sheet, name, grade in force on that sheet's today, and due-total
+     *  with two decimals, or "n/a". */
+    public record TreePerson(String sheetId, String name, String grade, String dueTotal) {
+    }
+
     private final SheetParentRepository parents;
     private final PersonRepository people;
     private final Rollup rollup;
@@ -55,16 +60,31 @@ public class TreeSearchService {
         return found;
     }
 
+    /** Every person of the sheet's tree: the sheet's own first in list order, then the other sheets' by sheet id. */
+    @Transactional(readOnly = true)
+    public List<TreePerson> everyone(String sheetId) {
+        List<TreePerson> all = new ArrayList<>(peopleOf(sheetId, ""));
+        for (String other : treeOf(sheetId)) {
+            if (!other.equals(sheetId)) all.addAll(peopleOf(other, ""));
+        }
+        return all;
+    }
+
     private List<Found> searchSheet(String sheetId, String needle) {
+        return peopleOf(sheetId, needle).stream()
+                .map(p -> new Found(p.sheetId(), p.name() + " (" + p.grade() + ")", p.dueTotal())).toList();
+    }
+
+    private List<TreePerson> peopleOf(String sheetId, String needle) {
         Rollup.Snapshot figures = rollup.snapshot(sheetId);
-        List<Found> found = new ArrayList<>();
+        List<TreePerson> found = new ArrayList<>();
         LocalDate today = null;
         for (Person person : people.findInListOrder(sheetId)) {
             if (!matches(person, needle)) continue;
             Rollup.Figures theirs = figures.people().get(person.getId());
             BigDecimal due = theirs == null ? null : theirs.dueTotal();
             if (today == null) today = sheets.today(sheetId);
-            found.add(new Found(sheetId, person.getName() + " (" + person.gradeOn(today) + ")",
+            found.add(new TreePerson(sheetId, person.getName(), String.valueOf(person.gradeOn(today)),
                     due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_EVEN).toPlainString()));
         }
         return found;

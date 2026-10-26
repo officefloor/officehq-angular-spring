@@ -47,4 +47,10 @@ public class ConsolidatedController {
             @RequestParam(defaultValue = "") @Size(max = 200) String text) {
         return search.search(id.trim(), text);
     }
+
+    /** Every person over the sheet's tree, the sheet's own first in list order, then the other sheets' by sheet id. */
+    @GetMapping("/{id}/tree-people")
+    public List<TreeSearchService.TreePerson> treePeople(@PathVariable @NotBlank @Size(max = 100) String id) {
+        return search.everyone(id.trim());
+    }
 }
