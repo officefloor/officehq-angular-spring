@@ -1,0 +1,64 @@
+{
+  "checkpoint": 11,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp11_rates-effective-dated",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A rate can carry a from-date. A grade may have several rates with different from-dates; a claim\nuses the rate whose from-date is the latest one on or before the claim's date, and a rate with no\nfrom-date applies from the beginning of time. A claim dated before every rate that could apply has\ndue n/a. Setting a rate for a grade and from-date that already exist replaces that rate. Show, per\ngrade, the rate in force on the sheet's today. RATE_SET gains from=<date> when one was given.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate can carry a from-date. A grade may have several rates with different from-dates; a claim\nuses the rate whose from-date is the latest one on or before the claim's date, and a rate with no\nfrom-date applies from the beginning of time. A claim dated before every rate that could apply has\ndue n/a. Setting a rate for a grade and from-date that already exist replaces that rate. Show, per\ngrade, the rate in force on the sheet's today. RATE_SET gains from=<date> when one was given.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a94e8276065b9e9a3e637f2ca580af2f9c216107",
+  "reset_sha": "",
+  "preagent_sha": "6addd867034892183050e1974637979c87318a72",
+  "prev_sha": "6addd867034892183050e1974637979c87318a72",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9028998,
+    "input_tokens": 26,
+    "output_tokens": 11504,
+    "cache_read_tokens": 634299,
+    "cache_creation_tokens": 68232,
+    "num_turns": 14,
+    "duration_ms": 176753,
+    "duration_api_ms": 123705,
+    "model": "claude-opus-5-5",
+    "session_id": "3789930f-70e2-467b-b87d-1e3aa80270d6",
+    "stop_reason": "success",
+    "result_text": "Rates can now carry a from-date, and all 4 tests in the acceptance spec pass with `bin/e2e`.\n\n**How it behaves now**\n- A grade can have several rates, at most one per from-date. A rate with no from-date applies from the beginning of time.\n- A claim's due uses the rate with the latest from-date on or before the claim's date. If no rate applies yet, the due shows `n/a`.\n- Setting a rate for a grade and from-date that already exist replaces that rate.\n- When a claim is settled, its due is now fixed at the rate in force on the claim's date. Before, it used the grade's one rate. If no rate applies, it settles as `due=n/a` and its due stays live.\n- `RATE_SET` ends with `from=<date>` when a from-date was given.\n\n**One thing to know:** the per-person and sheet due totals still work as before \u2014 claimed total times one rate. That rate is now the one in force on the sheet's today. This isn't the sum of each claim's own due: in the first test, Ada's claims show dues of 1.00, 3.00 and 3.00, but her total shows 9.00 (30.00 claimed at 30%). That's what the test expects, so I left it.\n\n**What changed**\n- **Database:** migration `V10__rate_from_date.sql` adds a nullable `from_date` column. The old \"one rate per grade\" index is replaced by one rate per grade and from-date. A helper column treats \"no from-date\" as a single value, so a grade can't end up with two start-of-time rates.\n- **Server:** the rate form and rate list now carry `from`. `RateRepository.findInForce` finds the rate in force on a given date, and `ClaimService` uses it when settling.\n- **Screen:**\n  - The rate form has an optional From date field.\n  - One table shows each grade's rate in force on the sheet's today (`rate-current-<grade>`, or `n/a`).\n  - A second table lists every rate (`rate-row-<grade>-<from|start>`).\n  - Each claim's due uses the rate in force on its date.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9028998,
+        "num_turns": 14,
+        "duration_ms": 176753,
+        "duration_api_ms": 123705,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp11.agent.jsonl",
+  "agent_diff_file": "cp11.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
