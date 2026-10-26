@@ -1,0 +1,64 @@
+{
+  "checkpoint": 27,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp27_patrons-and-backing",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may name other people on the sheet as their patrons, one at a time from their row (not\nthemselves, and not the same person twice; a refusal shows an error on the row; PATRON_ADDED\nname=<name> patron=<patron name>). Show each person's patrons (names, comma and space separated,\nsorted) and their backing: their patrons' due-totals added up, skipping n/a, 0.00 with no\npatrons.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may name other people on the sheet as their patrons, one at a time from their row (not\nthemselves, and not the same person twice; a refusal shows an error on the row; PATRON_ADDED\nname=<name> patron=<patron name>). Show each person's patrons (names, comma and space separated,\nsorted) and their backing: their patrons' due-totals added up, skipping n/a, 0.00 with no\npatrons.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d080b26386eb656392f7d190ed75987a6fe31b4f",
+  "reset_sha": "",
+  "preagent_sha": "5cebba2a6ca917aadc6b089a4c29fa6802dff38c",
+  "prev_sha": "5cebba2a6ca917aadc6b089a4c29fa6802dff38c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.834153,
+    "input_tokens": 34,
+    "output_tokens": 9940,
+    "cache_read_tokens": 718885,
+    "cache_creation_tokens": 61430,
+    "num_turns": 18,
+    "duration_ms": 236452,
+    "duration_api_ms": 87727,
+    "model": "claude-opus-5-5",
+    "session_id": "b4056d3f-5319-4bdd-be54-1ced72ab2fcd",
+    "stop_reason": "success",
+    "result_text": "Each person's row now lets you add other people on the sheet as their patrons, one at a time, and shows their patrons and backing. All 4 Playwright tests in `bin/e2e` pass, including after a final small fix to how row errors are cleared.\n\n**How it behaves**\n- **Adding a patron:** each row has a person picker and an \"Add patron\" button. The picker doesn't offer the person themselves, so they can't be chosen. If you pick someone who is already a patron, the row shows an error and nothing is saved.\n- **Server checks:** the server also refuses the person themselves, someone already added, and anyone not on the sheet. The database blocks duplicates and self-patrons too, so two users adding the same patron at once can't create a second copy.\n- **Patrons column:** names in alphabetical order, separated by \", \". It's empty when the person has no patrons.\n- **Backing column:** the patrons' due-totals added together, skipping any that are n/a, and 0.00 when the person has no patrons. It uses the same due-totals the row already shows, so holds and rate changes affect backing straight away.\n- **Audit:** each successful add writes `PATRON_ADDED sheet=<id> by=<user> name=<name> patron=<patron name>`. A refused add writes nothing.\n- **Errors:** the patron error goes away when you change the picker, try again, or take any other action on that row (edit, statement, retire, hold). Adding a patron also clears an old error left by the row's other actions.\n\n**Design choices to know about**\n- Patrons are stored in their own table, not as part of the person record. Adding a patron therefore doesn't change the person's version, so it won't cause an open edit of that person to be rejected as out of date.\n- The front end loads every patron on the sheet from a separate `GET .../people/patrons` endpoint and works out the names and backing itself.\n- There is no way to remove a patron, since the request didn't ask for one.\n\n**Files changed**\n- New migration `V22__person_patron.sql`.\n- New `Patron.java` and `PatronRepository.java`.\n- New endpoints in `PersonController.java` and the rules in `PersonService.java`.\n- The UI in `features/people/people.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.834153,
+        "num_turns": 18,
+        "duration_ms": 236452,
+        "duration_api_ms": 87727,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp27.agent.jsonl",
+  "agent_diff_file": "cp27.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
