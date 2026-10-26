@@ -79,10 +79,20 @@ public class PersonController {
     public record HoldForm(LocalDate from, LocalDate to) {
     }
 
-    private final PersonService service;
+    /** Whether the signed-in user is to watch the person. */
+    public record WatchForm(@NotNull Boolean on) {
+    }
 
-    public PersonController(PersonService service) {
+    /** Whether the signed-in user watches the person now. */
+    public record WatchView(Long personId, boolean watched) {
+    }
+
+    private final PersonService service;
+    private final WatchService watches;
+
+    public PersonController(PersonService service, WatchService watches) {
         this.service = service;
+        this.watches = watches;
     }
 
     /** All the people on the sheet, in the order they were added. */
@@ -130,6 +140,23 @@ public class PersonController {
     /** The person as listed on the sheet's today. */
     private PersonView view(String sheetId, Person person) {
         return PersonView.of(person, service.today(sheetId));
+    }
+
+    /** The ids of the people on the sheet the signed-in user watches, in the order they started watching. */
+    @GetMapping("/watched")
+    public List<Long> watched(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @SessionAttribute(SessionController.USER) String user) {
+        return watches.watched(sheetId, user);
+    }
+
+    /** Starts or stops the signed-in user watching the person. */
+    @PostMapping("/{id}/watch")
+    public WatchView watch(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody WatchForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return new WatchView(id, watches.watch(user, sheetId, id, form.on()));
     }
 
     /** Every patron named on the sheet, in the order they were named. */

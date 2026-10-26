@@ -10,6 +10,7 @@ import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.WatchService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -35,11 +36,12 @@ public class ClaimService {
     private final SheetService sheets;
     private final RollupService rollup;
     private final SettingsService settings;
+    private final WatchService watches;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates,
             PeriodRepository periods, SheetService sheets, RollupService rollup, SettingsService settings,
-            Audit audit) {
+            WatchService watches, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -47,6 +49,7 @@ public class ClaimService {
         this.sheets = sheets;
         this.rollup = rollup;
         this.settings = settings;
+        this.watches = watches;
         this.audit = audit;
     }
 
@@ -172,6 +175,9 @@ public class ClaimService {
         logStatus(by, sheetId, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record(event, by, person, saved) + tail);
+        if (next == ClaimStatus.SETTLED) {
+            watches.notifyWatchers(by, sheetId, person, saved.getNumber());
+        }
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }
@@ -250,6 +256,7 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_APPROVED", by, person, saved) + " due="
                 + (fixed == null ? "n/a" : fixed.toPlainString()));
+        watches.notifyWatchers(by, sheetId, person, saved.getNumber());
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }
@@ -278,6 +285,7 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_RESETTLED", by, person, saved) + " old=" + text(old) + " new="
                 + text(fixed));
+        watches.notifyWatchers(by, sheetId, person, saved.getNumber());
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }

@@ -187,7 +187,7 @@ interface StatementView {
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
             @for (pd of periods.list(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
             }
@@ -212,6 +212,7 @@ interface StatementView {
               <td data-testid="person-patrons">{{ patronNamesBy().get(p.id) ?? '' }}</td>
               <td data-testid="person-backing">{{ backingBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-excess">{{ excessBy().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               @for (pd of periods.list(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
                   {{ periodDueBy().get(p.id)?.get(pd.id) ?? '0.00' }}
@@ -220,6 +221,14 @@ interface StatementView {
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-watch"
+                  [attr.aria-pressed]="watched().has(p.id)"
+                  (click)="toggleWatch(p)"
+                >
+                  Watch<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 <button type="button" data-testid="person-statement" (click)="takeStatement(p)">
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
@@ -350,6 +359,8 @@ export class People {
   // Every patron named on the sheet, the patron chosen on each row (a person id, by person id) and each row's
   // refused patron.
   protected readonly patrons = signal<PatronView[]>([]);
+  // The ids of the people the signed-in user watches on the sheet.
+  protected readonly watched = signal<ReadonlySet<number>>(new Set());
   protected readonly patronChoices = signal<Record<number, string>>({});
   protected readonly patronErrors = signal<Record<number, string>>({});
   // Each person's statements, by person id; a person with none is not in the map.
@@ -531,6 +542,7 @@ export class People {
         this.claims.set([]);
         this.statements.set([]);
         this.patrons.set([]);
+        this.watched.set(new Set());
         this.patronChoices.set({});
         this.patronErrors.set({});
         this.rowErrors.set({});
@@ -665,6 +677,27 @@ export class People {
       if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
     } catch {
       refuse('Could not put this person on hold.');
+    }
+  }
+
+  /** Starts the signed-in user watching the person, or stops them when they already watch them. */
+  protected async toggleWatch(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const on = !this.watched().has(p.id);
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/watch`;
+    try {
+      const saved = await firstValueFrom(this.http.post<{ personId: number; watched: boolean }>(url, { on }));
+      if (this.session.sheetId() !== sheet) return;
+      this.watched.update((ids) => {
+        const next = new Set(ids);
+        if (saved.watched) next.add(saved.personId);
+        else next.delete(saved.personId);
+        return next;
+      });
+    } catch {
+      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not change watching this person.' }));
     }
   }
 
@@ -947,11 +980,12 @@ export class People {
   private async fetch(sheet: string): Promise<void> {
     try {
       const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-      const [list, claims, statements, patrons] = await Promise.all([
+      const [list, claims, statements, patrons, watched] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(`${base}/people`)),
         firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
         firstValueFrom(this.http.get<StatementView[]>(`${base}/statements`)),
         firstValueFrom(this.http.get<PatronView[]>(`${base}/people/patrons`)),
+        firstValueFrom(this.http.get<number[]>(`${base}/people/watched`)),
         this.rates.load(sheet),
         this.periods.load(sheet),
       ]);
@@ -963,6 +997,7 @@ export class People {
         this.selectedClaims.update((selected) => new Set([...selected].filter((id) => ids.has(id))));
         this.statements.set(statements);
         this.patrons.set(patrons);
+        this.watched.set(new Set(watched));
         this.people.set(list);
       }
     } catch {
