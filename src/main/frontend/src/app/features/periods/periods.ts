@@ -12,7 +12,7 @@ const YEAR = /^\d{4}$/;
 // The sheet's periods in date order, each with the due-total of the counting claims dated in it
 // (fixed once the period is closed or soft-closed), whether it is closed (or soft-closed) and the fiscal year its
 // from-date falls in, with one form to add a period, one to generate monthly periods between two dates, and one to
-// generate a fiscal year's twelve monthly periods.
+// generate a fiscal year's twelve monthly periods, and one to generate a calendar year's four quarters.
 @Component({
   selector: 'app-periods',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -50,6 +50,11 @@ const YEAR = /^\d{4}$/;
         <label for="period-generate-fy-year">Fiscal year (yyyy, the calendar year it starts in)</label>
         <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year" inputmode="numeric" />
         <button type="submit" data-testid="period-generate-fy" [disabled]="generating()">Generate fiscal year</button>
+      </form>
+      <form [formGroup]="quartersForm" (ngSubmit)="generateQuarters()" aria-label="Generate a year's quarterly periods">
+        <label for="period-generate-quarters-year">Year (yyyy)</label>
+        <input id="period-generate-quarters-year" data-testid="period-generate-quarters-year" formControlName="year" inputmode="numeric" />
+        <button type="submit" data-testid="period-generate-quarters" [disabled]="generating()">Generate quarters</button>
       </form>
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
@@ -111,6 +116,8 @@ export class Periods {
   protected readonly generateForm = new FormGroup({ from: this.generateFrom, to: this.generateTo });
   protected readonly fyYear = new FormControl('', { nonNullable: true });
   protected readonly fyForm = new FormGroup({ year: this.fyYear });
+  protected readonly quartersYear = new FormControl('', { nonNullable: true });
+  protected readonly quartersForm = new FormGroup({ year: this.quartersYear });
   protected readonly generating = signal(false);
   /** How many periods the last generate made; null before one, and while one runs. */
   protected readonly generated = signal<number | null>(null);
@@ -126,6 +133,7 @@ export class Periods {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
     this.fyForm.valueChanges.subscribe(() => this.generateError.set(''));
+    this.quartersForm.valueChanges.subscribe(() => this.generateError.set(''));
     // Each load of a sheet starts the form afresh.
     effect(() => {
       this.session.loaded();
@@ -136,6 +144,7 @@ export class Periods {
       this.generated.set(null);
       this.generateForm.reset({ from: '', to: '' }, { emitEvent: false });
       this.fyForm.reset({ year: '' }, { emitEvent: false });
+      this.quartersForm.reset({ year: '' }, { emitEvent: false });
     });
   }
 
@@ -197,6 +206,32 @@ export class Periods {
       }
     } catch {
       if (this.session.sheet()?.id === sheet.id) this.generateError.set('The fiscal year\'s periods could not be generated.');
+    } finally {
+      this.generating.set(false);
+    }
+  }
+
+  /** Generate the four calendar quarters of the typed year. */
+  protected async generateQuarters(): Promise<void> {
+    if (this.generating()) return;
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.generateError.set('');
+    this.generated.set(null);
+    const year = this.quartersYear.value.trim();
+    if (!YEAR.test(year) || Number(year) < 1) {
+      this.generateError.set('Type the year as four digits.');
+      return;
+    }
+    this.generating.set(true);
+    try {
+      const made = await this.api.generateQuarters(sheet.id, Number(year));
+      if (this.session.sheet()?.id === sheet.id) {
+        for (const period of made) this.added.emit(period);
+        this.generated.set(made.length);
+      }
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) this.generateError.set('The quarters could not be generated.');
     } finally {
       this.generating.set(false);
     }

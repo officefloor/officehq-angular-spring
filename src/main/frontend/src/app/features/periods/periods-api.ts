@@ -82,6 +82,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheetId)}/generate-fy`, { year }));
   }
 
+  /** Generate the four calendar quarters of a year, named yyyy-Q1 to yyyy-Q4, leaving out those whose
+   *  name is in use or that overlap a period: the periods made. */
+  generateQuarters(sheetId: string, year: number): Promise<PeriodView[]> {
+    return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheetId)}/generate-quarters`, { year }));
+  }
+
   /** Add each pasted line of name,period,amount to the person's opening balance for the period, all or
    *  none: refused when any line names no person or period on the sheet, or its amount is not 0.00 or more
    *  with two decimals. */

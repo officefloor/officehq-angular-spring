@@ -61,6 +61,10 @@ public class PeriodController {
     public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** The calendar year whose quarters are generated, as entered. */
+    public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
+    }
+
     private final PeriodService service;
 
     public PeriodController(PeriodService service) {
@@ -96,6 +100,15 @@ public class PeriodController {
     public List<PeriodView> generateFiscalYear(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid GenerateFiscalYearForm form) {
         return service.generateFiscalYear(sheetId.trim(), SignedInUser.name(user), form.year()).stream()
+                .map(PeriodView::of).toList();
+    }
+
+    /** Generate the four calendar quarters of a year, leaving out those whose name is in use or whose days
+     *  overlap a period; the periods made. */
+    @PostMapping("/generate-quarters")
+    public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid GenerateQuartersForm form) {
+        return service.generateQuarters(sheetId.trim(), SignedInUser.name(user), form.year()).stream()
                 .map(PeriodView::of).toList();
     }
 

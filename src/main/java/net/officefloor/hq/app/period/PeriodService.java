@@ -117,25 +117,46 @@ public class PeriodService {
         return generateMonths(sheetId, user, first, first.plusMonths(11));
     }
 
+    /** Generate the four calendar quarters of a year, named &lt;yyyy&gt;-Q1 to &lt;yyyy&gt;-Q4, each as the
+     *  period form would add it; a quarter whose name is in use on the sheet, or whose days overlap one of
+     *  its periods, is left out. The periods made, in date order. */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        sheets.load(sheetId);
+        sheetRows.findForUpdate(sheetId);
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            YearMonth firstMonth = YearMonth.of(year, quarter * 3 - 2);
+            makeUnlessTaken(sheetId, user, existing, made, year + "-Q" + quarter,
+                    firstMonth.atDay(1), firstMonth.plusMonths(2).atEndOfMonth());
+        }
+        return made;
+    }
+
     /** Make one period per month from the first month to the last, leaving out those whose name is in use
      *  or whose days overlap a period; the periods made, in date order. */
     private List<Period> generateMonths(String sheetId, String user, YearMonth firstMonth, YearMonth lastMonth) {
         List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
         List<Period> made = new ArrayList<>();
         for (YearMonth month = firstMonth; !month.isAfter(lastMonth); month = month.plusMonths(1)) {
-            String name = month.toString();
-            LocalDate first = month.atDay(1);
-            LocalDate last = month.atEndOfMonth();
-            if (existing.stream().anyMatch(p -> p.getNameKey().equals(Period.keyOf(name)) || p.overlaps(first, last))) {
-                continue;
-            }
-            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
-            existing.add(saved);
-            made.add(saved);
-            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                    + " from=" + saved.getFrom() + " to=" + saved.getTo());
+            makeUnlessTaken(sheetId, user, existing, made, month.toString(), month.atDay(1), month.atEndOfMonth());
         }
         return made;
+    }
+
+    /** Make a generated period unless its name is in use or its days overlap one of the existing periods,
+     *  adding it to both the existing and the made periods. */
+    private void makeUnlessTaken(String sheetId, String user, List<Period> existing, List<Period> made,
+            String name, LocalDate first, LocalDate last) {
+        if (existing.stream().anyMatch(p -> p.getNameKey().equals(Period.keyOf(name)) || p.overlaps(first, last))) {
+            return;
+        }
+        Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
+        existing.add(saved);
+        made.add(saved);
+        audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                + " from=" + saved.getFrom() + " to=" + saved.getTo());
     }
 
     /** Close a period, fixing at this moment its due-total and each person's due-total for it: the figures as shown now of the claims
