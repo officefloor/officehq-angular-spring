@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, claimedTotal, counts, figureOf, keepsFigure } from '../claims/claims';
+import { AMOUNT, Claim, Claims, claimedTotal, counts, figureOf, keepsFigure } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { GRADES, RateStore, sumSkippingNa } from '../rates/rates';
 
@@ -59,6 +59,28 @@ interface StatementView {
         }
         @if (error(); as err) {
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
+        }
+      </form>
+
+      <form (submit)="quickAdd($event)" aria-label="Quick add claim">
+        <label for="quick-name">Name</label>
+        <input
+          id="quick-name"
+          data-testid="quick-name"
+          [value]="quickName()"
+          (input)="quickName.set(value($event)); quickError.set(null)"
+        />
+        <label for="quick-amount">Amount</label>
+        <input
+          id="quick-amount"
+          data-testid="quick-amount"
+          inputmode="decimal"
+          [value]="quickAmount()"
+          (input)="quickAmount.set(value($event)); quickError.set(null)"
+        />
+        <button type="submit" data-testid="quick-submit">Quick add</button>
+        @if (quickError(); as err) {
+          <p role="alert" data-testid="quick-error">{{ err }}</p>
         }
       </form>
 
@@ -126,6 +148,11 @@ export class People {
   // A submit in flight: a second submit before it answers is ignored, so it stores one record.
   private submitting = false;
   protected readonly error = signal<string | null>(null);
+  // The quick-add bar: a name and an amount make a draft claim, adding the person when the name is new.
+  protected readonly quickName = signal('');
+  protected readonly quickAmount = signal('');
+  protected readonly quickError = signal<string | null>(null);
+  private quickAdding = false;
   // Each person's refused row action, by person id.
   protected readonly rowErrors = signal<Record<number, string>>({});
   // Each person's statements, by person id; a person with none is not in the map.
@@ -183,6 +210,9 @@ export class People {
         this.statements.set([]);
         this.rowErrors.set({});
         this.reset();
+        this.quickName.set('');
+        this.quickAmount.set('');
+        this.quickError.set(null);
         if (id) void this.fetch(id);
       });
     });
@@ -279,6 +309,49 @@ export class People {
       this.error.set(editing === null ? 'Could not add that person.' : 'Could not save that person.');
     } finally {
       this.submitting = false;
+    }
+  }
+
+  /** Adds a draft claim dated the sheet's today for the named person, adding them with grade A when new. */
+  protected async quickAdd(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.quickAdding) return;
+    this.quickError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const name = this.quickName().trim();
+    const amount = this.quickAmount().trim();
+    if (!name) {
+      this.quickError.set('Enter a name.');
+      return;
+    }
+    if (!AMOUNT.test(amount)) {
+      this.quickError.set('Enter an amount of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    this.quickAdding = true;
+    try {
+      const added = await firstValueFrom(
+        this.http.post<{ person: Person; personAdded: boolean; claim: Claim }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/quick-add`,
+          { name, amount },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      if (!this.people().some((p) => p.id === added.person.id)) {
+        this.people.update((list) => [...list, added.person]);
+      }
+      this.claimSaved(added.claim);
+      this.quickName.set('');
+      this.quickAmount.set('');
+    } catch (err) {
+      this.quickError.set(
+        err instanceof HttpErrorResponse && err.status === 409
+          ? 'That claim is dated in a closed period, so it cannot be added.'
+          : 'Could not quick add that claim.',
+      );
+    } finally {
+      this.quickAdding = false;
     }
   }
 

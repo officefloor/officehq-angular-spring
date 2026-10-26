@@ -48,7 +48,7 @@ export function keepsFigure(c: Claim): boolean {
 
 const CLOSED = 'That claim is dated in a closed period, so it cannot change.';
 
-const AMOUNT = /^\d+(\.\d{1,2})?$/;
+export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
 /** The sum of the counted claims' amounts, with two decimals; added in whole cents so nothing drifts. */
 export function claimedTotal(claims: readonly Claim[]): string {

@@ -16,6 +16,8 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Person> findWithLockByIdAndSheetId(Long id, String sheetId);
 
+    Optional<Person> findBySheetIdAndNameIgnoreCase(String sheetId, String name);
+
     boolean existsBySheetIdAndNameIgnoreCase(String sheetId, String name);
 
     boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
