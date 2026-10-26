@@ -1,0 +1,64 @@
+{
+  "checkpoint": 171,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp171_review-sla",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "84a9cbdb3d3e84f2ffcda0388e6a40d4ad53453a",
+  "reset_sha": "",
+  "preagent_sha": "1810bb18d019e36864f91a413dd5b1336bcb3b4d",
+  "prev_sha": "1810bb18d019e36864f91a413dd5b1336bcb3b4d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0031776,
+    "input_tokens": 48,
+    "output_tokens": 11100,
+    "cache_read_tokens": 1207648,
+    "cache_creation_tokens": 67432,
+    "num_turns": 25,
+    "duration_ms": 304805,
+    "duration_api_ms": 106389,
+    "model": "claude-opus-5-5",
+    "session_id": "47965d23-3e37-492f-abc2-e410334872bc",
+    "stop_reason": "success",
+    "result_text": "I've added the review SLA, and all 4 tests pass in `bin/e2e`.\n\n**Where the review day comes from:** I didn't add a database column. Each claim already keeps a status log that records the sheet's today at every status change, so a claim's review day is the date on its latest REVIEW entry.\n\n**Server** (`setting/SettingService.java`, `SettingController.java`):\n- New `review-sla` setting, not dated, built the same way as the existing escalation-gap setting.\n- Saving it at `PUT /settings/review-sla` writes `SETTING_CHANGED ... key=review-sla value=<days>` to the audit file. A blank value clears the setting and is audited as `value=`.\n- Settings responses now include `reviewSla`.\n\n**Front end:**\n- **Settings screen** (`settings.ts`, `settings-api.ts`): a whole-days input (0 to 36500, blank means none) with a \"current value\" display. Anything else is refused with the settings error. The value is shared with the other screens through a new small store, `settings/sheet-review-sla.ts`.\n- **Claim rows** (`claims-api.ts`, `person-claims.ts`): new `isReviewLate` / `reviewDay` helpers. Each row now shows `claim-review-late`, which is \"yes\" only for a REVIEW claim whose review day plus the SLA days is before the sheet's today. It's always \"no\" when no SLA is set.\n- **Summary** (`summary.ts`, `people.ts`): a new `summary-review-late-count` showing how many claims are review-late.\n\nReview-late is worked out on screen rather than stored. Changing the sheet's today or the SLA updates it without writing anything, and nothing extra goes to the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0031776,
+        "num_turns": 25,
+        "duration_ms": 304805,
+        "duration_api_ms": 106389,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp171.agent.jsonl",
+  "agent_diff_file": "cp171.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
