@@ -29,7 +29,8 @@ public class Crew {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "lead_id", nullable = false)
+    /** The lead; none once they have been transferred to another sheet. */
+    @Column(name = "lead_id")
     private Long leadId;
 
     /** The members in the order they were added. */
@@ -70,7 +71,12 @@ public class Crew {
 
     /** Whether the person is the lead or a member of the crew. */
     public boolean includes(long personId) {
-        return leadId == personId || hasMember(personId);
+        return isLead(personId) || hasMember(personId);
+    }
+
+    /** Whether the person is the crew's lead. */
+    public boolean isLead(long personId) {
+        return leadId != null && leadId == personId;
     }
 
     public boolean hasMember(long personId) {
@@ -84,7 +90,7 @@ public class Crew {
     /** Give a person's place in the crew, as lead or member, to another person; a member place is dropped when
      *  that person is already in the crew, and on taking the lead they leave the members. */
     public void movePerson(long fromPersonId, long intoPersonId) {
-        if (leadId == fromPersonId) {
+        if (isLead(fromPersonId)) {
             leadId = intoPersonId;
             members.removeIf((m) -> m.getPersonId() == intoPersonId);
         }
@@ -98,5 +104,11 @@ public class Crew {
     /** Take the person out of the crew's members; nothing when they are not one. */
     public void removeMember(long personId) {
         members.removeIf((m) -> m.getPersonId() == personId);
+    }
+
+    /** Take the person out of the crew: as lead, leaving it with none, or as a member. */
+    public void removePerson(long personId) {
+        if (isLead(personId)) leadId = null;
+        removeMember(personId);
     }
 }

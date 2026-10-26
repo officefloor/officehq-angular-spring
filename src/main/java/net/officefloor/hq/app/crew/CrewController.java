@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CrewController {
 
     /** What the screen shows of a crew: its name, its lead and its members in the order they were added. */
-    public record CrewView(long id, String name, long leadId, List<Long> memberIds) {
+    public record CrewView(long id, String name, Long leadId, List<Long> memberIds) {
         static CrewView of(Crew crew) {
             return new CrewView(crew.getId(), crew.getName(), crew.getLeadId(), crew.getMemberIds());
         }

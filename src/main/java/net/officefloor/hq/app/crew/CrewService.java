@@ -74,7 +74,7 @@ public class CrewService {
         Crew crew = crews.findById(crewId).filter((c) -> c.getSheetId().equals(sheetId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such crew."));
         Person person = personOf(sheetId, personId);
-        if (crew.getLeadId().equals(person.getId())) {
+        if (crew.isLead(person.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     person.getName() + " leads the crew " + crew.getName() + ".");
         }

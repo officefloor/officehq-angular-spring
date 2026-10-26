@@ -6,10 +6,15 @@ import { Session } from '../../core/session';
 export interface CrewView {
   id: number;
   name: string;
-  /** The lead, a person of the sheet. */
-  leadId: number;
+  /** The lead, a person of the sheet; none once they have been transferred to another sheet. */
+  leadId: number | null;
   /** The members' person ids in the order they were added. */
   memberIds: number[];
+}
+
+/** The crew's people: its lead, when it has one, and then its members. */
+export function crewIds(crew: CrewView): number[] {
+  return crew.leadId === null ? [...crew.memberIds] : [crew.leadId, ...crew.memberIds];
 }
 
 // The crews of a sheet, as the store holds them.

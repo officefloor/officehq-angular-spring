@@ -11,7 +11,7 @@ import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
 import { PoolsList, personCutTotals, poolsWithCrews } from '../pools/pools';
 import { Pools } from '../pools/pools-api';
 import { CrewsList } from '../crews/crews';
-import { Crews } from '../crews/crews-api';
+import { Crews, crewIds } from '../crews/crews-api';
 import { Rates } from '../rates/rates';
 import { RateView, RatesApi, rateInForce, sameRate } from '../rates/rates-api';
 import { SheetCap } from '../settings/sheet-cap';
@@ -577,7 +577,7 @@ export class People {
     const led = this.crews.crews().filter((c) => c.leadId === me.id);
     if (led.length === 0) return '';
     const dues = this.dueCents();
-    return money(led.reduce((t, c) => t + [c.leadId, ...c.memberIds].reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
+    return money(led.reduce((t, c) => t + crewIds(c).reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
   });
   /** Everyone's due-total added up, skipping the people whose due-total is n/a, trimmed. */
   protected readonly sheetDueTotal = computed(() => {
@@ -1238,6 +1238,13 @@ export class People {
       || (retiredFrom !== null && today !== undefined && retiredFrom <= today);
   }
 
+  /** Whether the claim's person's retirement date is reached by the sheet's today. */
+  private retired(claim: ClaimView): boolean {
+    const retiredFrom = this.retiredFromById().get(claim.personId) ?? null;
+    const today = this.session.sheet()?.today;
+    return retiredFrom !== null && today !== undefined && retiredFrom <= today;
+  }
+
   /** Whether the claim counts in a period ending on `end`: as countsLive decides, but by the status
    *  its log records at the end of that day (none when added after it); deferral is as today, and a hold
    *  only leaves out a claim that is still open now, as holds touch only live claims. */
@@ -1427,9 +1434,11 @@ export class People {
     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
   }
 
-  /** Whether the claim counts toward what is claimed: it counts, and is not a correction. */
+  /** Whether the claim counts toward what is claimed: it counts, a hold (the person's or the claim's)
+   *  notwithstanding, and is not a correction. */
   private countsClaimed(claim: ClaimView): boolean {
-    return this.countsLive(claim) && !isCorrection(claim);
+    return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
+      && this.retired(claim)) && !isCorrection(claim);
   }
 
   /** The sum of the person's open and settled claims, leaving out corrections, with two decimals. */

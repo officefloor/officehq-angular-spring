@@ -125,9 +125,11 @@ public class Rollup {
             boolean keptFigure = false;
             List<Claim> theirs = claimsByPerson.getOrDefault(person.getId(), List.of());
             for (Claim claim : theirs) {
-                if (!counts(person, claim, today)) continue;
+                if (!countsClaimed(person, claim, today)) continue;
                 // A correction counts toward what is due, but not toward what is claimed.
                 if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
+                // A hold leaves the claim in what is claimed, but takes it out of what is due.
+                if (!counts(person, claim, today)) continue;
                 // A claim's live figure is at the grade in force on its date.
                 Grade grade = person.gradeOn(claim.getDate());
                 LocalDate roundsBy = Rounding.dateOf(claim, corrected(claim, theirs));
@@ -256,6 +258,14 @@ public class Rollup {
     private static boolean isOverdue(Claim claim, int grace, LocalDate today) {
         return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && today != null
                 && LateCharge.lateFrom(claim, grace).isBefore(today);
+    }
+
+    /** What counts toward what is claimed: as counts decides, except that a hold (the person's or the
+     *  claim's) does not take a claim out of it. */
+    private static boolean countsClaimed(Person person, Claim claim, LocalDate today) {
+        return claim.getStatus() == ClaimStatus.SETTLED
+                || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
+                        && (claim.isBound() || !person.isRetiredBy(today)));
     }
 
     /** Only open (PENDING included) and settled claims count toward what is claimed and due; a person's

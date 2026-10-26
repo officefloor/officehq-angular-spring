@@ -76,7 +76,7 @@ public class TransferService {
      * sheet's today when each was opened, then by the order they were added); figures a statement bound are
      * kept and their statements are carried, but references are not. The person then leaves this sheet entirely:
      * their patron links (both ways), pool and crew memberships, watches, holds and statements are dropped. Refused
-     * unless the user is a steward of this sheet, for a retired person, for the lead of a crew, to this sheet itself, to an archived
+     * unless the user is a steward of this sheet, for a retired person, to this sheet itself, to an archived
      * sheet, and when their name or an alias is on another sheet of the other sheet's tree. When the person's
      * name or an alias is already that of someone on the other sheet, the arriving person is merged into
      * them, as a merge does (refused when that someone is retired, or when the names are those of more than
@@ -94,12 +94,6 @@ public class TransferService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (from.isRetired()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred.");
-        }
-        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
-            if (crew.getLeadId().equals(from.getId())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "The lead of the crew " + crew.getName() + " cannot be transferred.");
-            }
         }
         sheets.load(toSheetId);
         if (sheetRows.isArchived(toSheetId)) {
@@ -179,7 +173,7 @@ public class TransferService {
         }
         pools.flush();
         for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
-            crew.removeMember(from.getId());
+            crew.removePerson(from.getId());
         }
         crews.flush();
         statements.deleteBySheetIdAndPersonId(sheetId, from.getId());

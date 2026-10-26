@@ -7,7 +7,7 @@ import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { PersonView, heldOn } from '../people/people-api';
 import { SheetPot } from '../settings/sheet-pot';
-import { CrewView, Crews } from '../crews/crews-api';
+import { CrewView, Crews, crewIds } from '../crews/crews-api';
 import { PoolMemberView, Pools, PoolView } from './pools-api';
 
 /** A share percent as typed: up to two decimals. */
@@ -53,12 +53,12 @@ function divideHalfEven(value: bigint, by: bigint): bigint {
 
 /** Each crew as a pool under its name, given the crew's id negated so it never meets a pool's: the lead
  *  and then the members as its members, without dates, at equal shares of 100.00 split as patrons' shares
- *  are (each rounded half to even, the remainder on the lead). */
+ *  are (each rounded half to even, the remainder on the lead, or the first member when it has none). */
 export function crewPools(crews: readonly CrewView[]): PoolView[] {
   return crews.map((crew) => {
-    const ids = [crew.leadId, ...crew.memberIds];
+    const ids = crewIds(crew);
     const count = BigInt(ids.length);
-    const each = divideHalfEven(10000n, count);
+    const each = count === 0n ? 0n : divideHalfEven(10000n, count);
     return {
       id: -crew.id, name: crew.name,
       members: ids.map((personId, i) => ({ personId, poolId: null, from: null, to: null,

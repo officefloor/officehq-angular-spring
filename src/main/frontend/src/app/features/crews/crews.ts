@@ -6,7 +6,7 @@ import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
 import { PersonView } from '../people/people-api';
 import { Pools } from '../pools/pools-api';
-import { CrewView, Crews } from './crews-api';
+import { CrewView, Crews, crewIds } from './crews-api';
 
 // One crew: its lead, its members, its due-total (the lead's and the members' due-totals added up, n/a
 // skipped) and a form to add a member.
@@ -53,7 +53,7 @@ export class CrewRow {
   private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));
   protected readonly dueTotal = computed(() => {
     const crew = this.crew();
-    return money([crew.leadId, ...crew.memberIds].reduce((t, id) => t + (this.dues().get(id) ?? 0), 0));
+    return money(crewIds(crew).reduce((t, id) => t + (this.dues().get(id) ?? 0), 0));
   });
 
   protected readonly personId = new FormControl('', { nonNullable: true });
@@ -65,8 +65,8 @@ export class CrewRow {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
-  protected nameOf(id: number): string {
-    return this.namesById().get(id) ?? '';
+  protected nameOf(id: number | null): string {
+    return id === null ? '' : this.namesById().get(id) ?? '';
   }
 
   protected async submit(): Promise<void> {
