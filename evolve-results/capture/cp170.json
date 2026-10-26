@@ -1,0 +1,64 @@
+{
+  "checkpoint": 170,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp170_rate-calendar",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8aef3271796f2cbc55c1eef37e0c8fb1119ec514",
+  "reset_sha": "",
+  "preagent_sha": "e67a099e8fa899b649e6bc66daabd3a10582a696",
+  "prev_sha": "e67a099e8fa899b649e6bc66daabd3a10582a696",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7436326000000001,
+    "input_tokens": 46,
+    "output_tokens": 7255,
+    "cache_read_tokens": 898543,
+    "cache_creation_tokens": 52330,
+    "num_turns": 26,
+    "duration_ms": 840389,
+    "duration_api_ms": 116860,
+    "model": "claude-opus-5-5",
+    "session_id": "bd2f25ba-2d0c-4a31-9409-76922267e82d",
+    "stop_reason": "success",
+    "result_text": "I added the rate calendar, and the main test plus scenarios 1 and 2 pass. Scenario 3 still fails, at a step that has nothing to do with rates. Fixing it would mean reversing an existing rule about crews, so I've left it for you to decide.\n\n**What I built** (front end only, in `src/main/frontend/src/app/features/rates/rates.ts`)\n- A new table under \"Rates today\" with a row per grade and a column per month of the sheet's today's year. Each cell is `rate-month-<grade>-<yyyy-mm>` and shows the rate in force on the 1st of that month, or `n/a` when there isn't one.\n- It uses the same `rateInForce` lookup as the existing `rate-current-*` cells, so the sheet's own rate wins, then the nearest parent's, and end dates are respected. The rates the server already sends were enough, so no server or database change was needed.\n- The year follows the sheet's today, so when the test moves today to 2027-01-10 the calendar switches to 2027.\n\n**`bin/e2e` result: 3 of 4 passed**\n- \u2713 rate calendar\n- \u2713 rate calendar scenario 1\n- \u2713 rate calendar scenario 2\n- \u2718 rate calendar scenario 3, at `acceptance.spec.ts:917`: `ui.transfer(pg_vic, p_cam, \u2026)` expected `true`, got `false`.\n\n**Why scenario 3 fails**\nEarlier in that scenario, Cam is made the lead of crew `C1`. The server deliberately refuses to transfer a crew's lead, and `TransferService.java:98-103` documents that rule: \"The lead of the crew \u2026 cannot be transferred.\" The spec expects the opposite: the transfer goes through and audits `PERSON_TRANSFERRED \u2026 name=Cam`. Afterwards it expects crew `C1` to still exist with an empty lead (`crew-lead` = `\"\"`), and the `C1` pool to show Ada at 100.00.\n\nTo make it pass I would have to:\n- drop the refusal;\n- add a migration making `crew.lead_id` nullable;\n- clear the lead when the lead is transferred;\n- check how crew and pool totals behave with no lead.\n\nThat reverses a rule from an earlier change, so I haven't done it. Because the test stops at that step, I also couldn't check scenario 3's own `rate-month-*` assertions. They use the same logic as the passing tests, though.\n\nShould I allow transferring a crew lead (the crew stays, with no lead) so scenario 3 passes, or keep the current refusal?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7436326000000001,
+        "num_turns": 26,
+        "duration_ms": 840389,
+        "duration_api_ms": 116860,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp170.agent.jsonl",
+  "agent_diff_file": "cp170.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
