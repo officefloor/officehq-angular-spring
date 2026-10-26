@@ -1,0 +1,64 @@
+{
+  "checkpoint": 59,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp59_period-templates",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Periods can be generated: a from-date and a to-date and a button create one period per calendar\nmonth from the from-date's month to the to-date's month, each running from the first to the last\nday of its month (February ends on the 28th or 29th), named yyyy-mm, each written as PERIOD_ADDED.\nA month whose name is already a period, or whose days overlap a period on the sheet, is left out\nand the others are still made. Show how many were made. A to-date before the from-date is refused\nwith an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeriods can be generated: a from-date and a to-date and a button create one period per calendar\nmonth from the from-date's month to the to-date's month, each running from the first to the last\nday of its month (February ends on the 28th or 29th), named yyyy-mm, each written as PERIOD_ADDED.\nA month whose name is already a period, or whose days overlap a period on the sheet, is left out\nand the others are still made. Show how many were made. A to-date before the from-date is refused\nwith an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2140fee651b12c93fb2de7914e90455ba11915cf",
+  "reset_sha": "",
+  "preagent_sha": "a88d84bd1b3bfa3ed70b723abd69479b55eb2950",
+  "prev_sha": "a88d84bd1b3bfa3ed70b723abd69479b55eb2950",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.466201,
+    "input_tokens": 22,
+    "output_tokens": 5010,
+    "cache_read_tokens": 333765,
+    "cache_creation_tokens": 37395,
+    "num_turns": 11,
+    "duration_ms": 132792,
+    "duration_api_ms": 64916,
+    "model": "claude-opus-5-5",
+    "session_id": "cf0be506-eef8-40d1-8d36-8a0cd1a05c13",
+    "stop_reason": "success",
+    "result_text": "Monthly periods can now be generated, and all 4 tests in `bin/e2e` pass.\n\n**How it works**\n- You pick a from-date and a to-date and press the button. The app makes one period for each calendar month from the from-date's month through the to-date's month.\n- Each period runs from the 1st to the last day of its month (so February ends on the 28th or 29th) and is named `yyyy-mm`.\n- Each period made is written to the audit file as `PERIOD_ADDED`, in the same format as adding a period by hand.\n- A month is skipped if its name is already a period or if any of its days fall inside an existing period; the other months are still made. For example, in the test, March is skipped because it overlaps `P1` (Mar 5\u20138).\n- The screen shows how many periods were made. That count clears while a new press is running.\n- A to-date before the from-date is refused with an error and nothing is saved. The error goes away when either date is changed or the button is pressed again. A blank from-date means the sheet's today, like the other forms.\n\n**What changed**\n- **Server:** `PeriodService.generate` does the work, and there is a new endpoint, `POST /api/sheets/{sheetId}/periods/generate`, in `PeriodController`. Like adding a period, it locks the sheet while it runs, so two people generating at once can't create overlapping periods. It also checks the to-date on the server, not just on screen.\n- **Front end:** in `periods.ts`, a new generate form under the add-period form, using the data-testids the test expects, and a `generate` method that adds the new periods straight into the list.\n- **Database:** no change needed, because generated periods are ordinary periods.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.466201,
+        "num_turns": 11,
+        "duration_ms": 132792,
+        "duration_api_ms": 64916,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp59.agent.jsonl",
+  "agent_diff_file": "cp59.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
