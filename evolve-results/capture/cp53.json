@@ -1,0 +1,64 @@
+{
+  "checkpoint": 53,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp53_permission-matrix",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The settings gain a permission matrix: for each of open, settle, void, reassign, close and\nreopen, which roles may do it, as a comma separated list of roles (SETTING_CHANGED\nkey=perm-<action> value=<roles>; not dated). A blank entry keeps the standing rule: open, settle,\nvoid and close by clerk and steward; reassign and reopen by steward. An action a role is not\nallowed is refused with its usual error. The opener still cannot settle their own claim, the\nclerk limit and the proof threshold still apply, and approving or rejecting stays with stewards.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe settings gain a permission matrix: for each of open, settle, void, reassign, close and\nreopen, which roles may do it, as a comma separated list of roles (SETTING_CHANGED\nkey=perm-<action> value=<roles>; not dated). A blank entry keeps the standing rule: open, settle,\nvoid and close by clerk and steward; reassign and reopen by steward. An action a role is not\nallowed is refused with its usual error. The opener still cannot settle their own claim, the\nclerk limit and the proof threshold still apply, and approving or rejecting stays with stewards.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d9d0aec3e788f552fee824828db867d92b2353ad",
+  "reset_sha": "",
+  "preagent_sha": "8450ca4773689e614e8816dd969aa188377e993f",
+  "prev_sha": "8450ca4773689e614e8816dd969aa188377e993f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1505248000000001,
+    "input_tokens": 42,
+    "output_tokens": 13945,
+    "cache_read_tokens": 1195284,
+    "cache_creation_tokens": 79050,
+    "num_turns": 22,
+    "duration_ms": 350122,
+    "duration_api_ms": 126261,
+    "model": "claude-opus-5-5",
+    "session_id": "0388d0e8-bcda-4e41-8847-570519237013",
+    "stop_reason": "success",
+    "result_text": "The permission matrix is in, and `bin/e2e` passes all 4 acceptance tests.\n\n**What it does**\n- **Settings screen:** there are now six fields, `setting-perm-open`, `-settle`, `-void`, `-reassign`, `-close` and `-reopen`, each taking roles as a comma-separated list. Next to each, `setting-perm-<action>-current` shows what is set, plus the standing rule when the field is blank. Saving writes `SETTING_CHANGED \u2026 key=perm-<action> value=<roles>`, with no from-date. A blank value removes the entry, so the standing rule applies again. A list containing anything other than `clerk` or `steward` is refused with `settings-error`.\n- **Server:** the new entries are kept in a new table, `sheet_permission` (migration `V37__sheet_permission.sql`). A new check, `SettingsService.refuseUnlessMay`, uses the setting if there is one and otherwise the standing rule. It refuses a disallowed action with a 403 (the server's \"forbidden\" status). The check is applied to:\n  - open, settle and void in `ClaimService.changeStatus` (bulk open and settle go through this too)\n  - `ClaimService.reassign`\n  - `PeriodService.close` and `PeriodService.reopen`\n- **Rules left unchanged:** the opener still can't settle their own claim, and the clerk limit, the proof threshold and steward-only approve/reject all still apply.\n\n**Things to know**\n- **Close now has a role check.** It had none before. Under the standing rule clerks and stewards can both close, so nothing changes until someone sets `perm-close`.\n- **Refusal messages changed.** They used to say \"Only a steward can move a claim\" and \"Only a steward can reopen a period\", which would be wrong once the matrix changes who is allowed. They now read \"Your role may not \u2026 on this sheet\". The error elements and their `data-testid`s are the same.\n- **Saved values are tidied.** Spaces around each role are trimmed and duplicates dropped, so \" clerk, clerk \" is saved as \"clerk\". A value like \"clerk,steward\" is saved exactly as typed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1505248000000001,
+        "num_turns": 22,
+        "duration_ms": 350122,
+        "duration_api_ms": 126261,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp53.agent.jsonl",
+  "agent_diff_file": "cp53.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

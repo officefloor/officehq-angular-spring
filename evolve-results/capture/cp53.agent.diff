@@ -1,0 +1,556 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index dad7d9da..c582b58a 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -433,6 +433,8 @@ export class Claims {
+       const err =
+         action === 'settle' && deferred(c, this.session.sheetToday())
+           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
++          : (action === 'open' || action === 'settle' || action === 'void') && forbidden
++          ? `Your role may not ${action} a claim on this sheet.`
+           : action === 'settle' && opener
+           ? 'You opened this claim, so another user must settle it.'
+           : (action === 'approve' || action === 'reject') && forbidden
+@@ -509,7 +511,7 @@ export class Claims {
+     this.clearRowError(id);
+   }
+ 
+-  /** A steward moves the claim to the chosen person; a settled or voided claim cannot move. */
++  /** A user whose role may reassign (a steward by the standing rule) moves the claim to the chosen person; a settled or voided claim cannot move. */
+   protected async reassign(c: Claim): Promise<void> {
+     this.clearRowError(c.id);
+     const sheet = this.session.sheetId();
+@@ -536,7 +538,7 @@ export class Claims {
+       const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+       this.setRowError(
+         c.id,
+-        forbidden ? 'Only a steward can move a claim.' : `This ${c.status} claim cannot be moved to that person.`,
++        forbidden ? 'Your role may not move a claim on this sheet.' : `This ${c.status} claim cannot be moved to that person.`,
+       );
+     }
+   }
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 228d6c31..e4563c0a 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -225,8 +225,13 @@ export class Periods {
+     }
+     try {
+       await this.store.close(sheet, p.id);
+-    } catch {
+-      this.setRowError(p.id, 'Could not close that period.');
++    } catch (err) {
++      this.setRowError(
++        p.id,
++        err instanceof HttpErrorResponse && err.status === 403
++          ? 'Your role may not close a period on this sheet.'
++          : 'Could not close that period.',
++      );
+     }
+   }
+ 
+@@ -244,7 +249,7 @@ export class Periods {
+       this.setRowError(
+         p.id,
+         err instanceof HttpErrorResponse && err.status === 403
+-          ? 'Only a steward can reopen a period.'
++          ? 'Your role may not reopen a period on this sheet.'
+           : 'Could not reopen that period.',
+       );
+     }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index e8bcf7ca..9481e705 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -22,6 +22,9 @@ interface SettingsView {
+   cap: string | null;
+   // Every value recorded for the dated settings, each from its from-date.
+   dated: DatedSetting[];
++  // The permission matrix as set, by action: the roles that may take it, comma separated; an action not listed keeps
++  // the standing rule.
++  permissions: Record<string, string>;
+ }
+ 
+ /**
+@@ -40,6 +43,22 @@ export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' |
+ 
+ export const ROLES = ['clerk', 'steward'];
+ 
++/** The actions of the permission matrix, with the roles that may take each while none are set (the standing rule). */
++export const PERMISSIONS: readonly { action: string; standing: string }[] = [
++  { action: 'open', standing: 'clerk,steward' },
++  { action: 'settle', standing: 'clerk,steward' },
++  { action: 'void', standing: 'clerk,steward' },
++  { action: 'reassign', standing: 'steward' },
++  { action: 'close', standing: 'clerk,steward' },
++  { action: 'reopen', standing: 'steward' },
++];
++
++/** Roles typed as a comma separated list, trimmed and each listed once; blank for none typed. */
++function normalRoles(typed: string): string {
++  const roles = typed.split(',').map((r) => r.trim());
++  return typed.trim() ? [...new Set(roles)].join(',') : '';
++}
++
+ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+ 
+ /** The floor a sheet starts with: in force before any is recorded. */
+@@ -72,7 +91,7 @@ function valueOn(dated: readonly DatedSetting[], key: string, date: string | nul
+ 
+ // The active sheet's settings: the role set for each user name (any other name is a clerk); the clerk limit, the
+ // floor, the terms (the sheet's and each grade's), the late percent and the cap, each recorded from a from-date;
+-// the policy date and the period numbering from.
++// the policy date and the period numbering from; and the permission matrix.
+ @Injectable({ providedIn: 'root' })
+ export class SettingsStore {
+   private readonly http = inject(HttpClient);
+@@ -105,6 +124,8 @@ export class SettingsStore {
+   readonly policyDate = signal<string | null>(null);
+   /** The period numbering from as set; null when blank (off). */
+   readonly periodNumberingFrom = signal<string | null>(null);
++  /** The permission matrix as set, by action; an action not listed keeps the standing rule. */
++  readonly permissions = signal<Readonly<Record<string, string>>>({});
+   /**
+    * What an overdue claim's late charge follows: the sheet's today and the late percent in force on the claim's
+    * date; and the policy date in force (the sheet's today when blank), which decides how live figures round.
+@@ -121,6 +142,7 @@ export class SettingsStore {
+     this.dated.set([]);
+     this.policyDate.set(null);
+     this.periodNumberingFrom.set(null);
++    this.permissions.set({});
+     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+     const [roles, settings] = await Promise.all([
+       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
+@@ -136,6 +158,7 @@ export class SettingsStore {
+     this.dated.set(s.dated);
+     this.policyDate.set(s.policyDate);
+     this.periodNumberingFrom.set(s.periodNumberingFrom);
++    this.permissions.set(s.permissions ?? {});
+   }
+ 
+   async setRole(sheet: string, user: string, role: string): Promise<void> {
+@@ -173,6 +196,17 @@ export class SettingsStore {
+     if (this.session.sheetId() === sheet) this.show(s);
+   }
+ 
++  /** Set the roles that may take the action, comma separated; null (blank) for the standing rule. */
++  async setPermission(sheet: string, action: string, value: string | null): Promise<void> {
++    const s = await firstValueFrom(
++      this.http.put<SettingsView>(
++        `/api/sheets/${encodeURIComponent(sheet)}/settings/permissions/${encodeURIComponent(action)}`,
++        { value },
++      ),
++    );
++    if (this.session.sheetId() === sheet) this.show(s);
++  }
++
+   async setPeriodNumberingFrom(sheet: string, value: string | null): Promise<void> {
+     const s = await firstValueFrom(
+       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/period-numbering-from`, { value }),
+@@ -347,6 +381,20 @@ export class SettingsStore {
+           (input)="setFrom('proof-threshold', value($event))"
+           (change)="setFrom('proof-threshold', value($event))"
+         />
++        <fieldset>
++          <legend>Permissions (roles that may take each action, comma separated; blank for the standing rule)</legend>
++          @for (p of permissionActions; track p.action) {
++            <label [for]="'setting-perm-' + p.action">{{ p.action }} (standing: {{ p.standing }})</label>
++            <input
++              [id]="'setting-perm-' + p.action"
++              [attr.data-testid]="'setting-perm-' + p.action"
++              [value]="perms()[p.action] ?? ''"
++              (input)="setPermField(p.action, value($event))"
++              (keydown.delete)="permsChanged.add(p.action); settingsError.set(null)"
++              (keydown.backspace)="permsChanged.add(p.action); settingsError.set(null)"
++            />
++          }
++        </fieldset>
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (settingsError(); as err) {
+           <p role="alert" data-testid="settings-error">{{ err }}</p>
+@@ -372,6 +420,15 @@ export class SettingsStore {
+         Proof threshold in force:
+         <strong data-testid="setting-proof-threshold-current">{{ store.proofThreshold() ?? '' }}</strong>
+       </p>
++      @for (p of permissionActions; track p.action) {
++        <p>
++          Roles that may {{ p.action }}:
++          <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ store.permissions()[p.action] ?? '' }}</strong>
++          @if (store.permissions()[p.action] === undefined) {
++            (standing rule: {{ p.standing }})
++          }
++        </p>
++      }
+ 
+       <form (submit)="saveRole($event)" aria-label="Set role">
+         <label for="role-user">User name</label>
+@@ -423,6 +480,9 @@ export class Settings {
+ 
+   protected readonly roles = ROLES;
+   protected readonly grades = GRADES;
++  protected readonly permissionActions = PERMISSIONS;
++  // The roles typed for each action of the permission matrix, by action.
++  protected readonly perms = signal<Readonly<Record<string, string>>>({});
+   protected readonly limit = signal('');
+   protected readonly floor = signal('');
+   protected readonly terms = signal('');
+@@ -445,6 +505,7 @@ export class Settings {
+   protected periodNumberingFromChanged = false;
+   protected capChanged = false;
+   protected proofThresholdChanged = false;
++  protected readonly permsChanged = new Set<string>();
+   protected readonly user = signal('');
+   protected readonly role = signal('');
+   protected readonly settingsError = signal<string | null>(null);
+@@ -478,6 +539,12 @@ export class Settings {
+     this.settingsError.set(null);
+   }
+ 
++  protected setPermField(action: string, v: string): void {
++    this.perms.update((p) => ({ ...p, [action]: v }));
++    this.permsChanged.add(action);
++    this.settingsError.set(null);
++  }
++
+   protected gradeKey(grade: string): DatedKey {
+     return `terms-${grade}`;
+   }
+@@ -575,6 +642,15 @@ export class Settings {
+       this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+     }
++    const perms = new Map<string, string>();
++    for (const a of this.permsChanged) {
++      const typed = (this.perms()[a] ?? '').trim();
++      if (typed && typed.split(',').some((r) => !ROLES.includes(r.trim()))) {
++        this.settingsError.set(`List the roles that may ${a} as clerk, steward or both, separated by commas, or leave it blank.`);
++        return;
++      }
++      perms.set(a, normalRoles(typed));
++    }
+     const keys: DatedKey[] = [];
+     if (this.limitChanged) keys.push('clerk-limit');
+     if (this.floorChanged) keys.push('floor');
+@@ -631,6 +707,11 @@ export class Settings {
+         await this.store.setDated(sheet, 'proof-threshold', proofThreshold || null, from.get('proof-threshold') ?? null);
+         this.proofThresholdChanged = this.proofThreshold().trim() !== proofThreshold;
+       }
++      for (const [a, roles] of perms) {
++        await this.store.setPermission(sheet, a, roles || null);
++        // roles typed while it was saving stay to be saved
++        if (normalRoles(this.perms()[a] ?? '') === roles) this.permsChanged.delete(a);
++      }
+     } catch {
+       this.resubmit = false;
+       this.settingsError.set('Could not save the settings.');
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 53cafa88..9f39611b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -118,6 +118,13 @@ public class ClaimService {
+     @Transactional
+     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
+         Claim claim = lockedClaim(sheetId, id);
++        switch (next) {
++            case OPEN -> settings.refuseUnlessMay(sheetId, by, "open");
++            case SETTLED -> settings.refuseUnlessMay(sheetId, by, "settle");
++            case VOID -> settings.refuseUnlessMay(sheetId, by, "void");
++            default -> {
++            }
++        }
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         // settling is the step from OPEN; a pending claim is settled by approving it
+         if (!claim.getStatus().canMoveTo(next) || next == ClaimStatus.PENDING
+@@ -298,16 +305,14 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * A steward moves a DRAFT, OPEN or PENDING claim to another person of the sheet. It keeps its number and date,
++     * A user whose role may reassign (a steward by the standing rule) moves a DRAFT, OPEN or PENDING claim to another person of the sheet. It keeps its number and date,
+      * loses any figure a statement bound it to (it is live again until its new person's next statement), and is
+-     * listed as its new person's newest claim. Refused unless the user is a steward, for a settled or voided claim,
++     * listed as its new person's newest claim. Refused unless the user's role may reassign, for a settled or voided claim,
+      * to the person it is already with, in a closed period, and when it is dated after the new person's retirement.
+      */
+     @Transactional
+     public Claim reassign(String by, String sheetId, Long id, Long toPersonId) {
+-        if (!settings.isSteward(sheetId, by)) {
+-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can move a claim.");
+-        }
++        settings.refuseUnlessMay(sheetId, by, "reassign");
+         Claim claim = lockedClaim(sheetId, id);
+         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot move.");
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index e9d3b2d4..17fb2929 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -14,7 +14,6 @@ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.settings.SettingsService;
+-import net.officefloor.hq.app.settings.SheetRole;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -83,7 +82,7 @@ public class PeriodService {
+     /**
+      * Closes the period, fixing each person's due-total for it now (the figures of their claims dated in it that
+      * counted at the end of its last day, skipping n/a) and its own, the sum of those.
+-     * Refused when it is already closed.
++     * Refused unless the user's role may close, and when it is already closed.
+      */
+     @Transactional
+     public Period close(String by, String sheetId, Long id) {
+@@ -91,6 +90,7 @@ public class PeriodService {
+         LocalDate today = sheets.lock(sheetId).getToday();
+         Period period = periods.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
++        settings.refuseUnlessMay(sheetId, by, "close");
+         if (period.isClosed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
+         }
+@@ -120,17 +120,15 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * Reopens a closed period, making its due-total live again. Refused unless the user is a steward of the sheet, or
+-     * when the period is not closed.
++     * Reopens a closed period, making its due-total live again. Refused unless the user's role may reopen (a steward by
++     * the standing rule), or when the period is not closed.
+      */
+     @Transactional
+     public Period reopen(String by, String sheetId, Long id) {
+         sheets.lock(sheetId);
+         Period period = periods.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
+-        if (!SheetRole.STEWARD.equals(settings.roleOf(sheetId, by))) {
+-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reopen a period.");
+-        }
++        settings.refuseUnlessMay(sheetId, by, "reopen");
+         if (!period.isClosed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed.");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 003ddbff..ded39f60 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -13,6 +13,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.Comparator;
+ import java.util.List;
++import java.util.Map;
+ import net.officefloor.hq.app.session.SessionController;
+ import net.officefloor.hq.app.sheet.DatedSetting;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -37,10 +38,10 @@ public class SettingsController {
+      * two decimals, the terms are whole days, the late percent carries two decimals, and the cap carries two decimals,
+      * or is null for none); the policy date, null when blank (the sheet's today), and the period numbering from, null
+      * when blank (off); and every value recorded for the dated settings, from which the screen works out the one in
+-     * force on any date.
++     * force on any date; and the permission matrix as set, by action (an action not listed keeps the standing rule).
+      */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+-            LocalDate periodNumberingFrom, String cap, List<DatedSettingView> dated) {
++            LocalDate periodNumberingFrom, String cap, List<DatedSettingView> dated, Map<String, String> permissions) {
+         static SettingsView of(Sheet sheet) {
+             LocalDate today = sheet.getToday();
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -49,7 +50,8 @@ public class SettingsController {
+                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
+                     sheet.getSettings().stream().map(DatedSettingView::of)
+                             .sorted(Comparator.comparing(DatedSettingView::key).thenComparing(DatedSettingView::from))
+-                            .toList());
++                            .toList(),
++                    sheet.getPermissions());
+         }
+     }
+ 
+@@ -101,6 +103,13 @@ public class SettingsController {
+             LocalDate from) {
+     }
+ 
++    /**
++     * A permission as the form submits it: the roles that may take the action, comma separated, or null (blank) for
++     * the standing rule.
++     */
++    public record PermissionForm(@Size(max = 100) String value) {
++    }
++
+     /** The policy date as the form submits it: a date, or null for blank (the sheet's today). */
+     public record PolicyDateForm(LocalDate value) {
+     }
+@@ -214,6 +223,14 @@ public class SettingsController {
+         return SettingsView.of(service.setProofThreshold(user, sheetId, form.value(), form.from()));
+     }
+ 
++    @PutMapping("/settings/permissions/{action}")
++    public SettingsView setPermission(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable @NotBlank @Size(max = 20) String action, @Valid @RequestBody PermissionForm form,
++            @SessionAttribute(SessionController.USER) String user) {
++        return SettingsView.of(service.setPermission(user, sheetId, action, form.value()));
++    }
++
+     /** The roles set on the sheet, by user name; a name not listed is a clerk. */
+     @GetMapping("/roles")
+     public List<RoleView> roles(
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 03f93f08..ba3cfd49 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -3,7 +3,9 @@ package net.officefloor.hq.app.settings;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.Arrays;
+ import java.util.List;
++import java.util.Map;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -18,11 +20,20 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * A sheet's settings: the role each user name has; the clerk limit, the floor, the terms (the sheet's and each
+  * grade's), the late percent and the cap, each recorded from a from-date; the policy date and the period numbering
+- * from.
++ * from; and the permission matrix, the roles that may take each action.
+  */
+ @Service
+ public class SettingsService {
+ 
++    /** The actions of the permission matrix, with the roles that may take each while none are set. */
++    public static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
++            "open", List.of(SheetRole.CLERK, SheetRole.STEWARD),
++            "settle", List.of(SheetRole.CLERK, SheetRole.STEWARD),
++            "void", List.of(SheetRole.CLERK, SheetRole.STEWARD),
++            "reassign", List.of(SheetRole.STEWARD),
++            "close", List.of(SheetRole.CLERK, SheetRole.STEWARD),
++            "reopen", List.of(SheetRole.STEWARD));
++
+     private final SheetRoleRepository roles;
+     private final SheetRepository sheetRepository;
+     private final SheetService sheets;
+@@ -69,6 +80,47 @@ public class SettingsService {
+         return saved;
+     }
+ 
++    /**
++     * Sets the roles that may take the action, a comma separated list of clerk and steward; blank (null) for the
++     * standing rule. Refused for an action not in the matrix or a role that is neither. Not dated.
++     */
++    @Transactional
++    public Sheet setPermission(String by, String sheetId, String action, String roles) {
++        if (!STANDING_PERMISSIONS.containsKey(action)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such action.");
++        }
++        String value = null;
++        if (roles != null && !roles.isBlank()) {
++            List<String> listed = Arrays.stream(roles.split(",", -1)).map(String::strip).toList();
++            if (listed.stream().anyMatch(r -> !SheetRole.CLERK.equals(r) && !SheetRole.STEWARD.equals(r))) {
++                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
++                        "List the roles as clerk, steward or both, separated by commas.");
++            }
++            value = String.join(",", listed.stream().distinct().toList());
++        }
++        Sheet sheet = sheets.lock(sheetId);
++        sheet.setPermission(action, value);
++        Sheet saved = sheetRepository.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=perm-" + action + " value="
++                + (value == null ? "" : value));
++        return saved;
++    }
++
++    /** Whether the user's role may take the action on the sheet: as the matrix sets it, else the standing rule. */
++    @Transactional(readOnly = true)
++    public boolean may(String sheetId, String user, String action) {
++        String set = sheets.load(sheetId).getPermissions().get(action);
++        List<String> allowed = set == null ? STANDING_PERMISSIONS.get(action) : List.of(set.split(","));
++        return allowed.contains(roleOf(sheetId, user));
++    }
++
++    /** Refuses the user the action when their role may not take it on the sheet. */
++    public void refuseUnlessMay(String sheetId, String user, String action) {
++        if (!may(sheetId, user, action)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " here.");
++        }
++    }
++
+     /** Records the sheet's clerk limit (null for no limit) from the date; null for the sheet's today. */
+     @Transactional
+     public Sheet setClerkLimit(String by, String sheetId, BigDecimal limit, LocalDate from) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 28d3f907..7fdaaa98 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
++import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+@@ -14,7 +15,9 @@ import java.time.Instant;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
++import java.util.HashMap;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Optional;
+ 
+ /** A sheet, chosen by its id. Everything else in the app is kept per sheet. */
+@@ -52,6 +55,16 @@ public class Sheet {
+     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
+     private List<DatedSetting> settings = new ArrayList<>();
+ 
++    /**
++     * The permission matrix as set: for an action, the roles that may take it, comma separated. An action not listed
++     * keeps the standing rule.
++     */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
++    @MapKeyColumn(name = "action_name")
++    @Column(name = "roles")
++    private Map<String, String> permissions = new HashMap<>();
++
+     /** The date claims round by: one before it rounds half up, one on or after it half to even; null for today. */
+     @Column(name = "policy_date")
+     private LocalDate policyDate;
+@@ -149,6 +162,20 @@ public class Sheet {
+         return inForce(PROOF_THRESHOLD, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+     }
+ 
++    /** The permission matrix as set, by action; an action not listed keeps the standing rule. */
++    public Map<String, String> getPermissions() {
++        return Map.copyOf(permissions);
++    }
++
++    /** Sets the roles that may take the action, comma separated; null (blank) for the standing rule. */
++    public void setPermission(String action, String roles) {
++        if (roles == null) {
++            permissions.remove(action);
++        } else {
++            permissions.put(action, roles);
++        }
++    }
++
+     public LocalDate getPolicyDate() {
+         return policyDate;
+     }
+diff --git a/src/main/resources/db/migration/V37__sheet_permission.sql b/src/main/resources/db/migration/V37__sheet_permission.sql
+new file mode 100644
+index 00000000..1ebf15f2
+--- /dev/null
++++ b/src/main/resources/db/migration/V37__sheet_permission.sql
+@@ -0,0 +1,9 @@
++-- The permission matrix: for an action (open, settle, void, reassign, close or reopen), the roles that may take it,
++-- as a comma separated list (clerk, steward). It is not dated. An action with no row keeps the standing rule: open,
++-- settle, void and close by clerk and steward; reassign and reopen by steward.
++CREATE TABLE sheet_permission (
++    sheet_id    VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    action_name VARCHAR(20)  NOT NULL,
++    roles       VARCHAR(100) NOT NULL,
++    PRIMARY KEY (sheet_id, action_name)
++);
