@@ -14,6 +14,8 @@ export interface Claim {
   note: string;
   // The claim's external reference, unique on the sheet without regard to case; null for a claim with none.
   ref: string | null;
+  // The claim's tags, trimmed, lower-cased, without repeats and sorted; none for a claim with none.
+  tags: string[];
   status: ClaimStatus;
   // Given when the claim is opened: the sheet's next (1, 2, ...) or, while the sheet numbers by period, its
   // period's next (P1-1; X-1 for no period); null for a claim never opened.
@@ -258,6 +260,13 @@ export function claimedTotal(claims: readonly Claim[]): string {
         [value]="ref()"
         (input)="ref.set(value($event)); error.set(null)"
       />
+      <label [for]="'claim-tags-' + personId()">Tags (comma separated)</label>
+      <input
+        [id]="'claim-tags-' + personId()"
+        data-testid="claim-form-tags"
+        [value]="tags()"
+        (input)="tags.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -270,7 +279,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -291,6 +300,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
             <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
+            <td data-testid="claim-tags">{{ c.tags.join(', ') }}</td>
             <td data-testid="claim-due">{{ dueOf(c, ratesOn(c.date), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a' }}</td>
             <td data-testid="claim-due-by">{{ c.dueBy }}</td>
             <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no' }}</td>
@@ -448,6 +458,7 @@ export class Claims {
   protected readonly note = signal('');
   protected readonly corrects = signal('');
   protected readonly ref = signal('');
+  protected readonly tags = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   // A submit in flight: a second submit before it answers is ignored, so it stores one claim.
@@ -606,7 +617,7 @@ export class Claims {
       this.setRowError(c.id, `${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
       return;
     }
-    const form = { amount, date: c.date, note: c.note, corrects: correction ? c.corrects : null, ref: c.ref };
+    const form = { amount, date: c.date, note: c.note, corrects: correction ? c.corrects : null, ref: c.ref, tags: c.tags.join(',') };
     try {
       const saved = await firstValueFrom(
         this.http.put<Claim>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}`, form),
@@ -645,6 +656,7 @@ export class Claims {
     this.note.set(c.note);
     this.corrects.set(c.corrects ?? '');
     this.ref.set(c.ref ?? '');
+    this.tags.set(c.tags.join(', '));
     this.error.set(null);
   }
 
@@ -920,6 +932,7 @@ export class Claims {
     this.note.set('');
     this.corrects.set('');
     this.ref.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -970,7 +983,7 @@ export class Claims {
       this.error.set(`The reference ${ref} is already used on this sheet.`);
       return;
     }
-    const form = { amount, date: date || null, note: this.note().trim(), corrects: correction ? corrects : null, ref };
+    const form = { amount, date: date || null, note: this.note().trim(), corrects: correction ? corrects : null, ref, tags: this.tags() };
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.submitting = true;
     try {

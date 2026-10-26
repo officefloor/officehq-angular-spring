@@ -49,6 +49,10 @@ public class Claim {
     @Column(name = "ref")
     private String ref;
 
+    /** The claim's tags, sorted and comma separated; null for a claim with none. */
+    @Column(name = "tags")
+    private String tags;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
@@ -297,6 +301,14 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     public ClaimStatus getStatus() {

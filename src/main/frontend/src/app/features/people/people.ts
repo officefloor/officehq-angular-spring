@@ -168,6 +168,22 @@ interface StatementView {
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
       <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+      @if (tagDueTotals().length > 0) {
+        <table>
+          <caption>Due by tag</caption>
+          <thead>
+            <tr><th scope="col">Tag</th><th scope="col">Due</th></tr>
+          </thead>
+          <tbody>
+            @for (t of tagDueTotals(); track t.tag) {
+              <tr>
+                <th scope="row">{{ t.tag }}</th>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
 
       <div role="group" aria-label="Selected claims">
         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
@@ -448,6 +464,27 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
+  // Every tag ever used on a claim of the sheet, as the store last told it.
+  protected readonly usedTags = signal<string[]>([]);
+  // For every tag ever used on the sheet (those the store keeps and those on the claims now), sorted: the due of
+  // the claims counted live that carry it, skipping n/a; a claim with two tags counts in both.
+  protected readonly tagDueTotals = computed(() => {
+    const all = new Set([...this.usedTags(), ...this.claims().flatMap((c) => c.tags)]);
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const rates = this.rates.rates();
+    const floor = this.settings.floor();
+    const late = this.settings.lateness();
+    const dues = new Map<string, (string | null)[]>();
+    for (const c of this.liveClaims()) {
+      if (c.tags.length === 0) continue;
+      const own = grades.get(c.personId) ?? [];
+      const due = dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
+      for (const t of c.tags) dues.set(t, [...(dues.get(t) ?? []), due]);
+    }
+    return [...all]
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      .map((tag) => ({ tag, dueTotal: sumSkippingNa(dues.get(tag) ?? []) }));
+  });
   // The claims selected for a bulk open, by id, and the last bulk open's counts (none while one runs).
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
@@ -694,6 +731,7 @@ export class People {
       untracked(() => {
         this.people.set([]);
         this.claims.set([]);
+        this.usedTags.set([]);
         this.statements.set([]);
         this.patrons.set([]);
         this.watched.set(new Set());
@@ -1247,9 +1285,10 @@ export class People {
   private async fetch(sheet: string): Promise<void> {
     try {
       const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-      const [list, claims, statements, patrons, watched] = await Promise.all([
+      const [list, claims, tags, statements, patrons, watched] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(`${base}/people`)),
         firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
+        firstValueFrom(this.http.get<string[]>(`${base}/claim-tags`)),
         firstValueFrom(this.http.get<StatementView[]>(`${base}/statements`)),
         firstValueFrom(this.http.get<PatronView[]>(`${base}/people/patrons`)),
         firstValueFrom(this.http.get<number[]>(`${base}/people/watched`)),
@@ -1259,6 +1298,7 @@ export class People {
       // a later load may have moved to another sheet while this one was in flight
       if (this.session.sheetId() === sheet) {
         this.claims.set(claims);
+        this.usedTags.set(tags);
         // a selected claim no longer on the sheet stays out of the next bulk action
         const ids = new Set(claims.map((c) => c.id));
         this.selectedClaims.update((selected) => new Set([...selected].filter((id) => ids.has(id))));

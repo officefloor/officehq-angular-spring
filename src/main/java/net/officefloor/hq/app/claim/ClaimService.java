@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.Period;
@@ -36,6 +39,7 @@ public class ClaimService {
     private static final int VOID_SETTLED_DAYS = 7;
 
     private final ClaimRepository claims;
+    private final ClaimTagRepository tags;
     private final PersonRepository people;
     private final RateRepository rates;
     private final PeriodRepository periods;
@@ -46,10 +50,11 @@ public class ClaimService {
     private final HolidayService holidays;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates,
+    public ClaimService(ClaimRepository claims, ClaimTagRepository tags, PersonRepository people, RateRepository rates,
             PeriodRepository periods, SheetService sheets, RollupService rollup, SettingsService settings,
             WatchService watches, HolidayService holidays, Audit audit) {
         this.claims = claims;
+        this.tags = tags;
         this.people = people;
         this.rates = rates;
         this.periods = periods;
@@ -80,14 +85,21 @@ public class ClaimService {
         return add(by, sheetId, personId, amount, date, note, corrects, null);
     }
 
-    /**
-     * Adds a claim as {@link #add(String, String, Long, BigDecimal, LocalDate, String, String)} does, carrying the
-     * external reference (stripped; blank for none). Refused too when the reference is already used on the sheet,
-     * comparing without regard to case.
-     */
+    /** Adds a claim as {@link #add(String, String, Long, BigDecimal, LocalDate, String, String, String, String)} does, with no tags. */
     @Transactional
     public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref) {
+        return add(by, sheetId, personId, amount, date, note, corrects, ref, null);
+    }
+
+    /**
+     * Adds a claim as {@link #add(String, String, Long, BigDecimal, LocalDate, String, String)} does, carrying the
+     * external reference (stripped; blank for none). Refused too when the reference is already used on the sheet,
+     * comparing without regard to case. Its tags (comma separated) are trimmed, lower-cased and kept once each.
+     */
+    @Transactional
+    public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref, String tagged) {
         LocalDate on = dateOrEntryDate(sheetId, date);
         Person person = person(sheetId, personId);
         LocalDate dueBy = holidays.dueBy(sheetId, on, termsFor(sheetId, person, on));
@@ -98,6 +110,7 @@ public class ClaimService {
         String reference = refOf(sheetId, ref, null);
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, noteOf(note));
         claim.setRef(reference);
+        claim.setTags(tagsOf(tagged));
         claim.setCorrects(corrected);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setDueBy(dueBy);
@@ -105,8 +118,10 @@ public class ClaimService {
                 dueBy, dueBy));
         logStatus(by, sheetId, person, claim);
         Claim added = claims.saveAndFlush(claim);
+        keepTags(sheetId, added.getTags());
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added)
-                + (added.getRef() != null ? " ref=" + added.getRef() : ""));
+                + (added.getRef() != null ? " ref=" + added.getRef() : "")
+                + (added.getTags() != null ? " tags=" + added.getTags() : ""));
         if (added.isLateEntry()) {
             audit.recordOnCommit(record("LATE_ENTRY", by, person, added));
         }
@@ -120,7 +135,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim update(String by, String sheetId, Long id, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tagged) {
         LocalDate on = dateOrToday(sheetId, date);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
@@ -139,9 +154,11 @@ public class ClaimService {
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
         claim.setNote(noteOf(note));
         claim.setRef(reference);
+        claim.setTags(tagsOf(tagged));
         // the save closes the editor, which releases the claim
         claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
+        keepTags(sheetId, saved.getTags());
         audit.recordOnCommit(record("CLAIM_EDITED", by, person(sheetId, saved.getPersonId()), saved));
         rollup.recordChanges(by, sheetId, before);
         return saved;
@@ -533,6 +550,7 @@ public class ClaimService {
         part.setRoundsOn(claim.getRoundsOn());
         part.setDueBy(holidays.dueBy(sheetId, claim.getDate(), termsFor(sheetId, person, claim.getDate())));
         part.setSplitFrom(claim.getNumber());
+        part.setTags(claim.getTags());
         // a split is judged by the original alone: the part is a late entry when the original is
         part.setLateEntry(claim.isLateEntry());
         part.setStatus(ClaimStatus.OPEN);
@@ -817,5 +835,39 @@ public class ClaimService {
 
     private static String noteOf(String note) {
         return note == null ? "" : note.strip();
+    }
+
+    /** Every tag ever used on a claim of the sheet, sorted. */
+    @Transactional(readOnly = true)
+    public List<String> tags(String sheetId) {
+        return tags.findBySheetIdOrderByTagAsc(sheetId).stream().map(ClaimTag::getTag).toList();
+    }
+
+    /** A claim's stored tags as a list, sorted; empty for none. */
+    public static List<String> tagList(String stored) {
+        return stored == null || stored.isEmpty() ? List.of() : List.of(stored.split(","));
+    }
+
+    /** The tags a claim is to carry: each trimmed and lower-cased, repeats and blanks dropped, sorted and comma separated; null for none. */
+    private static String tagsOf(String tagged) {
+        if (tagged == null) {
+            return null;
+        }
+        TreeSet<String> each = new TreeSet<>();
+        Arrays.stream(tagged.split(",")).map(t -> t.strip().toLowerCase(Locale.ROOT)).filter(t -> !t.isEmpty())
+                .forEach(each::add);
+        if (each.stream().anyMatch(t -> t.length() > 140)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A tag is at most 140 characters.");
+        }
+        return each.isEmpty() ? null : String.join(",", each);
+    }
+
+    /** Keeps each of the tags as used on the sheet. */
+    private void keepTags(String sheetId, String stored) {
+        for (String tag : tagList(stored)) {
+            if (!tags.existsBySheetIdAndTag(sheetId, tag)) {
+                tags.saveAndFlush(new ClaimTag(sheetId, tag));
+            }
+        }
     }
 }
