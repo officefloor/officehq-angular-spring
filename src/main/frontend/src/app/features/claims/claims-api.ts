@@ -104,6 +104,8 @@ export interface ClaimView {
   settleBatch: number | null;
   /** The claim's lines, in the order they were added; while it has any, its amount is their total. */
   lines: ClaimLine[];
+  /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
+  waived: boolean;
 }
 
 /** A line of a claim: its label, whole quantity and unit amount (two decimals). */
@@ -296,10 +298,10 @@ export interface Lateness {
 
 /** The late charge on the claim of `figureCents`, in cents: for every full 30 days the claim is overdue, the
  *  late percent in force on that boundary (its due-by plus its grace days plus 30, 60, 90 ... days) of the figure plus the
- *  charges of the boundaries before it (compounding), rounded like its due, added up; none unless it is overdue, and none on a correction. */
+ *  charges of the boundaries before it (compounding), rounded like its due, added up; none unless it is overdue, and none on a correction or a waived claim. */
 export function lateChargeCents(claim: ClaimView, figureCents: number, late: Lateness, halfUp = false): number {
   const grace = late.grace(claim);
-  if (late.today === undefined || isCorrection(claim) || !isOverdue(claim, late.today, grace)) return 0;
+  if (late.today === undefined || isCorrection(claim) || claim.waived || !isOverdue(claim, late.today, grace)) return 0;
   const dueBy = epochDay(claim.dueBy) + grace;
   const steps = Math.floor((epochDay(late.today) - dueBy) / DAYS_PER_CHARGE);
   let charge = 0;
@@ -419,6 +421,12 @@ export class ClaimsApi {
    *  reminded on the sheet's today. */
   remind(sheetId: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/remind`, {}));
+  }
+
+  /** Waive an open or pending claim's late charge: refused (403) to all but a steward, and refused for
+   *  a claim in any other status or one already waived. */
+  waive(sheetId: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/waive`, {}));
   }
 
   /** Move a draft, open or pending claim to another person, as their newest claim: refused (403) to

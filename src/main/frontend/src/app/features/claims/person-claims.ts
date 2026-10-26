@@ -102,6 +102,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLate(c) ? 'yes' : 'no' }}</span></span>
+          <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
@@ -176,6 +177,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"
             [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
+          <button type="button" data-testid="claim-waive" (click)="waive(c)"
+            [attr.aria-label]="'Waive late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input #splitAmount [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal" />
           <button type="button" data-testid="claim-split" (click)="splitClaim(c, splitAmount.value)"
@@ -269,11 +272,13 @@ export class PersonClaims {
     ref: this.ref, tags: this.tags });
 
   /** The claim the editor has open, or null when the form adds a claim; it stays open while the sheet
-   *  is re-loaded. An editor whose claim is no longer the person's (moved to another) is closed. */
+   *  is re-loaded. An editor whose claim is no longer the person's (moved to another), or is no longer a
+   *  draft (opened since) and not due inside a closed period, is closed. */
   protected readonly editingId = computed(() => {
     const sheet = this.session.sheet();
     const id = sheet ? this.editors.editing(sheet.id, this.personId()) : null;
-    return id !== null && this.claims().some((c) => c.id === id) ? id : null;
+    const claim = id === null ? undefined : this.claims().find((c) => c.id === id);
+    return claim && (claim.status === 'DRAFT' || this.inClosedPeriod(claim.dueBy)) ? claim.id : null;
   });
   /** The claim whose values the form was last filled with. */
   private filledFor: number | null = null;
@@ -701,6 +706,27 @@ export class PersonClaims {
         const message = !(claim.status === 'OPEN' || claim.status === 'PENDING')
           ? 'Only an OPEN or PENDING claim can be reminded.'
           : 'This claim cannot be reminded again today.';
+        this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Waive an OPEN or PENDING claim's late charge; the store refuses all but a steward, a claim in any
+   *  other status, and one already waived. */
+  protected async waive(claim: ClaimView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    try {
+      const waived = await this.api.waive(sheet.id, claim.id);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(waived);
+    } catch (e) {
+      if (this.session.sheet()?.id === sheet.id) {
+        const message = e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can waive a claim\'s late charge.'
+          : claim.waived
+            ? 'This claim\'s late charge is already waived.'
+            : 'Only an OPEN or PENDING claim can have its late charge waived.';
         this.claimError.set({ id: claim.id, message });
       }
     }

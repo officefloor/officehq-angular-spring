@@ -475,6 +475,32 @@ public class ClaimService {
         return saved;
     }
 
+    /** Waive an OPEN or PENDING claim's late charge, writing CLAIM_WAIVED: it bears no late charge from
+     *  then on, whatever its overdue state. Refused unless the user is a steward of the sheet, for a claim
+     *  in any other status, and for one already waived. */
+    @Transactional
+    public Claim waive(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward waives a claim's late charge.");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be waived; only an OPEN or PENDING one can.");
+        }
+        if (claim.isWaived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge is already waived.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        claim.waive();
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange("CLAIM_WAIVED", user, person, saved);
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim. No figure moves, so a
      *  claim dated inside a closed period may still have a proof added. */
     @Transactional

@@ -126,6 +126,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** The claim's external reference, unique on its sheet without regard to case; none when it has none. */
     @Column(name = "ref")
     private String ref;
@@ -245,6 +249,7 @@ public class Claim {
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
+        copy.waived = waived;
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.stated = stated;
@@ -520,6 +525,15 @@ public class Claim {
     /** Record the claim escalated. */
     public void escalate() {
         this.escalated = true;
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    /** Record the claim's late charge waived. */
+    public void waive() {
+        this.waived = true;
     }
 
     /** Whether the claim is locked by a user other than this one. */

@@ -11,7 +11,7 @@ import java.util.function.Function;
  * full 30 days it is overdue, the sheet's late percent in force on that boundary (the due-by plus 30, 60,
  * 90 ... days, counted from the due-by plus the grace days of its person's grade, if any) of its figure plus the
  * charges of the boundaries before it (compounding), each rounded as the claim's {@link Rounding} decides, like due, and added up;
- * a boundary whose percent is 0.00 adds nothing, and a correction gains none. The charge is worked out on the rate figure alone (or the
+ * a boundary whose percent is 0.00 adds nothing, and a correction or a waived claim gains none. The charge is worked out on the rate figure alone (or the
  * figure a statement bound), before the floor, which is applied last. A statement never binds the charge; it follows the sheet's today until the claim is settled.
  */
 public final class LateCharge {
@@ -34,7 +34,7 @@ public final class LateCharge {
     /** The late charge the claim of the figure would have on the sheet's today were it open. */
     private static BigDecimal asOpen(Claim claim, BigDecimal figure, LocalDate today,
             int grace, Function<LocalDate, BigDecimal> latePctOn, RoundingMode rounding) {
-        if (figure == null || today == null || claim.isCorrection()) return ZERO;
+        if (figure == null || today == null || claim.isCorrection() || claim.isWaived()) return ZERO;
         LocalDate lateFrom = lateFrom(claim, grace);
         long overdueDays = ChronoUnit.DAYS.between(lateFrom, today);
         long steps = overdueDays <= 0 ? 0 : overdueDays / DAYS_PER_CHARGE;
