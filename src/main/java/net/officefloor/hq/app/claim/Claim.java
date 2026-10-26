@@ -51,6 +51,14 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** Whether the claim is bound by its person's last statement. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The figure the claim is bound to by its person's last statement; null for n/a or when not stated. */
+    @Column(name = "stated_due", precision = 14, scale = 2)
+    private BigDecimal statedDue;
+
     protected Claim() {
     }
 
@@ -128,5 +136,25 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public boolean isStated() {
+        return stated;
+    }
+
+    public BigDecimal getStatedDue() {
+        return statedDue;
+    }
+
+    /** Binds the claim to the figure (null for n/a) until the next statement. */
+    public void bind(BigDecimal figure) {
+        this.stated = true;
+        this.statedDue = figure;
+    }
+
+    /** Frees the claim: its due is live again. */
+    public void unbind() {
+        this.stated = false;
+        this.statedDue = null;
     }
 }

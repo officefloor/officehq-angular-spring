@@ -10,6 +10,8 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
 
+    List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** The claim, locked until the transaction ends, so two status changes to it never interleave. */

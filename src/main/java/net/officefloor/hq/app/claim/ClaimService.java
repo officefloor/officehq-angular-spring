@@ -90,9 +90,10 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         String due = null;
         if (next == ClaimStatus.SETTLED) {
-            // the due is fixed at the rate the person's grade has in force on the claim's date; with none it stays live
-            BigDecimal fixed = rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
-                    .map(pct -> dueOn(claim.getAmount(), pct)).orElse(null);
+            // the due is fixed at the figure a statement bound it to, else at the rate the person's grade has in
+            // force on the claim's date; with none it stays live
+            BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
+                    : liveDue(sheetId, person, claim);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();
         }
@@ -105,6 +106,20 @@ public class ClaimService {
         };
         audit.recordOnCommit(record(event, by, person, saved, number) + (due != null ? " due=" + due : ""));
         return saved;
+    }
+
+    /** The claim's live due: at the rate its person's grade has in force on its date; null (n/a) with none. */
+    public BigDecimal liveDue(String sheetId, Person person, Claim claim) {
+        return rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
+                .map(pct -> dueOn(claim.getAmount(), pct)).orElse(null);
+    }
+
+    /** The figure the claim shows and totals: its settled due, else the one a statement bound it to, else live. */
+    public BigDecimal figure(String sheetId, Person person, Claim claim) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
+        return claim.isStated() ? claim.getStatedDue() : liveDue(sheetId, person, claim);
     }
 
     private Person person(String sheetId, Long personId) {

@@ -17,6 +17,9 @@ export interface Claim {
   settledDue: string | null;
   // The user who opened the claim; null for a claim never opened. That user cannot settle it.
   openedBy: string | null;
+  // Whether the person's last statement binds the claim, and the figure it binds it to (null for n/a).
+  stated: boolean;
+  statedDue: string | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -26,6 +29,20 @@ type ClaimAction = 'open' | 'settle' | 'void';
 /** Only open and settled claims count toward what is claimed and due. */
 export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
+}
+
+/**
+ * The figure a claim shows and totals: its settled due, else the one a statement bound it to, else its live due
+ * at the rate in force on its date; null (n/a) with none.
+ */
+export function figureOf(c: Claim, rates: readonly RateView[]): string | null {
+  if (c.settledDue !== null) return c.settledDue;
+  return c.stated ? c.statedDue : dueOn(c.amount, rateOn(rates, c.date));
+}
+
+/** Whether the claim keeps a figure whatever the rates: a settled or stated one with a figure. */
+export function keepsFigure(c: Claim): boolean {
+  return c.settledDue !== null || (c.stated && c.statedDue !== null);
 }
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
@@ -76,7 +93,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Opened by</th>
+          <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -87,9 +104,10 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-amount">{{ c.amount }}</td>
             <td data-testid="claim-date">{{ c.date }}</td>
             <td data-testid="claim-note">{{ c.note }}</td>
-            <td data-testid="claim-due">{{ c.settledDue ?? dueOn(c.amount, rateOn(rates(), c.date)) ?? 'n/a' }}</td>
+            <td data-testid="claim-due">{{ figureOf(c, rates()) ?? 'n/a' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+            <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
                 Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
@@ -137,8 +155,7 @@ export class Claims {
   // Each claim's refused status change, by claim id.
   protected readonly rowErrors = signal<Record<number, string>>({});
 
-  protected readonly dueOn = dueOn;
-  protected readonly rateOn = rateOn;
+  protected readonly figureOf = figureOf;
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
