@@ -116,6 +116,18 @@ public class ClaimController {
         return new BulkOpenView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
     }
 
+    /** The claims a bulk settle settled or made PENDING, in the order it took them, and how many it refused. */
+    public record BulkSettleView(List<ClaimView> settled, int refused) {
+    }
+
+    @PostMapping("/claims/bulk-settle")
+    public BulkSettleView bulkSettle(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody BulkForm form, @SessionAttribute(SessionController.USER) String user) {
+        ClaimBulkService.Result result = bulk.settle(user, sheetId, form.ids());
+        return new BulkSettleView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
+    }
+
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

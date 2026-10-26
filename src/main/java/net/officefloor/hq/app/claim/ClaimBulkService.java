@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,20 @@ public class ClaimBulkService {
      * not a claim of the sheet, is left as it is and counted as refused.
      */
     public Result open(String by, String sheetId, Set<Long> ids) {
+        return each(sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.OPEN));
+    }
+
+    /**
+     * Settles each of the claims that can be settled, in list order, by the rules of settling one claim: one the
+     * clerk limit makes PENDING counts as settled. Each is settled in its own transaction: one that is refused, or is
+     * not a claim of the sheet, is left as it is and counted as refused.
+     */
+    public Result settle(String by, String sheetId, Set<Long> ids) {
+        return each(sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.SETTLED));
+    }
+
+    /** Applies the change to each of the sheet's claims among the ids in list order, counting the refused ones. */
+    private Result each(String sheetId, Set<Long> ids, Function<Long, Claim> change) {
         Map<Long, Integer> personOrder = new HashMap<>();
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
             personOrder.put(p.getId(), personOrder.size());
@@ -45,15 +60,15 @@ public class ClaimBulkService {
                         .thenComparing(Claim::getListed, Comparator.reverseOrder())
                         .thenComparing(Claim::getId, Comparator.reverseOrder()))
                 .map(Claim::getId).toList();
-        List<Claim> opened = new ArrayList<>();
+        List<Claim> changed = new ArrayList<>();
         int refused = ids.size() - ordered.size();
         for (Long id : ordered) {
             try {
-                opened.add(claims.changeStatus(by, sheetId, id, ClaimStatus.OPEN));
+                changed.add(change.apply(id));
             } catch (ResponseStatusException e) {
                 refused++;
             }
         }
-        return new Result(opened, refused);
+        return new Result(changed, refused);
     }
 }
