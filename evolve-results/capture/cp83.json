@@ -1,0 +1,64 @@
+{
+  "checkpoint": 83,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp83_holidays",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a list of holidays (a date entry and an add button; HOLIDAY_ADDED date=<date>; a\ndate already on the list is refused with an error beside the entry). A claim's due-by, when it is\nfixed at creation, is moved past any holiday: when the date plus the terms falls on a holiday, the\ndue-by is the next day that is not a holiday. The holidays on the sheet when the claim is created\ndecide; a holiday added later leaves existing due-by dates as they are.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a list of holidays (a date entry and an add button; HOLIDAY_ADDED date=<date>; a\ndate already on the list is refused with an error beside the entry). A claim's due-by, when it is\nfixed at creation, is moved past any holiday: when the date plus the terms falls on a holiday, the\ndue-by is the next day that is not a holiday. The holidays on the sheet when the claim is created\ndecide; a holiday added later leaves existing due-by dates as they are.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "42ae9758ba986ea6c48e769395cbb7e2ea89156f",
+  "reset_sha": "",
+  "preagent_sha": "0b51583e806a9028f2acc8ae9d1b34e3b55b7e00",
+  "prev_sha": "0b51583e806a9028f2acc8ae9d1b34e3b55b7e00",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7360593999999999,
+    "input_tokens": 36,
+    "output_tokens": 9762,
+    "cache_read_tokens": 677417,
+    "cache_creation_tokens": 50649,
+    "num_turns": 19,
+    "duration_ms": 268889,
+    "duration_api_ms": 112693,
+    "model": "claude-opus-5-5",
+    "session_id": "039fdbf7-f862-4aa6-80b2-dcf668218f28",
+    "stop_reason": "success",
+    "result_text": "Holidays are in, and `bin/e2e` passes all 4 tests: the new holidays test and the three existing scenarios.\n\n**What it does**\n- **List:** the sheet now has a Holidays section with a date entry and an \"Add holiday\" button. Each holiday shows as its own row. A date already on the list is refused with an error beside the entry, and nothing is saved or written to the audit file. An accepted holiday writes `HOLIDAY_ADDED sheet=<id> by=<user> date=<date>`.\n- **Due-by:** when a claim is created, its due-by is still date plus terms. If that lands on a holiday, it moves to the next day that isn't one. Holidays added later don't change existing due-by dates.\n- This applies to every way a claim is created: the claim form, quick-add and paste.\n\n**Files**\n- **Stored data:** a new `holiday` table in `V52__holiday.sql`, which allows each date only once per sheet. The existing as-of snapshots pick up the new table automatically.\n- **Server:** a new `holiday` package with the entity, repository, service and controller. The add is checked under the sheet lock, so two users adding the same date at once can't both get it in. `ClaimService.add` now runs the due-by through the holiday check.\n- **Front end:** a new `features/holidays/holidays.ts` component, placed on the home screen after Delegations. Like the other sections, it re-reads the list each time the sheet is loaded.\n\n**One choice for you:** splitting a claim also creates a new claim, so I applied the holiday check to the split-off part's due-by as well. It uses the holidays on the sheet at the time of the split. The request doesn't say either way and no test covers it. If the part should instead keep exactly date plus terms, it's a one-line change back in `ClaimService`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7360593999999999,
+        "num_turns": 19,
+        "duration_ms": 268889,
+        "duration_api_ms": 112693,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp83.agent.jsonl",
+  "agent_diff_file": "cp83.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
