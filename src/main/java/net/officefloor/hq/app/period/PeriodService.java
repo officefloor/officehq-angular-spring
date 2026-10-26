@@ -271,7 +271,8 @@ public class PeriodService {
      *  {@link #generateFiscalYear} does, then add to each person's opening balance for the new year's first
      *  period their open figure at the end of the old year's last period: the due of their claims that
      *  count, belonging to a period of the old year, and OPEN or PENDING at that period's end; none when the
-     *  year has been rolled over already and that rollover is not undone. Refused unless
+     *  year has been rolled over already and that rollover is not undone. Then every period of the old year
+     *  still open is soft-closed, in start-date order, as a soft close would. Refused unless
      *  the user acts as a steward, and when the old year has no periods. The periods made, in date order. */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
@@ -326,6 +327,10 @@ public class PeriodService {
         }
         rollovers.saveAndFlush(rollover);
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
+        // Every period of the old year still open is soft-closed, in start-date order, as a soft close would.
+        for (Period period : oldYear) {
+            if (!period.isClosed() && !period.isSoftClosed()) closeNow(sheetId, user, period, false, true);
+        }
         return made;
     }
 
