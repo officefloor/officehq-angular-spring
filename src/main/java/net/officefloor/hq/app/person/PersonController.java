@@ -12,6 +12,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.session.SessionController;
+import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.settings.ViewerPasses;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -109,10 +111,12 @@ public class PersonController {
 
     private final PersonService service;
     private final WatchService watches;
+    private final SettingsService settings;
 
-    public PersonController(PersonService service, WatchService watches) {
+    public PersonController(PersonService service, WatchService watches, SettingsService settings) {
         this.service = service;
         this.watches = watches;
+        this.settings = settings;
     }
 
     /** All the people on the sheet, in the order they were added. */
@@ -158,12 +162,19 @@ public class PersonController {
         return view(sheetId, service.hold(user, sheetId, id, form.from(), form.to()));
     }
 
-    /** Gives the people the grade from the from-date together, in list order, as each one's edit would. */
+    /**
+     * Gives the people the grade from the from-date together, in list order, as each one's edit would. A viewer, or
+     * anyone on an archived sheet, goes through with none changed.
+     */
     @PostMapping("/bulk-grade")
+    @ViewerPasses
     public BulkGradeView bulkGrade(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody BulkGradeForm form,
             @SessionAttribute(SessionController.USER) String user) {
+        if (settings.isReadOnly(sheetId, user)) {
+            return new BulkGradeView(List.of());
+        }
         List<Person> graded = service.bulkGrade(user, sheetId, form.ids(), form.grade(), form.from());
         LocalDate today = service.today(sheetId);
         return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today)).toList());

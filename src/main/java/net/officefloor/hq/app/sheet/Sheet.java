@@ -81,6 +81,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The default date of a new claim in place of the sheet's today; null (blank) for off. */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /**
      * The days after its to-date an open period is left open: once its to-date plus these is before the sheet's
      * today, it is closed. Null (blank) for off.
@@ -142,6 +146,7 @@ public class Sheet {
         then.permissions.putAll(permissions);
         then.policyDate = policyDate;
         then.periodNumberingFrom = periodNumberingFrom;
+        then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.archived = archived;
         // a value recorded before changes were kept stands as it is
@@ -249,6 +254,14 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
     }
 
     public Integer getGraceDays() {

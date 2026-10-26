@@ -65,7 +65,7 @@ public class ClaimService {
     }
 
     /**
-     * Adds a claim for the person; a missing date takes the sheet's today; one dated in a soft-closed period is a late
+     * Adds a claim for the person; a missing date takes the sheet's entry date, or its today when that is blank; one dated in a soft-closed period is a late
      * entry. Refused when dated in a closed period or
      * after the person's retirement date, and a correction (a negative amount) unless it corrects a settled claim of
      * the person.
@@ -73,7 +73,7 @@ public class ClaimService {
     @Transactional
     public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
-        LocalDate on = dateOrToday(sheetId, date);
+        LocalDate on = dateOrEntryDate(sheetId, date);
         refuseInClosedPeriod(sheetId, on);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = person(sheetId, personId);
@@ -731,6 +731,15 @@ public class ClaimService {
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
         return date != null ? date : sheets.load(sheetId).getToday();
+    }
+
+    /** The date, or for none the sheet's entry date, or its today when that is blank. */
+    private LocalDate dateOrEntryDate(String sheetId, LocalDate date) {
+        if (date != null) {
+            return date;
+        }
+        Sheet sheet = sheets.load(sheetId);
+        return sheet.getEntryDate() != null ? sheet.getEntryDate() : sheet.getToday();
     }
 
     private static String text(BigDecimal value) {

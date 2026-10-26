@@ -267,6 +267,20 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Sets the sheet's entry date (null for blank: off): while it is set, a new claim with no date is dated on it
+     * rather than the sheet's today. Not dated.
+     */
+    @Transactional
+    public Sheet setEntryDate(String by, String sheetId, LocalDate entryDate) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setEntryDate(entryDate);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=entry-date value="
+                + (entryDate == null ? "" : entryDate.toString()));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's grace days (null for blank: off): once the sheet's today is changed, every open period whose
      * to-date plus them is before the new today is closed. Not dated.
      */
