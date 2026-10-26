@@ -1,0 +1,61 @@
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index d954a2ce..5e63fb33 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -27,7 +27,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
+  * SYNC) so a test reads the record immediately.
+  *
+  * A record of a change made by a user acting on behalf of another (see {@link OnBehalf}) ends with for=<that one>,
+- * unless it only reports figures (ROLLUP, TOTALS, ALERT).
++ * unless it only reports figures (ROLLUP, TOTALS, ALERT, SNAPSHOT).
+  */
+ @Service
+ public class Audit {
+@@ -38,7 +38,7 @@ public class Audit {
+     }
+ 
+     /** The records that only report figures, which never carry for=. */
+-    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT");
++    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
+ 
+     /** A record's event, sheet and user: its head. */
+     private static final Pattern HEAD = Pattern.compile("^(\\S+) sheet=(\\S+) by=(.+?)(?= [a-z][a-z-]*=|$)");
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 14507c15..38dca27b 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -134,6 +134,14 @@ public class RollupService {
+         return sum;
+     }
+ 
++    /** Records, once the change commits, a SNAPSHOT line per person with their due-total in the given snapshot. */
++    public void recordSnapshot(String by, String sheetId, Snapshot snapshot) {
++        for (Figures f : snapshot.people().values()) {
++            audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + by + " name=" + f.name() + " due-total="
++                    + text(f.dueTotal()));
++        }
++    }
++
+     /**
+      * Records, once the change commits, a ROLLUP line for each person whose figures differ from the snapshot taken
+      * before the change (a person new since then counts as changed), then a TOTALS line when the sheet's totals moved.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index c573a5d8..6bc815b1 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -27,12 +27,14 @@ public class SheetService {
+ 
+     /**
+      * Change the sheet's today; every date decision on the sheet follows it. It has no audit line of its own, only
+-     * the figures it moves. What follows a today change (the periods it closes) runs before those are rolled up.
++     * the figures it moves, after a SNAPSHOT line per person with their due-total on the day being left. What follows
++     * a today change (the periods it closes) runs before those are rolled up.
+      */
+     @Transactional
+     public Sheet setToday(String by, String id, LocalDate today) {
+         Sheet sheet = load(id);
+         RollupService.Snapshot before = rollup.snapshot(id);
++        rollup.recordSnapshot(by, id, before);
+         sheet.setToday(today);
+         Sheet saved = sheets.saveAndFlush(sheet);
+         events.publishEvent(new TodayChanged(by, saved));
