@@ -1,0 +1,64 @@
+{
+  "checkpoint": 75,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp75_bulk-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cb59f37f79196093641920f4469f4812aa060962",
+  "reset_sha": "",
+  "preagent_sha": "6d297c045ccc18dfed581e00a8c7a2bc6e396e3a",
+  "prev_sha": "6d297c045ccc18dfed581e00a8c7a2bc6e396e3a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8785755999999999,
+    "input_tokens": 34,
+    "output_tokens": 8425,
+    "cache_read_tokens": 817898,
+    "cache_creation_tokens": 68295,
+    "num_turns": 18,
+    "duration_ms": 242130,
+    "duration_api_ms": 84130,
+    "model": "claude-opus-5-5",
+    "session_id": "dafca045-f88e-4427-9505-1802f6e1e9e9",
+    "stop_reason": "success",
+    "result_text": "Bulk grading is in: you can tick several people and give them a grade together. `bin/e2e` passes all 4 acceptance tests, including the audit-file checks.\n\n**Server**\n- **`PersonService.bulkGrade`** takes the selected people in list order, whatever order they were ticked in. It saves each one through the existing `update` method with their own name, version and terms, plus the new grade and from-date. That means each person gets the same `PERSON_EDITED` and rollup audit lines as the person form writes.\n- **All or none:** the whole bulk grade runs in one transaction. If any selected id isn't a person on that sheet, it refuses with a 404 and nobody is changed. I chose this because the rules say a refused action writes nothing.\n- **Blank from-date:** this is passed on exactly as the person form passes it, so it means the sheet's today.\n- **New endpoint:** `POST /api/sheets/{sheetId}/people/bulk-grade`. The existing guards already refuse it for viewers, archived sheets and sheets being viewed as of a past date.\n\n**Front end** (`people.ts`)\n- **Checkbox:** each person row now starts with a `person-select` checkbox, in a new column.\n- **Grade controls:** a grade dropdown (`bulk-grade`), a from-date (`bulk-grade-from`) and a button (`bulk-grade-apply`).\n- **Count:** `bulk-graded` shows how many people were changed. It is cleared as soon as the button is pressed again.\n- **Errors:** a refusal shows under the `person-error` id, which the test helper looks for at page level. It is cleared when you change the selection, grade or date, or press the button again.\n- **After success:** the ticks and the from-date are cleared, so the next bulk grade starts fresh. Ticks are also cleared when the sheet is reloaded.\n\nOne thing to know: the bulk error reuses the `person-error` id that each row already uses for its own errors. If a row error and a bulk error ever show at once, the test helper can't tell which one it's looking at. No current test does this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8785755999999999,
+        "num_turns": 18,
+        "duration_ms": 242130,
+        "duration_api_ms": 84130,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp75.agent.jsonl",
+  "agent_diff_file": "cp75.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
