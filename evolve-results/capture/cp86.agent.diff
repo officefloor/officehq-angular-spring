@@ -1,0 +1,100 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 58bce492..b3e5722f 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -382,6 +382,17 @@ export function claimedTotal(claims: readonly Claim[]): string {
+               <button type="button" data-testid="claim-reassign" (click)="reassign(c)">
+                 Move<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
++              <label [for]="'claim-inline-amount-' + c.id">New amount</label>
++              <input
++                [id]="'claim-inline-amount-' + c.id"
++                inputmode="decimal"
++                data-testid="claim-inline-amount"
++                [value]="inlineAmounts()[c.id] ?? ''"
++                (input)="setInlineAmount(c.id, value($event))"
++              />
++              <button type="button" data-testid="claim-inline-save" (click)="saveInline(c)">
++                Save amount<span class="visually-hidden"> of claim of {{ c.amount }} on {{ c.date }}</span>
++              </button>
+               <button type="button" data-testid="claim-edit" (click)="edit(c)">
+                 Edit<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
+@@ -442,6 +453,8 @@ export class Claims {
+   protected readonly splitAmounts = signal<Record<number, string>>({});
+   // The person (by id) chosen to move each claim to, by claim id.
+   protected readonly reassignTo = signal<Record<number, string>>({});
++  // The amount typed in each draft's own row, by claim id.
++  protected readonly inlineAmounts = signal<Record<number, string>>({});
+ 
+   protected readonly dueOf = dueOf;
+ 
+@@ -537,6 +550,68 @@ export class Claims {
+     if (this.locking === locking) this.locking = null;
+   }
+ 
++  protected setInlineAmount(id: number, amount: string): void {
++    this.inlineAmounts.update((a) => ({ ...a, [id]: amount }));
++    this.clearRowError(id);
++  }
++
++  /** Saves the amount typed in the claim's row, keeping its other fields: the claim form's rules apply. */
++  protected async saveInline(c: Claim): Promise<void> {
++    this.clearRowError(c.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const user = this.session.user();
++    if (this.session.sheetArchived() || this.settings.roles().some((r) => r.user === user && r.role === 'viewer')) {
++      this.setRowError(c.id, 'Your role may not edit a claim on this sheet.');
++      return;
++    }
++    const amount = (this.inlineAmounts()[c.id] ?? '').trim();
++    if (!SIGNED_AMOUNT.test(amount)) {
++      this.setRowError(c.id, 'Enter an amount with up to two decimals.');
++      return;
++    }
++    const correction = amount.startsWith('-');
++    if (correction && !c.corrects) {
++      this.setRowError(c.id, 'A negative amount is a correction: enter the number of the settled claim it corrects.');
++      return;
++    }
++    if (c.status !== 'DRAFT') {
++      this.setRowError(c.id, `A ${c.status} claim cannot be edited; only a draft can. Void it and add a new one.`);
++      return;
++    }
++    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
++      this.setRowError(c.id, CLOSED);
++      return;
++    }
++    if (c.lockedBy !== null && c.lockedBy !== user) {
++      this.setRowError(c.id, LOCKED);
++      return;
++    }
++    const retiredFrom = this.retiredFrom();
++    if (retiredFrom !== null && c.date > retiredFrom) {
++      this.setRowError(c.id, `${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
++      return;
++    }
++    const form = { amount, date: c.date, note: c.note, corrects: correction ? c.corrects : null };
++    try {
++      const saved = await firstValueFrom(
++        this.http.put<Claim>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}`, form),
++      );
++      this.saved.emit(saved);
++      this.inlineAmounts.update(({ [c.id]: _, ...rest }) => rest);
++    } catch (e) {
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      this.setRowError(
++        c.id,
++        status === 403
++          ? 'Your role may not edit a claim on this sheet.'
++          : status === 423
++            ? LOCKED
++            : `This ${c.status} claim cannot be edited, or its period is closed.`,
++      );
++    }
++  }
++
+   private refuseEdit(c: Claim, e: unknown): void {
+     if (this.editingId() === c.id) this.reset();
+     const status = e instanceof HttpErrorResponse ? e.status : 0;

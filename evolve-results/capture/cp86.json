@@ -1,0 +1,64 @@
+{
+  "checkpoint": 86,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp86_inline-amount",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9805754b11e94c2aa8438b17b0b421e749b8db06",
+  "reset_sha": "",
+  "preagent_sha": "a8bc9b69a69e1c3101a07de02f547b0df996cf80",
+  "prev_sha": "a8bc9b69a69e1c3101a07de02f547b0df996cf80",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7608287999999999,
+    "input_tokens": 44,
+    "output_tokens": 7160,
+    "cache_read_tokens": 981984,
+    "cache_creation_tokens": 52632,
+    "num_turns": 22,
+    "duration_ms": 404635,
+    "duration_api_ms": 76619,
+    "model": "claude-opus-5-5",
+    "session_id": "f7abf221-70b0-4070-91fa-8a0341bdb668",
+    "stop_reason": "success",
+    "result_text": "I've added the in-row amount entry and save button to draft claims. All 4 tests in `bin/e2e` pass. I ran them on port 3417 because another project's app was already using port 3000.\n\n**How it works:** the new entry (`claim-inline-amount`) and save button (`claim-inline-save`) sit beside the edit button. Saving sends the new amount through the same server update the claim form uses, keeping the claim's date and note. So the server applies the same rules and writes the same `CLAIM_EDITED` audit line as the form. If the save is refused, the claim's error (`claim-error`) shows. Typing in the entry or pressing save again clears that error.\n\n**The rules:**\n- **Amount format:** up to two decimals, so `1.005` is refused.\n- **Negative amounts:** refused unless the claim already corrects a settled claim, as on the form.\n- **Not a draft:** a claim that isn't a draft is refused.\n- **Locked:** a claim another user has open in the editor is refused.\n- **Closed period:** a claim whose due-by date falls in a closed period is refused.\n- **Viewers:** refused, and so are users on an archived sheet.\n\nThe screen checks these before saving, and the server checks them again; it already blocked viewers and archived sheets from any change. There were no server or data changes; the whole change is in `src/main/frontend/src/app/features/claims/claims.ts`.\n\n**One choice to review:** if a save from the row is refused while the user has the full editor open on that claim, the editor stays open. A refused edit button closes it, so the two behave slightly differently.\n\n**Port 3000:** my first `bin/e2e` run used the default port 3000 and all 4 tests failed, apparently because of the app already running there from the `officehq-tanstack-officefloor` sandbox. When my run finished, `bin/stop` frees port 3000, so it may have killed that app; I didn't check. If that sandbox's tests fail around then, this is a likely cause. Since then I've left port 3000 alone.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7608287999999999,
+        "num_turns": 22,
+        "duration_ms": 404635,
+        "duration_api_ms": 76619,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp86.agent.jsonl",
+  "agent_diff_file": "cp86.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
