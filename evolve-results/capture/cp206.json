@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "63819ad08cf324f51b4f3d41bcee41278594a825",
+  "reset_sha": "",
+  "preagent_sha": "0d3c0260d12c15a1a36130e2871dae6266dda05d",
+  "prev_sha": "0d3c0260d12c15a1a36130e2871dae6266dda05d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8392988000000001,
+    "input_tokens": 42,
+    "output_tokens": 8764,
+    "cache_read_tokens": 938334,
+    "cache_creation_tokens": 59523,
+    "num_turns": 21,
+    "duration_ms": 289379,
+    "duration_api_ms": 115377,
+    "model": "claude-opus-5-5",
+    "session_id": "795d87ba-69f1-4cc8-84c5-8e15806e55ad",
+    "stop_reason": "success",
+    "result_text": "The new `restricted` role works, and all 4 tests in `bin/e2e` pass.\n\n**What a restricted user sees:** the people list shows only the person whose name or alias matches the user, plus everyone in the crews that person leads or belongs to. If no person on the sheet has the user's name, the list is empty. The totals row, header, summary, periods and pools still count everyone on the sheet. The filtering happens only on screen, since those figures are worked out in the browser from the whole sheet.\n\n**Changes:**\n- **Stored data:** `V94__role_restricted.sql` rebuilds the `sheet_role` table so its check accepts `restricted`. It's done the same way `V34` added viewer.\n- **Server:**\n  - `Role.RESTRICTED` is added.\n  - When a sheet is loaded, its answer now includes the role the signed-in user acts in (`SheetController`), so the screen knows who is restricted. A delegation of the steward role still counts as steward.\n- **Front end:**\n  - `SheetView` gets the new `role` field.\n  - The role form accepts `restricted`, and its label and error text mention it.\n  - `People.listedPeople` hides the people a restricted user may not see.\n\n**Decision for you:** I let a restricted user open, settle, void and close claims, the same default actions a clerk has. That seemed right for a clerk who just sees fewer rows. The change request didn't say, and the tests don't exercise it. If you'd rather restricted users not get these by default, remove `Role.RESTRICTED` from `STANDING_PERMISSIONS` in `SettingService`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8392988000000001,
+        "num_turns": 21,
+        "duration_ms": 289379,
+        "duration_api_ms": 115377,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
