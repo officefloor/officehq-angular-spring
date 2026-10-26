@@ -123,6 +123,24 @@ interface StatementView {
         }
       </form>
 
+      <form (submit)="paste($event)" aria-label="Paste claims">
+        <label for="paste-claims">Paste claims, one per line as name,amount,date,note</label>
+        <textarea
+          id="paste-claims"
+          data-testid="paste-claims"
+          rows="4"
+          [value]="pasteText()"
+          (input)="pasteText.set(value($event)); pasteError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        @if (pasteAdded() !== null) {
+          <p role="status">Added: <strong data-testid="paste-added">{{ pasteAdded() }}</strong></p>
+        }
+        @if (pasteError(); as err) {
+          <p role="alert" data-testid="paste-error">{{ err }}</p>
+        }
+      </form>
+
       <label>
         <input
           type="checkbox"
@@ -322,6 +340,11 @@ export class People {
   protected readonly quickAmount = signal('');
   protected readonly quickError = signal<string | null>(null);
   private quickAdding = false;
+  // The paste box: lines of name,amount,date,note make a draft claim each, all or none; and how many it added.
+  protected readonly pasteText = signal('');
+  protected readonly pasteAdded = signal<number | null>(null);
+  protected readonly pasteError = signal<string | null>(null);
+  private pasting = false;
   // Each person's refused row action, by person id.
   protected readonly rowErrors = signal<Record<number, string>>({});
   // Every patron named on the sheet, the patron chosen on each row (a person id, by person id) and each row's
@@ -501,6 +524,9 @@ export class People {
         this.quickName.set('');
         this.quickAmount.set('');
         this.quickError.set(null);
+        this.pasteText.set('');
+        this.pasteAdded.set(null);
+        this.pasteError.set(null);
         if (id) void this.fetch(id);
       });
     });
@@ -848,6 +874,39 @@ export class People {
       );
     } finally {
       this.quickAdding = false;
+    }
+  }
+
+  /**
+   * Adds a draft claim for each pasted line, in order; the store checks every line by the claim form's rules first
+   * and adds none when any is refused. Shows how many were added.
+   */
+  protected async paste(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.pasting) return;
+    this.pasteAdded.set(null);
+    this.pasteError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.pasteText();
+    if (!text.trim()) {
+      this.pasteError.set('Paste at least one line of name,amount,date,note.');
+      return;
+    }
+    this.pasting = true;
+    try {
+      const added = await firstValueFrom(
+        this.http.post<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims/paste`, { text }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of added) this.claimSaved(c);
+      this.pasteText.set('');
+      this.pasteAdded.set(added.length);
+    } catch (err) {
+      const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
+      this.pasteError.set(reason ? reason : 'Could not add the pasted claims; none were added.');
+    } finally {
+      this.pasting = false;
     }
   }
 
