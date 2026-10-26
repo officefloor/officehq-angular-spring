@@ -54,7 +54,7 @@ public class RateController {
 
     /** A rate's percent, from-date and to-date, as entered on the form; no from-date means from the
      *  beginning of time, no to-date until the grade's next rate. */
-    public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal pct,
+    public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal pct,
             LocalDate from, LocalDate to) {
     }
 
@@ -94,7 +94,7 @@ public class RateController {
      *  claims; nothing is saved and nothing is audited. */
     @GetMapping("/{grade}/preview")
     public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable Grade grade,
-            @RequestParam @NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal pct) {
+            @RequestParam @NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal pct) {
         ClaimService.RatePreview preview = claims.previewRate(sheetId.trim(), grade, pct);
         return new PreviewView(preview.count(), preview.diff().toPlainString());
     }

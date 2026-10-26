@@ -9,6 +9,8 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -27,16 +29,18 @@ public class PlanService {
     private final SheetRepository sheetRows;
     private final ClaimService claims;
     private final Audit audit;
+    private final SettingService settings;
     private final TransactionTemplate transaction;
 
     public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
-            ClaimService claims, Audit audit, PlatformTransactionManager transactions) {
+            ClaimService claims, Audit audit, SettingService settings, PlatformTransactionManager transactions) {
         this.plans = plans;
         this.people = people;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
         this.claims = claims;
         this.audit = audit;
+        this.settings = settings;
         this.transaction = new TransactionTemplate(transactions);
     }
 
@@ -78,9 +82,10 @@ public class PlanService {
     /** For every plan on the sheet, in the order they were added, make a DRAFT claim of its amount, dated
      *  the plan date with an empty note, for each plan date up to its end and the sheet's today that has
      *  none yet. Each claim is added by the claim form's rules, on its own: a date the form refuses is
-     *  skipped and tried again next time. The claims made, oldest first. */
+     *  skipped and tried again next time. The claims made, oldest first; a viewer makes none. */
     public List<Claim> generate(String sheetId, String user) {
         sheets.load(sheetId);
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) return List.of();
         LocalDate today = sheets.today(sheetId);
         List<Claim> made = new ArrayList<>();
         for (Plan plan : plans.findBySheetIdOrderByIdAsc(sheetId)) {

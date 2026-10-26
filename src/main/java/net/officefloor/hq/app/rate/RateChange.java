@@ -35,7 +35,7 @@ public class RateChange {
     @Column(name = "to_date")
     private LocalDate to;
 
-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+    @Column(name = "pct", nullable = false, precision = 9, scale = 2)
     private BigDecimal pct;
 
     /** The sheet's today when the rate was set; null when it was set before this was kept. */

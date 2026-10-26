@@ -37,7 +37,7 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate to;
 
-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+    @Column(name = "pct", nullable = false, precision = 9, scale = 2)
     private BigDecimal pct;
 
     /** How many versions the rate has had: 1 when first set, one more each time it is set again. */

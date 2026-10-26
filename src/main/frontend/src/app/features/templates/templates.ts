@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
@@ -8,7 +9,7 @@ import { Templates } from './templates-api';
 // The sheet's claim templates, with a form to save one. Saving a name again replaces its template.
 @Component({
   selector: 'app-templates',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="templates-heading">
       <h2 id="templates-heading">Claim templates</h2>
@@ -28,7 +29,7 @@ import { Templates } from './templates-api';
         @for (t of store.templates(); track t.id) {
           <li [attr.data-testid]="'template-row-' + t.name">
             <span data-testid="template-name">{{ t.name }}</span>
-            <span data-testid="template-amount">{{ t.amount }}</span>
+            <span data-testid="template-amount">{{ t.amount | figure }}</span>
             <span data-testid="template-note">{{ t.note }}</span>
           </li>
         }

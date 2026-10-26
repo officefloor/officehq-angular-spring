@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure.pipe';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Plans } from './plans-api';
@@ -11,12 +12,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // A person's plans, each with how many claims it has made so far and its next dates, and a form to add one.
 @Component({
   selector: 'app-person-plans',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <ul [attr.aria-label]="'Plans of ' + personName()">
       @for (pl of plans(); track pl.id) {
         <li [attr.data-testid]="'plan-row-' + pl.id">
-          <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
+          <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span>
           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
           from {{ pl.start }} to {{ pl.end }}; made <span data-testid="plan-generated">{{ pl.generated }}</span>;
           next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>

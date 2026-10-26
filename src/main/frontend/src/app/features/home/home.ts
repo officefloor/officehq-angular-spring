@@ -8,18 +8,20 @@ import { SheetAsOf } from '../session/sheet-as-of';
 import { SheetPicker } from '../session/sheet-picker';
 import { SheetToday } from '../session/sheet-today';
 import { SignIn } from '../session/sign-in';
+import { UserLocaleChoice } from '../session/user-locale';
 import { TemplatesList } from '../templates/templates';
 import { VoidReasonsList } from '../void-reasons/void-reasons';
 
 // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [AuditViewer, SignIn, SheetPicker, SheetToday, SheetAsOf, Settings, Holidays, VoidReasonsList, TemplatesList, People],
+  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, Settings, Holidays, VoidReasonsList, TemplatesList, People],
   template: `
     @if (session.user(); as user) {
       <header>
         Signed in as <strong data-testid="current-user">{{ user }}</strong>
       </header>
+      <app-user-locale />
       <app-sheet-picker />
       <app-sheet-today />
       <app-sheet-as-of />

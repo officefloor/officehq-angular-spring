@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { FigurePipe } from '../../core/figure.pipe';
 import { StatusSummary } from './summary';
 
 // The sheet's counters, shown at all times: everyone on it (retired people included), the claims in
@@ -6,6 +7,7 @@ import { StatusSummary } from './summary';
 // the signed-in user's own when a person on the sheet has their name or alias.
 @Component({
   selector: 'app-sheet-header',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Sheet counters" data-testid="sheet-header">
       <dl>
@@ -16,13 +18,13 @@ import { StatusSummary } from './summary';
           <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
         }
         <dt>Due</dt>
-        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
+        <dd data-testid="header-due-total">{{ dueTotal() | figure }}</dd>
         <dt>Overdue</dt>
-        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+        <dd data-testid="header-overdue-total">{{ overdueTotal() | figure }}</dd>
         <dt>My due</dt>
-        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
+        <dd data-testid="my-due-total">{{ myDueTotal() | figure }}</dd>
         <dt>My overdue</dt>
-        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+        <dd data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</dd>
       </dl>
     </section>
   `,

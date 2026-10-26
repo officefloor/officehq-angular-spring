@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure.pipe';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { GRADES, Grade } from '../people/people-api';
@@ -69,7 +70,7 @@ function settled(control: AbstractControl): void {
 // the last save, so a value typed again as it was is still stored.
 @Component({
   selector: 'app-settings',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
@@ -79,12 +80,12 @@ function settled(control: AbstractControl): void {
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" />
         <label for="setting-clerk-limit-from">Clerk limit from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" formControlName="clerkLimitFrom" />
-        <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+        <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</span></p>
         <label for="setting-floor">Floor (the least a claim's live due can be)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-floor-from">Floor from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-floor-from" data-testid="setting-floor-from" formControlName="floorFrom" />
-        <p>Floor now: <span data-testid="setting-floor-current">{{ floor() }}</span></p>
+        <p>Floor now: <span data-testid="setting-floor-current">{{ floor() | figure }}</span></p>
         <label for="setting-rounding">Rounding mode (half-up or half-even; blank: the policy date decides)</label>
         <input id="setting-rounding" data-testid="setting-rounding" formControlName="rounding" />
         <label for="setting-rounding-from">Rounding mode from (yyyy-mm-dd; blank: the sheet's today)</label>
@@ -106,7 +107,7 @@ function settled(control: AbstractControl): void {
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <label for="setting-late-pct-from">Late percent from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-late-pct-from" data-testid="setting-late-pct-from" formControlName="latePctFrom" />
-        <p>Late percent now: <span data-testid="setting-late-pct-current">{{ latePct() }}</span></p>
+        <p>Late percent now: <span data-testid="setting-late-pct-current">{{ latePct() | figure }}</span></p>
         @for (g of grades; track g) {
           <label [for]="'setting-grace-' + g">Grace of grade {{ g }} (days after a claim's due-by before it is overdue; blank: none)</label>
           <input [id]="'setting-grace-' + g" [attr.data-testid]="'setting-grace-' + g" [formControl]="gradeGraceForm.controls[g]" inputmode="numeric" />
@@ -124,29 +125,29 @@ function settled(control: AbstractControl): void {
         <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal" />
         <label for="setting-cap-from">Cap from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-cap-from" data-testid="setting-cap-from" formControlName="capFrom" />
-        <p>Cap now: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span></p>
+        <p>Cap now: <span data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</span></p>
         <label for="setting-proof-threshold">Proof threshold (a claim due above it needs a proof to be settled; blank: none)</label>
         <input id="setting-proof-threshold" data-testid="setting-proof-threshold" formControlName="proofThreshold" inputmode="decimal" />
         <label for="setting-proof-threshold-from">Proof threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" />
-        <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
+        <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ (proofThreshold() ?? '') | figure }}</span></p>
         @for (g of grades; track g) {
           <label [for]="'setting-proof-threshold-' + g">Proof threshold of grade {{ g }} (blank: the sheet's)</label>
           <input [id]="'setting-proof-threshold-' + g" [attr.data-testid]="'setting-proof-threshold-' + g" [formControl]="gradeProofThresholdForm.controls[g]" inputmode="decimal" />
           <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold of grade {{ g }} from (yyyy-mm-dd; blank: the sheet's today)</label>
           <input [id]="'setting-proof-threshold-' + g + '-from'" [attr.data-testid]="'setting-proof-threshold-' + g + '-from'" [formControl]="gradeProofThresholdFromForm.controls[g]" />
-          <p>Proof threshold of grade {{ g }} now: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ now('proof-threshold-' + g) ?? '' }}</span></p>
+          <p>Proof threshold of grade {{ g }} now: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (now('proof-threshold-' + g) ?? '') | figure }}</span></p>
         }
         <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to be opened; blank: none)</label>
         <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold" inputmode="decimal" />
         <label for="setting-note-threshold-from">Note threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-note-threshold-from" data-testid="setting-note-threshold-from" formControlName="noteThresholdFrom" />
-        <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
+        <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</span></p>
         <label for="setting-review-threshold">Review threshold (a claim due above it goes to review when opened; blank: none)</label>
         <input id="setting-review-threshold" data-testid="setting-review-threshold" formControlName="reviewThreshold" inputmode="decimal" />
         <label for="setting-review-threshold-from">Review threshold from (yyyy-mm-dd; blank: the sheet's today)</label>
         <input id="setting-review-threshold-from" data-testid="setting-review-threshold-from" formControlName="reviewThresholdFrom" />
-        <p>Review threshold now: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span></p>
+        <p>Review threshold now: <span data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</span></p>
         <label for="setting-grace-days">Grace days (days after an open period's to-date before a change of today closes it; blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" />
         <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
@@ -155,10 +156,10 @@ function settled(control: AbstractControl): void {
         <p>Entry date now: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
         <label for="setting-pot">Pot (shared out among a balanced pool's members by their shares; blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" />
-        <p>Pot now: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span></p>
+        <p>Pot now: <span data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</span></p>
         <label for="setting-alert-threshold">Alert threshold (a due-total going above it is alerted; blank: off)</label>
         <input id="setting-alert-threshold" data-testid="setting-alert-threshold" formControlName="alertThreshold" inputmode="decimal" />
-        <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</span></p>
+        <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</span></p>
         <label for="setting-parent">Parent sheet (its rates are used where this sheet has none; blank: none)</label>
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" />
         <p>Parent sheet now: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>

@@ -1,3 +1,4 @@
+import { FigurePipe } from '../../core/figure.pipe';
 import { Component, input } from '@angular/core';
 
 /** A grade's line of the summary: how many people are on it today, and their due-totals added up. */
@@ -34,6 +35,7 @@ export interface VoidReasonSummary {
 // per reason on the sheet's list of void reasons, how many VOID claims were voided with it. Each figure is the list's own.
 @Component({
   selector: 'app-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="summary-heading" data-testid="summary">
       <h2 id="summary-heading">Summary</h2>
@@ -46,7 +48,7 @@ export interface VoidReasonSummary {
             <tr>
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
@@ -60,8 +62,8 @@ export interface VoidReasonSummary {
           @for (p of periods(); track p.name) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change | figure }}</td>
             </tr>
           }
         </tbody>

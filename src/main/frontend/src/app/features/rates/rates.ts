@@ -1,18 +1,19 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { GRADES, Grade } from '../people/people-api';
 import { RatePreview, RateView, RatesApi, rateInForce } from './rates-api';
 
-const PCT = /^\d{1,3}(\.\d{1,2})?$/;
+const PCT = /^\d{1,7}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's rate in force today for each grade, and every rate with its from-date and to-date,
 // with one form to set a grade's rate from a from-date through a to-date.
 @Component({
   selector: 'app-rates',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
@@ -61,7 +62,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         @if (previewed(); as p) {
           <p aria-live="polite">
             Claims that would change: <span data-testid="rate-preview-count">{{ p.count }}</span>;
-            difference in due: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+            difference in due: <span data-testid="rate-preview-diff">{{ p.diff | figure }}</span>
           </p>
         }
       </form>
@@ -73,7 +74,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           @for (g of grades; track g) {
             <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) }}</td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) | figure }}</td>
             </tr>
           }
         </tbody>
@@ -88,7 +89,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
-              <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.version }}</td>
             </tr>
           }

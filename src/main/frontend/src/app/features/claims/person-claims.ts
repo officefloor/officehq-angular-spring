@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
@@ -34,7 +35,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
 // One person's claims, newest first, with one form to add a claim or edit one.
 @Component({
   selector: 'app-person-claims',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()"
       [attr.aria-label]="(editingId() === null ? 'Add a claim for ' : 'Edit a claim of ') + personName()">
@@ -75,13 +76,13 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             (change)="selectedChange.emit({ id: c.id, on: $any($event.target).checked })"
             [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
-          <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
-          <span>Due <span data-testid="claim-due">{{ due(c) }}</span></span>
+          <span>Due <span data-testid="claim-due">{{ due(c) | figure }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>

@@ -60,7 +60,7 @@ public class ImportRatesService {
         } catch (NumberFormatException e) {
             throw refused(number, "the rate is not a number");
         }
-        if (pct.signum() < 0 || pct.scale() > 2 || pct.precision() - pct.scale() > 3) {
+        if (pct.signum() < 0 || pct.scale() > 2 || pct.precision() - pct.scale() > 7) {
             throw refused(number, "the rate must be 0.00 or more, with up to three digits and two decimals");
         }
         LocalDate from = date(fields, 2, number, "from-date");

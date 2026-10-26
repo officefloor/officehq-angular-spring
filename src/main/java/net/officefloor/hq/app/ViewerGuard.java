@@ -18,7 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
  * (a GET, or loading the sheet) is refused before it reaches its controller, so it writes nothing.
  * The bulk changes are let through: a viewer's bulk change is answered with every selected claim
  * refused (see {@code BulkChangeService}), a viewer's bulk grade with no one changed (see
- * {@code BulkGradeService}), and a viewer's bulk retire with no one retired (see {@code BulkRetireService}).
+ * {@code BulkGradeService}), a viewer's bulk retire with no one retired (see {@code BulkRetireService}),
+ * and a viewer's generate of the plans' claims with none made (see {@code PlanService}).
  * A clone is let through too: it changes nothing on the sheet, and only a steward may make one (see
  * {@code CloneService}), so an archived sheet can still be cloned.
  */
@@ -29,7 +30,7 @@ public class ViewerGuard implements HandlerInterceptor {
     public static final String SHEETS = "/api/sheets/";
 
     static final Set<String> LET_THROUGH = Set.of("load", "claims/open", "claims/settle", "claims/reassign", "claims/redate", "people/grade", "clone",
-            "people/retire");
+            "people/retire", "plans/generate");
 
     private final SettingService settings;
 

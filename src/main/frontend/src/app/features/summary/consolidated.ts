@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { ConsolidatedApi, DescendantsView } from './consolidated-api';
@@ -11,15 +12,16 @@ import { ConsolidatedApi, DescendantsView } from './consolidated-api';
 // read live with its descendants'.
 @Component({
   selector: 'app-consolidated',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Consolidated figures" data-testid="consolidated">
       <dl>
         <dt>People (with descendants)</dt>
         <dd data-testid="consolidated-people-count">{{ peopleCount() }}</dd>
         <dt>Due (with descendants)</dt>
-        <dd data-testid="consolidated-due-total">{{ dueTotal() }}</dd>
+        <dd data-testid="consolidated-due-total">{{ dueTotal() | figure }}</dd>
         <dt>Overdue (with descendants)</dt>
-        <dd data-testid="consolidated-overdue-total">{{ overdueTotal() }}</dd>
+        <dd data-testid="consolidated-overdue-total">{{ overdueTotal() | figure }}</dd>
       </dl>
     </section>
   `,

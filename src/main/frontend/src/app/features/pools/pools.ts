@@ -1,4 +1,5 @@
 import { DOCUMENT } from '@angular/common';
+import { FigurePipe } from '../../core/figure.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -76,23 +77,23 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen 
 // there as its pot. An unbalanced pool, or no pot, shows no cut.
 @Component({
   selector: 'app-pool-row',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   host: { '[attr.data-testid]': "'pool-row-' + pool().name", role: 'listitem' },
   template: `
     <h3 data-testid="pool-name">{{ pool().name }}</h3>
     <p>
-      Total share <span data-testid="pool-total-share">{{ total() }}</span>,
+      Total share <span data-testid="pool-total-share">{{ total() | figure }}</span>,
       balanced <span data-testid="pool-balanced">{{ balanced() ? 'yes' : 'no' }}</span>
     </p>
     <ul [attr.aria-label]="'Members of ' + pool().name">
       @for (m of members(); track m.key) {
         <li [attr.data-testid]="'pool-member-' + pool().name + '-' + m.key">
           <span data-testid="pool-member-name">{{ m.name }}</span>
-          <span data-testid="pool-share">{{ m.share }}</span>
+          <span data-testid="pool-share">{{ m.share | figure }}</span>
           @if (m.from || m.to) {
             <span data-testid="pool-member-dates">{{ m.from ?? '' }}–{{ m.to ?? '' }}</span>
           }
-          <span data-testid="pool-cut" aria-label="Cut">{{ cuts()?.get(m.key) ?? '' }}</span>
+          <span data-testid="pool-cut" aria-label="Cut">{{ (cuts()?.get(m.key) ?? '') | figure }}</span>
           @if (m.retired) {
             <span data-testid="pool-member-retired">(retired)</span>
           }

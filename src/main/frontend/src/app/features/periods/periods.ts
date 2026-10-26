@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
@@ -14,7 +15,7 @@ const YEAR = /^\d{4}$/;
 // generate a fiscal year's twelve monthly periods.
 @Component({
   selector: 'app-periods',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -60,10 +61,10 @@ const YEAR = /^\d{4}$/;
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ (dueTotals().get(p.id) ?? '0.00') | figure }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+              <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [disabled]="closing() === p.id" [attr.aria-label]="'Close period ' + p.name">Close</button>
