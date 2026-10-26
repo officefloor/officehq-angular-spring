@@ -1,0 +1,64 @@
+{
+  "checkpoint": 195,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp195_statement-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4b0014e02dd4d3e40b0d769337b5dd5720a63982",
+  "reset_sha": "",
+  "preagent_sha": "b55967f5578055f5b5bb76fb652341fe671eb908",
+  "prev_sha": "b55967f5578055f5b5bb76fb652341fe671eb908",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.47726460000000004,
+    "input_tokens": 30,
+    "output_tokens": 3957,
+    "cache_read_tokens": 476263,
+    "cache_creation_tokens": 37844,
+    "num_turns": 15,
+    "duration_ms": 223188,
+    "duration_api_ms": 53148,
+    "model": "claude-opus-5-5",
+    "session_id": "85fde91e-3a07-4ad7-89e7-2ddf5974e04d",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has an **Export statement** button that downloads `statement.csv`, and all 4 tests in `bin/e2e` pass.\n\nThe file starts with the header `number,date,amount,figure,status`. After it comes one line for each of the person's claims that their last statement bound, oldest first. Each line gives the claim's number, date, amount, the figure the statement bound it to (`n/a` if that figure was n/a) and its current status. If the person has no statement yet, the file is just the header.\n\nThe only file changed is `src/main/frontend/src/app/features/people/people.ts`: I added the button (`data-testid=\"person-export-statement\"`) and an `exportStatement` method there. The CSV is built in the browser from the claims already loaded on the screen, the same way the existing claims export works, so the server and database are unchanged.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.47726460000000004,
+        "num_turns": 15,
+        "duration_ms": 223188,
+        "duration_api_ms": 53148,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp195.agent.jsonl",
+  "agent_diff_file": "cp195.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
