@@ -1,0 +1,64 @@
+{
+  "checkpoint": 155,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp155_review-state",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a review threshold (settings, dated like the floor; SETTING_CHANGED\nkey=review-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date goes to REVIEW when opened instead of OPEN (CLAIM_REVIEW naming the claim, no\nnumber yet), recording who opened it. A steward's review button on it makes it OPEN (CLAIM_REVIEWED\nthen CLAIM_OPENED, with its number then); anyone else is refused. A REVIEW claim counts in no total,\ncannot be edited, settled or split, and can be voided; it is counted in the header and summary\nstatus counts as REVIEW. The bulk open button counts a claim that went to REVIEW as opened.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a review threshold (settings, dated like the floor; SETTING_CHANGED\nkey=review-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date goes to REVIEW when opened instead of OPEN (CLAIM_REVIEW naming the claim, no\nnumber yet), recording who opened it. A steward's review button on it makes it OPEN (CLAIM_REVIEWED\nthen CLAIM_OPENED, with its number then); anyone else is refused. A REVIEW claim counts in no total,\ncannot be edited, settled or split, and can be voided; it is counted in the header and summary\nstatus counts as REVIEW. The bulk open button counts a claim that went to REVIEW as opened.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "02b6afe62be18bfb009c9364df9789d54defda9b",
+  "reset_sha": "",
+  "preagent_sha": "2c2480c36e2a5b50c9a9cd23d6643d9bc0f5aaa9",
+  "prev_sha": "2c2480c36e2a5b50c9a9cd23d6643d9bc0f5aaa9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.044138200000001,
+    "input_tokens": 78,
+    "output_tokens": 17013,
+    "cache_read_tokens": 3326751,
+    "cache_creation_tokens": 129777,
+    "num_turns": 40,
+    "duration_ms": 457351,
+    "duration_api_ms": 295375,
+    "model": "claude-opus-5-5",
+    "session_id": "14657570-2621-468a-aaf9-e92f5ab2e4dd",
+    "stop_reason": "success",
+    "result_text": "I've added the review threshold and the REVIEW status. `bin/e2e` passed all 4 acceptance tests on the first full run.\n\n**How it behaves**\n- **Setting:** the review threshold is dated like the floor: the value in force on a date is the one with the latest from-date on or before it, and blank means none. Saving it writes `SETTING_CHANGED key=review-threshold value=<amount>`, with `from=<date>` added when a from-date is given.\n- **Opening:** if a claim's due is above the threshold in force on its date, it goes to REVIEW instead of OPEN. It gets no number, records who opened it, and writes `CLAIM_REVIEW` without a number. This applies to every way of opening a claim (single open, paste and bulk open), and bulk open counts these claims as opened.\n- **Review button:** a new `claim-review` button opens the claim, but only for a steward. It becomes OPEN with the next number and keeps the original opener, writing `CLAIM_REVIEWED` then `CLAIM_OPENED` with the number. Anyone else is refused.\n- **While in REVIEW:** the claim counts in no total, and editing, settling and splitting are refused. It can be voided, and it is counted as REVIEW in the header and summary status counts.\n\n**What changed**\n- **Database:** a new migration, `V73__claim_review.sql`, allows REVIEW as a claim status.\n- **Server:**\n  - The new status and its allowed moves are in `ClaimStatus.java`.\n  - The threshold check and the `review` action are in `ClaimService.java`.\n  - The review endpoint `POST /claims/{id}/review` is in `ClaimController.java`.\n  - The setting and its endpoint `PUT /settings/review-threshold` are in `SettingService`, `DatedSettings` and `SettingController`.\n- **Front end:** a review-threshold field (value, from-date and the value in force today) on the settings screen, the review button and its refusal message on claim rows, and REVIEW added to the status counts.\n\nTwo choices go beyond what the request said:\n- **Moving to another person:** a REVIEW claim can't be reassigned, deferred, re-dated or reminded, because those actions only accept the statuses they already did.\n- **Period cap:** reviewing still checks the cap, so a steward's review is refused if the person already has as many open claims in that period as the cap allows.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.044138200000001,
+        "num_turns": 40,
+        "duration_ms": 457351,
+        "duration_api_ms": 295375,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp155.agent.jsonl",
+  "agent_diff_file": "cp155.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
