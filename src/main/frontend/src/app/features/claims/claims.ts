@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
 import { DatedGrade, RateStore, RateView, atLeast, dueOn, gradeOn, rateOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
+import { VoidReasonStore } from '../void-reasons/void-reasons';
 
 export interface Claim {
   id: number;
@@ -48,6 +49,8 @@ export interface Claim {
   lockedBy: string | null;
   // Whether the claim was added while its period was soft-closed.
   lateEntry: boolean;
+  // The reason the claim was voided with, chosen from the sheet's list; null for one voided without one, or not voided.
+  voidReason: string | null;
 }
 
 // A status the claim came to have: who made the change, the sheet's today then, and the claim's due then (null
@@ -384,6 +387,19 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-proof" (click)="addProof(c)">
                 Add proof<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              @if (voidReasons.list().length > 0) {
+                <label [for]="'claim-void-reason-' + c.id">Reason to void</label>
+                <select
+                  [id]="'claim-void-reason-' + c.id"
+                  data-testid="claim-void-reason"
+                  (change)="setVoidReason(c.id, value($event))"
+                >
+                  <option value="" [selected]="!voidReasonChoices()[c.id]">Choose a reason</option>
+                  @for (r of voidReasons.list(); track r.id) {
+                    <option [value]="r.reason" [selected]="voidReasonChoices()[c.id] === r.reason">{{ r.reason }}</option>
+                  }
+                </select>
+              }
               <button type="button" data-testid="claim-void" (click)="act(c, 'void')">
                 Void<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
@@ -435,6 +451,7 @@ export class Claims {
   protected readonly session = inject(Session);
   private readonly periods = inject(PeriodStore);
   protected readonly settings = inject(SettingsStore);
+  protected readonly voidReasons = inject(VoidReasonStore);
   private readonly rateStore = inject(RateStore);
 
   readonly personId = input.required<number>();
@@ -470,6 +487,8 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   // The reason typed to reject each pending claim, by claim id.
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  // The void reason chosen for each claim, by claim id.
+  protected readonly voidReasonChoices = signal<Record<number, string>>({});
   // The date typed to defer each claim until, by claim id.
   protected readonly deferDates = signal<Record<number, string>>({});
   // The new date typed for each claim, by claim id.
@@ -665,6 +684,11 @@ export class Claims {
     this.clearRowError(id);
   }
 
+  protected setVoidReason(id: number, reason: string): void {
+    this.voidReasonChoices.update((r) => ({ ...r, [id]: reason }));
+    this.clearRowError(id);
+  }
+
   protected async act(c: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(c.id);
     const sheet = this.session.sheetId();
@@ -679,16 +703,25 @@ export class Claims {
       this.setRowError(c.id, 'Enter a reason to reject this claim.');
       return;
     }
+    const voidReason = this.voidReasonChoices()[c.id] ?? '';
+    const listed = this.voidReasons.list();
+    if (action === 'void' && listed.length > 0 && !listed.some((r) => r.reason === voidReason)) {
+      this.setRowError(c.id, 'Choose a reason from the list to void this claim.');
+      return;
+    }
     try {
-      const body = action === 'reject' ? { reason } : null;
+      const body = action === 'reject' ? { reason } : action === 'void' ? { reason: voidReason || null } : null;
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, body)));
       if (action === 'reject') this.rejectReasons.update(({ [c.id]: _, ...rest }) => rest);
+      if (action === 'void') this.voidReasonChoices.update(({ [c.id]: _, ...rest }) => rest);
     } catch (e) {
       const opener = c.openedBy !== null && c.openedBy === this.session.user();
       const forbidden = e instanceof HttpErrorResponse && e.status === 403;
       const err =
         action === 'settle' && deferred(c, this.session.sheetToday())
           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
+          : action === 'void' && e instanceof HttpErrorResponse && e.status === 422
+          ? 'Choose a reason from the list to void this claim.'
           : action === 'void' && c.status === 'SETTLED'
           ? 'Only a steward can void a settled claim, and only within 7 days of its settlement.'
           : (action === 'open' || action === 'settle' || action === 'void') && forbidden

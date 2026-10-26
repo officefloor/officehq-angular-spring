@@ -49,6 +49,10 @@ public class Claim {
     @Column(name = "ref")
     private String ref;
 
+    /** The reason the claim was voided with; null for one not voided, or voided without one. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     /** The claim's tags, sorted and comma separated; null for a claim with none. */
     @Column(name = "tags")
     private String tags;
@@ -301,6 +305,14 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     public String getTags() {

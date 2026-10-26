@@ -22,6 +22,7 @@ import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.sheet.TodayChanged;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -48,11 +49,12 @@ public class ClaimService {
     private final SettingsService settings;
     private final WatchService watches;
     private final HolidayService holidays;
+    private final VoidReasonService voidReasons;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimTagRepository tags, PersonRepository people, RateRepository rates,
             PeriodRepository periods, SheetService sheets, RollupService rollup, SettingsService settings,
-            WatchService watches, HolidayService holidays, Audit audit) {
+            WatchService watches, HolidayService holidays, VoidReasonService voidReasons, Audit audit) {
         this.claims = claims;
         this.tags = tags;
         this.people = people;
@@ -63,6 +65,7 @@ public class ClaimService {
         this.settings = settings;
         this.watches = watches;
         this.holidays = holidays;
+        this.voidReasons = voidReasons;
         this.audit = audit;
     }
 
@@ -221,6 +224,19 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
+        return changeStatus(by, sheetId, id, next, null);
+    }
+
+    /**
+     * Voids the claim with a reason: while the sheet's list of void reasons is not empty, one chosen from it is
+     * needed, and the void record ends with it.
+     */
+    @Transactional
+    public Claim voidClaim(String by, String sheetId, Long id, String reason) {
+        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason);
+    }
+
+    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason) {
         Claim claim = lockedClaim(sheetId, id);
         switch (next) {
             case OPEN -> settings.refuseUnlessMay(sheetId, by, "open");
@@ -249,6 +265,13 @@ public class ClaimService {
             refuseVoidOfSettled(by, sheetId, claim);
             // the frozen figure leaves every total; the claim keeps its number and shows the figure it had
             tail = " reversed=" + text(claim.getSettledDue());
+        }
+        if (next == ClaimStatus.VOID) {
+            String voidReason = voidReasons.refuseUnlessListed(sheetId, reason);
+            claim.setVoidReason(voidReason);
+            if (voidReason != null) {
+                tail += " reason=" + voidReason;
+            }
         }
         if (next == ClaimStatus.OPEN) {
             refuseWithoutNote(sheetId, claim);

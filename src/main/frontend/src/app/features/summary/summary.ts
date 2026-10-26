@@ -1,6 +1,7 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { DatedFigure, PeriodStore, periodDueTotals } from '../periods/periods';
 import { GRADES, sumSkippingNa } from '../rates/rates';
+import { VoidReasonStore } from '../void-reasons/void-reasons';
 
 /**
  * A person as the summary counts them: their grade today, their due-total (null for n/a), whether retired and
@@ -66,17 +67,34 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
           }
         </tbody>
       </table>
+      <table>
+        <caption>By void reason</caption>
+        <thead>
+          <tr><th scope="col">Reason</th><th scope="col">Voided claims</th></tr>
+        </thead>
+        <tbody>
+          @for (r of byVoidReason(); track r.reason) {
+            <tr>
+              <th scope="row">{{ r.reason }}</th>
+              <td [attr.data-testid]="'summary-void-' + r.reason + '-count'">{{ r.count }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </section>
   `,
 })
 export class Summary {
   private readonly periods = inject(PeriodStore);
+  private readonly voidReasons = inject(VoidReasonStore);
 
   readonly people = input<readonly SummaryPerson[]>([]);
   // The counted claims of the sheet: each one's date and figure, as the periods total them.
   readonly figures = input<readonly DatedFigure[]>([]);
   // The status of every claim on the sheet.
   readonly statuses = input<readonly string[]>([]);
+  // The reason each VOID claim on the sheet was voided with (null for none).
+  readonly voidedWith = input<readonly (string | null)[]>([]);
 
   // Per grade: the people on it today, leaving out retired ones, their due-totals added up, skipping n/a, and how
   // many of them are active.
@@ -97,5 +115,12 @@ export class Summary {
   });
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),
+  );
+  // Per reason on the sheet's list: the VOID claims voided with it.
+  protected readonly byVoidReason = computed(() =>
+    this.voidReasons.list().map(({ reason }) => ({
+      reason,
+      count: this.voidedWith().filter((r) => r === reason).length,
+    })),
   );
 }

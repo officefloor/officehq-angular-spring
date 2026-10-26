@@ -60,7 +60,12 @@ interface StatementView {
       [overdueTotal]="overdueTotal()"
     />
     <app-periods [figures]="countedFigures()" />
-    <app-summary [people]="summaryPeople()" [figures]="countedFigures()" [statuses]="claimStatuses()" />
+    <app-summary
+      [people]="summaryPeople()"
+      [figures]="countedFigures()"
+      [statuses]="claimStatuses()"
+      [voidedWith]="voidedWith()"
+    />
 
     <section aria-label="People">
       <h2>People</h2>
@@ -638,6 +643,11 @@ export class People {
     }));
   });
   protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));
+  protected readonly voidedWith = computed(() =>
+    this.claims()
+      .filter((c) => c.status === 'VOID')
+      .map((c) => c.voidReason),
+  );
   // Each person's patrons' names, sorted and comma separated; a person with none is not in the map.
   protected readonly patronNamesBy = computed(() => {
     const names = new Map(this.people().map((p) => [p.id, p.name]));

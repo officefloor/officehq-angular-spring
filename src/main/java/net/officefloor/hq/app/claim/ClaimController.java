@@ -40,13 +40,13 @@ public class ClaimController {
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
-            String lockedBy, boolean lateEntry, List<String> tags) {
+            String lockedBy, boolean lateEntry, List<String> tags, String voidReason) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
                     c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
-                    c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()));
+                    c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason());
         }
     }
 
@@ -261,10 +261,15 @@ public class ClaimController {
         return ClaimView.of(service.addProof(user, sheetId, id));
     }
 
+    /** The reason chosen from the sheet's list to void a claim with; blank or missing for none. */
+    public record VoidForm(@Size(max = 140) String reason) {
+    }
+
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
-        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.VOID));
+            @PathVariable Long id, @Valid @RequestBody(required = false) VoidForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.voidClaim(user, sheetId, id, form == null ? null : form.reason()));
     }
 }
