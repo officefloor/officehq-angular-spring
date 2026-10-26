@@ -1,0 +1,156 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 31bc09b7..1f4ee61c 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -37,10 +37,13 @@ export function isBound(claim: ClaimView): boolean {
+   return claim.stated;
+ }
+ 
+-/** Whether the claim is deferred on the sheet's today: OPEN, with today before its deferred-until date.
+- *  A deferred claim counts in no total, is not overdue, cannot be settled and no statement binds it. */
++/** Whether the claim is deferred on the sheet's today: OPEN (or SETTLED, as a bound claim deferred can be
++ *  settled while bound) and bound by no statement, with today before its deferred-until date. A deferred
++ *  claim counts in no total, is not overdue, cannot be settled and no statement binds it; a bound claim's
++ *  deferral takes effect only once its binding ends. */
+ export function isDeferred(claim: ClaimView, today: string | undefined): boolean {
+-  return claim.deferredUntil !== null && claim.status === 'OPEN' && today !== undefined && today < claim.deferredUntil;
++  return claim.deferredUntil !== null && (claim.status === 'OPEN' || claim.status === 'SETTLED') && !isBound(claim) && today !== undefined
++    && today < claim.deferredUntil;
+ }
+ 
+ /** Only open (PENDING included) and settled claims count toward what is claimed and due. */
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 165eb1c8..84dc9edb 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -16,7 +16,7 @@ import { SheetRounding } from '../settings/sheet-rounding';
+ import { Templates, TemplatesApi } from '../templates/templates-api';
+ import { VoidReasons } from '../void-reasons/void-reasons-api';
+ import { ClaimEditors } from './claim-editors';
+-import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, PROOF_KINDS, ProofKind, SplitView, claimOwedCents, isDeferred, isOverdue, isPendingLate, isReviewLate, money } from './claims-api';
++import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, PROOF_KINDS, ProofKind, SplitView, claimOwedCents, isBound, isDeferred, isOverdue, isPendingLate, isReviewLate, money } from './claims-api';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ /** The claim form's fields, as typed. */
+@@ -398,10 +398,10 @@ export class PersonClaims {
+   }
+ 
+   /** Whether the row shows the claim as deferred: deferred until a date the sheet's today has not
+-   *  reached, whatever its status now. */
++   *  reached, whatever its status now, and bound by no statement. */
+   protected deferredShown(claim: ClaimView): boolean {
+     const today = this.session.figuresToday();
+-    return claim.deferredUntil !== null && today !== undefined && today < claim.deferredUntil;
++    return claim.deferredUntil !== null && !isBound(claim) && today !== undefined && today < claim.deferredUntil;
+   }
+ 
+   /** The name of the period whose dates contain the claim's due-by, or blank when none does. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7b56c545..bc2aeeb8 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -918,12 +918,16 @@ export class People {
+     }
+     return by;
+   });
+-  /** Each period's due-total, by period id: the sum of the people's figures for it. */
++  /** Each period's due-total, by period id: the sum of the people's figures for it; for a closed or
++   *  soft-closed period, the total fixed when it was closed (a person who has left since still in it). */
+   protected readonly periodDueTotals = computed(() => {
+     const totals = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
+     for (const of of this.personPeriodCents().values()) {
+       for (const [id, due] of of) totals.set(id, (totals.get(id) ?? 0) + due);
+     }
++    for (const period of this.periods()) {
++      if ((period.closed || period.softClosed) && period.closedTotal !== null) totals.set(period.id, cents(period.closedTotal));
++    }
+     return new Map([...totals].map(([id, total]) => [id, money(total)]));
+   });
+   /** The ids of the people who are active: those with an open (PENDING included) claim that counts,
+@@ -967,7 +971,8 @@ export class People {
+       if (due !== null) totals.set(period.id, totals.get(period.id)! + due);
+     }
+     for (const period of this.periods().filter((q) => q.closed || q.softClosed)) {
+-      totals.set(period.id, this.people().reduce((t, p) => t + cents(period.closedPersonTotals[p.id] ?? '0.00'), 0));
++      totals.set(period.id, period.closedTotal !== null ? cents(period.closedTotal)
++        : this.people().reduce((t, p) => t + cents(period.closedPersonTotals[p.id] ?? '0.00'), 0));
+     }
+     return this.periods().map((q) => ({ name: q.name, dueTotal: money(totals.get(q.id) ?? 0) }));
+   });
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 3ebe115a..2a1525d6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -98,8 +98,9 @@ public class Claim {
+     @Column(name = "listed", nullable = false)
+     private long listed;
+ 
+-    /** The date the claim is deferred until: while the sheet's today is before it an OPEN claim counts
+-     *  in no total, is not overdue, cannot be settled and no statement binds it; none when never deferred. */
++    /** The date the claim is deferred until: while the sheet's today is before it an OPEN claim no statement
++     *  binds counts in no total, is not overdue, cannot be settled and no statement binds it (a bound claim's
++     *  deferral takes effect once its binding ends); none when never deferred. */
+     @Column(name = "deferred_until")
+     private LocalDate deferredUntil;
+ 
+@@ -528,9 +529,13 @@ public class Claim {
+         this.deferredUntil = until;
+     }
+ 
+-    /** Whether the claim is deferred on the sheet's today: OPEN, with today before its deferred-until date. */
++    /** Whether the claim is deferred on the sheet's today: OPEN (or SETTLED, as a bound claim deferred can
++     *  be settled while bound), with today before its deferred-until date, and bound by no statement (a
++     *  deferral takes effect only once the claim's binding ends). */
+     public boolean isDeferredOn(LocalDate today) {
+-        return deferredUntil != null && status == ClaimStatus.OPEN && today != null && today.isBefore(deferredUntil);
++        return deferredUntil != null && (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !stated
++                && today != null
++                && today.isBefore(deferredUntil);
+     }
+ 
+     public int getProofs() {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 44781d0a..756c4856 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -338,9 +338,8 @@ public class Rollup {
+      *  the person's or the claim's, leaves them in); nor does a
+      *  claim deferred on the sheet's today. */
+     private static boolean counts(Person person, Claim claim, LocalDate today) {
+-        return claim.getStatus() == ClaimStatus.SETTLED
+-                || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
+-                        && (claim.isBound() || !person.isRetiredBy(today)));
++        return !claim.isDeferredOn(today) && (claim.getStatus() == ClaimStatus.SETTLED
++                || (claim.getStatus().isOpen() && (claim.isBound() || !person.isRetiredBy(today))));
+     }
+ 
+     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 28230663..578b2ab3 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -178,10 +178,10 @@ public class StatementService {
+         if (status == null) return null;
+         BigDecimal settled = status == ClaimStatus.SETTLED ? claim.settledDueAsOf(asOf) : null;
+         ClaimBinding binding = claim.bindingAsOf(asOf);
+-        boolean deferred = status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
++        boolean deferred = (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && binding == null && claim.getDeferredUntil() != null
+                 && asOf.isBefore(claim.getDeferredUntil());
+-        boolean counts = status == ClaimStatus.SETTLED || (status.isOpen() && !deferred
+-                && (binding != null || !person.isRetiredAsOf(asOf)));
++        boolean counts = !deferred && (status == ClaimStatus.SETTLED
++                || (status.isOpen() && (binding != null || !person.isRetiredAsOf(asOf))));
+         if (!counts) return null;
+         RoundingMode rounding = claimService.rounding(sheetId, claim, asOf, dated);
+         Grade grade = person.gradeOn(claim.getDate(), asOf);
+@@ -251,8 +251,7 @@ public class StatementService {
+      *  their retirement date is reached, do not, unless a statement binds them (a hold leaves them in), nor does a claim deferred on the
+      *  sheet's today, as on the screen. */
+     private static boolean counts(Person person, Claim claim, LocalDate today) {
+-        return claim.getStatus() == ClaimStatus.SETTLED
+-                || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
+-                        && (claim.isBound() || !person.isRetiredBy(today)));
++        return !claim.isDeferredOn(today) && (claim.getStatus() == ClaimStatus.SETTLED
++                || (claim.getStatus().isOpen() && (claim.isBound() || !person.isRetiredBy(today))));
+     }
+ }

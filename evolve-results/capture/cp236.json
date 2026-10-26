@@ -1,0 +1,74 @@
+{
+  "checkpoint": 236,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp236_deferred-bound-counts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    52,
+    54,
+    89,
+    160
+  ],
+  "replaced_tests": [
+    "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp54_viewer-role.spec.ts::viewer role scenario 2",
+    "cp89_claim-tags.spec.ts::claim tags scenario 3"
+  ],
+  "request": {
+    "spec": "A claim that a statement has bound and that is then deferred stays in the totals, counts and\ncan be settled while bound: the deferral takes effect only once the binding ends (the statement is\ncancelled, or the next statement leaves the claim unbound).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim that a statement has bound and that is then deferred stays in the totals, counts and\ncan be settled while bound: the deferral takes effect only once the binding ends (the statement is\ncancelled, or the next statement leaves the claim unbound).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "faca87ac7f9121b1615fb55aa5744302fe542ddb",
+  "reset_sha": "",
+  "preagent_sha": "deb876c5434be871c9a65a51d748ed53d2f7bf1f",
+  "prev_sha": "deb876c5434be871c9a65a51d748ed53d2f7bf1f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5103724,
+    "input_tokens": 80,
+    "output_tokens": 17885,
+    "cache_read_tokens": 2462002,
+    "cache_creation_tokens": 82494,
+    "num_turns": 42,
+    "duration_ms": 936829,
+    "duration_api_ms": 190696,
+    "model": "claude-opus-5-5",
+    "session_id": "9b7dd4e9-175f-4f46-95d8-cc4dbb5eaddd",
+    "stop_reason": "success",
+    "result_text": "All four acceptance tests pass now (`bin/e2e`: 4 passed).\n\n**The change: a bound claim's deferral waits until the binding ends**\n- **Server:** `Claim.isDeferredOn` now returns false while a statement binds the claim. A bound, deferred claim therefore still counts in the totals, can become overdue, can be settled and stays bound by the next statement. Rollup, statement, period-close, late-charge and settle checks all go through this one method, so they all follow the new rule.\n- **Settled claims:** if a deferred claim is settled while bound and its binding then ends before the deferral date, it drops out of every total, settled total included. The spec requires this. To do it, the deferral check now covers SETTLED claims as well as OPEN ones, and the count rules in `Rollup` and `StatementService` check deferral first.\n- **As-of statements:** `StatementService.stoodAsOf` ignores a deferral while the claim was bound on that date.\n- **Front end:** `isDeferred` in `claims-api.ts` and the `claim-deferred` display in `person-claims.ts` follow the same rule, so a bound claim shows \"no\" for deferred.\n- Deferring a bound claim writes no ROLLUP/TOTALS audit lines, because the totals don't change. The spec expects exactly that.\n\n**A second fix that scenario 3 needed, unrelated to deferral:** after a person was merged into another, a soft-closed period's total fell from 6.00 to 1.00. The screen rebuilt that total by adding up the current people's fixed figures, so the merged-away person's 5.00 disappeared. The period row and the classic summary now show the total the period fixed when it was closed. My first try moved the merged person's fixed figures onto the other person, but the spec expects that person's own figure to stay at 1.00, so I reverted it.\n\n**Not covered by the spec:** a PENDING claim that was deferred is still never treated as deferred, as before. Also, if the sheet's today is moved back, a settled claim whose deferral had already run out would be treated as deferred again.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5103724,
+        "num_turns": 42,
+        "duration_ms": 936829,
+        "duration_api_ms": 190696,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp236.agent.jsonl",
+  "agent_diff_file": "cp236.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
