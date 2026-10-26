@@ -311,7 +311,10 @@ public class PersonService {
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         boolean contactChanged = !Objects.equals(person.getContact(), contactKey);
         Integer termsBefore = person.termsOn(sheets.today(sheetId));
-        boolean termsChanged = termsFrom != null || !Objects.equals(person.getTerms(), terms);
+        // Terms entered other than those in force today are a change of terms, even when they leave the
+        // terms in force as they were (blank over terms recorded from a date).
+        boolean termsChanged = termsFrom != null || !Objects.equals(person.getTerms(), terms)
+                || !Objects.equals(termsBefore, terms);
         person.setName(name);
         // An edit that leaves the grade in force today as it is, with no from-date, records no grade, so it
         // does not hide a grade given later from an earlier date.
