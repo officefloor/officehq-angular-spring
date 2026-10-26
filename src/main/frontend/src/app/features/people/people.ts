@@ -14,6 +14,8 @@ interface Person {
   version: number;
   // The date the person is retired from; null while not retired. A person with one set is retired at once.
   retiredFrom: string | null;
+  // Whether the person is on hold: while held, their open claims count in no live total.
+  held: boolean;
 }
 
 // A person's statements: how many have been taken, and the last one's due-total (null for n/a) and date.
@@ -104,7 +106,7 @@ interface StatementView {
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -120,6 +122,7 @@ interface StatementView {
               <td data-testid="person-statement-date">{{ statementsBy().get(p.id)?.date ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retiredFrom !== null ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -137,6 +140,9 @@ interface StatementView {
                 />
                 <button type="button" data-testid="person-retire" (click)="retire(p)">
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)">
+                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
@@ -199,12 +205,22 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  protected readonly claimedBy = computed(() => {
-    const by = new Map<number, string>();
-    for (const [id, list] of this.claimsBy()) by.set(id, claimedTotal(list));
+  // The claims that count in the live totals: open and settled ones, leaving out a held person's open ones.
+  protected readonly liveClaims = computed(() => {
+    const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
+    return this.claims().filter((c) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId)));
+  });
+  protected readonly liveBy = computed(() => {
+    const by = new Map<number, Claim[]>();
+    for (const c of this.liveClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  protected readonly claimedTotal = computed(() => claimedTotal(this.claims()));
+  protected readonly claimedBy = computed(() => {
+    const by = new Map<number, string>();
+    for (const [id, list] of this.liveBy()) by.set(id, claimedTotal(list));
+    return by;
+  });
+  protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
   // it is null (n/a), unless a settled or stated claim keeps a figure.
@@ -213,7 +229,7 @@ export class People {
     const current = this.rates.current();
     const rates = this.rates.rates();
     for (const p of this.people()) {
-      const counted = (this.claimsBy().get(p.id) ?? []).filter(counts);
+      const counted = this.liveBy().get(p.id) ?? [];
       if (!current.has(p.grade) && !counted.some(keepsFigure)) {
         by.set(p.id, null);
         continue;
@@ -223,12 +239,11 @@ export class People {
     }
     return by;
   });
-  // Every counted claim's date and the figure it totals, for the periods' due-totals.
+  // Every claim counted live: its date and the figure it totals, for the periods' due-totals.
   protected readonly countedFigures = computed<DatedFigure[]>(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const rates = this.rates.rates();
-    return this.claims()
-      .filter(counts)
+    return this.liveClaims()
       .map((c) => ({ date: c.date, figure: figureOf(c, rates.get(grades.get(c.personId) ?? '') ?? []) }));
   });
   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
@@ -285,6 +300,22 @@ export class People {
       if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
     } catch {
       this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not retire this person.' }));
+    }
+  }
+
+  /** Puts the person on hold, or releases them when held. */
+  protected async toggleHold(p: Person): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/hold`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, null));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
+    } catch {
+      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not change the hold on this person.' }));
     }
   }
 

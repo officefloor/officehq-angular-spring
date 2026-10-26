@@ -23,9 +23,11 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom) {
+    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom,
+            boolean held) {
         public static PersonView of(Person p) {
-            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), p.getRetiredFrom());
+            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), p.getRetiredFrom(),
+                    p.isHeld());
         }
     }
 
@@ -78,5 +80,13 @@ public class PersonController {
             @PathVariable Long id, @RequestBody RetireForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return PersonView.of(service.retire(user, sheetId, id, form.from()));
+    }
+
+    /** Puts the person on hold, or takes them off hold when they are held. */
+    @PostMapping("/{id}/hold")
+    public PersonView hold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return PersonView.of(service.toggleHold(user, sheetId, id));
     }
 }

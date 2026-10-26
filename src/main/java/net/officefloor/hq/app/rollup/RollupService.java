@@ -73,7 +73,9 @@ public class RollupService {
         BigDecimal dueTotal = ZERO;
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Rate> list = byGrade.getOrDefault(p.getGrade(), List.of());
-            List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of());
+            // while the person is held, their open claims count in no live total
+            List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
+                    .filter(c -> p.countsLive(c.getStatus())).toList();
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             boolean kept = false;

@@ -83,6 +83,20 @@ public class PersonService {
         return saved;
     }
 
+    /** Puts the person on hold, or releases them when held. While held, their open claims count in no live total. */
+    @Transactional
+    public Person toggleHold(String by, String sheetId, Long id) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = people.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        person.setHeld(!person.isHeld());
+        Person saved = save(person);
+        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + by
+                + " name=" + saved.getName());
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
     /** Saves the person; the store's unique index refuses a name another request took meanwhile. */
     private Person save(Person person) {
         try {
