@@ -21,6 +21,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -133,6 +134,17 @@ public class SettingsController {
     }
 
     public record RoleForm(@NotNull String role) {
+    }
+
+    /** A delegation of the steward role: to the user, by the steward, from the from-date to the to-date, inclusive. */
+    public record DelegationView(Long id, String user, String by, LocalDate from, LocalDate to) {
+        static DelegationView of(Delegation d) {
+            return new DelegationView(d.getId(), d.getUser(), d.getDelegatedBy(), d.getFrom(), d.getTo());
+        }
+    }
+
+    /** A delegation as the form submits it: the user, and the from and to dates, each null for the sheet's today. */
+    public record DelegationForm(@NotBlank @Size(max = 100) String user, LocalDate from, LocalDate to) {
     }
 
     private static final List<String> GRADES = List.of("A", "B", "C");
@@ -255,5 +267,19 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) String name,
             @Valid @RequestBody RoleForm form, @SessionAttribute(SessionController.USER) String user) {
         return RoleView.of(service.setRole(user, sheetId, name, form.role()));
+    }
+
+    /** The delegations of the steward role made on the sheet, in the order they were made. */
+    @GetMapping("/delegations")
+    public List<DelegationView> delegations(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.delegations(sheetId).stream().map(DelegationView::of).toList();
+    }
+
+    @PostMapping("/delegations")
+    public DelegationView delegate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody DelegationForm form, @SessionAttribute(SessionController.USER) String user) {
+        return DelegationView.of(service.delegate(user, sheetId, form.user().trim(), form.from(), form.to()));
     }
 }
