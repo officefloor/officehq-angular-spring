@@ -260,6 +260,14 @@ public class Claim {
         this.number = number;
     }
 
+    public String getNumberSequence() {
+        return numberSequence;
+    }
+
+    public Long getNumberInSequence() {
+        return numberInSequence;
+    }
+
     /** Numbers the claim in the sequence (a period's name, or X) at the place: the number shown is sequence-place. */
     public void numberIn(String sequence, long place) {
         this.number = sequence + "-" + place;

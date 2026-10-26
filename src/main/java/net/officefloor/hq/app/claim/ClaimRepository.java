@@ -28,9 +28,21 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findBySheetIdAndNumber(String sheetId, String number);
 
-    /** The last place given in the sheet's number sequence; null when none has been. */
-    @Query("SELECT MAX(c.numberInSequence) FROM Claim c WHERE c.sheetId = :sheetId AND c.numberSequence = :sequence")
+    /**
+     * The last place given in the sheet's number sequence, by a claim holding it or one that gave it up when
+     * re-dated; null when none has been.
+     */
+    @Query(value = "SELECT MAX(n) FROM (SELECT number_in_sequence AS n FROM claim WHERE sheet_id = :sheetId"
+            + " AND number_sequence = :sequence UNION ALL SELECT number_in_sequence FROM claim_number_retired"
+            + " WHERE sheet_id = :sheetId AND number_sequence = :sequence) AS given", nativeQuery = true)
     Long lastInSequence(@Param("sheetId") String sheetId, @Param("sequence") String sequence);
+
+    /** Records a period number a claim gave up, so it is never given again. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "INSERT INTO claim_number_retired (sheet_id, number_sequence, number_in_sequence)"
+            + " VALUES (:sheetId, :sequence, :place)", nativeQuery = true)
+    void retireNumber(@Param("sheetId") String sheetId, @Param("sequence") String sequence,
+            @Param("place") Long place);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 

@@ -349,6 +349,44 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement bound it
+     * to stays bound; its period (and rounding, unless a correction) follows the new date. While the sheet numbers by
+     * period and the new date is in another period's sequence, the claim takes that sequence's next number, and its
+     * old number is never given again. Refused unless the user is a steward, for a claim that is not OPEN or PENDING,
+     * for a claim or a new date in a closed period, and for a new date after the person's retirement.
+     */
+    @Transactional
+    public Claim redate(String by, String sheetId, Long id, LocalDate date) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-date a claim.");
+        }
+        Claim claim = lockedClaim(sheetId, id);
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot be re-dated.");
+        }
+        refuseInClosedPeriod(sheetId, date);
+        Person person = person(sheetId, claim.getPersonId());
+        refuseAfterRetirement(person, date);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDate();
+        String oldSequence = sequenceOn(sheetId, old);
+        claim.setDate(date);
+        if (!claim.isCorrection()) {
+            claim.setRoundsOn(date);
+        }
+        if (numbersByPeriod(sheetId) && !sequenceOn(sheetId, date).equals(oldSequence)) {
+            if (claim.getNumberSequence() != null) {
+                claims.retireNumber(sheetId, claim.getNumberSequence(), claim.getNumberInSequence());
+            }
+            number(sheetId, claim);
+        }
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_REDATED", by, person, saved) + " old=" + old + " new=" + date);
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
     /** An OPEN claim after a split, and the new OPEN claim split off it. */
     public record Split(Claim original, Claim split) {
     }
@@ -445,16 +483,26 @@ public class ClaimService {
      * The sheet is locked, so two claims opened at once never get the same one.
      */
     private void number(String sheetId, Claim claim) {
-        Sheet sheet = sheets.load(sheetId);
-        LocalDate from = sheet.getPeriodNumberingFrom();
-        if (from == null || sheet.getToday().isBefore(from)) {
+        if (!numbersByPeriod(sheetId)) {
             claim.setNumber(String.valueOf(sheets.nextClaimNumber(sheetId)));
             return;
         }
-        String sequence = periods.findFirstBySheetIdAndFromLessThanEqualAndToGreaterThanEqual(sheetId,
-                claim.getDate(), claim.getDate()).map(Period::getName).orElse(NO_PERIOD);
+        String sequence = sequenceOn(sheetId, claim.getDate());
         Long last = claims.lastInSequence(sheetId, sequence);
         claim.numberIn(sequence, last == null ? 1 : last + 1);
+    }
+
+    /** Whether the sheet numbers claims by period: its period numbering from is set and its today on or after it. */
+    private boolean numbersByPeriod(String sheetId) {
+        Sheet sheet = sheets.load(sheetId);
+        LocalDate from = sheet.getPeriodNumberingFrom();
+        return from != null && !sheet.getToday().isBefore(from);
+    }
+
+    /** The number sequence of a claim dated on the date: the name of the period it is in, or X for none. */
+    private String sequenceOn(String sheetId, LocalDate date) {
+        return periods.findFirstBySheetIdAndFromLessThanEqualAndToGreaterThanEqual(sheetId, date, date)
+                .map(Period::getName).orElse(NO_PERIOD);
     }
 
     /**

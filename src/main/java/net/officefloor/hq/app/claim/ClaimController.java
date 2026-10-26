@@ -189,6 +189,18 @@ public class ClaimController {
         return ClaimView.of(service.defer(user, sheetId, id, form.until()));
     }
 
+    /** The new date of an open or pending claim. */
+    public record RedateForm(@NotNull LocalDate date) {
+    }
+
+    @PostMapping("/claims/{id}/redate")
+    public ClaimView redate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody RedateForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.redate(user, sheetId, id, form.date()));
+    }
+
     /** The amount to split off an open claim. */
     public record SplitForm(@NotNull @Digits(integer = 12, fraction = 2) BigDecimal amount) {
     }

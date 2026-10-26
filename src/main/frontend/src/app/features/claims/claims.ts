@@ -305,6 +305,17 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-defer" (click)="defer(c)">
                 Defer<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <label [for]="'claim-date-new-' + c.id">New date</label>
+              <input
+                [id]="'claim-date-new-' + c.id"
+                type="date"
+                data-testid="claim-date-new"
+                [value]="redates()[c.id] ?? ''"
+                (input)="setRedate(c.id, value($event))"
+              />
+              <button type="button" data-testid="claim-redate" (click)="redate(c)">
+                Re-date<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <label [for]="'claim-split-amount-' + c.id">Amount to split off</label>
               <input
                 [id]="'claim-split-amount-' + c.id"
@@ -389,6 +400,8 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   // The date typed to defer each claim until, by claim id.
   protected readonly deferDates = signal<Record<number, string>>({});
+  // The new date typed for each claim, by claim id.
+  protected readonly redates = signal<Record<number, string>>({});
   // The amount typed to split off each claim, by claim id.
   protected readonly splitAmounts = signal<Record<number, string>>({});
   // The person (by id) chosen to move each claim to, by claim id.
@@ -532,6 +545,42 @@ export class Claims {
       this.saved.emit(saved);
     } catch {
       this.setRowError(c.id, `This ${c.status} claim cannot be deferred until ${until}.`);
+    }
+  }
+
+  protected setRedate(id: number, date: string): void {
+    this.redates.update((d) => ({ ...d, [id]: date }));
+    this.clearRowError(id);
+  }
+
+  /**
+   * A steward re-dates an OPEN or PENDING claim to the typed date: refused for a claim or a new date in a closed
+   * period and for a date after the person's retirement.
+   */
+  protected async redate(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const date = (this.redates()[c.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.setRowError(c.id, 'Enter the new date of this claim.');
+      return;
+    }
+    if (c.status !== 'OPEN' && c.status !== 'PENDING') {
+      this.setRowError(c.id, `A ${c.status} claim cannot be re-dated; only an OPEN or PENDING one can.`);
+      return;
+    }
+    if (inClosedPeriod(this.periods.list(), c.date) || inClosedPeriod(this.periods.list(), date)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/redate`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { date }));
+      this.redates.update(({ [c.id]: _, ...rest }) => rest);
+      this.saved.emit(saved);
+    } catch {
+      this.setRowError(c.id, `This ${c.status} claim cannot be re-dated to ${date}.`);
     }
   }
 
