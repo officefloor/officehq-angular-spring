@@ -24,6 +24,11 @@ export function gradeOn(grades: readonly GradeView[], date: string): Grade | nul
   return inForce?.grade ?? null;
 }
 
+/** The person's name as the screen shows it: `<name> (<grade in force on the date>)`. */
+export function nameWithGrade(person: Pick<PersonView, 'name' | 'grade' | 'grades'>, date: string | undefined): string {
+  return `${person.name} (${(date === undefined ? null : gradeOn(person.grades, date)) ?? person.grade})`;
+}
+
 /** A hold put on a person, both days included. */
 export interface HoldView {
   /** The date the hold starts (yyyy-mm-dd), or null when it holds from the beginning of time. */

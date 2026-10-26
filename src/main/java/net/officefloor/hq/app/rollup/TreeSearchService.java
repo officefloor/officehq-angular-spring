@@ -2,6 +2,7 @@ package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -14,29 +15,34 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.setting.SheetParentLink;
 import net.officefloor.hq.app.setting.SheetParentRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The people of a sheet's tree (its top sheet, found up its parents, and all the top sheet's
  * descendants) whose name or an alias contains a text, case ignored: the sheet's own people first in
- * list order, then the other sheets' by sheet id, each with their due-total as their sheet shows it.
+ * list order, then the other sheets' by sheet id, each shown as {@code <name> (<grade>)} with the grade
+ * in force on their sheet's today, and with their due-total as their sheet shows it.
  */
 @Service
 public class TreeSearchService {
 
-    /** A person found: their sheet, name, and due-total with two decimals, or "n/a". */
+    /** A person found: their sheet, name with their grade in force on that sheet's today, and due-total with two decimals, or "n/a". */
     public record Found(String sheetId, String name, String dueTotal) {
     }
 
     private final SheetParentRepository parents;
     private final PersonRepository people;
     private final Rollup rollup;
+    private final SheetService sheets;
 
-    public TreeSearchService(SheetParentRepository parents, PersonRepository people, Rollup rollup) {
+    public TreeSearchService(SheetParentRepository parents, PersonRepository people, Rollup rollup,
+            SheetService sheets) {
         this.parents = parents;
         this.people = people;
         this.rollup = rollup;
+        this.sheets = sheets;
     }
 
     @Transactional(readOnly = true)
@@ -52,11 +58,13 @@ public class TreeSearchService {
     private List<Found> searchSheet(String sheetId, String needle) {
         Rollup.Snapshot figures = rollup.snapshot(sheetId);
         List<Found> found = new ArrayList<>();
+        LocalDate today = null;
         for (Person person : people.findInListOrder(sheetId)) {
             if (!matches(person, needle)) continue;
             Rollup.Figures theirs = figures.people().get(person.getId());
             BigDecimal due = theirs == null ? null : theirs.dueTotal();
-            found.add(new Found(sheetId, person.getName(),
+            if (today == null) today = sheets.today(sheetId);
+            found.add(new Found(sheetId, person.getName() + " (" + person.gradeOn(today) + ")",
                     due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_EVEN).toPlainString()));
         }
         return found;

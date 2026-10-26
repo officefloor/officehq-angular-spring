@@ -28,7 +28,7 @@ import { SheetHeader } from '../summary/sheet-header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
-import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn } from './people-api';
+import { GRADES, Grade, PeopleApi, PersonView, QuickAddView, gradeOn, heldOn, nameWithGrade } from './people-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The statuses the summary counts claims of; no claim is ever pending, so its count stays 0. */
@@ -289,7 +289,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                     (change)="selectPerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
                 </td>
                 <td>
-                  <span data-testid="person-name">{{ p.name }}</span>
+                  <span data-testid="person-name">{{ shownName(p) }}</span>
                   <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
                     [disabled]="moving() === p.id" [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
                   <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
@@ -1289,10 +1289,16 @@ export class People {
 
   /** The person's patrons, each as <name> <share>, sorted by name, comma and space separated. */
   protected patronNames(person: PersonView): string {
-    const nameOf = new Map(this.people().map((p) => [p.id, p.name]));
-    return sharesOf(person.patronIds).map(([id, share]) => [nameOf.get(id) ?? '', share] as const)
-      .filter(([n]) => n !== '').sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([n, share]) => `${n} ${money(Number(share))}`).join(', ');
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    return sharesOf(person.patronIds).map(([id, share]) => [byId.get(id), share] as const)
+      .filter((e): e is readonly [PersonView, bigint] => e[0] !== undefined)
+      .sort(([a], [b]) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .map(([p, share]) => `${this.shownName(p)} ${money(Number(share))}`).join(', ');
+  }
+
+  /** The person's name as the screen shows it, with their grade in force on the sheet's today. */
+  protected shownName(person: PersonView): string {
+    return nameWithGrade(person, this.session.sheet()?.today);
   }
 
   /** The person's backing: over their patrons, the patron's settled figure (their SETTLED claims dated

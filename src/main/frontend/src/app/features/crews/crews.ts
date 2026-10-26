@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { PersonView } from '../people/people-api';
+import { PersonView, nameWithGrade } from '../people/people-api';
 import { Pools } from '../pools/pools-api';
 import { CrewView, Crews, crewIds } from './crews-api';
 
@@ -17,7 +17,7 @@ import { CrewView, Crews, crewIds } from './crews-api';
   template: `
     <h3 data-testid="crew-name">{{ crew().name }}</h3>
     <p>
-      Lead <span data-testid="crew-lead">{{ nameOf(crew().leadId) }}</span>,
+      Lead <span data-testid="crew-lead">{{ leadName() }}</span>,
       due-total <span data-testid="crew-due-total">{{ dueTotal() | figure }}</span>
     </p>
     <ul [attr.aria-label]="'Members of ' + crew().name">
@@ -64,6 +64,13 @@ export class CrewRow {
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
+
+  /** The lead's name with their grade in force on the sheet's today; blank when there is no lead. */
+  protected readonly leadName = computed(() => {
+    const id = this.crew().leadId;
+    const lead = id === null ? undefined : this.people().find((p) => p.id === id);
+    return lead === undefined ? '' : nameWithGrade(lead, this.session.sheet()?.today);
+  });
 
   protected nameOf(id: number | null): string {
     return id === null ? '' : this.namesById().get(id) ?? '';
