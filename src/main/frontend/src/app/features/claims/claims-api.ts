@@ -7,6 +7,10 @@ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'D
 export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore' | 'review';
 
 /** An amount as a form takes it: 0.00 or more, with up to two decimals. */
+/** The kinds a proof can be; a proof added with none chosen is a receipt. */
+export const PROOF_KINDS = ['receipt', 'photo'] as const;
+export type ProofKind = (typeof PROOF_KINDS)[number];
+
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
 /** An amount as the claim form takes it: as AMOUNT, or negative for a correction. */
@@ -84,6 +88,10 @@ export interface ClaimView {
   deferredUntil: string | null;
   /** How many proofs the claim has had added; a claim due above the proof threshold needs one to be settled. */
   proofs: number;
+  /** How many of the claim's proofs are receipts (a proof added with no kind chosen is one). */
+  proofsReceipt: number;
+  /** How many of the claim's proofs are photos. */
+  proofsPhoto: number;
   /** The number of the claim this one was split off from; null when it was not split off. */
   splitFrom: string | null;
   /** Whether the claim was added while the period its due-by falls in was soft-closed. */
@@ -396,10 +404,10 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<SplitView>(`${this.url(sheetId)}/claims/${id}/split`, { amount }));
   }
 
-  /** Raise a claim's proofs count by one: refused for a SETTLED or VOID claim, and a claim dated inside a
-   *  closed period. */
-  addProof(sheetId: string, id: number): Promise<ClaimView> {
-    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/proof`, {}));
+  /** Raise a claim's proofs count by one, of the kind given (null: none chosen, a receipt): refused for a
+   *  SETTLED or VOID claim, and a claim dated inside a closed period. */
+  addProof(sheetId: string, id: number, kind: ProofKind | null = null): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/proof`, { kind }));
   }
 
   /** Comment a claim: refused for an empty comment. */

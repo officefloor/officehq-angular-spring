@@ -15,7 +15,7 @@ import { SheetRounding } from '../settings/sheet-rounding';
 import { Templates, TemplatesApi } from '../templates/templates-api';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { ClaimEditors } from './claim-editors';
-import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, SplitView, claimOwedCents, isDeferred, isOverdue, isReviewLate, money } from './claims-api';
+import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, PROOF_KINDS, ProofKind, SplitView, claimOwedCents, isDeferred, isOverdue, isReviewLate, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The claim form's fields, as typed. */
@@ -31,6 +31,10 @@ function overCorrected(e: unknown): e is HttpErrorResponse {
     && e.error.message.startsWith('A correction may not exceed ');
 }
 /** Whether the store refused opening a claim because its person has as many open claims in its period as the period's cap. */
+function proofKindsLacking(e: unknown): boolean {
+  return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
+    && e.error.message.includes('add a proof of each kind of ');
+}
 function capReached(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
     && e.error.message.startsWith('The person already has ');
@@ -98,7 +102,9 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Overdue <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ deferredShown(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
-          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span>
+            (receipts <span data-testid="claim-proofs-receipt">{{ c.proofsReceipt }}</span>,
+            photos <span data-testid="claim-proofs-photo">{{ c.proofsPhoto }}</span>)</span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLate(c) ? 'yes' : 'no' }}</span></span>
@@ -173,7 +179,14 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <input #newDate type="date" [id]="'claim-date-new-' + c.id" data-testid="claim-date-new" />
           <button type="button" data-testid="claim-redate" (click)="redate(c, newDate.value)"
             [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
-          <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+          <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+          <select #proofKind [id]="'claim-proof-kind-' + c.id" data-testid="claim-proof-kind">
+            <option value="">(receipt)</option>
+            @for (k of proofKinds; track k) {
+              <option [value]="k">{{ k }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c, proofKind)"
             [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"
             [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
@@ -291,6 +304,7 @@ export class PersonClaims {
   /** Each shown claim timeline, by claim: its audit lines, newest first. */
   protected readonly timelines = signal<ReadonlyMap<number, string[]>>(new Map());
   /** The refusal of the last action taken on a claim's row, shown on that row. */
+  protected readonly proofKinds = PROOF_KINDS;
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
 
   constructor() {
@@ -517,6 +531,8 @@ export class PersonClaims {
             ? `This person already has as many open claims in period ${periodOf(this.periods(), claim.dueBy)?.name ?? ''} as its cap allows.`
           : action === 'settle' && this.deferred(claim)
             ? `This claim is deferred until ${claim.deferredUntil}, so it cannot be settled yet.`
+          : proofKindsLacking(e) && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
+            ? `This claim's due is above the proof threshold, so it needs a proof of each of the sheet's proof kinds before it can be ${PAST[action]}.`
           : claim.proofs === 0 && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
             ? `This claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
           : action === 'open' && claim.status === 'DRAFT' && claim.note.trim() === ''
@@ -589,14 +605,15 @@ export class PersonClaims {
     }
   }
 
-  /** Raise a claim's proofs count by one; the store refuses a SETTLED or VOID claim and a claim dated
-   *  inside a closed period. */
-  protected async addProof(claim: ClaimView): Promise<void> {
+  /** Raise a claim's proofs count by one, of the kind chosen (none: a receipt); the store refuses a
+   *  SETTLED or VOID claim and a claim dated inside a closed period. The kind goes back to none once added. */
+  protected async addProof(claim: ClaimView, kind: HTMLSelectElement): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.claimError.set(null);
     try {
-      const proven = await this.api.addProof(sheet.id, claim.id);
+      const proven = await this.api.addProof(sheet.id, claim.id, kind.value === '' ? null : kind.value as ProofKind);
+      kind.value = '';
       if (this.session.sheet()?.id === sheet.id) this.changed.emit(proven);
     } catch {
       if (this.session.sheet()?.id === sheet.id) {

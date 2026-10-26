@@ -85,6 +85,9 @@ export interface SettingsView {
   /** The days a REVIEW claim may wait from its review day before it is review-late, or null when none.
    *  Not dated. */
   reviewSla: number | null;
+  /** The proof kinds a claim above the proof threshold needs a proof of each of, as a comma separated
+   *  list, or null when none. Not dated. */
+  proofKinds: string | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -178,6 +181,11 @@ export class SettingsApi {
   /** Set the month each fiscal year starts on, 1 to 12. */
   setFiscalStartMonth(sheetId: string, value: number): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/fiscal-start-month`, { value }));
+  }
+
+  /** Set the proof kinds as a comma separated list; null clears them. */
+  setProofKinds(sheetId: string, value: string | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/proof-kinds`, { value }));
   }
 
   /** Set the alert threshold; null clears it, turning alerts off. */

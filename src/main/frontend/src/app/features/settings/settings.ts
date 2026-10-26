@@ -2,6 +2,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure.pipe';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
+import { PROOF_KINDS } from '../claims/claims-api';
 import { GRADES, Grade } from '../people/people-api';
 import { DatedValue, valueOn } from './dated';
 import { DEFAULT_TERMS, DelegationView, PERMISSION_ACTIONS, PermissionAction, ROLES, Role, RoleView, SettingsApi, SettingsView } from './settings-api';
@@ -161,6 +162,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-pot">Pot (shared out among a balanced pool's members by their shares; blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" />
         <p>Pot now: <span data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</span></p>
+        <label for="setting-proof-kinds">Proof kinds (comma separated, of receipt and photo; a claim above the proof threshold needs a proof of each; blank: none)</label>
+        <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds" />
+        <p>Proof kinds now: <span data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</span></p>
         <label for="setting-alert-threshold">Alert threshold (a due-total going above it is alerted; blank: off)</label>
         <input id="setting-alert-threshold" data-testid="setting-alert-threshold" formControlName="alertThreshold" inputmode="decimal" />
         <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</span></p>
@@ -282,6 +286,7 @@ export class Settings {
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly alertThreshold = signal<string | null>(null);
+  protected readonly proofKinds = signal<string | null>(null);
   protected readonly escalateAfter = signal<number | null>(null);
   protected readonly reviewSla = signal<number | null>(null);
   protected readonly parent = signal<string | null>(null);
@@ -315,6 +320,7 @@ export class Settings {
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
+    proofKinds: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
     reviewSla: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
@@ -398,7 +404,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -436,7 +442,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, escalateAfter, reviewSla, parent, fiscalStartMonth } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, escalateAfter, reviewSla, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -473,6 +479,7 @@ export class Settings {
     const entryDateValue = entryDate.value.trim();
     const potValue = pot.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
+    const proofKindsValue = proofKinds.value.split(',').map((k) => k.trim().toLowerCase()).filter((k) => k !== '').join(',');
     const escalateAfterValue = escalateAfter.value.trim();
     const reviewSlaValue = reviewSla.value.trim();
     const parentValue = parent.value.trim();
@@ -560,6 +567,10 @@ export class Settings {
     }
     if (changed(alertThreshold) && alertThresholdValue !== '' && !MONEY.test(alertThresholdValue)) {
       this.settingsError.set('Type an alert threshold of 0.00 or more, with up to two decimals, or leave it blank for off.');
+      return;
+    }
+    if (changed(proofKinds) && proofKindsValue.split(',').some((k) => k !== '' && !(PROOF_KINDS as readonly string[]).includes(k))) {
+      this.settingsError.set('Type proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
       return;
     }
     if (changed(parent) && parentValue === sheet.id) {
@@ -697,6 +708,11 @@ export class Settings {
         settled(alertThreshold);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(proofKinds)) {
+        const settings = await this.api.setProofKinds(sheet.id, proofKindsValue === '' ? null : proofKindsValue);
+        settled(proofKinds);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       if (changed(escalateAfter)) {
         const settings = await this.api.setEscalateAfter(sheet.id, escalateAfterValue === '' ? null : Number(escalateAfterValue));
         settled(escalateAfter);
@@ -758,6 +774,7 @@ export class Settings {
     this.pot.set(settings.pot);
     this.sheetPot.pot.set(settings.pot);
     this.alertThreshold.set(settings.alertThreshold);
+    this.proofKinds.set(settings.proofKinds);
     this.escalateAfter.set(settings.escalateAfter);
     this.reviewSla.set(settings.reviewSla);
     this.sheetReviewSla.days.set(settings.reviewSla);

@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.ActingFor;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -75,6 +76,11 @@ public class SettingService implements ActingFor {
      *  without a proof; no value means none. A grade may set its own under proof-threshold-<grade>, dated;
      *  a claim whose person's grade on its date has none in force then uses the sheet's. */
     public static final String PROOF_THRESHOLD = "proof-threshold";
+
+    /** The key of the proof kinds: a comma separated list of proof kinds; while it is set, a claim whose due
+     *  is above the proof threshold needs a proof of each before it is settled or approved; no value means
+     *  none. Not dated. */
+    public static final String PROOF_KINDS = "proof-kinds";
 
     /** The key of the note threshold: a claim whose due is above it cannot be opened with an empty note;
      *  no value means none. */
@@ -558,6 +564,53 @@ public class SettingService implements ActingFor {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + POT
                 + " value=" + (value == null ? "" : value.toPlainString()));
         return value;
+    }
+
+    /** The sheet's proof kinds, in the order set; empty when none are set. */
+    @Transactional(readOnly = true)
+    public List<ProofKind> proofKinds(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, PROOF_KINDS)
+                .map((s) -> Arrays.stream(s.getValue().split(",")).map(ProofKind::of).toList())
+                .orElse(List.of());
+    }
+
+    /** Set the sheet's proof kinds from a comma separated list (each trimmed, any case, each once); blank
+     *  clears them. Refused for an entry that is not a kind. */
+    @Transactional
+    public List<ProofKind> setProofKinds(String sheetId, String user, String list) {
+        List<ProofKind> kinds = new ArrayList<>();
+        if (list != null) {
+            for (String entry : list.split(",")) {
+                if (entry.isBlank()) continue;
+                ProofKind kind = ProofKind.of(entry);
+                if (kind == null) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "\"" + entry.trim() + "\" is not a proof kind; a proof is a receipt or a photo.");
+                }
+                if (!kinds.contains(kind)) kinds.add(kind);
+            }
+        }
+        String value = ProofKind.text(kinds);
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, PROOF_KINDS).orElse(null);
+        try {
+            if (kinds.isEmpty()) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, PROOF_KINDS, value));
+            } else {
+                setting.setValue(value);
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + PROOF_KINDS
+                + " value=" + value);
+        return kinds;
     }
 
     /** The sheet's alert threshold, with two decimals, or null when it is blank (off). */

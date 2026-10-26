@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -35,7 +36,7 @@ public class ClaimController {
      *  the number of the claim a correction corrects, or null when the claim is not a correction. The log is
      *  its status log, oldest first. Deferred until is the date the claim was last deferred until, or null when
      *  it never was; it is deferred while it is OPEN and the sheet's today is before that date. Proofs is
-     *  the claim's proofs count. Split from is the number of the claim it was split off from, or null.
+     *  the claim's proofs count; proofs receipt and proofs photo its count of each kind. Split from is the number of the claim it was split off from, or null.
      *  Reminded is the last day a reminder was written for the claim, or null when it never was. Ref is its
      *  external reference, or null when it has none. Tags are its tags, sorted; empty when it has none.
      *  Void reason is the reason it was voided with, or null. Comments are its comments, oldest first.
@@ -48,7 +49,7 @@ public class ClaimController {
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, List<String> tags, String voidReason,
             List<CommentView> comments, String editedBy, Integer settleBatch, List<LineView> lines,
-            boolean waived) {
+            boolean waived, int proofsReceipt, int proofsPhoto) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -61,7 +62,7 @@ public class ClaimController {
                     claim.getTags(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(),
-                    claim.isWaived());
+                    claim.isWaived(), claim.getProofs(ProofKind.RECEIPT), claim.getProofs(ProofKind.PHOTO));
         }
     }
 
@@ -299,11 +300,22 @@ public class ClaimController {
         return ClaimView.of(service.defer(sheetId.trim(), SignedInUser.name(user), id, form.until()));
     }
 
-    /** Raise a claim's proofs count by one; refused for a settled or voided claim. */
+    /** The kind of a proof being added as chosen; none means none was chosen (a receipt). */
+    public record ProofForm(@Size(max = 20) String kind) {
+    }
+
+    /** Raise a claim's proofs count by one, of the kind chosen; refused for a settled or voided claim, and
+     *  for a kind that is not one. */
     @PostMapping("/claims/{id}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
-        return ClaimView.of(service.addProof(sheetId.trim(), SignedInUser.name(user), id));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody(required = false) @Valid ProofForm form) {
+        String kind = form == null || form.kind() == null || form.kind().isBlank() ? null : form.kind();
+        ProofKind chosen = kind == null ? null : ProofKind.of(kind);
+        if (kind != null && chosen == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A proof is a receipt or a photo.");
+        }
+        return ClaimView.of(service.addProof(sheetId.trim(), SignedInUser.name(user), id, chosen));
     }
 
     /** Remind an open or pending claim, once per sheet's today. */
