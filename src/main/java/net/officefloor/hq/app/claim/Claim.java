@@ -333,6 +333,17 @@ public class Claim {
         return then;
     }
 
+    /** The date its status log last records it SETTLED; null when it never was, or the line has no date. */
+    public LocalDate settledOn() {
+        LocalDate on = null;
+        for (ClaimLogEntry e : log) {
+            if (e.getStatus() == ClaimStatus.SETTLED) {
+                on = e.getOn();
+            }
+        }
+        return on;
+    }
+
     /** Logs the status the claim now has: by the user, on the sheet's today, at the due computed now. */
     public void logStatus(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogEntry(status, by, on, due));

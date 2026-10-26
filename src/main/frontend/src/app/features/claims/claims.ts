@@ -460,6 +460,8 @@ export class Claims {
       const err =
         action === 'settle' && deferred(c, this.session.sheetToday())
           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
+          : action === 'void' && c.status === 'SETTLED'
+          ? 'Only a steward can void a settled claim, and only within 7 days of its settlement.'
           : (action === 'open' || action === 'settle' || action === 'void') && forbidden
           ? `Your role may not ${action} a claim on this sheet.`
           : action === 'settle' && opener

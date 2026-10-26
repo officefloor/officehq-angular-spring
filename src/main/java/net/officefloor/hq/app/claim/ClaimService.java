@@ -29,6 +29,9 @@ public class ClaimService {
     /** The number sequence of claims in no period. */
     private static final String NO_PERIOD = "X";
 
+    /** The days after its settlement within which a steward may void a SETTLED claim. */
+    private static final int VOID_SETTLED_DAYS = 7;
+
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final RateRepository rates;
@@ -129,6 +132,7 @@ public class ClaimService {
             }
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        String tail = "";
         // settling is the step from OPEN; a pending claim is settled by approving it
         if (!claim.getStatus().canMoveTo(next) || next == ClaimStatus.PENDING
                 || (next == ClaimStatus.SETTLED && claim.getStatus() != ClaimStatus.OPEN)
@@ -143,6 +147,11 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && by.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot settle it.");
         }
+        if (next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
+            refuseVoidOfSettled(by, sheetId, claim);
+            // the frozen figure leaves every total; the claim keeps its number and shows the figure it had
+            tail = " reversed=" + text(claim.getSettledDue());
+        }
         if (next == ClaimStatus.OPEN) {
             number(sheetId, claim);
             claim.setOpenedBy(by);
@@ -154,7 +163,6 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT, PENDING -> throw new IllegalStateException();
         };
-        String tail = "";
         if (next == ClaimStatus.SETTLED) {
             // the due is fixed at the figure a statement bound it to, else at the rate the person's grade has in
             // force on the claim's date, with the late charge it has gained by today, and at least the floor in force
@@ -385,6 +393,23 @@ public class ClaimService {
         audit.recordOnCommit(record("CLAIM_OPENED", by, person, added));
         rollup.recordChanges(by, sheetId, before);
         return new Split(original, added);
+    }
+
+    /**
+     * Refuses voiding a SETTLED claim unless the user is a steward and the sheet's today is within
+     * {@link #VOID_SETTLED_DAYS} days of the date its status log records it settled.
+     */
+    private void refuseVoidOfSettled(String by, String sheetId, Claim claim) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can void a settled claim.");
+        }
+        LocalDate settledOn = claim.settledOn();
+        LocalDate today = sheets.load(sheetId).getToday();
+        if (settledOn == null || today == null || today.isBefore(settledOn)
+                || ChronoUnit.DAYS.between(settledOn, today) > VOID_SETTLED_DAYS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A settled claim can only be voided within " + VOID_SETTLED_DAYS + " days of its settlement.");
+        }
     }
 
     /** Logs the status the claim now has: by the user, on the sheet's today, at the due it shows now. */
