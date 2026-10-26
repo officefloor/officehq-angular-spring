@@ -1,0 +1,75 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 19ccaf1b..2697ed65 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -400,18 +400,24 @@ export class People {
+   protected readonly bulkSettleError = signal<string | null>(null);
+   private bulkSettling = false;
+   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
+-  // dated within one of their person's holds that no statement binds, and the deferred ones.
++  // dated within one of their person's holds, or whose person's retirement date today has reached, that no statement
++  // binds, and the deferred ones.
+   protected readonly liveClaims = computed(() => {
+     const leftOut = this.leftOut();
+     return this.claims().filter((c) => counts(c) && !leftOut(c));
+   });
+-  // Whether the live rules leave the claim out whatever its status: deferred, or open, dated within one of its
+-  // person's holds and bound by no statement.
++  // Whether the live rules leave the claim out whatever its status: deferred, or open, bound by no statement and
++  // dated within one of its person's holds or with its person's retirement date reached today.
+   private readonly leftOut = computed(() => {
+     const today = this.session.sheetToday();
+     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
+-    const held = (c: Claim) =>
+-      (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
++    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
++    // a person whose retirement date the sheet's today has reached holds every claim, as a hold would
++    const held = (c: Claim) => {
++      const from = retiredFrom.get(c.personId) ?? null;
++      return (from !== null && today !== null && today >= from)
++        || (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
++    };
+     return (c: Claim) => deferred(c, today) || (isOpen(c) && !isBound(c) && held(c));
+   });
+   protected readonly liveBy = computed(() => {
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 26f8a6bc..11d92799 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -122,6 +122,11 @@ public class Person {
+         return retiredFrom != null;
+     }
+ 
++    /** Whether the person's retirement date is reached on the day: the day is on or after it. */
++    public boolean isRetiredOn(LocalDate day) {
++        return retiredFrom != null && day != null && !day.isBefore(retiredFrom);
++    }
++
+     /** Every hold put on the person, earliest from-date first. */
+     public List<DatedHold> getHolds() {
+         return holds.stream().sorted(Comparator.comparing(DatedHold::getFrom)).toList();
+@@ -139,12 +144,13 @@ public class Person {
+ 
+     /**
+      * Whether the claim counts toward the person's live totals: one whose status counts, except an open one dated
+-     * within a hold that no statement binds, and one deferred on the sheet's today.
++     * within a hold that no statement binds, or once the person's retirement date is reached on the sheet's today, and
++     * one deferred on the sheet's today.
+      */
+     public boolean countsLive(Claim claim, LocalDate today) {
+         return claim.getStatus().counts() && !claim.isDeferredOn(today)
+                 && !(claim.getStatus().isOpen() && !claim.isBound()
+-                && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
++                && (holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
+     }
+ 
+     /**
+@@ -155,7 +161,7 @@ public class Person {
+         ClaimStatus then = claim.statusAtEndOf(end);
+         return then != null && then.counts() && !claim.isDeferredOn(today)
+                 && !(claim.getStatus().isOpen() && !claim.isBound()
+-                && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
++                && (holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
+     }
+ 
+     /** The version of the person as stored, raised on each save. */
