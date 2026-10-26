@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, computed, inject, input, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { ClaimLogLine, ClaimStatus, statusAtEndOf } from '../claims/claims';
 import { sumSkippingNa } from '../rates/rates';
 
 export interface PeriodView {
@@ -17,11 +18,22 @@ export interface PeriodView {
   closedPersonTotals: Record<string, string>;
 }
 
-/** A counted claim's person, date and the figure it totals (null for n/a). */
+/**
+ * A claim the live rules do not leave out (deferred or held): its person, date, the figure it totals now (null for
+ * n/a), and its status and log, which decide whether it counted at the end of a period.
+ */
 export interface DatedFigure {
   personId: number;
   date: string;
   figure: string | null;
+  status: ClaimStatus;
+  log: ClaimLogLine[];
+}
+
+/** Whether the claim counted at the end of the day: its status then is open, pending or settled. */
+function countedAtEndOf(f: DatedFigure, day: string): boolean {
+  const then = statusAtEndOf(f, day);
+  return then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -38,7 +50,8 @@ export function inClosedPeriod(periods: readonly PeriodView[], date: string): bo
 
 /**
  * The person's due-total for each period, by period id: a closed one's figure fixed for them when it was closed
- * (0.00 for a person added since), else the figures of their counted claims dated in it, skipping n/a.
+ * (0.00 for a person added since), else the figures now of their claims dated in it that counted at the end of its
+ * last day, skipping n/a.
  */
 export function personPeriodDueTotals(
   periods: readonly PeriodView[],
@@ -50,7 +63,7 @@ export function personPeriodDueTotals(
   for (const f of figures) {
     if (f.personId !== personId) continue;
     const p = periodOn(periods, f.date);
-    if (p) by.get(p.id)?.push(f.figure);
+    if (p && countedAtEndOf(f, p.to)) by.get(p.id)?.push(f.figure);
   }
   return new Map(
     periods.map((p) => [
@@ -186,7 +199,7 @@ export class Periods {
   private readonly session = inject(Session);
   protected readonly store = inject(PeriodStore);
 
-  // The counted claims of the sheet: each one's date and figure.
+  // The claims of the sheet the live rules do not leave out: each one's date, figure and log.
   readonly figures = input<readonly DatedFigure[]>([]);
 
   protected readonly name = signal('');
@@ -198,8 +211,8 @@ export class Periods {
   // A submit in flight: a second submit before it answers is ignored, so it stores one period.
   private submitting = false;
 
-  // Each period's due-total: a closed one's fixed total, else the figures of the counted claims dated in it,
-  // skipping n/a.
+  // Each period's due-total: a closed one's fixed total, else the figures of the claims dated in it that counted at
+  // the end of its last day, skipping n/a.
   protected readonly dueBy = computed(() => periodDueTotals(this.store.list(), this.figures()));
 
   protected async close(p: PeriodView): Promise<void> {

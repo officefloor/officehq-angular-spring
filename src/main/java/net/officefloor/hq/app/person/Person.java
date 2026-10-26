@@ -17,6 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimStatus;
 
 /**
  * A person on a sheet, with a name (unique on the sheet, ignoring case) and a dated grade (A, B or C): each grade
@@ -130,6 +131,17 @@ public class Person {
      */
     public boolean countsLive(Claim claim, LocalDate today) {
         return claim.getStatus().counts() && !claim.isDeferredOn(today)
+                && !(claim.getStatus().isOpen() && !claim.isBound()
+                && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
+    }
+
+    /**
+     * Whether the claim counts toward the person's figure for a period ending on the day: one whose status at the end
+     * of that day counts, left out as the live rules say when deferred on the sheet's today or held.
+     */
+    public boolean countsAtEndOf(Claim claim, LocalDate end, LocalDate today) {
+        ClaimStatus then = claim.statusAtEndOf(end);
+        return then != null && then.counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isBound()
                 && holds.stream().anyMatch(h -> h.covers(claim.getDate())));
     }

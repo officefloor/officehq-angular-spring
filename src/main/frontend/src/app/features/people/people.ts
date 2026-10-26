@@ -374,11 +374,17 @@ export class People {
   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
   // dated within one of their person's holds that no statement binds, and the deferred ones.
   protected readonly liveClaims = computed(() => {
+    const leftOut = this.leftOut();
+    return this.claims().filter((c) => counts(c) && !leftOut(c));
+  });
+  // Whether the live rules leave the claim out whatever its status: deferred, or open, dated within one of its
+  // person's holds and bound by no statement.
+  private readonly leftOut = computed(() => {
     const today = this.session.sheetToday();
     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
     const held = (c: Claim) =>
       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
-    return this.claims().filter((c) => counts(c) && !deferred(c, today) && !(isOpen(c) && !isBound(c) && held(c)));
+    return (c: Claim) => deferred(c, today) || (isOpen(c) && !isBound(c) && held(c));
   });
   protected readonly liveBy = computed(() => {
     const by = new Map<number, Claim[]>();
@@ -428,16 +434,26 @@ export class People {
     for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, cap));
     return by;
   });
-  // Every claim counted live: its person, its date and the figure it totals, for the periods' due-totals.
+  // Every claim the live rules do not leave out: its person, its date, the figure it totals and its log, for the
+  // periods' due-totals, which count it by its status at each period's end.
   protected readonly countedFigures = computed<DatedFigure[]>(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const rates = this.rates.rates();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
-    return this.liveClaims().map((c) => {
-      const grade = gradeOn(grades.get(c.personId) ?? [], c.date);
-      return { personId: c.personId, date: c.date, figure: dueOf(c, rates.get(grade) ?? [], floor, late) };
-    });
+    const leftOut = this.leftOut();
+    return this.claims()
+      .filter((c) => !leftOut(c))
+      .map((c) => {
+        const grade = gradeOn(grades.get(c.personId) ?? [], c.date);
+        return {
+          personId: c.personId,
+          date: c.date,
+          figure: dueOf(c, rates.get(grade) ?? [], floor, late),
+          status: c.status,
+          log: c.log,
+        };
+      });
   });
   // Each person's due-total for each period, by person id then period id: a closed period's figure fixed for them
   // when it closed, else their counted claims' figures dated in it, skipping n/a.

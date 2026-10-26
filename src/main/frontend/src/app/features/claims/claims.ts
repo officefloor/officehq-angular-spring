@@ -58,6 +58,18 @@ export function counts(c: Claim): boolean {
   return isOpen(c) || c.status === 'SETTLED';
 }
 
+/**
+ * The status the claim had at the end of the day, as its log records it: the last line logged on or before it (a
+ * line with no date counts as before any day); null when the claim was added after it. A claim with no log has its
+ * status now.
+ */
+export function statusAtEndOf(c: Pick<Claim, 'status' | 'log'>, day: string): ClaimStatus | null {
+  if (c.log.length === 0) return c.status;
+  let then: ClaimStatus | null = null;
+  for (const line of c.log) if (line.on === null || line.on <= day) then = line.status;
+  return then;
+}
+
 /** Whether the claim is open: OPEN or PENDING. An open claim goes overdue and bears the late charge. */
 export function isOpen(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING';

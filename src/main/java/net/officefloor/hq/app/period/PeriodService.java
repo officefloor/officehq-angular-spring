@@ -81,8 +81,8 @@ public class PeriodService {
     }
 
     /**
-     * Closes the period, fixing each person's due-total for it now (the figures of their counted claims dated in
-     * it, skipping n/a) and its own, the sum of those.
+     * Closes the period, fixing each person's due-total for it now (the figures of their claims dated in it that
+     * counted at the end of its last day, skipping n/a) and its own, the sum of those.
      * Refused when it is already closed.
      */
     @Transactional
@@ -103,7 +103,7 @@ public class PeriodService {
         }
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
-            if (person == null || !person.countsLive(c, today) || !period.contains(c.getDate())) {
+            if (person == null || !person.countsAtEndOf(c, period.getTo(), today) || !period.contains(c.getDate())) {
                 continue;
             }
             BigDecimal figure = claimService.due(sheetId, person, c);

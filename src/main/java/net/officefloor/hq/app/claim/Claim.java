@@ -303,6 +303,24 @@ public class Claim {
         return log;
     }
 
+    /**
+     * The status the claim had at the end of the day, as its log records it: the last line logged on or before it (a
+     * line with no date counts as before any day); null when the claim was added after it. A claim with no log has
+     * its status now.
+     */
+    public ClaimStatus statusAtEndOf(LocalDate day) {
+        if (log.isEmpty()) {
+            return status;
+        }
+        ClaimStatus then = null;
+        for (ClaimLogEntry e : log) {
+            if (e.getOn() == null || !e.getOn().isAfter(day)) {
+                then = e.getStatus();
+            }
+        }
+        return then;
+    }
+
     /** Logs the status the claim now has: by the user, on the sheet's today, at the due computed now. */
     public void logStatus(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogEntry(status, by, on, due));
