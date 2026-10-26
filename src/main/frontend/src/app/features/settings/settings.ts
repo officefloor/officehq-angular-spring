@@ -33,8 +33,8 @@ interface SettingsView {
 
 /**
  * One value recorded for a dated setting, in force from its from-date until the next one recorded for its key:
- * clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold or note-threshold. The value
- * is null for none (a blank clerk limit, grace, cap, proof threshold or note threshold).
+ * clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold, proof-threshold-<grade> or
+ * note-threshold. The value is null for none (a blank clerk limit, grace, cap, proof threshold or note threshold).
  */
 interface DatedSetting {
   key: string;
@@ -43,7 +43,7 @@ interface DatedSetting {
 }
 
 /** A dated setting's key as the form and its fields name it. */
-export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | `terms-${string}` | `grace-${string}`;
+export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}`;
 
 export const ROLES = ['clerk', 'steward', 'viewer'];
 /** The roles the permission matrix can list; a viewer may take no action. */
@@ -196,7 +196,9 @@ export class SettingsStore {
       ? `grade-terms/${encodeURIComponent(key.slice('terms-'.length))}`
       : key.startsWith('grace-')
         ? `grade-grace/${encodeURIComponent(key.slice('grace-'.length))}`
-        : key;
+        : key.startsWith('proof-threshold-')
+          ? `grade-proof-threshold/${encodeURIComponent(key.slice('proof-threshold-'.length))}`
+          : key;
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/${path}`, { value, from }),
     );
@@ -219,6 +221,11 @@ export class SettingsStore {
   /** The grace days recorded for the grade in force on the date, as text; blank with none. */
   graceShown(grade: string, date: string | null): string {
     return valueOn(this.dated(), `grace-${grade}`, date) ?? '';
+  }
+
+  /** The proof threshold recorded for the grade in force on the date, as text; blank with none. */
+  proofThresholdShown(grade: string, date: string | null): string {
+    return valueOn(this.dated(), `proof-threshold-${grade}`, date) ?? '';
   }
 
   async setPolicyDate(sheet: string, value: string | null): Promise<void> {
@@ -469,6 +476,27 @@ export class SettingsStore {
           (input)="setFrom('proof-threshold', value($event))"
           (change)="setFrom('proof-threshold', value($event))"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (in place of the sheet's; blank for none)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g"
+            [attr.data-testid]="'setting-proof-threshold-' + g"
+            inputmode="decimal"
+            [value]="gradeProof()[g] ?? ''"
+            (input)="setGradeProofField(g, value($event))"
+            (keydown.delete)="gradeProofChanged.add(g); settingsError.set(null)"
+            (keydown.backspace)="gradeProofChanged.add(g); settingsError.set(null)"
+          />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from (blank for the sheet's today)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g + '-from'"
+            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
+            type="date"
+            [value]="from()[proofKey(g)] ?? ''"
+            (input)="setFrom(proofKey(g), value($event))"
+            (change)="setFrom(proofKey(g), value($event))"
+          />
+        }
         <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to open; blank for none)</label>
         <input
           id="setting-note-threshold"
@@ -535,6 +563,12 @@ export class SettingsStore {
         Proof threshold in force:
         <strong data-testid="setting-proof-threshold-current">{{ store.proofThreshold() ?? '' }}</strong>
       </p>
+      @for (g of grades; track g) {
+        <p>
+          Proof threshold in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ store.proofThresholdShown(g, session.sheetToday()) }}</strong>
+        </p>
+      }
       <p>
         Note threshold in force:
         <strong data-testid="setting-note-threshold-current">{{ store.noteThreshold() ?? '' }}</strong>
@@ -607,6 +641,7 @@ export class Settings {
   protected readonly terms = signal('');
   protected readonly gradeTerms = signal<Readonly<Record<string, string>>>({});
   protected readonly gradeGrace = signal<Readonly<Record<string, string>>>({});
+  protected readonly gradeProof = signal<Readonly<Record<string, string>>>({});
   protected readonly latePct = signal('');
   protected readonly policyDate = signal('');
   protected readonly periodNumberingFrom = signal('');
@@ -624,6 +659,7 @@ export class Settings {
   protected termsChanged = false;
   protected readonly gradeTermsChanged = new Set<string>();
   protected readonly gradeGraceChanged = new Set<string>();
+  protected readonly gradeProofChanged = new Set<string>();
   protected latePctChanged = false;
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
@@ -672,6 +708,12 @@ export class Settings {
     this.settingsError.set(null);
   }
 
+  protected setGradeProofField(grade: string, v: string): void {
+    this.gradeProof.update((t) => ({ ...t, [grade]: v }));
+    this.gradeProofChanged.add(grade);
+    this.settingsError.set(null);
+  }
+
   protected setPermField(action: string, v: string): void {
     this.perms.update((p) => ({ ...p, [action]: v }));
     this.permsChanged.add(action);
@@ -684,6 +726,10 @@ export class Settings {
 
   protected graceKey(grade: string): DatedKey {
     return `grace-${grade}`;
+  }
+
+  protected proofKey(grade: string): DatedKey {
+    return `proof-threshold-${grade}`;
   }
 
   // A from-date typed for a setting whose value field holds a value saves it from that date.
@@ -713,7 +759,11 @@ export class Settings {
         this.noteThresholdChanged ||= this.noteThreshold().trim() !== '';
         break;
       default:
-        if (key.startsWith('grace-')) {
+        if (key.startsWith('proof-threshold-')) {
+          if ((this.gradeProof()[key.slice('proof-threshold-'.length)] ?? '').trim() !== '') {
+            this.gradeProofChanged.add(key.slice('proof-threshold-'.length));
+          }
+        } else if (key.startsWith('grace-')) {
           if ((this.gradeGrace()[key.slice('grace-'.length)] ?? '').trim() !== '') {
             this.gradeGraceChanged.add(key.slice('grace-'.length));
           }
@@ -804,6 +854,14 @@ export class Settings {
       this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const gradeProof = new Map<string, string>();
+    for (const g of this.gradeProofChanged) gradeProof.set(g, (this.gradeProof()[g] ?? '').trim());
+    for (const [g, t] of gradeProof) {
+      if (t && !LIMIT.test(t)) {
+        this.settingsError.set(`Enter a proof threshold for grade ${g} of 0.00 or more, with up to two decimals, or leave it blank for none.`);
+        return;
+      }
+    }
     const noteThreshold = this.noteThreshold().trim();
     if (this.noteThresholdChanged && noteThreshold && !LIMIT.test(noteThreshold)) {
       this.settingsError.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
@@ -827,6 +885,7 @@ export class Settings {
     if (this.latePctChanged) keys.push('late-pct');
     if (this.capChanged) keys.push('cap');
     if (this.proofThresholdChanged) keys.push('proof-threshold');
+    for (const g of gradeProof.keys()) keys.push(`proof-threshold-${g}`);
     if (this.noteThresholdChanged) keys.push('note-threshold');
     const from = new Map<DatedKey, string | null>();
     for (const k of keys) {
@@ -887,6 +946,10 @@ export class Settings {
       if (this.proofThresholdChanged) {
         await this.store.setDated(sheet, 'proof-threshold', proofThreshold || null, from.get('proof-threshold') ?? null);
         this.proofThresholdChanged = this.proofThreshold().trim() !== proofThreshold;
+      }
+      for (const [g, t] of gradeProof) {
+        await this.store.setDated(sheet, `proof-threshold-${g}`, t || null, from.get(`proof-threshold-${g}`) ?? null);
+        if ((this.gradeProof()[g] ?? '').trim() === t) this.gradeProofChanged.delete(g);
       }
       if (this.noteThresholdChanged) {
         await this.store.setDated(sheet, 'note-threshold', noteThreshold || null, from.get('note-threshold') ?? null);

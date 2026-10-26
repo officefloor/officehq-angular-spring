@@ -232,6 +232,20 @@ public class Sheet {
     }
 
     /**
+     * The proof threshold a claim dated on the date has when its person has the grade then: the grade's own in force
+     * on the date when one is set (not blank), else the sheet's; null means none.
+     */
+    public BigDecimal proofThresholdFor(String grade, LocalDate on) {
+        if (grade != null) {
+            String own = inForce(PROOF_THRESHOLD + "-" + grade, on).map(DatedSetting::getValue).orElse(null);
+            if (own != null) {
+                return new BigDecimal(own);
+            }
+        }
+        return proofThresholdOn(on);
+    }
+
+    /**
      * The due above which a claim dated on the date cannot be opened with an empty note, in force on that date; null
      * means none.
      */

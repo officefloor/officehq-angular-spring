@@ -398,10 +398,12 @@ public class ClaimService {
 
     /**
      * Refuses settling or approving the claim at the due (null for n/a) when the due is above the proof threshold in
-     * force on the claim's date and the claim has no proof; an n/a due is within any threshold.
+     * force on the claim's date (its person's grade's then when one is set, else the sheet's) and the claim has no
+     * proof; an n/a due is within any threshold.
      */
     private void refuseWithoutProof(String sheetId, Claim claim, BigDecimal due) {
-        BigDecimal threshold = sheets.load(sheetId).proofThresholdOn(claim.getDate());
+        String grade = person(sheetId, claim.getPersonId()).gradeOn(claim.getDate());
+        BigDecimal threshold = sheets.load(sheetId).proofThresholdFor(grade, claim.getDate());
         if (threshold != null && due != null && due.compareTo(threshold) > 0 && claim.getProofs() == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim with a due above " + threshold.toPlainString() + " needs a proof first.");

@@ -333,6 +333,16 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Records the proof threshold for one grade (null for none) from the date (null for the sheet's today): a claim
+     * dated on or after it whose person has the grade on its date takes it in place of the sheet's while one is set.
+     */
+    @Transactional
+    public Sheet setGradeProofThreshold(String by, String sheetId, String grade, BigDecimal threshold, LocalDate from) {
+        return record(by, sheetId, Sheet.PROOF_THRESHOLD + "-" + grade, threshold == null ? null : money(threshold),
+                from, false);
+    }
+
+    /**
      * Records the sheet's note threshold (null for none) from the date (null for the sheet's today): a claim dated on
      * or after it whose due is above it cannot be opened while its note is empty.
      */
