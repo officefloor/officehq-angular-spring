@@ -38,7 +38,9 @@ import org.springframework.stereotype.Service;
  * The sheet's figures as the screen shows them: each person's claimed, due-total (late charges
  * included, held to the sheet's cap less their cut total, not below 0.00) and overdue-total (what is owed on their counting claims that are
  * open past their due-by, late charges included, skipping n/a; a claim shared with others counts its
- * due less the holders' parts, each holder's due-total counting their part), and the sheet's
+ * due less the holders' parts, each holder's due-total counting their part: the claim's amount times
+ * their share, times the rate of their own grade in force on its date, as the claim rounds, 0.00 with no
+ * rate; a settled claim's parts frozen as its due times their share), and the sheet's
  * claimed-total, due-total and overdue-total (the last two leaving out the single highest and lowest
  * person's figure when three or more people have one). A change takes a snapshot before it alters anything, then
  * {@link #recordChanges} audits, after the change's own lines, each person whose figures moved (in the
@@ -154,6 +156,8 @@ public class Rollup {
         Map<Long, BigDecimal> dueOf = new LinkedHashMap<>();
         Map<Long, Boolean> keptOf = new LinkedHashMap<>();
         List<Person> listed = people.findInListOrder(sheetId);
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        for (Person person : listed) byId.put(person.getId(), person);
         for (Person person : listed) {
             Grade gradeToday = today == null ? null : person.gradeOn(today);
             BigDecimal claimed = ZERO;
@@ -178,10 +182,13 @@ public class Rollup {
                 BigDecimal owed = LateCharge.dueOf(claim, figure, values.floorOn(claim.getDate()), today,
                         grace, values::latePctOn, rounding);
                 if (owed != null) due = due.add(owed);
-                // Each holder's part of what is owed is theirs, not the claim's own person's.
+                // Each holder's part of what is owed is theirs, not the claim's own person's: a settled
+                // claim's parts are frozen with its due, the others' at the rate of the holder's own grade.
                 if (owed != null) {
                     for (ClaimShare share : claim.getShares()) {
-                        BigDecimal part = share.partOf(owed);
+                        BigDecimal part = claim.getSettledDue() != null ? share.partOf(owed)
+                                : heldPart(claim, share, byId.get(share.getPersonId()), ratesByGrade, applied, rounding);
+                        if (part == null) continue;
                         due = due.subtract(part);
                         heldParts.merge(share.getPersonId(), part, BigDecimal::add);
                     }
@@ -352,6 +359,20 @@ public class Rollup {
         Rate rate = Rate.inForceInherited(gradeRates, claim.getDate());
         if (rate == null) return null;
         return claim.getAmount().multiply(rate.getPct()).divide(BigDecimal.valueOf(100), 2, rounding);
+    }
+
+    /** The holder's live part of a shared claim: its amount times their share divided by 100, times the rate
+     *  of the holder's own grade in force on the claim's date (of the versions that apply to the claim) divided
+     *  by 100, rounded as the claim rounds; null when the holder is not on the sheet or their grade has no rate. */
+    private static BigDecimal heldPart(Claim claim, ClaimShare share, Person holder,
+            Map<Grade, List<List<Rate>>> ratesByGrade, AppliedRates applied, RoundingMode rounding) {
+        if (holder == null) return null;
+        List<List<Rate>> gradeRates = ratesByGrade.getOrDefault(holder.gradeOn(claim.getDate()), List.of());
+        if (applied != null) gradeRates = applied.appliedLevels(gradeRates, claim.getId());
+        Rate rate = Rate.inForceInherited(gradeRates, claim.getDate());
+        if (rate == null) return null;
+        return claim.getAmount().multiply(share.getShare()).multiply(rate.getPct())
+                .divide(BigDecimal.valueOf(10000), 2, rounding);
     }
 
     /** Of the person's claims, the one a correction corrects by number; null for any other claim. */

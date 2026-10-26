@@ -633,8 +633,9 @@ public class ClaimService {
     }
 
     /** Share a claim with another person on the sheet, writing CLAIM_SHARED with the holder and their
-     *  share: the holder's due-total counts the claim's due times their share divided by 100, rounded half
-     *  to even, and the claim's own person's the rest. Refused for a share not more than 0.00 or with
+     *  share: the holder's due-total counts the claim's amount times their share divided by 100, times the
+     *  rate of their own grade in force on its date divided by 100, rounded as the claim rounds (0.00 with no
+     *  rate; a settled claim's due times their share, frozen), and the claim's own person's its due less the parts. Refused for a share not more than 0.00 or with
      *  more than two decimals, for the claim's own person, for a person already holding a share of it, for
      *  shares totalling more than 100.00, and for a SETTLED, VOID or DELETED claim. */
     @Transactional

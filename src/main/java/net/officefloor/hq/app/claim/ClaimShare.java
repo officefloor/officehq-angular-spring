@@ -31,7 +31,8 @@ public class ClaimShare {
         return share;
     }
 
-    /** The holder's part of the claim's due: the due times their share divided by 100, rounded half to even. */
+    /** The holder's part of a settled claim's frozen due: the due times their share divided by 100, rounded half
+     *  to even. A claim not settled works out each part at the holder's own grade (see Rollup). */
     public BigDecimal partOf(BigDecimal due) {
         return due.multiply(share).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
     }

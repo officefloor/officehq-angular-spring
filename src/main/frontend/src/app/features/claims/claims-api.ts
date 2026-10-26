@@ -131,12 +131,28 @@ export interface ClaimShare {
   share: string;
 }
 
-/** A holder's part of a claim's due in cents: the due times their share divided by 100, rounded half to even. */
+/** A holder's part of a settled claim's frozen due in cents: the due times their share divided by 100, rounded half to even. */
 export function sharePartCents(dueCents: number, share: string): number {
   const scaled = dueCents * cents(share);
   const whole = Math.floor(scaled / 10000);
   const rest = scaled - whole * 10000;
   return rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;
+}
+
+/** A holder's live part of a claim in cents: its amount times their share divided by 100, times the rate of
+ *  the holder's own grade (`holderRates`) in force on the claim's date divided by 100, rounded as the claim
+ *  rounds (half up when `halfUp`, else half to even); null when the holder's grade has no rate. */
+export function heldPartCents(claim: ClaimView, share: string, holderRates: readonly RateView[], halfUp = false): number | null {
+  const rate = rateInForce(ratesAppliedTo(holderRates, claim.id), claim.date);
+  if (rate === null) return null;
+  // Cents x hundredths of a percent x hundredths of a percent / 10^8 = part cents.
+  const product = BigInt(cents(claim.amount)) * BigInt(cents(share)) * BigInt(Math.round(Number(rate.pct) * 100));
+  const sign = product < 0n ? -1n : 1n;
+  const magnitude = sign * product;
+  let whole = magnitude / 100000000n;
+  const rest = magnitude % 100000000n;
+  if (rest > 50000000n || (rest === 50000000n && (halfUp || whole % 2n === 1n))) whole += 1n;
+  return Number(whole * sign);
 }
 
 /** A line of a claim: its label, whole quantity and unit amount (two decimals). */

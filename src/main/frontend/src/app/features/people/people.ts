@@ -5,7 +5,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, sharePartCents, isBound, isCorrection, isDeferred, isOpen, isOverdue, isPendingLate, isReviewLate, keepsFigure, money, statusAsOf } from '../claims/claims-api';
+import { ClaimView, ClaimsApi, Lateness, SplitView, cents, claimOwedCents, counts, sharePartCents, heldPartCents, isBound, isCorrection, isDeferred, isOpen, isOverdue, isPendingLate, isReviewLate, keepsFigure, money, roundsHalfUp, statusAsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { PeriodView, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -1783,7 +1783,7 @@ export class People {
       const grade = gradeOn(person.grades, c.date);
       const due = claimOwedCents(c, this.ratesOf(grade), this.floor.centsOn(c.date), this.lateness(), this.claims());
       // Each holder's part of a shared claim is theirs, not the claim's own person's.
-      if (due !== null) total += due - c.shares.reduce((t, s) => t + sharePartCents(due, s.share), 0);
+      if (due !== null) total += due - this.partsOf(c, due).reduce((t, [, part]) => t + part, 0);
       if (keepsFigure(c)) keptFigure = true;
       // A live figure at a grade other than today's is not undone by today's grade having no rate.
       if (due !== null && grade !== gradeToday) keptFigure = true;
@@ -1799,8 +1799,23 @@ export class People {
     return this.rateOf(gradeToday) === null && !keptFigure ? null : total;
   }
 
-  /** The parts of the shared claims that count, by holder, in cents: each claim's due, at its own
-   *  person's grade in force on its date, times the holder's share divided by 100, rounded half to even. */
+  /** Each holder's part of a shared claim with a due, in cents, in the order they were given: a settled
+   *  claim's frozen as its due times the share divided by 100, rounded half to even; another's at the rate
+   *  of the holder's own grade in force on its date. A holder whose grade has no rate holds no part. */
+  private partsOf(c: ClaimView, due: number): [number, number][] {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const halfUp = roundsHalfUp(c, this.claims(), this.lateness().policyDate, this.lateness().rounding);
+    const parts: [number, number][] = [];
+    for (const s of c.shares) {
+      const holder = byId.get(s.personId);
+      const part = c.settledDue !== null ? sharePartCents(due, s.share)
+        : holder === undefined ? null : heldPartCents(c, s.share, this.ratesOn(holder, c.date), halfUp);
+      if (part !== null) parts.push([s.personId, part]);
+    }
+    return parts;
+  }
+
+  /** The parts of the shared claims that count, by holder, in cents, as {@link partsOf} works them out. */
   private readonly heldPartsCents = computed(() => {
     const by = new Map<number, number>();
     const byId = new Map(this.people().map((p) => [p.id, p]));
@@ -1809,7 +1824,7 @@ export class People {
       if (c.shares.length === 0 || person === undefined || !this.countsLive(c)) continue;
       const due = claimOwedCents(c, this.ratesOn(person, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
       if (due === null) continue;
-      for (const s of c.shares) by.set(s.personId, (by.get(s.personId) ?? 0) + sharePartCents(due, s.share));
+      for (const [id, part] of this.partsOf(c, due)) by.set(id, (by.get(id) ?? 0) + part);
     }
     return by;
   });
