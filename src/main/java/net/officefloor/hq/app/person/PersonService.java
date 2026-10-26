@@ -244,6 +244,25 @@ public class PersonService {
         return update(sheetId, user, id, version, name, grade, gradeFrom, terms, null, contact, tags, explicitGrade);
     }
 
+    /** Give a person a grade from the from-date (none: the sheet's today) as a bulk grade does: recorded
+     *  from it even when already in force then, leaving everything else about them, their terms included,
+     *  as it is. */
+    @Transactional
+    public Person regrade(String sheetId, String user, long id, long version, Grade grade, LocalDate gradeFrom) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (person.getVersion() != version) {
+            throw changedMeanwhile();
+        }
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate today = sheets.today(sheetId);
+        person.setGrade(grade, gradeFrom != null ? gradeFrom : today, today, true);
+        Person saved = save(person);
+        recordChange("PERSON_EDITED", user, saved, "");
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Edit a person as {@link #update(String, String, long, long, String, Grade, LocalDate, Integer, String, String, boolean)},
      *  recording their terms from the terms' from-date, keeping those recorded from other dates (none:
      *  from the beginning of time). */

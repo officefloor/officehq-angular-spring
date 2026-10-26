@@ -204,7 +204,7 @@ public class PeriodService {
             ClaimStatus then = claim.statusAsOf(period.getTo());
             boolean bound = claim.isStated();
             boolean counts = then != null && !claim.isDeferredOn(today) && (then == ClaimStatus.SETTLED
-                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !person.isLeftOut(claim.getDate(), today))));
+                    || (then.isOpen() && (bound || !claim.getStatus().isOpen() || !(claim.isHeld() || person.isLeftOut(claim.getDate(), today)))));
             if (!counts) continue;
             // Carried: still open at the end of this period, belonging to a period ending before it starts.
             boolean carried = then.isOpen() && all.stream()

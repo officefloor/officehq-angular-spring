@@ -41,8 +41,7 @@ public class BulkGradeService {
         for (Person person : people.findInListOrder(sheetId)) {
             if (!selected.contains(person.getId())) continue;
             try {
-                changed.add(service.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
-                        grade, from, person.getTerms(), person.getContact(), String.join(",", person.getTags()), true));
+                changed.add(service.regrade(sheetId, user, person.getId(), person.getVersion(), grade, from));
             } catch (ResponseStatusException notChanged) {
                 // Left as it is: someone else saved the person at the same moment.
             }

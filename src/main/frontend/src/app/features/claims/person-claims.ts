@@ -109,6 +109,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLate(c) ? 'yes' : 'no' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+          <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
@@ -192,6 +193,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
             [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
           <button type="button" data-testid="claim-waive" (click)="waive(c)"
             [attr.aria-label]="'Waive late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
+          <button type="button" data-testid="claim-hold" (click)="toggleHold(c)" [attr.aria-pressed]="c.held"
+            [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input #splitAmount [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal" />
           <button type="button" data-testid="claim-split" (click)="splitClaim(c, splitAmount.value)"
@@ -745,6 +748,21 @@ export class PersonClaims {
             ? 'This claim\'s late charge is already waived.'
             : 'Only an OPEN or PENDING claim can have its late charge waived.';
         this.claimError.set({ id: claim.id, message });
+      }
+    }
+  }
+
+  /** Hold an OPEN or PENDING claim, or release a held one; the store refuses a claim in any other status. */
+  protected async toggleHold(claim: ClaimView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    try {
+      const toggled = await this.api.hold(sheet.id, claim.id);
+      if (this.session.sheet()?.id === sheet.id) this.changed.emit(toggled);
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.claimError.set({ id: claim.id, message: 'Only an OPEN or PENDING claim can be held or released.' });
       }
     }
   }

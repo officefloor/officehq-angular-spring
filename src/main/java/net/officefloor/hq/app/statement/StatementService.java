@@ -170,7 +170,7 @@ public class StatementService {
         boolean deferred = status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
                 && asOf.isBefore(claim.getDeferredUntil());
         boolean counts = status == ClaimStatus.SETTLED || (status.isOpen() && !deferred
-                && (binding != null || !person.isLeftOutAsOf(claim.getDate(), asOf)));
+                && (binding != null || !(claim.heldAsOf(asOf) || person.isLeftOutAsOf(claim.getDate(), asOf))));
         if (!counts) return null;
         RoundingMode rounding = claimService.rounding(sheetId, claim, asOf, dated);
         Grade grade = person.gradeOn(claim.getDate(), asOf);
@@ -237,12 +237,12 @@ public class StatementService {
     }
 
     /** Only open and settled claims count toward what is claimed and due; a person's open claims dated
-     *  within one of their holds, or all of them once their retirement date is reached, do not, unless a
-     *  statement binds them, nor does a claim deferred on the
+     *  within one of their holds, or all of them once their retirement date is reached, and a held claim do
+     *  not, unless a statement binds them, nor does a claim deferred on the
      *  sheet's today, as on the screen. */
     private static boolean counts(Person person, Claim claim, LocalDate today) {
         return claim.getStatus() == ClaimStatus.SETTLED
                 || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                        && (claim.isBound() || !person.isLeftOut(claim.getDate(), today)));
+                        && (claim.isBound() || !(claim.isHeld() || person.isLeftOut(claim.getDate(), today))));
     }
 }

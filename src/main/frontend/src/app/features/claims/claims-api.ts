@@ -114,6 +114,8 @@ export interface ClaimView {
   lines: ClaimLine[];
   /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
   waived: boolean;
+  /** Whether the claim is held: while held, an open claim no statement binds counts in no live total. */
+  held: boolean;
 }
 
 /** A line of a claim: its label, whole quantity and unit amount (two decimals). */
@@ -436,6 +438,11 @@ export class ClaimsApi {
    *  a claim in any other status or one already waived. */
   waive(sheetId: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/waive`, {}));
+  }
+
+  /** Hold an open or pending claim, or release a held one: refused for a claim in any other status. */
+  hold(sheetId: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/hold`, {}));
   }
 
   /** Move a draft, open or pending claim to another person, as their newest claim: refused (403) to

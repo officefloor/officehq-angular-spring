@@ -507,6 +507,27 @@ public class ClaimService {
         return saved;
     }
 
+    /** Hold an OPEN or PENDING claim, writing CLAIM_HELD, or release a held one, writing CLAIM_RELEASED:
+     *  while held, unless a statement binds it, it counts in no live total, as a held person's claims do.
+     *  Refused for a claim in any other status. */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be held or released; only an OPEN or PENDING one can.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
+        boolean held = !claim.isHeld();
+        claim.setHeld(held, sheets.today(sheetId));
+        Claim saved = claims.saveAndFlush(claim);
+        recordChange(held ? "CLAIM_HELD" : "CLAIM_RELEASED", user, person, saved);
+        rollup.recordChanges(user, before);
+        return saved;
+    }
+
     /** Raise a claim's proofs count by one, and its count of the kind (none chosen: a receipt); a chosen
      *  kind is audited at the end of CLAIM_PROOF_ADDED. Refused for a SETTLED or VOID claim. No figure moves, so a
      *  claim dated inside a closed period may still have a proof added. */

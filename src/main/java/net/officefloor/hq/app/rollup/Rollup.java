@@ -260,12 +260,12 @@ public class Rollup {
 
     /** Only open (PENDING included) and settled claims count toward what is claimed and due; a person's
      *  open claims dated within one of their holds, or all of them once their retirement date is reached,
-     *  do not, unless a statement binds them; nor does a
+     *  and a held claim do not, unless a statement binds them; nor does a
      *  claim deferred on the sheet's today. */
     private static boolean counts(Person person, Claim claim, LocalDate today) {
         return claim.getStatus() == ClaimStatus.SETTLED
                 || (claim.getStatus().isOpen() && !claim.isDeferredOn(today)
-                        && (claim.isBound() || !person.isLeftOut(claim.getDate(), today)));
+                        && (claim.isBound() || !(claim.isHeld() || person.isLeftOut(claim.getDate(), today))));
     }
 
     /** The claim's figure, as ClaimService.figure works it out: the settled due, else the stated due

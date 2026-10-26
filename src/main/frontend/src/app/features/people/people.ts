@@ -1222,19 +1222,19 @@ export class People {
 
   /** Whether the claim counts in the live totals: open (PENDING included) and settled claims do,
    *  except open claims dated within a hold of their person, or of a person whose retirement date the
-   *  sheet's today has reached, that no statement binds, and claims
+   *  sheet's today has reached, and held open claims, that no statement binds, and claims
    *  deferred on the sheet's today. */
   private countsLive(claim: ClaimView): boolean {
     return counts(claim) && !isDeferred(claim, this.session.sheet()?.today) && !(isOpen(claim) && !isBound(claim)
       && this.leftOut(claim));
   }
 
-  /** Whether the claim, open and unbound, leaves the live totals: dated within a hold of its person, or
-   *  its person's retirement date reached by the sheet's today. */
+  /** Whether the claim, open and unbound, leaves the live totals: held itself, dated within a hold of its
+   *  person, or its person's retirement date reached by the sheet's today. */
   private leftOut(claim: ClaimView): boolean {
     const retiredFrom = this.retiredFromById().get(claim.personId) ?? null;
     const today = this.session.sheet()?.today;
-    return heldOn(this.holdsById().get(claim.personId) ?? [], claim.date)
+    return claim.held || heldOn(this.holdsById().get(claim.personId) ?? [], claim.date)
       || (retiredFrom !== null && today !== undefined && retiredFrom <= today);
   }
 

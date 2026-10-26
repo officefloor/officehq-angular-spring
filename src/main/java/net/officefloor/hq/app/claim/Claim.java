@@ -138,6 +138,10 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: while held, an open claim no statement binds counts in no live total. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** The claim's external reference, unique on its sheet without regard to case; none when it has none. */
     @Column(name = "ref")
     private String ref;
@@ -166,6 +170,12 @@ public class Claim {
     @CollectionTable(name = "claim_binding", joinColumns = @JoinColumn(name = "claim_id"))
     @OrderColumn(name = "position")
     private List<ClaimBinding> bindings = new ArrayList<>();
+
+    /** The claim's hold history, oldest first: a line for each hold and each release. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_hold", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "position")
+    private List<ClaimHold> holds = new ArrayList<>();
 
     /** The claim's comments, oldest first. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -260,6 +270,8 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.waived = waived;
+        copy.held = held;
+        for (ClaimHold line : holds) copy.holds.add(new ClaimHold(line.getOn(), line.isHeld()));
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.stated = stated;
@@ -551,6 +563,23 @@ public class Claim {
     /** Record the claim's late charge waived. */
     public void waive() {
         this.waived = true;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    /** Hold the claim, or release it, while the sheet's today is the date given. */
+    public void setHeld(boolean held, LocalDate today) {
+        this.held = held;
+        holds.add(new ClaimHold(today, held));
+    }
+
+    /** Whether the claim was held at the end of the date given, as its hold history records it. */
+    public boolean heldAsOf(LocalDate date) {
+        boolean then = false;
+        for (ClaimHold line : holds) if (line.madeBy(date)) then = line.isHeld();
+        return then;
     }
 
     /** Whether the claim is locked by a user other than this one. */
