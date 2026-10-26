@@ -144,6 +144,12 @@ public class ClaimController {
         return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
     }
 
+    /** The claim's timeline: the audit lines about it, newest first. */
+    @GetMapping("/claims/{id}/timeline")
+    public List<String> timeline(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id) {
+        return service.timeline(sheetId.trim(), id);
+    }
+
     /** Every tag ever used on the sheet, by name. */
     @GetMapping("/tags")
     public List<String> tags(@PathVariable @NotBlank @Size(max = 100) String sheetId) {

@@ -1011,6 +1011,16 @@ public class ClaimService {
         return entry != null ? entry : sheets.today(sheetId);
     }
 
+    /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
+    @Transactional(readOnly = true)
+    public List<String> timeline(String sheetId, long id) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        Person person = person(sheetId, claim.getPersonId());
+        return audit.claimLines(sheetId, claim.getNumber(), person.getName(),
+                claim.getAmount().toPlainString(), claim.getDate().toString());
+    }
+
     /** Every tag ever used on the sheet, by name. */
     @Transactional(readOnly = true)
     public List<String> tags(String sheetId) {

@@ -394,6 +394,11 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheetId)}/claims/${id}/lines`, line));
   }
 
+  /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
+  timeline(sheetId: string, id: number): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`${this.url(sheetId)}/claims/${id}/timeline`));
+  }
+
   /** Remind an open or pending claim: refused for a claim in any other status, and for one already
    *  reminded on the sheet's today. */
   remind(sheetId: string, id: number): Promise<ClaimView> {

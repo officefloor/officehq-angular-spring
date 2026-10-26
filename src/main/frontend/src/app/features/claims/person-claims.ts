@@ -194,6 +194,15 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           }
+          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
+            [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date">Timeline</button>
+          @if (timelines().get(c.id); as lines) {
+            <ol [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+              @for (line of lines; track $index) {
+                <li data-testid="claim-timeline-line">{{ line }}</li>
+              }
+            </ol>
+          }
           @if (claimError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
@@ -266,6 +275,8 @@ export class PersonClaims {
   /** The claims whose inline amount is being saved, so a second press stores one change, not two. */
   private readonly inlineSaving = new Set<number>();
   protected readonly error = signal('');
+  /** Each shown claim timeline, by claim: its audit lines, newest first. */
+  protected readonly timelines = signal<ReadonlyMap<number, string[]>>(new Map());
   /** The refusal of the last action taken on a claim's row, shown on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
 
@@ -626,6 +637,31 @@ export class PersonClaims {
         : 'The line could not be added.';
       this.claimError.set({ id: claim.id, message });
     }
+  }
+
+  /** Show the claim's timeline afresh: the audit lines about it, newest first. */
+  protected async showTimeline(claim: ClaimView): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claimError.set(null);
+    this.setTimeline(claim.id, null);
+    try {
+      const lines = await this.api.timeline(sheet.id, claim.id);
+      if (this.session.sheet()?.id === sheet.id) this.setTimeline(claim.id, lines);
+    } catch {
+      if (this.session.sheet()?.id === sheet.id) {
+        this.claimError.set({ id: claim.id, message: 'The timeline could not be loaded.' });
+      }
+    }
+  }
+
+  private setTimeline(id: number, lines: string[] | null): void {
+    this.timelines.update((all) => {
+      const next = new Map(all);
+      if (lines === null) next.delete(id);
+      else next.set(id, lines);
+      return next;
+    });
   }
 
   /** Remind an OPEN or PENDING claim; the store refuses a claim in any other status and one already

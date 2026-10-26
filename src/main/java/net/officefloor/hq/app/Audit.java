@@ -8,7 +8,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -121,6 +123,32 @@ public class Audit {
             if (Person.keyOf(about.group(1)).equals(key)) return true;
         }
         return false;
+    }
+
+    /** A record's field: its value runs up to the next field or the end. */
+    private static final Pattern FIELD = Pattern.compile(" ([a-z][a-z-]*)=(.*?)(?= [a-z][a-z-]*=|$)");
+
+    /**
+     * The sheet's records about one claim exactly as the file holds them, newest first: with a number, those
+     * carrying number=<the number>; without, those carrying no number that name its person (compared as names
+     * are compared), amount and date together.
+     */
+    public List<String> claimLines(String sheetId, String number, String person, String amount, String date) {
+        List<String> found = new ArrayList<>();
+        for (String line : lines(sheetId, null)) {
+            Matcher head = HEAD.matcher(line);
+            if (!head.find()) continue;
+            Map<String, String> fields = new HashMap<>();
+            Matcher field = FIELD.matcher(line.substring(head.end()));
+            while (field.find()) fields.putIfAbsent(field.group(1), field.group(2));
+            boolean about = number != null
+                    ? number.equals(fields.get("number"))
+                    : !fields.containsKey("number") && fields.containsKey("person")
+                            && Person.keyOf(fields.get("person")).equals(Person.keyOf(person))
+                            && amount.equals(fields.get("amount")) && date.equals(fields.get("date"));
+            if (about) found.add(line);
+        }
+        return found;
     }
 
     /** Truncate the audit file. */
