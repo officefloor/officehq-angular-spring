@@ -80,6 +80,11 @@ public class SettingController {
     public record ClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
+    /** A grade's own clerk limit as entered; none means the sheet's. */
+    public record GradeClerkLimitForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value,
+            LocalDate from) {
+    }
+
     /** The cap as entered; none means no cap. */
     public record CapForm(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
@@ -254,6 +259,18 @@ public class SettingController {
         Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
         service.setGradeGrace(id, SignedInUser.name(user), g, form.value(), form.from());
+        return view(id);
+    }
+
+    /** Set a grade's own clerk limit, or clear it to use the sheet's. */
+    @PutMapping("/settings/clerk-limit/{grade}")
+    public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable String grade, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Valid GradeClerkLimitForm form) {
+        String id = sheetId.trim();
+        Grade g = Arrays.stream(Grade.values()).filter((v) -> v.name().equals(grade)).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade."));
+        service.setGradeClerkLimit(id, SignedInUser.name(user), g, form.value(), form.from());
         return view(id);
     }
 

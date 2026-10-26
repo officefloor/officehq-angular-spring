@@ -815,6 +815,27 @@ public class SettingService implements ActingFor {
         return value;
     }
 
+    /** The clerk limit of a grade in force on the sheet's today: its own when set then, else the sheet's;
+     *  null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimit(String sheetId, Grade grade) {
+        return dated(sheetId).clerkLimitOn(grade, sheets.today(sheetId));
+    }
+
+    /** The key of a grade's own clerk limit. */
+    public static String clerkLimitKey(Grade grade) {
+        return CLERK_LIMIT + "-" + grade.name();
+    }
+
+    /** Record a grade's own clerk limit, kept to two decimals, from a date; null clears it from then,
+     *  leaving the sheet's. */
+    @Transactional
+    public BigDecimal setGradeClerkLimit(String sheetId, String user, Grade grade, BigDecimal limit, LocalDate from) {
+        BigDecimal value = limit == null ? null : limit.setScale(2);
+        record(sheetId, user, clerkLimitKey(grade), value == null ? "" : value.toPlainString(), from);
+        return value;
+    }
+
     /** The proof threshold in force on the date, with two decimals, or null when there is none. */
     @Transactional(readOnly = true)
     public BigDecimal proofThreshold(String sheetId, LocalDate date) {

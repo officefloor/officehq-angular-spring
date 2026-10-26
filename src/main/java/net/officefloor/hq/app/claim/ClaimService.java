@@ -229,8 +229,8 @@ public class ClaimService {
 
     /** Move a claim to a new status; a change its status does not allow is refused, as is settling
      *  by the user who opened or last edited the claim, and an action the sheet's permission matrix does
-     *  not allow the user's role. A clerk's settling of a claim whose due is above the sheet's
-     *  clerk limit leaves it PENDING for a steward to approve (a due of n/a is within any limit; a
+     *  not allow the user's role. A clerk's settling of a claim whose due is above the clerk
+     *  limit in force (its person's grade's own, else the sheet's) leaves it PENDING for a steward to approve (a due of n/a is within any limit; a
      *  steward settles anything). */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
@@ -308,7 +308,7 @@ public class ClaimService {
         if (next == ClaimStatus.OPEN && isAboveReviewThreshold(sheetId, claim, dueOpening)) next = ClaimStatus.REVIEW;
         // Settled one at a time until a bulk settle marks it with its batch.
         if (next == ClaimStatus.SETTLED) claim.setSettleBatch(null);
-        if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, dueNow)) next = ClaimStatus.PENDING;
+        if (next == ClaimStatus.SETTLED && isAboveClerkLimit(sheetId, user, person, dueNow)) next = ClaimStatus.PENDING;
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : claim.getNumber();
         claim.setStatus(next);
@@ -410,7 +410,7 @@ public class ClaimService {
      *  by the terms in force on the date; the claim keeps the rest and loses any figure a statement bound
      *  it to; it is a late entry when its due-by falls inside a soft-closed period. Refused for a claim that
      *  is not OPEN (a PENDING one included), a deferred claim, and a claim whose due-by, or the new claim's,
-     *  is inside a closed period. */
+     *  is inside a closed period, or when the sheet's permission matrix does not let the user open. */
     @Transactional
     public Split split(String sheetId, String user, long id, BigDecimal part) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -420,6 +420,9 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be split; only an OPEN one can.");
         }
+        // The claim split off is opened by the user, so the permission matrix must let them open.
+        settings.refuseUnlessPermitted(sheetId, user, ACTIONS.get(ClaimStatus.OPEN),
+                "Your role may not " + ACTIONS.get(ClaimStatus.OPEN) + " a claim on this sheet.");
         if (claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be split.");
@@ -935,10 +938,11 @@ public class ClaimService {
         }
     }
 
-    /** Whether the user is a clerk settling a claim whose due is above the sheet's clerk limit. */
-    private boolean isAboveClerkLimit(String sheetId, String user, BigDecimal due) {
+    /** Whether the user is a clerk settling a claim whose due is above the clerk limit in force: its person's
+     *  grade's own on the sheet's today when set, else the sheet's. */
+    private boolean isAboveClerkLimit(String sheetId, String user, Person person, BigDecimal due) {
         if (due == null || settings.roleOf(sheetId, user) == Role.STEWARD) return false;
-        BigDecimal limit = settings.clerkLimit(sheetId);
+        BigDecimal limit = settings.clerkLimit(sheetId, person.gradeOn(sheets.today(sheetId)));
         return limit != null && due.compareTo(limit) > 0;
     }
 
