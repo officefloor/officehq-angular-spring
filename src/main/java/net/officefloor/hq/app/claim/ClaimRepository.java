@@ -45,6 +45,14 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The person's claim of the number, if any. */
     Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 
+    /** The total amount of the person's corrections of the claim of the number, other than the claim given
+     *  (null: none), VOID and DELETED ones left out; 0 when there is none. */
+    @Query("select coalesce(sum(c.amount), 0) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
+            + " and c.corrects = :number and c.amount < 0 and (:id is null or c.id <> :id)"
+            + " and c.status not in (net.officefloor.hq.app.claim.ClaimStatus.VOID, net.officefloor.hq.app.claim.ClaimStatus.DELETED)")
+    java.math.BigDecimal correctedTotal(@Param("sheetId") String sheetId, @Param("personId") Long personId,
+            @Param("number") String number, @Param("id") Long id);
+
     /** The claim, locked until the transaction ends, so two status changes cannot both pass. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")

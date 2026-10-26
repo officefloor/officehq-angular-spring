@@ -24,6 +24,11 @@ function refUsed(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
     && e.error.message.startsWith('The reference ');
 }
+/** Whether the store refused a correction because it exceeds what remains of the claim it corrects. */
+function overCorrected(e: unknown): e is HttpErrorResponse {
+  return e instanceof HttpErrorResponse && e.status === 422 && typeof e.error?.message === 'string'
+    && e.error.message.startsWith('A correction may not exceed ');
+}
 /** Whether the store refused opening a claim because its person has as many open claims in its period as the period's cap. */
 function capReached(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string'
@@ -379,13 +384,19 @@ export class PersonClaims {
 
   /** Open the claim's editor, locking the claim for other users until it is saved or cancelled, or the
    *  sheet's today changes. A claim that cannot be edited (not a draft, or due by a date inside a closed period)
-   *  is refused and takes no lock. A viewer's edit, and a claim another user's editor locks, are refused
+   *  is refused and takes no lock; one due inside a closed period opens the editor on its values. A viewer's edit, and a claim another user's editor locks, are refused
    *  too, the editor showing its values without the lock; its save is refused. */
   protected async edit(claim: ClaimView): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.claimError.set(null);
     if (this.inClosedPeriod(claim.dueBy)) {
+      // The editor shows the claim's values without the lock; its save is refused.
+      const was = this.editingId();
+      if (was !== null && was !== claim.id) this.release(sheet.id, was);
+      this.setEditing(claim.id);
+      this.fill(claim);
+      this.error.set('');
       this.claimError.set({ id: claim.id, message: 'This claim\'s due-by is inside a closed period, so it cannot be edited.' });
       return;
     }
@@ -889,7 +900,9 @@ export class PersonClaims {
         // Only a draft can be edited; the refusal is shown on the claim, and the editor stays open.
         this.claimError.set({ id: editing.id, message: 'Only a draft claim can be edited. To change an open claim, void it and add a new one.' });
       } else {
-        this.error.set(uncorrected
+        this.error.set(uncorrected && overCorrected(e)
+          ? e.error.message
+          : uncorrected
           ? 'A correction must name, by number, a settled claim of this person.'
           : conflict
           ? 'A claim whose due-by is inside a closed period cannot be added or changed.'

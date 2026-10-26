@@ -98,7 +98,7 @@ public class ClaimService {
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
-        refuseIfNotCorrecting(sheetId, personId, amount, corrects);
+        refuseIfNotCorrecting(sheetId, personId, amount, corrects, null);
         String reference = refOf(ref);
         refuseIfRefUsed(sheetId, reference, null);
         Rollup.Snapshot before = rollup.snapshot(sheetId);
@@ -208,7 +208,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A claim with lines has the total of its lines as its amount.");
         }
-        refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects);
+        refuseIfNotCorrecting(sheetId, claim.getPersonId(), amount, corrects, claim.getId());
         String reference = refOf(ref);
         refuseIfRefUsed(sheetId, reference, claim.getId());
         Rollup.Snapshot before = rollup.snapshot(sheetId);
@@ -863,14 +863,21 @@ public class ClaimService {
         }
     }
 
-    /** Refuse a correction (a negative amount) unless it names, by number, a settled claim of the same person. */
-    private void refuseIfNotCorrecting(String sheetId, long personId, BigDecimal amount, String corrects) {
+    /** Refuse a correction (a negative amount) unless it names, by number, a settled claim of the same person,
+     *  and does not exceed what remains of that claim: its amount less the corrections already made against it
+     *  (other than the claim given, null: none), VOID and DELETED ones left out. */
+    private void refuseIfNotCorrecting(String sheetId, long personId, BigDecimal amount, String corrects, Long id) {
         if (amount.signum() >= 0) return;
-        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
-                .filter(c -> c.getStatus() == ClaimStatus.SETTLED).isPresent();
-        if (!settled) {
+        Claim target = corrects == null ? null : claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .filter(c -> c.getStatus() == ClaimStatus.SETTLED).orElse(null);
+        if (target == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A negative amount must name, by number, a settled claim of the same person that it corrects.");
+        }
+        BigDecimal remains = target.getAmount().add(claims.correctedTotal(sheetId, personId, corrects, id));
+        if (amount.negate().compareTo(remains) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A correction may not exceed what remains of the claim it corrects (" + remains.setScale(2) + ").");
         }
     }
 
