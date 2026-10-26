@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, isBound, isOpen, keepsFigure, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Claims, claimedTotal, counts, dueOf, isBound, isOpen, overdue } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, gradeOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -346,8 +346,8 @@ export class People {
   protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
-  // today nor for the grade of any counted claim's date it is null (n/a), unless a settled or stated claim keeps a
-  // figure.
+  // today nor for the grade of any counted claim's date it is null (n/a), unless a counted claim has a figure (a
+  // settled or stated one, or one dated within a rate that has since ended).
   protected readonly dueBy = computed(() => {
     const by = new Map<number, string | null>();
     const current = this.rates.current();
@@ -358,11 +358,12 @@ export class People {
       const counted = this.liveBy().get(p.id) ?? [];
       // the grades whose rate today decides n/a: the one in force today and each counted claim's
       const grades = [this.gradeToday(p), ...counted.map((c) => gradeOn(p.grades, c.date))];
-      if (!grades.some((g) => current.has(g)) && !counted.some(keepsFigure)) {
+      const dues = counted.map((c) => dueOf(c, rates.get(gradeOn(p.grades, c.date)) ?? [], floor, late));
+      if (!grades.some((g) => current.has(g)) && dues.every((d) => d === null)) {
         by.set(p.id, null);
         continue;
       }
-      by.set(p.id, sumSkippingNa(counted.map((c) => dueOf(c, rates.get(gradeOn(p.grades, c.date)) ?? [], floor, late))));
+      by.set(p.id, sumSkippingNa(dues));
     }
     return by;
   });

@@ -90,11 +90,13 @@ public class StatementService {
             c.bind(claimService.figure(sheetId, person, c));
             count++;
             if (due != null) {
+                kept = true;
                 total = total.add(due);
             }
         }
         claims.flush();
-        // as on screen: with no rate in force today for any of those grades and no kept figure, the due-total is n/a
+        // as on screen: with no rate in force today for any of those grades and no claim with a figure, the due-total
+        // is n/a
         boolean current = grades.stream().anyMatch(g -> rates.findInForce(sheetId, g, today).isPresent());
         BigDecimal dueTotal = current || kept ? total : null;
         Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, count, today));

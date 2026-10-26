@@ -3,7 +3,6 @@ package net.officefloor.hq.app.rollup;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -95,12 +94,14 @@ public class RollupService {
                     figure = ClaimService.withLateCharge(figure, c, sheet);
                 }
                 if (figure != null) {
+                    kept = true;
                     due = due.add(figure);
                 }
             }
-            // with no rate in force today for any of those grades and no kept figure, the due-total is n/a
+            // with no rate in force today for any of those grades and no claim with a figure (kept, or live at a
+            // rate that has since ended), the due-total is n/a
             if (!kept && (today == null || grades.stream()
-                    .allMatch(g -> inForce(byGrade.getOrDefault(g, List.of()), today) == null))) {
+                    .allMatch(g -> Rate.inForce(byGrade.getOrDefault(g, List.of()), today) == null))) {
                 due = null;
             }
             figures.put(p.getId(), new Figures(p.getName(), claimed, due));
@@ -145,16 +146,9 @@ public class RollupService {
         if (c.isBound()) {
             return c.getStatedDue();
         }
-        Rate rate = inForce(rates, c.getDate());
+        Rate rate = Rate.inForce(rates, c.getDate());
         return rate == null ? null : ClaimService.floored(ClaimService.dueOn(c.getAmount(), rate.getPct(), sheet.roundingOn(c.getRoundsOn())),
                 c.isCorrection() ? null : floor);
-    }
-
-    /** The rate in force on the date: the one with the latest from-date on or before it; null with none. */
-    private static Rate inForce(List<Rate> rates, LocalDate date) {
-        return rates.stream().filter(r -> r.getFrom() == null || !r.getFrom().isAfter(date))
-                .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
-                .orElse(null);
     }
 
     private static String text(BigDecimal value) {

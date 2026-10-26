@@ -8,6 +8,8 @@ export interface RateView {
   pct: string;
   // The date the rate applies from; null for a rate that applies from the beginning of time.
   from: string | null;
+  // The date the rate applies through; null for a rate with no end.
+  to: string | null;
 }
 
 export const GRADES = ['A', 'B', 'C'];
@@ -76,7 +78,7 @@ export function sumSkippingNa(values: readonly (string | null)[]): string {
 /**
  * The percent of the rate in force on the date among one grade's rates: the one with the latest
  * from-date on or before it, a rate with no from-date applying from the beginning of time;
- * undefined (n/a) when none applies yet.
+ * undefined (n/a) when none applies yet, or when the date is past that one's to-date.
  */
 export function rateOn(rates: readonly RateView[], date: string | null): string | undefined {
   let best: RateView | undefined;
@@ -84,6 +86,7 @@ export function rateOn(rates: readonly RateView[], date: string | null): string 
     if (r.from !== null && (date === null || r.from > date)) continue;
     if (!best || (r.from !== null && (best.from === null || r.from > best.from))) best = r;
   }
+  if (best?.to && date !== null && date > best.to) return undefined;
   return best?.pct;
 }
 
@@ -129,10 +132,13 @@ export class RateStore {
     if (this.session.sheetId() === sheet) this.list.set([...list].sort(byGradeThenFrom));
   }
 
-  /** Set the grade's rate from the date (null: from the beginning of time), replacing the one it had for it. */
-  async set(sheet: string, grade: string, pct: string, from: string | null): Promise<void> {
+  /**
+   * Set the grade's rate from the date (null: from the beginning of time) through the to-date (null: with no end),
+   * replacing the one it had for that from-date.
+   */
+  async set(sheet: string, grade: string, pct: string, from: string | null, to: string | null): Promise<void> {
     const r = await firstValueFrom(
-      this.http.put<RateView>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { pct, from }),
+      this.http.put<RateView>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { pct, from, to }),
     );
     if (this.session.sheetId() === sheet) {
       this.list.update((l) => [...l.filter((x) => x.grade !== r.grade || x.from !== r.from), r].sort(byGradeThenFrom));
@@ -174,6 +180,14 @@ export class RateStore {
           [value]="from()"
           (input)="from.set(value($event)); error.set(null)"
         />
+        <label for="rate-to">To (optional)</label>
+        <input
+          id="rate-to"
+          type="date"
+          data-testid="rate-form-to"
+          [value]="to()"
+          (input)="to.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
@@ -198,13 +212,14 @@ export class RateStore {
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (r of store.list(); track r.grade + '-' + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
@@ -221,6 +236,7 @@ export class Rates {
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');
+  protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   // A submit in flight: a second submit before it answers is ignored, so it stores one rate.
   private submitting = false;
@@ -249,9 +265,18 @@ export class Rates {
       this.error.set('Enter a from-date as yyyy-mm-dd.');
       return;
     }
+    const to = this.to().trim();
+    if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.error.set('Enter a to-date as yyyy-mm-dd.');
+      return;
+    }
+    if (to && from && to < from) {
+      this.error.set('Enter a to-date on or after the from-date.');
+      return;
+    }
     this.submitting = true;
     try {
-      await this.store.set(sheet, this.grade(), pct, from || null);
+      await this.store.set(sheet, this.grade(), pct, from || null, to || null);
     } catch {
       this.error.set('Could not set that rate.');
     } finally {

@@ -8,10 +8,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Comparator;
 
 /**
  * A rate for a grade on a sheet: a percent with two decimals, 0.00 or more, applying from its from-date (null: from
- * the beginning of time).
+ * the beginning of time) through its to-date (null: with no end).
  */
 @Entity
 @Table(name = "rate")
@@ -32,6 +34,9 @@ public class Rate {
 
     @Column(name = "from_date")
     private LocalDate from;
+
+    @Column(name = "to_date")
+    private LocalDate to;
 
     protected Rate() {
     }
@@ -65,5 +70,25 @@ public class Rate {
 
     public LocalDate getFrom() {
         return from;
+    }
+
+    public LocalDate getTo() {
+        return to;
+    }
+
+    public void setTo(LocalDate to) {
+        this.to = to;
+    }
+
+    /**
+     * The rate in force on the date among one grade's rates: the one with the latest from-date on or before it, unless
+     * the date is past that one's to-date; null with none.
+     */
+    public static Rate inForce(Collection<Rate> rates, LocalDate date) {
+        Rate best = rates.stream().filter(r -> r.getFrom() == null || !r.getFrom().isAfter(date))
+                .max(Comparator.comparing(Rate::getFrom,
+                        Comparator.nullsFirst(Comparator.naturalOrder())))
+                .orElse(null);
+        return best == null || (best.getTo() != null && best.getTo().isBefore(date)) ? null : best;
     }
 }

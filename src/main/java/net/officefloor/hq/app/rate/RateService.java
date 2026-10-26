@@ -35,14 +35,18 @@ public class RateService {
         return rates.findBySheetIdOrderByGradeAscFromAsc(sheetId);
     }
 
-    /** Sets the grade's rate from the date (null: from the beginning of time), replacing any rate it had for it. */
+    /**
+     * Sets the grade's rate from the date (null: from the beginning of time) through the to-date (null: with no end),
+     * replacing any rate it had for that from-date.
+     */
     @Transactional
-    public Rate set(String by, String sheetId, String grade, LocalDate from, BigDecimal pct) {
+    public Rate set(String by, String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         sheets.load(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pct.setScale(2, RoundingMode.UNNECESSARY);
         Rate rate = rates.findExact(sheetId, grade, from).orElseGet(() -> new Rate(sheetId, grade, from, scaled));
         rate.setPct(scaled);
+        rate.setTo(to);
         Rate saved;
         try {
             saved = rates.saveAndFlush(rate);
@@ -51,7 +55,8 @@ public class RateService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That rate was just set by someone else.");
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + by + " grade=" + grade
-                + " rate=" + saved.getPct().toPlainString() + (from != null ? " from=" + from : ""));
+                + " rate=" + saved.getPct().toPlainString() + (from != null ? " from=" + from : "")
+                + (to != null ? " to=" + to : ""));
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }

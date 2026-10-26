@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rate;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -27,17 +28,25 @@ public class RateController {
 
     /**
      * A grade's rate as the screen shows it; the percent always carries two decimals, and the from-date is null for a
-     * rate that applies from the beginning of time.
+     * rate that applies from the beginning of time; the to-date is null for a rate with no end.
      */
-    public record RateView(String grade, String pct, LocalDate from) {
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
         static RateView of(Rate r) {
-            return new RateView(r.getGrade(), r.getPct().toPlainString(), r.getFrom());
+            return new RateView(r.getGrade(), r.getPct().toPlainString(), r.getFrom(), r.getTo());
         }
     }
 
-    /** A rate as the form submits it: a percent of 0.00 or more with up to two decimals, and an optional from-date. */
+    /**
+     * A rate as the form submits it: a percent of 0.00 or more with up to two decimals, an optional from-date and an
+     * optional to-date not before it.
+     */
     public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 5, fraction = 2) BigDecimal pct,
-            LocalDate from) {
+            LocalDate from, LocalDate to) {
+
+        @AssertTrue(message = "The to-date must not be before the from-date.")
+        public boolean isToNotBeforeFrom() {
+            return to == null || from == null || !to.isBefore(from);
+        }
     }
 
     private final RateService service;
@@ -58,6 +67,6 @@ public class RateController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody RateForm form,
             @SessionAttribute(SessionController.USER) String user) {
-        return RateView.of(service.set(user, sheetId, grade, form.from(), form.pct()));
+        return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), form.pct()));
     }
 }

@@ -1,7 +1,6 @@
 package net.officefloor.hq.app.rate;
 
 import java.time.LocalDate;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,10 +21,11 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
                 : findBySheetIdAndGradeAndFrom(sheetId, grade, from);
     }
 
-    /** The grade's rate in force on the date: the one with the latest from-date on or before it. */
+    /**
+     * The grade's rate in force on the date: the one with the latest from-date on or before it, unless the date is
+     * past its to-date.
+     */
     default Optional<Rate> findInForce(String sheetId, String grade, LocalDate date) {
-        return findBySheetIdAndGrade(sheetId, grade).stream()
-                .filter(r -> r.getFrom() == null || !r.getFrom().isAfter(date))
-                .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())));
+        return Optional.ofNullable(Rate.inForce(findBySheetIdAndGrade(sheetId, grade), date));
     }
 }
