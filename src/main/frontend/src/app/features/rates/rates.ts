@@ -9,7 +9,8 @@ import { RatePreview, RateView, RatesApi, rateInForce } from './rates-api';
 const PCT = /^\d{1,7}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's rate in force today for each grade, and every rate with its from-date and to-date,
+// The sheet's rate in force today for each grade, a calendar of the rate in force on the first of
+// each month of today's year, and every rate with its from-date and to-date,
 // with one form to set a grade's rate from a from-date through a to-date.
 @Component({
   selector: 'app-rates',
@@ -79,6 +80,28 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           }
         </tbody>
       </table>
+      @if (calendarMonths().length) {
+        <table aria-label="Rates in force on the first of each month">
+          <thead>
+            <tr>
+              <th scope="col">Grade</th>
+              @for (m of calendarMonths(); track m) {
+                <th scope="col">{{ m }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (g of grades; track g) {
+              <tr>
+                <th scope="row">{{ g }}</th>
+                @for (m of calendarMonths(); track m) {
+                  <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ rateOn(g, m + '-01') | figure }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       <table data-testid="rates-list" aria-label="All rates">
         <thead>
           <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
@@ -155,6 +178,17 @@ export class Rates {
     const today = this.today();
     const rate = today === null ? null : rateInForce(this.rates().filter((r) => r.grade === grade), today);
     return rate?.pct ?? 'n/a';
+  }
+
+  /** The months (yyyy-mm) of the calendar year of the sheet's today, or none when there is no sheet. */
+  protected readonly calendarMonths = computed(() => {
+    const year = this.today()?.slice(0, 4);
+    return year ? Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`) : [];
+  });
+
+  /** The grade's rate in force on a date (its own, else its nearest parent's), or n/a when none is. */
+  protected rateOn(grade: Grade, date: string): string {
+    return rateInForce(this.rates().filter((r) => r.grade === grade), date)?.pct ?? 'n/a';
   }
 
   protected async submit(): Promise<void> {
