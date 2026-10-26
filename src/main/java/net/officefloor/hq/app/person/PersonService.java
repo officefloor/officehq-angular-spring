@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -16,11 +17,13 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetService sheets, RollupService rollup, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -32,18 +35,21 @@ public class PersonService {
     @Transactional
     public Person add(String by, String sheetId, String name, String grade) {
         sheets.load(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.strip();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
         Person added = save(new Person(sheetId, trimmed, grade));
         audit.recordOnCommit(record("PERSON_ADDED", by, added));
+        rollup.recordChanges(by, sheetId, before);
         return added;
     }
 
     /** Saves an edit made from the given version of the person; refused when it has been saved since. */
     @Transactional
     public Person update(String by, String sheetId, Long id, long version, String name, String grade) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (person.getVersion() != version) {
@@ -57,6 +63,7 @@ public class PersonService {
         person.setGrade(grade);
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", by, saved));
+        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 

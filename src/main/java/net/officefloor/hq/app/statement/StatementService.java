@@ -12,6 +12,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -32,16 +33,18 @@ public class StatementService {
     private final ClaimService claimService;
     private final RateRepository rates;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateRepository rates, SheetService sheets, Audit audit) {
+            ClaimService claimService, RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -65,6 +68,7 @@ public class StatementService {
         Person person = people.findWithLockByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         LocalDate today = sheets.load(sheetId).getToday();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean kept = false;
         int count = 0;
@@ -89,6 +93,7 @@ public class StatementService {
         Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, count, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + by + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count);
+        rollup.recordChanges(by, sheetId, before);
         return new Summary(personId, statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).size(),
                 taken);
     }

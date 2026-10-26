@@ -9,6 +9,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -23,14 +24,16 @@ public class ClaimService {
     private final PersonRepository people;
     private final RateRepository rates;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit) {
+            RollupService rollup, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -43,15 +46,18 @@ public class ClaimService {
     /** Adds a claim for the person; a missing date takes the sheet's today. */
     @Transactional
     public Claim add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = person(sheetId, personId);
         Claim added = claims.saveAndFlush(
                 new Claim(sheetId, personId, scaled(amount), dateOrToday(sheetId, date), noteOf(note)));
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
+        rollup.recordChanges(by, sheetId, before);
         return added;
     }
 
     @Transactional
     public Claim update(String by, String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         claim.setAmount(scaled(amount));
@@ -59,6 +65,7 @@ public class ClaimService {
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_EDITED", by, person(sheetId, saved.getPersonId()), saved));
+        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 
@@ -68,6 +75,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         if (!claim.getStatus().canMoveTo(next)) {
@@ -105,6 +113,7 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         audit.recordOnCommit(record(event, by, person, saved, number) + (due != null ? " due=" + due : ""));
+        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 
@@ -139,7 +148,7 @@ public class ClaimService {
     }
 
     /** The due on an amount at a rate: amount times rate divided by 100, rounded half to even to two decimals. */
-    private static BigDecimal dueOn(BigDecimal amount, BigDecimal pct) {
+    public static BigDecimal dueOn(BigDecimal amount, BigDecimal pct) {
         return amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 
