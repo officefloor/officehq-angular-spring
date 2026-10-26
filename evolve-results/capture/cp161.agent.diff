@@ -1,0 +1,122 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index a23c9f5e..083d38c0 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -22,6 +22,8 @@ export class Session {
+   private readonly sheetState = signal<SheetView | null>(null);
+   private readonly loadState = signal<SheetView | null>(null);
+   private readonly asOfState = signal<string | null>(null);
++  /** The re-reads of the active sheet under way: the load itself, and what each load sets off. */
++  private readonly reads = new Set<Promise<unknown>>();
+ 
+   readonly user = this.userState.asReadonly();
+   readonly sheet = this.sheetState.asReadonly();
+@@ -39,13 +41,31 @@ export class Session {
+ 
+   /** Load a sheet by id, re-read from the store; a sheet never loaded before starts empty. */
+   async loadSheet(id: string): Promise<void> {
+-    const sheet = await firstValueFrom(
++    const sheet = await this.reading(firstValueFrom(
+       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
+-    );
++    ));
+     this.sheetState.set(sheet);
+     this.loadState.set(sheet);
+   }
+ 
++  /** Note a re-read of what the screen holds for the sheet, so {@link settled} waits for it. */
++  reading<T>(read: Promise<T>): Promise<T> {
++    this.reads.add(read);
++    const done = () => this.reads.delete(read);
++    read.then(done, done);
++    return read;
++  }
++
++  /** Resolves once every re-read under way has answered, those a load just answered sets off included,
++   *  so what the screen holds is the sheet as it now shows it (as of its as-of date, while one is set). */
++  async settled(): Promise<void> {
++    do {
++      // Lets a load just answered set off its re-reads before they are waited for.
++      await new Promise((resolve) => setTimeout(resolve));
++      await Promise.allSettled([...this.reads]);
++    } while (this.reads.size > 0);
++  }
++
+   /** Show the active sheet as of a date, or as it is now (null): it is re-read from the store. */
+   async setAsOf(date: string | null): Promise<void> {
+     const was = this.asOfState();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b38c5058..9c1d8a9b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -871,9 +871,9 @@ export class People {
+ 
+   private async reload(sheetId: string): Promise<void> {
+     try {
+-      const [people, claims, rates, statements, periods, tags] = await Promise.all([
++      const [people, claims, rates, statements, periods, tags] = await this.session.reading(Promise.all([
+         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId),
+-        this.statementsApi.list(sheetId), this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId)]);
++        this.statementsApi.list(sheetId), this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId)]));
+       if (this.session.sheet()?.id === sheetId) {
+         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
+         this.rates.set(rates);
+@@ -1412,14 +1412,16 @@ export class People {
+ 
+   /** Downloads everyone on the sheet, retired or not, in list order: their name, grade in force today,
+    *  retired-from date and due-total as shown, one line each after the header, each ending in a line feed. */
+-  protected exportCsv(): void {
++  protected async exportCsv(): Promise<void> {
++    await this.session.settled();
+     this.download('people.csv', [['name', 'grade', 'retired-from', 'due-total'],
+       ...this.people().map((p) => [p.name, this.gradeToday(p), p.retiredFrom ?? '', this.personDueTotal(p)])]);
+   }
+ 
+   /** Downloads every claim on the sheet, retired people's included: people in list order, each person's
+    *  claims oldest first, with their number, date, amount, due, status and period as their rows show them. */
+-  protected exportClaims(): void {
++  protected async exportClaims(): Promise<void> {
++    await this.session.settled();
+     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period'],
+       ...this.people().flatMap((p) => [...this.claimsOf(p.id)].reverse().map((c) => {
+         const due = claimOwedCents(c, this.ratesOn(p, c.date), this.floor.centsOn(c.date), this.lateness(), this.claims());
+diff --git a/src/main/frontend/src/app/features/pools/pools-api.ts b/src/main/frontend/src/app/features/pools/pools-api.ts
+index 5fb6c57b..4392c14f 100644
+--- a/src/main/frontend/src/app/features/pools/pools-api.ts
++++ b/src/main/frontend/src/app/features/pools/pools-api.ts
+@@ -77,7 +77,7 @@ export class Pools {
+ 
+   private async load(sheetId: string): Promise<void> {
+     try {
+-      const list = await this.api.list(sheetId);
++      const list = await this.session.reading(this.api.list(sheetId));
+       if (this.session.sheet()?.id === sheetId) this.state.set(list);
+     } catch {
+       if (this.session.sheet()?.id === sheetId) this.loadError.set('The pools could not be loaded.');
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 9fe6ea04..a9cf4873 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -364,7 +364,8 @@ export class PoolsList {
+ 
+   /** Downloads the pools as a CSV file: one line per member, pools and their members in the order they
+    *  were added, a pool member as pool:<name>, and the cut as its row shows it (empty when none). */
+-  protected exportCsv(): void {
++  protected async exportCsv(): Promise<void> {
++    await this.session.settled();
+     const pools = this.store.pools();
+     const poolsById = new Map(pools.map((p) => [p.id, p]));
+     const cuts = this.cuts();
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 4152a8d4..9192440b 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -406,7 +406,7 @@ export class Settings {
+ 
+   private async reload(sheetId: string): Promise<void> {
+     try {
+-      const settings = await this.api.get(sheetId);
++      const settings = await this.session.reading(this.api.get(sheetId));
+       if (this.session.sheet()?.id === sheetId) this.show(settings);
+     } catch {
+       this.settingsError.set('The settings could not be loaded.');

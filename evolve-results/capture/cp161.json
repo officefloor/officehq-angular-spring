@@ -1,0 +1,64 @@
+{
+  "checkpoint": 161,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp161_as-of-exports",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people, claims and pools exports taken while an as-of date is set use the as-of figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people, claims and pools exports taken while an as-of date is set use the as-of figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8664e3b6b655ee6a6d3ef7c7c435584d9145efce",
+  "reset_sha": "",
+  "preagent_sha": "f69ff6d4e5e1a86ecfc64e4c72c9f3ad56d4a4e2",
+  "prev_sha": "f69ff6d4e5e1a86ecfc64e4c72c9f3ad56d4a4e2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.731775,
+    "input_tokens": 40,
+    "output_tokens": 7165,
+    "cache_read_tokens": 814735,
+    "cache_creation_tokens": 53171,
+    "num_turns": 20,
+    "duration_ms": 416093,
+    "duration_api_ms": 97805,
+    "model": "claude-opus-5-5",
+    "session_id": "86e92b7e-365e-4105-b8b9-9afd5c4f13e2",
+    "stop_reason": "success",
+    "result_text": "Exports taken while an as-of date is set now use the as-of figures. `bin/e2e` passes all 4 tests, including the \"as of exports\" test that failed before the change.\n\n**What was wrong:** the server already answers reads with the as-of data. The exports are built in the browser from data the screen has already loaded. When you set an as-of date, the \"As of\" label updated straight away, but the screen was still clearing and re-reading the people, claims, pools and settings. An export clicked in that window came out with only the header line (the test got exactly that).\n\n**The fix (front end only):**\n- `core/session.ts` now keeps track of the sheet's re-reads that are still running: the sheet load itself, plus anything a loader registers with the new `reading()`. A new `settled()` waits until all of them have finished.\n- The people loader (`features/people/people.ts`), the pools store (`features/pools/pools-api.ts`) and the settings loader (`features/settings/settings.ts`) now register their reads that way.\n- The people, claims and pools exports first wait for `settled()` and then build the CSV. So the file always reflects what the screen is showing: the as-of figures while a date is set, and the current figures once it is cleared.\n\nOther screens that reload when a sheet loads (rates, periods, plans and so on) don't register yet; only the loaders these exports read from do. The server and the stored data needed no change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.731775,
+        "num_turns": 20,
+        "duration_ms": 416093,
+        "duration_api_ms": 97805,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp161.agent.jsonl",
+  "agent_diff_file": "cp161.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
