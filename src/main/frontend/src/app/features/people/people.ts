@@ -2,8 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, claimedTotal } from '../claims/claims';
-import { GRADES, RateStore, dueOn, sumSkippingNa } from '../rates/rates';
+import { Claim, Claims, claimedTotal, counts } from '../claims/claims';
+import { GRADES, RateStore, dueOn, rateOn, sumSkippingNa } from '../rates/rates';
 
 interface Person {
   id: number;
@@ -111,11 +111,22 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => claimedTotal(this.claims()));
-  // Each person's due-total: their claimed times their grade's rate in force today; null (n/a) with none.
+  // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
+  // its live due, skipping n/a. With no rate in force today for their grade it is null (n/a), unless a
+  // settled claim keeps a figure.
   protected readonly dueBy = computed(() => {
     const by = new Map<number, string | null>();
-    const rates = this.rates.current();
-    for (const p of this.people()) by.set(p.id, dueOn(this.claimedBy().get(p.id) ?? '0.00', rates.get(p.grade)));
+    const current = this.rates.current();
+    const rates = this.rates.rates();
+    for (const p of this.people()) {
+      const counted = (this.claimsBy().get(p.id) ?? []).filter(counts);
+      if (!current.has(p.grade) && !counted.some((c) => c.settledDue !== null)) {
+        by.set(p.id, null);
+        continue;
+      }
+      const list = rates.get(p.grade) ?? [];
+      by.set(p.id, sumSkippingNa(counted.map((c) => c.settledDue ?? dueOn(c.amount, rateOn(list, c.date)))));
+    }
     return by;
   });
   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));

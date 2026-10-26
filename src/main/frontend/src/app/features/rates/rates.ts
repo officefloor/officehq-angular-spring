@@ -22,12 +22,15 @@ function cents(value: string): bigint {
 
 /**
  * The due on an amount at a rate (both two-decimal strings): amount times rate divided by 100,
- * rounded half up to two decimals; null (n/a) when there is no rate. Worked in whole numbers so
- * nothing drifts.
+ * rounded half to even to two decimals; null (n/a) when there is no rate. Worked in whole numbers
+ * so nothing drifts.
  */
 export function dueOn(amount: string, pct: string | undefined): string | null {
   if (pct === undefined) return null;
-  const due = (cents(amount) * cents(pct) + 5000n) / 10000n;
+  const product = cents(amount) * cents(pct);
+  let due = product / 10000n;
+  const rest = product % 10000n;
+  if (rest > 5000n || (rest === 5000n && due % 2n === 1n)) due += 1n;
   return formatCents(due);
 }
 

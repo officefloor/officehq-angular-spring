@@ -116,9 +116,9 @@ public class ClaimService {
                 + (number != null ? " number=" + number : "");
     }
 
-    /** The due on an amount at a rate: amount times rate divided by 100, rounded half up to two decimals. */
+    /** The due on an amount at a rate: amount times rate divided by 100, rounded half to even to two decimals. */
     private static BigDecimal dueOn(BigDecimal amount, BigDecimal pct) {
-        return amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
+        return amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
