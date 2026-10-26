@@ -15,21 +15,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has, the clerk limit, the floor, the terms, the late percent and the policy date. */
+/**
+ * A sheet's settings: the role each user name has; the clerk limit, the floor, the terms (the sheet's and each
+ * grade's), the late percent and the cap, each recorded from a from-date; the policy date and the period numbering
+ * from.
+ */
 @Service
 public class SettingsService {
 
     private final SheetRoleRepository roles;
-    private final GradeTermsRepository gradeTerms;
     private final SheetRepository sheetRepository;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public SettingsService(SheetRoleRepository roles, GradeTermsRepository gradeTerms, SheetRepository sheetRepository,
+    public SettingsService(SheetRoleRepository roles, SheetRepository sheetRepository,
             SheetService sheets, RollupService rollup, Audit audit) {
         this.roles = roles;
-        this.gradeTerms = gradeTerms;
         this.sheetRepository = sheetRepository;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -67,72 +69,39 @@ public class SettingsService {
         return saved;
     }
 
-    /** Sets the sheet's clerk limit; null means no limit. */
+    /** Records the sheet's clerk limit (null for no limit) from the date; null for the sheet's today. */
     @Transactional
-    public Sheet setClerkLimit(String by, String sheetId, BigDecimal limit) {
-        Sheet sheet = sheets.lock(sheetId);
-        BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setClerkLimit(scaled);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=clerk-limit value="
-                + (scaled == null ? "" : scaled.toPlainString()));
-        return saved;
-    }
-
-    /** Sets the sheet's terms: the days after a claim's date it is due by. */
-    @Transactional
-    public Sheet setTerms(String by, String sheetId, int terms) {
-        Sheet sheet = sheets.lock(sheetId);
-        sheet.setTerms(terms);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
-        return saved;
-    }
-
-    /** The terms set per grade on the sheet, by grade; a grade not listed uses the sheet's terms. */
-    @Transactional(readOnly = true)
-    public List<GradeTerms> gradeTerms(String sheetId) {
-        return gradeTerms.findBySheetIdOrderByGradeAsc(sheetId);
+    public Sheet setClerkLimit(String by, String sheetId, BigDecimal limit, LocalDate from) {
+        return record(by, sheetId, Sheet.CLERK_LIMIT, limit == null ? null : money(limit), from, false);
     }
 
     /**
-     * Sets the terms for one grade: the days after its date a claim is due by when its person has the grade on its
-     * date. Claims already added keep the due-by they were given.
+     * Records the sheet's terms from the date (null for the sheet's today): the days after its date a claim dated on
+     * or after it is due by. Claims already added keep the due-by they were given.
      */
     @Transactional
-    public GradeTerms setGradeTerms(String by, String sheetId, String grade, int terms) {
-        sheets.lock(sheetId);
-        GradeTerms t = gradeTerms.findBySheetIdAndGrade(sheetId, grade)
-                .orElseGet(() -> new GradeTerms(sheetId, grade, terms));
-        t.setTerms(terms);
-        GradeTerms saved = gradeTerms.saveAndFlush(t);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms-" + grade + " value="
-                + terms);
-        return saved;
-    }
-
-    /** The terms in force for the grade: its own, else the sheet's. */
-    @Transactional(readOnly = true)
-    public int termsFor(String sheetId, String grade) {
-        return gradeTerms.findBySheetIdAndGrade(sheetId, grade).map(GradeTerms::getTerms)
-                .orElseGet(() -> sheets.load(sheetId).getTerms());
+    public Sheet setTerms(String by, String sheetId, int terms, LocalDate from) {
+        return record(by, sheetId, Sheet.TERMS, String.valueOf(terms), from, false);
     }
 
     /**
-     * Sets the sheet's late percent: the percent of an overdue claim's figure added for every full 30 days it is
-     * overdue. Settled figures keep what they were; the live figures it moves are rolled up.
+     * Records the terms for one grade from the date (null for the sheet's today): the days after its date a claim is
+     * due by when it is dated on or after it and its person has the grade on its date. Claims already added keep the
+     * due-by they were given.
      */
     @Transactional
-    public Sheet setLatePct(String by, String sheetId, BigDecimal latePct) {
-        Sheet sheet = sheets.lock(sheetId);
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
-        BigDecimal scaled = latePct.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setLatePct(scaled);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=late-pct value="
-                + scaled.toPlainString());
-        rollup.recordChanges(by, sheetId, before);
-        return saved;
+    public Sheet setGradeTerms(String by, String sheetId, String grade, int terms, LocalDate from) {
+        return record(by, sheetId, Sheet.TERMS + "-" + grade, String.valueOf(terms), from, false);
+    }
+
+    /**
+     * Records the sheet's late percent from the date (null for the sheet's today): the percent of an overdue claim's
+     * figure added for every full 30 days it is overdue, for a claim dated on or after it. Settled figures keep what
+     * they were; the live figures it moves are rolled up.
+     */
+    @Transactional
+    public Sheet setLatePct(String by, String sheetId, BigDecimal latePct, LocalDate from) {
+        return record(by, sheetId, Sheet.LATE_PCT, money(latePct), from, true);
     }
 
     /**
@@ -167,37 +136,44 @@ public class SettingsService {
     }
 
     /**
-     * Sets the sheet's floor: the least a claim's live due can be. Settled, stated and closed-period figures keep
-     * what they were; the live figures it moves are rolled up.
+     * Records the sheet's floor from the date (null for the sheet's today): the least the live due of a claim dated
+     * on or after it can be. Settled, stated and closed-period figures keep what they were; the live figures it moves
+     * are rolled up.
      */
     @Transactional
-    public Sheet setFloor(String by, String sheetId, BigDecimal floor) {
-        Sheet sheet = sheets.lock(sheetId);
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
-        BigDecimal scaled = floor.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setFloor(scaled);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=floor value="
-                + scaled.toPlainString());
-        rollup.recordChanges(by, sheetId, before);
-        return saved;
+    public Sheet setFloor(String by, String sheetId, BigDecimal floor, LocalDate from) {
+        return record(by, sheetId, Sheet.FLOOR, money(floor), from, true);
     }
 
     /**
-     * Sets the sheet's cap (null for none): the most a person's due-total can be. The due-totals it moves are rolled
-     * up.
+     * Records the sheet's cap (null for none) from the date (null for the sheet's today): the most a person's
+     * due-total can be while it is in force on the sheet's today. The due-totals it moves are rolled up.
      */
     @Transactional
-    public Sheet setCap(String by, String sheetId, BigDecimal cap) {
+    public Sheet setCap(String by, String sheetId, BigDecimal cap, LocalDate from) {
+        return record(by, sheetId, Sheet.CAP, cap == null ? null : money(cap), from, true);
+    }
+
+    /**
+     * Records the dated setting's value (null for none) from the date, or from the sheet's today when none is given,
+     * replacing a value already recorded from that date. The audit line carries the from-date only when one was
+     * given. When it can move live figures, the ones it moves are rolled up.
+     */
+    private Sheet record(String by, String sheetId, String key, String value, LocalDate from, boolean rollsUp) {
         Sheet sheet = sheets.lock(sheetId);
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
-        BigDecimal scaled = cap == null ? null : cap.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setCap(scaled);
+        RollupService.Snapshot before = rollsUp ? rollup.snapshot(sheetId) : null;
+        sheet.record(key, from == null ? sheet.getToday() : from, value);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=cap value="
-                + (scaled == null ? "" : scaled.toPlainString()));
-        rollup.recordChanges(by, sheetId, before);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=" + key + " value="
+                + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
+        if (rollsUp) {
+            rollup.recordChanges(by, sheetId, before);
+        }
         return saved;
+    }
+
+    private static String money(BigDecimal value) {
+        return value.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
     }
 
     /**

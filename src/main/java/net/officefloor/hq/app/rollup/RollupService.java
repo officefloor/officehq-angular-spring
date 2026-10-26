@@ -61,7 +61,6 @@ public class RollupService {
         claims.flush();
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
-        BigDecimal floor = sheet == null ? null : sheet.getFloor();
         Map<String, List<Rate>> byGrade = new HashMap<>();
         for (Rate r : rates.findBySheetIdOrderByGradeAscFromAsc(sheetId)) {
             byGrade.computeIfAbsent(r.getGrade(), g -> new ArrayList<>()).add(r);
@@ -92,7 +91,7 @@ public class RollupService {
                 claimed = claimed.add(c.getAmount());
                 kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
                 // the claim's rate is the one its person's grade in force on its date has
-                BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), floor, sheet);
+                BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
                 if (c.getStatus().isOpen() && !c.isCorrection()) {
                     figure = ClaimService.withLateCharge(figure, c, sheet);
                 }
@@ -150,10 +149,10 @@ public class RollupService {
     }
 
     /**
-     * The figure a claim totals: its settled due, else the one a statement bound it to, else live (floored, unless
-     * it is a correction), rounded as the sheet's policy date decides for it.
+     * The figure a claim totals: its settled due, else the one a statement bound it to, else live (floored at the
+     * floor in force on its date, unless it is a correction), rounded as the sheet's policy date decides for it.
      */
-    private static BigDecimal figure(Claim c, List<Rate> rates, BigDecimal floor, Sheet sheet) {
+    private static BigDecimal figure(Claim c, List<Rate> rates, Sheet sheet) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
         }
@@ -162,7 +161,7 @@ public class RollupService {
         }
         Rate rate = Rate.inForce(rates, c.getDate());
         return rate == null ? null : ClaimService.floored(ClaimService.dueOn(c.getAmount(), rate.getPct(), sheet.roundingOn(c.getRoundsOn())),
-                c.isCorrection() ? null : floor);
+                c.isCorrection() ? null : sheet.floorOn(c.getDate()));
     }
 
     /** Whether a claim is overdue: open (or pending), and due by a date before the sheet's today. */

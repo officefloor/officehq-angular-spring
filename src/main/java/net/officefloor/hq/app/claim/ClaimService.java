@@ -73,7 +73,7 @@ public class ClaimService {
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, noteOf(note));
         claim.setCorrects(corrected);
         claim.setRoundsOn(roundsOn(sheetId, corrected, on));
-        claim.setDueBy(on.plusDays(settings.termsFor(sheetId, person.gradeOn(on))));
+        claim.setDueBy(on.plusDays(sheets.load(sheetId).termsFor(person.gradeOn(on), on)));
         logStatus(by, sheetId, person, claim);
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", by, person, added));
@@ -316,11 +316,11 @@ public class ClaimService {
 
     /**
      * The claim's live due: at the rate its person's grade in force on its date has in force on that date, and at least the sheet's
-     * floor (a correction has none), rounded as the sheet's policy date decides for it; null (n/a) with none.
+     * floor in force on its date (a correction has none), rounded as the sheet's policy date decides for it; null (n/a) with none.
      */
     public BigDecimal liveDue(String sheetId, Person person, Claim claim) {
         Sheet sheet = sheets.load(sheetId);
-        BigDecimal floor = claim.isCorrection() ? null : sheet.getFloor();
+        BigDecimal floor = claim.isCorrection() ? null : sheet.floorOn(claim.getDate());
         RoundingMode rounding = sheet.roundingOn(claim.getRoundsOn());
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                 .map(pct -> floored(dueOn(claim.getAmount(), pct, rounding), floor)).orElse(null);
@@ -349,7 +349,7 @@ public class ClaimService {
     }
 
     /**
-     * The figure (null for n/a) of the claim, with the sheet's late percent of it added for every full 30 days it is
+     * The figure (null for n/a) of the claim, with the sheet's late percent in force on its date of it added for every full 30 days it is
      * overdue (past its due-by) by the sheet's today, rounded like its due. The charge is never bound by a statement: it keeps
      * following the sheet's today and its policy date.
      */
@@ -359,10 +359,11 @@ public class ClaimService {
         }
         long overdue = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday());
         long periods = overdue > 0 ? overdue / 30 : 0;
-        if (periods == 0 || sheet.getLatePct().signum() == 0) {
+        BigDecimal latePct = sheet.latePctOn(claim.getDate());
+        if (periods == 0 || latePct.signum() == 0) {
             return figure;
         }
-        return figure.add(dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)),
+        return figure.add(dueOn(figure, latePct.multiply(BigDecimal.valueOf(periods)),
                 sheet.roundingOn(claim.getRoundsOn())));
     }
 
