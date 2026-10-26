@@ -121,6 +121,28 @@ public class ConsolidatedService {
                 text(own.dueTotal()), text(own.overdueTotal()), gradeDueTotals, statusCounts, treePeople);
     }
 
+    /** Per grade, every grade listed, the due-totals of the sheet's people on it today who are not retired
+     *  (skipping n/a), with two decimals, as the sheet's summary shows them; read as the store holds it now.
+     *  Empty for a sheet that does not exist. */
+    @Transactional(readOnly = true)
+    public Map<String, String> gradeDueTotalsOf(String sheetId) {
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        Map<String, String> totals = new LinkedHashMap<>();
+        if (today == null) return totals;
+        Rollup.Snapshot figures = rollup.snapshot(sheetId);
+        Map<Grade, BigDecimal> gradeDue = new LinkedHashMap<>();
+        for (Grade grade : Grade.values()) gradeDue.put(grade, BigDecimal.ZERO);
+        for (Person person : people.findInListOrder(sheetId)) {
+            if (person.isRetired()) continue;
+            Grade grade = person.gradeOn(today);
+            Rollup.Figures theirs = figures.people().get(person.getId());
+            if (grade == null || theirs == null || theirs.dueTotal() == null) continue;
+            gradeDue.merge(grade, theirs.dueTotal(), BigDecimal::add);
+        }
+        gradeDue.forEach((grade, total) -> totals.put(grade.name(), text(total)));
+        return totals;
+    }
+
     private Set<String> descendantsNow(String sheetId) {
         Set<String> found = new LinkedHashSet<>();
         Deque<String> next = new ArrayDeque<>(List.of(sheetId));

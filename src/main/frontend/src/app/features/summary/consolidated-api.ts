@@ -61,3 +61,15 @@ export class TreeSearchApi {
       { params: { text }, context: new HttpContext().set(LIVE_READ, true) }));
   }
 }
+
+// Per grade, a sheet's summary due-total with two decimals; none for a sheet that does not exist. Read
+// live, as the store holds it now.
+@Injectable({ providedIn: 'root' })
+export class CompareSheetApi {
+  private readonly http = inject(HttpClient);
+
+  gradeDueTotals(sheetId: string): Promise<Record<string, string>> {
+    return firstValueFrom(this.http.get<Record<string, string>>(`/api/sheets/${encodeURIComponent(sheetId)}/grade-due-totals`,
+      { context: new HttpContext().set(LIVE_READ, true) }));
+  }
+}

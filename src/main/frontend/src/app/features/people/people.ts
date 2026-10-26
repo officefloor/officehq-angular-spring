@@ -42,6 +42,7 @@ import { Rollover } from '../periods/rollover';
 import { ImportPeople } from './import-people';
 import { Consolidated } from '../summary/consolidated';
 import { TreeSearch } from '../summary/tree-search';
+import { CompareSheet } from '../summary/compare-sheet';
 import { Duplicates } from '../duplicates/duplicates';
 import { GeneratePlans } from '../plans/generate-plans';
 import { PersonPlans } from '../plans/person-plans';
@@ -53,7 +54,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
 // their counting claims to the figures they show then.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, Rollover, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, Duplicates, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
+  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, Rollover, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, CompareSheet, Duplicates, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
   template: `
     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
@@ -293,6 +294,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         @if (bulkRetireError()) {
           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
         }
+        <app-compare-sheet [grades]="gradeSummary()" />
         <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLate]="reviewLateCount()" />
         <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
         <app-people-columns />

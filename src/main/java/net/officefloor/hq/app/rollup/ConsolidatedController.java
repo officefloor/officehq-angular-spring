@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.asof.AsOf;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +32,13 @@ public class ConsolidatedController {
     public ConsolidatedService.Descendants descendants(@PathVariable @NotBlank @Size(max = 100) String id,
             HttpServletRequest request) {
         return service.descendantsOf(id.trim(), AsOf.of(request).orElse(null));
+    }
+
+    /** Per grade, the sheet's summary due-total; empty for a sheet that does not exist. Read as the store
+     *  holds it now. */
+    @GetMapping("/{id}/grade-due-totals")
+    public Map<String, String> gradeDueTotals(@PathVariable @NotBlank @Size(max = 100) String id) {
+        return service.gradeDueTotalsOf(id.trim());
     }
 
     /** The people over the sheet's tree whose name or an alias contains the text, case ignored. */
