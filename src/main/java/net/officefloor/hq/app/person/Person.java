@@ -245,6 +245,18 @@ public class Person {
         grades.add(new PersonGrade(grade, from, madeOn));
     }
 
+    /** Make every grade the person was given that is the one grade the other, whatever its from-date, so
+     *  the other is in force wherever the one was. Whether any grade changed. */
+    public boolean regrade(Grade from, Grade into) {
+        boolean changed = false;
+        for (PersonGrade g : grades) {
+            if (g.getGrade() != from) continue;
+            g.setGrade(into, g.getMadeOn());
+            changed = true;
+        }
+        return changed;
+    }
+
     public LocalDate getRetiredFrom() {
         return retiredFrom;
     }

@@ -97,7 +97,9 @@ public class GradeService {
     }
 
     /** Merge a grade into another: everyone whose grade in force on the sheet's today is the merged grade
-     *  is given the other from the sheet's today, in list order, each as the person form would edit them.
+     *  is given the other from the sheet's today, in list order, each as the person form would edit them;
+     *  then every grade of theirs on the merged grade, whatever its from-date, becomes the other, so all
+     *  their claims use the other grade's rates, terms and thresholds.
      *  Refused unless the user is a steward of the sheet, for the same grade twice, and for a retired
      *  grade to merge into; a person who cannot be edited refuses the whole merge. After the people's
      *  own lines, the figures the merge as a whole moved. The people changed. */
@@ -123,7 +125,10 @@ public class GradeService {
         List<Person> changed = new ArrayList<>();
         for (Person person : people.findInListOrder(sheetId)) {
             if (person.gradeOn(today) != from) continue;
-            changed.add(persons.grade(sheetId, user, person.getId(), person.getVersion(), into));
+            Person moved = persons.grade(sheetId, user, person.getId(), person.getVersion(), into);
+            // Retroactive: every grade of theirs on the merged grade becomes the other, whatever its date.
+            if (moved.regrade(from, into)) moved = people.saveAndFlush(moved);
+            changed.add(moved);
         }
         rollup.recordChanges(user, before);
         return changed;
