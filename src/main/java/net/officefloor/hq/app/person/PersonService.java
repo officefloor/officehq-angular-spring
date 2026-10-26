@@ -17,12 +17,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonService {
 
     private final PersonRepository people;
+    private final PatronRepository patrons;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, RollupService rollup, Audit audit) {
+    public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets, RollupService rollup, Audit audit) {
         this.people = people;
+        this.patrons = patrons;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -97,6 +99,35 @@ public class PersonService {
         return saved;
     }
 
+    @Transactional(readOnly = true)
+    public List<Patron> patrons(String sheetId) {
+        return patrons.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** Names another person on the sheet as the person's patron; never themselves, nor anyone twice. */
+    @Transactional
+    public Patron addPatron(String by, String sheetId, Long id, Long patronId) {
+        Person person = people.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        Person patron = people.findByIdAndSheetId(patronId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such patron."));
+        if (person.getId().equals(patron.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A person cannot be their own patron.");
+        }
+        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
+            throw patronNamed();
+        }
+        Patron added;
+        try {
+            added = patrons.saveAndFlush(new Patron(sheetId, person.getId(), patron.getId()));
+        } catch (DataIntegrityViolationException e) {
+            throw patronNamed();
+        }
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + by + " name=" + person.getName()
+                + " patron=" + patron.getName());
+        return added;
+    }
+
     /** Saves the person; the store's unique index refuses a name another request took meanwhile. */
     private Person save(Person person) {
         try {
@@ -116,6 +147,10 @@ public class PersonService {
     private static ResponseStatusException stale() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
                 "Someone else has saved this person since it was opened.");
+    }
+
+    private static ResponseStatusException patronNamed() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That person is already one of their patrons.");
     }
 
     private static ResponseStatusException nameInUse() {

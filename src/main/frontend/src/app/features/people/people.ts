@@ -19,6 +19,13 @@ interface Person {
   held: boolean;
 }
 
+// One person named as another's patron.
+interface PatronView {
+  id: number;
+  personId: number;
+  patronId: number;
+}
+
 // A person's statements: how many have been taken, and the last one's due-total (null for n/a) and date.
 interface StatementView {
   personId: number;
@@ -111,6 +118,7 @@ interface StatementView {
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -129,6 +137,8 @@ interface StatementView {
               <td data-testid="person-retired">{{ p.retiredFrom !== null ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-patrons">{{ patronNamesBy().get(p.id) ?? '' }}</td>
+              <td data-testid="person-backing">{{ backingBy().get(p.id) ?? '0.00' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -152,6 +162,25 @@ interface StatementView {
                 </button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
+                }
+                <label [for]="'patron-' + p.id">Patron<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <select
+                  [id]="'patron-' + p.id"
+                  data-testid="person-patron-select"
+                  (change)="setPatronChoice(p.id, value($event))"
+                >
+                  <option value="" [selected]="!patronChoices()[p.id]">Choose a person</option>
+                  @for (q of people(); track q.id) {
+                    @if (q.id !== p.id) {
+                      <option [value]="q.id" [selected]="patronChoices()[p.id] === '' + q.id">{{ q.name }}</option>
+                    }
+                  }
+                </select>
+                <button type="button" data-testid="person-patron-add" (click)="addPatron(p)">
+                  Add patron<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+                @if (patronErrors()[p.id]; as err) {
+                  <p role="alert" data-testid="person-patron-error">{{ err }}</p>
                 }
               </td>
               <td>
@@ -202,6 +231,11 @@ export class People {
   private quickAdding = false;
   // Each person's refused row action, by person id.
   protected readonly rowErrors = signal<Record<number, string>>({});
+  // Every patron named on the sheet, the patron chosen on each row (a person id, by person id) and each row's
+  // refused patron.
+  protected readonly patrons = signal<PatronView[]>([]);
+  protected readonly patronChoices = signal<Record<number, string>>({});
+  protected readonly patronErrors = signal<Record<number, string>>({});
   // Each person's statements, by person id; a person with none is not in the map.
   protected readonly statements = signal<StatementView[]>([]);
   protected readonly statementsBy = computed(() => new Map(this.statements().map((s) => [s.personId, s])));
@@ -257,6 +291,29 @@ export class People {
     return this.liveClaims()
       .map((c) => ({ date: c.date, figure: dueOf(c, rates.get(grades.get(c.personId) ?? '') ?? [], floor, late) }));
   });
+  // Each person's patrons' names, sorted and comma separated; a person with none is not in the map.
+  protected readonly patronNamesBy = computed(() => {
+    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    const lists = new Map<number, string[]>();
+    for (const r of this.patrons()) {
+      const name = names.get(r.patronId);
+      if (name !== undefined) lists.set(r.personId, [...(lists.get(r.personId) ?? []), name]);
+    }
+    const by = new Map<number, string>();
+    for (const [id, list] of lists) by.set(id, [...list].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', '));
+    return by;
+  });
+  // Each person's backing: their patrons' due-totals added up, skipping n/a; a person with none is not in the map.
+  protected readonly backingBy = computed(() => {
+    const due = this.dueBy();
+    const lists = new Map<number, (string | null)[]>();
+    for (const r of this.patrons()) {
+      lists.set(r.personId, [...(lists.get(r.personId) ?? []), due.get(r.patronId) ?? null]);
+    }
+    const by = new Map<number, string>();
+    for (const [id, list] of lists) by.set(id, sumSkippingNa(list));
+    return by;
+  });
   protected readonly dueTotal = computed(() => sumSkippingNa([...this.dueBy().values()]));
   // The claims counted live that are overdue: open and due by a date before the sheet's today.
   protected readonly overdueClaims = computed(() => {
@@ -293,6 +350,9 @@ export class People {
         this.people.set([]);
         this.claims.set([]);
         this.statements.set([]);
+        this.patrons.set([]);
+        this.patronChoices.set({});
+        this.patronErrors.set({});
         this.rowErrors.set({});
         this.retireDates.set({});
         this.reset();
@@ -319,7 +379,7 @@ export class People {
 
   /** Retires the person from the typed date, or the sheet's today when blank. Their claims keep counting. */
   protected async retire(p: Person): Promise<void> {
-    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    this.clearRowErrors(p.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const from = (this.retireDates()[p.id] ?? '').trim();
@@ -339,9 +399,54 @@ export class People {
     }
   }
 
+  /** Clears the row's refused actions: taking the next action on a row removes the last one's error. */
+  private clearRowErrors(id: number): void {
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+    this.patronErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  protected setPatronChoice(id: number, patronId: string): void {
+    this.patronChoices.update((c) => ({ ...c, [id]: patronId }));
+    this.patronErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  /** Names the chosen person as the person's patron: never themselves, nor anyone already named. */
+  protected async addPatron(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const patronId = Number(this.patronChoices()[p.id] ?? '');
+    const refuse = (message: string) => this.patronErrors.update((e) => ({ ...e, [p.id]: message }));
+    if (!patronId) {
+      refuse('Choose a person to add as a patron.');
+      return;
+    }
+    if (patronId === p.id) {
+      refuse('A person cannot be their own patron.');
+      return;
+    }
+    if (this.patrons().some((r) => r.personId === p.id && r.patronId === patronId)) {
+      refuse('That person is already one of their patrons.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/patrons`;
+    try {
+      const added = await firstValueFrom(this.http.post<PatronView>(url, { patronId }));
+      if (this.session.sheetId() !== sheet) return;
+      this.patrons.update((list) => [...list, added]);
+      this.patronChoices.update(({ [p.id]: _, ...rest }) => rest);
+    } catch (err) {
+      refuse(
+        err instanceof HttpErrorResponse && err.status === 409
+          ? 'That person is already one of their patrons.'
+          : 'Could not add that patron.',
+      );
+    }
+  }
+
   /** Puts the person on hold, or releases them when held. */
   protected async toggleHold(p: Person): Promise<void> {
-    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    this.clearRowErrors(p.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/hold`;
@@ -361,7 +466,7 @@ export class People {
 
   /** Takes a statement for the person: binds their counting claims to their figures now. */
   protected async takeStatement(p: Person): Promise<void> {
-    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    this.clearRowErrors(p.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/statement`;
@@ -379,7 +484,7 @@ export class People {
   }
 
   protected edit(p: Person): void {
-    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    this.clearRowErrors(p.id);
     this.editingId.set(p.id);
     this.editingVersion.set(p.version);
     this.name.set(p.name);
@@ -508,10 +613,11 @@ export class People {
   private async fetch(sheet: string): Promise<void> {
     try {
       const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-      const [list, claims, statements] = await Promise.all([
+      const [list, claims, statements, patrons] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(`${base}/people`)),
         firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
         firstValueFrom(this.http.get<StatementView[]>(`${base}/statements`)),
+        firstValueFrom(this.http.get<PatronView[]>(`${base}/people/patrons`)),
         this.rates.load(sheet),
         this.periods.load(sheet),
       ]);
@@ -519,6 +625,7 @@ export class People {
       if (this.session.sheetId() === sheet) {
         this.claims.set(claims);
         this.statements.set(statements);
+        this.patrons.set(patrons);
         this.people.set(list);
       }
     } catch {

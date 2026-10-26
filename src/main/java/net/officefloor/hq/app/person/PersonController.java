@@ -41,6 +41,17 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
     }
 
+    /** One person named as another's patron. */
+    public record PatronView(Long id, Long personId, Long patronId) {
+        public static PatronView of(Patron p) {
+            return new PatronView(p.getId(), p.getPersonId(), p.getPatronId());
+        }
+    }
+
+    /** A patron to add: the id of another person on the sheet. */
+    public record PatronForm(@NotNull Long patronId) {
+    }
+
     /** A retirement: the date it takes effect; a missing date takes the sheet's today. */
     public record RetireForm(LocalDate from) {
     }
@@ -88,5 +99,21 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
         return PersonView.of(service.toggleHold(user, sheetId, id));
+    }
+
+    /** Every patron named on the sheet, in the order they were named. */
+    @GetMapping("/patrons")
+    public List<PatronView> patrons(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.patrons(sheetId).stream().map(PatronView::of).toList();
+    }
+
+    /** Names another person on the sheet as the person's patron; refused for themselves or one already named. */
+    @PostMapping("/{id}/patrons")
+    public PatronView addPatron(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody PatronForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return PatronView.of(service.addPatron(user, sheetId, id, form.patronId()));
     }
 }
