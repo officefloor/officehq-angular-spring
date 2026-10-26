@@ -297,7 +297,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         <app-people-columns />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (cols.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Grade</th><th scope="col">Change grade</th>@if (cols.shown('terms')) {<th scope="col">Terms</th>}@if (cols.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th>@if (cols.shown('claimed')) {<th scope="col">Claimed</th>}@if (cols.shown('due-total')) {<th scope="col">Due</th>}<th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}@if (cols.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (cols.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Grade</th><th scope="col">Change grade</th>@if (cols.shown('terms')) {<th scope="col">Terms</th>}@if (cols.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th>@if (cols.shown('claimed')) {<th scope="col">Claimed</th>}@if (cols.shown('due-total')) {<th scope="col">Due</th>}<th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}@if (cols.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Score</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -371,6 +371,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                   @if (cols.shown('overdue-count')) { <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span> }
                   @if (cols.shown('overdue-total')) { due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) | figure }}</span> }
                 </td>
+                <td data-testid="person-score">{{ scoreOf(p.id) }}</td>
                 <td data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) }}</td>
                 <td data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) }}</td>
                 <td data-testid="person-aged-61">{{ money(agedOf(p.id).over60) }}</td>
@@ -581,13 +582,18 @@ export class People {
   });
   /** Whether retired people are listed; off when the screen opens, and kept as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
+  /** The people this screen added since the sheet was loaded; a restricted user sees them listed
+   *  until the sheet is loaded again. */
+  private readonly addedHere = signal<ReadonlySet<number>>(new Set());
   /** The people a restricted user may see listed: the people of the crews their person leads or
-   *  belongs to, and that person; null (everyone) for any other role. */
+   *  belongs to, that person, and those this screen added since the sheet was loaded; null
+   *  (everyone) for any other role. */
   private readonly visibleIds = computed<Set<number> | null>(() => {
     if (this.session.sheet()?.role !== 'restricted') return null;
     const me = this.me();
-    if (me === null) return new Set();
-    const ids = new Set([me.id]);
+    const ids = new Set(this.addedHere());
+    if (me === null) return ids;
+    ids.add(me.id);
     for (const c of this.crews.crews()) {
       const crew = crewIds(c);
       if (crew.includes(me.id)) for (const id of crew) ids.add(id);
@@ -999,6 +1005,7 @@ export class People {
       const sheet = this.session.loaded();
       this.reset();
       this.people.set([]);
+      this.addedHere.set(new Set());
       this.claims.set([]);
       this.sheetTags.set([]);
       this.rates.set([]);
@@ -1574,6 +1581,17 @@ export class People {
     return this.overdueByPerson().get(personId) ?? { count: 0, cents: 0 };
   }
 
+  /** The person's score: their settled figures divided by 100, less 5 for each overdue claim that
+   *  counts, rounded half to even to a whole number. */
+  protected scoreOf(personId: number): string {
+    // In cents, the score times 10000: the settled cents less 50000 per overdue claim.
+    const scaled = this.settledOpenOf(personId).settled - 50000 * this.overdueOf(personId).count;
+    const floor = Math.floor(scaled / 10000);
+    const rest = scaled - floor * 10000;
+    const whole = rest > 5000 || (rest === 5000 && floor % 2 !== 0) ? floor + 1 : floor;
+    return String(whole === 0 ? 0 : whole);
+  }
+
   /** The due of the person's settled and of their open claims that count, in cents. */
   protected settledOpenOf(personId: number): SettledOpen {
     return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0 };
@@ -1766,7 +1784,10 @@ export class People {
 
   /** A quick-add's claim, and its person when the quick-add added them. */
   protected quickAdded(added: QuickAddView): void {
-    if (!this.people().some((p) => p.id === added.person.id)) this.people.update((list) => [...list, added.person]);
+    if (!this.people().some((p) => p.id === added.person.id)) {
+      this.people.update((list) => [...list, added.person]);
+      this.addedHere.update((ids) => new Set(ids).add(added.person.id));
+    }
     this.claimAdded(added.claim);
   }
 
@@ -2090,7 +2111,10 @@ export class People {
           { name: value.name.trim(), grade: value.grade, terms,
             termsFrom: termsFrom === '' ? null : termsFrom, contact: value.contact,
             tags: value.tags });
-        if (this.session.sheet()?.id === sheet.id) this.people.update((list) => [...list, added]);
+        if (this.session.sheet()?.id === sheet.id) {
+          this.people.update((list) => [...list, added]);
+          this.addedHere.update((ids) => new Set(ids).add(added.id));
+        }
       } else {
         const saved = await this.api.update(sheet.id, id,
           { name: value.name.trim(), grade: value.grade, gradeFrom: gradeFrom === '' ? null : gradeFrom, terms,
