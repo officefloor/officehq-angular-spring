@@ -1,0 +1,217 @@
+diff --git a/src/main/frontend/src/app/features/duplicates/duplicates-api.ts b/src/main/frontend/src/app/features/duplicates/duplicates-api.ts
+new file mode 100644
+index 00000000..21f95e96
+--- /dev/null
++++ b/src/main/frontend/src/app/features/duplicates/duplicates-api.ts
+@@ -0,0 +1,25 @@
++import { HttpClient, HttpContext } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { LIVE_READ } from '../../core/as-of.interceptor';
++
++/** A person, date and amount shared by two or more of the person's claims (VOID and DELETED left out). */
++export interface Duplicate {
++  name: string;
++  date: string;
++  /** The amount with two decimals. */
++  amount: string;
++  count: number;
++}
++
++// The sheet's duplicate claims: people in list order, then by date, then by amount. Read live, as the
++// store holds them now.
++@Injectable({ providedIn: 'root' })
++export class DuplicatesApi {
++  private readonly http = inject(HttpClient);
++
++  list(sheetId: string): Promise<Duplicate[]> {
++    return firstValueFrom(this.http.get<Duplicate[]>(`/api/sheets/${encodeURIComponent(sheetId)}/duplicate-claims`,
++      { context: new HttpContext().set(LIVE_READ, true) }));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/duplicates/duplicates.ts b/src/main/frontend/src/app/features/duplicates/duplicates.ts
+new file mode 100644
+index 00000000..3d151302
+--- /dev/null
++++ b/src/main/frontend/src/app/features/duplicates/duplicates.ts
+@@ -0,0 +1,51 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { Duplicate, DuplicatesApi } from './duplicates-api';
++
++// The sheet's duplicate claims, read when the button is pressed: one line per person, date and amount
++// with two or more claims, as `<name> <date> <amount> x<count>`.
++@Component({
++  selector: 'app-duplicates',
++  template: `
++    <section aria-label="Duplicate claims" data-testid="dups">
++      <button type="button" data-testid="dups-show" (click)="show()">Show duplicate claims</button>
++      @if (error()) {
++        <p role="alert" data-testid="dups-error">The duplicate claims could not be read.</p>
++      }
++      <ul>
++        @for (dup of dups(); track $index) {
++          <li data-testid="dup-line">{{ dup.name }} {{ dup.date }} {{ dup.amount }} x{{ dup.count }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class Duplicates {
++  private readonly session = inject(Session);
++  private readonly api = inject(DuplicatesApi);
++
++  protected readonly dups = signal<Duplicate[]>([]);
++  protected readonly error = signal(false);
++  private run = 0;
++
++  constructor() {
++    effect(() => {
++      // A newly loaded sheet starts with no duplicates shown.
++      this.session.sheet();
++      this.run++;
++      this.dups.set([]);
++      this.error.set(false);
++    });
++  }
++
++  protected show(): void {
++    const sheet = this.session.sheet();
++    const run = ++this.run;
++    this.dups.set([]);
++    this.error.set(false);
++    if (sheet === null) return;
++    this.api.list(sheet.id).then(
++      (dups) => { if (run === this.run) this.dups.set(dups); },
++      () => { if (run === this.run) this.error.set(true); });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bf0ed89a..3e5f5c2b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -39,6 +39,7 @@ import { ImportOpenings } from '../periods/import-openings';
+ import { ImportPeople } from './import-people';
+ import { Consolidated } from '../summary/consolidated';
+ import { TreeSearch } from '../summary/tree-search';
++import { Duplicates } from '../duplicates/duplicates';
+ import { GeneratePlans } from '../plans/generate-plans';
+ import { PersonPlans } from '../plans/person-plans';
+ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+@@ -49,7 +50,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+ // their counting claims to the figures they show then.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
++  imports: [FigurePipe, ReactiveFormsModule, PersonClaims, Rates, Periods, QuickAdd, PasteClaims, ImportOpenings, ImportPeople, Summary, ClassicSummary, SheetHeader, Consolidated, TreeSearch, Duplicates, PoolsList, CrewsList, PersonPlans, GeneratePlans, PeopleColumnsChoice],
+   template: `
+     <app-sheet-header [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="sheetDueTotal()" [overdueTotal]="money(sheetOverdue().cents)"
+@@ -57,6 +58,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
+     <app-consolidated [ownPeopleCount]="people().length" [ownDueTotal]="sheetDueTotal()"
+       [ownOverdueTotal]="money(sheetOverdue().cents)" />
+     <app-tree-search />
++    <app-duplicates />
+     @if (session.sheet()) {
+       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
+diff --git a/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsController.java b/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsController.java
+new file mode 100644
+index 00000000..62d490b1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsController.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets")
++@Validated
++public class DuplicateClaimsController {
++
++    private final DuplicateClaimsService service;
++
++    public DuplicateClaimsController(DuplicateClaimsService service) {
++        this.service = service;
++    }
++
++    /** The sheet's duplicate claims: each person, date and amount shared by two or more claims. */
++    @GetMapping("/{id}/duplicate-claims")
++    public List<DuplicateClaimsService.Duplicate> duplicates(@PathVariable @NotBlank @Size(max = 100) String id) {
++        return service.duplicates(id.trim());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsService.java b/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsService.java
+new file mode 100644
+index 00000000..595139ee
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsService.java
+@@ -0,0 +1,60 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The sheet's duplicate claims: for each person, date and amount with two or more claims (VOID and DELETED
++ * claims left out), one line, people in list order, then by date, then by amount.
++ */
++@Service
++public class DuplicateClaimsService {
++
++    /** A duplicate: the person's name, the date, the amount with two decimals and how many claims share them. */
++    public record Duplicate(String name, String date, String amount, int count) {
++    }
++
++    private record Key(LocalDate date, BigDecimal amount) {
++    }
++
++    private static final Comparator<Key> ORDER = Comparator.comparing(Key::date).thenComparing(Key::amount);
++
++    private final PersonRepository people;
++    private final ClaimRepository claims;
++
++    public DuplicateClaimsService(PersonRepository people, ClaimRepository claims) {
++        this.people = people;
++        this.claims = claims;
++    }
++
++    @Transactional(readOnly = true)
++    public List<Duplicate> duplicates(String sheetId) {
++        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
++                .filter(c -> c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
++                .collect(Collectors.groupingBy(Claim::getPersonId));
++        List<Duplicate> found = new ArrayList<>();
++        for (Person person : people.findInListOrder(sheetId)) {
++            List<Claim> theirs = byPerson.get(person.getId());
++            if (theirs == null) continue;
++            Map<Key, Long> counts = theirs.stream().collect(Collectors.groupingBy(
++                    c -> new Key(c.getDate(), c.getAmount().setScale(2, RoundingMode.HALF_EVEN)),
++                    () -> new TreeMap<>(ORDER), Collectors.counting()));
++            counts.forEach((key, count) -> {
++                if (count >= 2) found.add(new Duplicate(person.getName(), key.date().toString(),
++                        key.amount().toPlainString(), count.intValue()));
++            });
++        }
++        return found;
++    }
++}
