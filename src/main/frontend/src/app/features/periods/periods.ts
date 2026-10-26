@@ -62,6 +62,13 @@ export class PeriodStore {
     this.put(sheet, p);
   }
 
+  async reopen(sheet: string, id: number): Promise<void> {
+    const p = await firstValueFrom(
+      this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${id}/reopen`, null),
+    );
+    this.put(sheet, p);
+  }
+
   private put(sheet: string, p: PeriodView): void {
     if (this.session.sheetId() === sheet) {
       this.list.update((l) => [...l.filter((x) => x.id !== p.id), p].sort((a, b) => a.from.localeCompare(b.from)));
@@ -122,6 +129,9 @@ export class PeriodStore {
                 <button type="button" data-testid="period-close" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="period-reopen" (click)="reopen(p)">
+                  Reopen<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="period-error">{{ err }}</p>
                 }
@@ -175,6 +185,26 @@ export class Periods {
       await this.store.close(sheet, p.id);
     } catch {
       this.setRowError(p.id, 'Could not close that period.');
+    }
+  }
+
+  protected async reopen(p: PeriodView): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (!p.closed) {
+      this.setRowError(p.id, 'That period is not closed.');
+      return;
+    }
+    try {
+      await this.store.reopen(sheet, p.id);
+    } catch (err) {
+      this.setRowError(
+        p.id,
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can reopen a period.'
+          : 'Could not reopen that period.',
+      );
     }
   }
 

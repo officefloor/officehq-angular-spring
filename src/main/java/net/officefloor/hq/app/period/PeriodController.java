@@ -61,4 +61,11 @@ public class PeriodController {
             @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
         return PeriodView.of(service.close(user, sheetId, id));
     }
+
+    @PostMapping("/{id}/reopen")
+    public PeriodView reopen(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return PeriodView.of(service.reopen(user, sheetId, id));
+    }
 }

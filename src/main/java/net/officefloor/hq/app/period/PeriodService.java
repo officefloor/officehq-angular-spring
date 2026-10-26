@@ -12,6 +12,8 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.settings.SheetRole;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -28,10 +30,12 @@ public class PeriodService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final ClaimService claimService;
+    private final SettingsService settings;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
-            PersonRepository people, ClaimService claimService, Audit audit) {
+            PersonRepository people, ClaimService claimService, SettingsService settings, Audit audit) {
+        this.settings = settings;
         this.periods = periods;
         this.sheets = sheets;
         this.claims = claims;
@@ -105,6 +109,27 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
                 + " total=" + total.toPlainString());
+        return saved;
+    }
+
+    /**
+     * Reopens a closed period, making its due-total live again. Refused unless the user is a steward of the sheet, or
+     * when the period is not closed.
+     */
+    @Transactional
+    public Period reopen(String by, String sheetId, Long id) {
+        sheets.lock(sheetId);
+        Period period = periods.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
+        if (!SheetRole.STEWARD.equals(settings.roleOf(sheetId, by))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reopen a period.");
+        }
+        if (!period.isClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed.");
+        }
+        period.reopen();
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + by + " period=" + saved.getName());
         return saved;
     }
 
