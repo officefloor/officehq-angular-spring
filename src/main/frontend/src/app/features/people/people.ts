@@ -81,6 +81,10 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
           <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms"
             aria-describedby="person-form-terms-hint" />
           <span id="person-form-terms-hint">Blank: none</span>
+          <label for="person-form-terms-from">Terms from</label>
+          <input id="person-form-terms-from" type="date" data-testid="person-form-terms-from" formControlName="termsFrom"
+            aria-describedby="person-form-terms-from-hint" />
+          <span id="person-form-terms-from-hint">Blank: from the beginning of time</span>
           <label for="person-form-contact">Contact</label>
           <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact"
             aria-describedby="person-form-contact-hint" />
@@ -474,12 +478,14 @@ export class People {
   protected readonly gradeFrom = new FormControl('', { nonNullable: true });
   /** The person's own terms, in whole days; blank means none. */
   protected readonly terms = new FormControl('', { nonNullable: true });
+  /** The date the terms are recorded from; blank means from the beginning of time. */
+  protected readonly termsFrom = new FormControl('', { nonNullable: true });
   /** The person's contact; blank means none. */
   protected readonly contact = new FormControl('', { nonNullable: true });
   /** The person's tags, comma separated; blank means none. */
   protected readonly tags = new FormControl('', { nonNullable: true });
   protected readonly form = new FormGroup({ name: this.name, grade: this.grade, gradeFrom: this.gradeFrom,
-    terms: this.terms, contact: this.contact, tags: this.tags });
+    terms: this.terms, termsFrom: this.termsFrom, contact: this.contact, tags: this.tags });
 
   /** Everyone on the sheet, retired or not: their claims count in every total. */
   protected readonly people = signal<PersonView[]>([]);
@@ -1704,7 +1710,7 @@ export class People {
   private reset(): void {
     this.editingId.set(null);
     this.error.set('');
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', termsFrom: '', contact: '', tags: '' }, { emitEvent: false });
   }
 
   protected edit(person: PersonView): void {
@@ -1715,7 +1721,7 @@ export class People {
     this.editingVersion.set(person.version);
     this.error.set('');
     this.form.setValue({ name: person.name, grade: this.gradeToday(person), gradeFrom: '',
-      terms: termsText(person), contact: person.contact ?? '', tags: person.tags.join(', ') }, { emitEvent: false });
+      terms: termsText(person), termsFrom: '', contact: person.contact ?? '', tags: person.tags.join(', ') }, { emitEvent: false });
   }
 
   protected cancel(): void {
@@ -1733,7 +1739,7 @@ export class People {
       if (current && this.editingId() === id) {
         this.editingVersion.set(current.version);
         this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '',
-          terms: termsText(current), contact: current.contact ?? '', tags: current.tags.join(', ') }, { emitEvent: false });
+          terms: termsText(current), termsFrom: '', contact: current.contact ?? '', tags: current.tags.join(', ') }, { emitEvent: false });
       }
     } finally {
       this.error.set('Someone else has saved this person since you opened it; the form now shows their changes.');
@@ -1778,6 +1784,11 @@ export class People {
       this.error.set('Type the terms as a whole number of days, or leave them blank for none.');
       return;
     }
+    const termsFrom = value.termsFrom.trim();
+    if (termsFrom !== '' && !DATE.test(termsFrom)) {
+      this.error.set('Type the terms\' from-date as yyyy-mm-dd, or leave it blank for the beginning of time.');
+      return;
+    }
     const contact = value.contact.trim().toLowerCase();
     if (contact !== '' && this.people().some((p) => p.id !== id && p.contact === contact)) {
       this.error.set('That contact is already in use on the sheet.');
@@ -1789,12 +1800,14 @@ export class People {
     try {
       if (id === null) {
         const added = await this.api.add(sheet.id,
-          { name: value.name.trim(), grade: value.grade, terms, contact: value.contact,
+          { name: value.name.trim(), grade: value.grade, terms,
+            termsFrom: termsFrom === '' ? null : termsFrom, contact: value.contact,
             tags: value.tags });
         if (this.session.sheet()?.id === sheet.id) this.people.update((list) => [...list, added]);
       } else {
         const saved = await this.api.update(sheet.id, id,
           { name: value.name.trim(), grade: value.grade, gradeFrom: gradeFrom === '' ? null : gradeFrom, terms,
+            termsFrom: termsFrom === '' ? null : termsFrom,
             contact: value.contact, tags: value.tags, version: this.editingVersion() });
         if (this.session.sheet()?.id === sheet.id) {
           this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
@@ -1824,9 +1837,9 @@ interface Aged { upTo30: number; upTo60: number; over60: number }
 /** The due of a person's settled claims and of their open ones, in cents. */
 interface SettledOpen { settled: number; open: number }
 
-/** The person's own terms as the form shows them: blank when they have none. */
+/** The person's own terms from the beginning of time as the form shows them: blank when they have none. */
 function termsText(person: PersonView): string {
-  return person.terms === null ? '' : String(person.terms);
+  return person.ownTerms === null ? '' : String(person.ownTerms);
 }
 
 /** The sum of the figures, leaving out the single highest and the single lowest when there are three or more. */

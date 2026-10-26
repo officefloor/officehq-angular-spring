@@ -556,7 +556,11 @@ export class PersonClaims {
     }
     try {
       const redated = await this.api.redate(sheet.id, claim.id, dated);
-      if (this.session.sheet()?.id === sheet.id) this.changed.emit(redated);
+      if (this.session.sheet()?.id === sheet.id) {
+        // An editor left open on the claim shows its old values: it is closed, so the form adds again.
+        if (this.editingId() === claim.id) this.cancel();
+        this.changed.emit(redated);
+      }
     } catch (e) {
       if (this.session.sheet()?.id === sheet.id) {
         const forbidden = e instanceof HttpErrorResponse && e.status === 403;

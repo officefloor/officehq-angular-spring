@@ -81,7 +81,8 @@ public class ClaimService {
     /** The terms a claim of the person dated on the date is due by: the person's own, else those of their
      *  grade in force on the date, else the sheet's in force on the date. */
     private int termsOf(String sheetId, Person person, LocalDate date) {
-        return person.getTerms() != null ? person.getTerms() : settings.terms(sheetId, person.gradeOn(date), date);
+        Integer own = person.termsOn(date);
+        return own != null ? own : settings.terms(sheetId, person.gradeOn(date), date);
     }
 
     /** Add a claim to a person; a claim with no date is dated the sheet's entry date while it is set,

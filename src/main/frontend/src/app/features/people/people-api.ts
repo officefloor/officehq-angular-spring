@@ -66,8 +66,11 @@ export interface PersonView {
   patronIds: number[];
   /** Whether the signed-in user watches the person. */
   watched: boolean;
-  /** The person's own terms, in days, or null when they use their grade's, else the sheet's. */
+  /** The person's own terms in force on the sheet's today, in days, or null when they use their
+   *  grade's, else the sheet's. */
   terms: number | null;
+  /** The person's own terms from the beginning of time, in days, or null when they have none. */
+  ownTerms: number | null;
   /** The person's contact, trimmed and lower-cased, or null when they have none. */
   contact: string | null;
   /** The other names the person is found by, sorted as names are compared. */
@@ -88,6 +91,8 @@ export interface PersonForm {
   name: string;
   grade: Grade;
   terms: string;
+  /** The date the terms are recorded from; null records them from the beginning of time. */
+  termsFrom: string | null;
   contact: string;
   /** The person's tags, comma separated as typed; the store trims, lower-cases and sorts them, dropping repeats. */
   tags: string;

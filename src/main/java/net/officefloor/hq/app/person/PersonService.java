@@ -172,6 +172,14 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, Grade grade, Integer terms, String contact,
             String tags) {
+        return add(sheetId, user, name, grade, terms, null, contact, tags);
+    }
+
+    /** Add a person as {@link #add(String, String, String, Grade, Integer, String, String)}, their terms
+     *  recorded from the from-date (none: from the beginning of time). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, Grade grade, Integer terms, LocalDate termsFrom,
+            String contact, String tags) {
         sheets.load(sheetId);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.keyOf(name))
                 || aliases.existsBySheetIdAndAliasKey(sheetId, Person.keyOf(name))) {
@@ -186,13 +194,15 @@ public class PersonService {
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         Person fresh = new Person(sheetId, name, grade, sheets.today(sheetId));
-        fresh.setTerms(terms);
+        if (termsFrom == null) fresh.setTerms(terms);
+        else fresh.setTerms(terms, termsFrom);
         fresh.setContact(contactKey);
         List<String> tagged = ClaimService.tagsOf(tags);
         fresh.setTags(tagged);
         useTags(sheetId, tagged);
         Person person = save(fresh);
-        recordChange("PERSON_ADDED", user, person, (terms == null ? "" : " terms=" + terms)
+        Integer termsToday = person.termsOn(sheets.today(sheetId));
+        recordChange("PERSON_ADDED", user, person, (termsToday == null ? "" : " terms=" + termsToday)
                 + (contactKey == null ? "" : " contact=" + contactKey));
         rollup.recordChanges(user, before);
         return person;
@@ -226,6 +236,16 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
             LocalDate gradeFrom, Integer terms, String contact, String tags, boolean explicitGrade) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, null, contact, tags, explicitGrade);
+    }
+
+    /** Edit a person as {@link #update(String, String, long, long, String, Grade, LocalDate, Integer, String, String, boolean)},
+     *  recording their terms from the terms' from-date, keeping those recorded from other dates (none:
+     *  from the beginning of time). */
+    @Transactional
+    public Person update(String sheetId, String user, long id, long version, String name, Grade grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tags,
+            boolean explicitGrade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (person.getVersion() != version) {
@@ -246,17 +266,19 @@ public class PersonService {
         }
         Rollup.Snapshot before = rollup.snapshot(sheetId);
         boolean contactChanged = !Objects.equals(person.getContact(), contactKey);
-        boolean termsChanged = !Objects.equals(person.getTerms(), terms);
+        boolean termsChanged = termsFrom != null || !Objects.equals(person.getTerms(), terms);
         person.setName(name);
         person.setGrade(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId), sheets.today(sheetId),
                 explicitGrade);
-        person.setTerms(terms);
+        if (termsFrom == null) person.setTerms(terms);
+        else person.setTerms(terms, termsFrom);
         person.setContact(contactKey);
         List<String> tagged = ClaimService.tagsOf(tags);
         person.setTags(tagged);
         useTags(sheetId, tagged);
         Person saved = save(person);
-        recordChange("PERSON_EDITED", user, saved, (termsChanged ? " terms=" + (terms == null ? "" : terms) : "")
+        Integer termsToday = saved.termsOn(sheets.today(sheetId));
+        recordChange("PERSON_EDITED", user, saved, (termsChanged ? " terms=" + (termsToday == null ? "" : termsToday) : "")
                 + (contactChanged ? " contact=" + (contactKey == null ? "" : contactKey) : ""));
         rollup.recordChanges(user, before);
         return saved;

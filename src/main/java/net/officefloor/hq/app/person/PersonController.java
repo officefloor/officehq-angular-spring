@@ -45,11 +45,12 @@ public class PersonController {
      *  grade they were given, the one from the beginning of time first, then by from-date; held whether
      *  they have any hold, holds every hold put on them, by from-date; watched whether the signed-in
      *  user watches them; clashing whether their name or an alias is used on another sheet of the
-     *  sheet's tree; origin the sheet they were transferred from, null when added here; snapshots
+     *  sheet's tree; terms their own terms in force on the sheet's today, ownTerms those from the
+     *  beginning of time; origin the sheet they were transferred from, null when added here; snapshots
      *  one line per snapshot written for them, oldest first: the day being left and their due-total. */
     public record PersonView(long id, String name, Grade grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, List<RetirementView> retirements, boolean held, List<HoldView> holds,
-            List<Long> patronIds, boolean watched, Integer terms, String contact, List<String> aliases, boolean clashing,
+            List<Long> patronIds, boolean watched, Integer terms, Integer ownTerms, String contact, List<String> aliases, boolean clashing,
             String origin, List<String> tags, List<String> snapshots) {
         /** A person with no patrons, with the grade in force on the sheet's today. */
         public static PersonView of(Person person, LocalDate today, boolean watched, boolean clashing) {
@@ -66,14 +67,14 @@ public class PersonController {
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFrom(), r.getTo())).toList(),
                     person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(), patronIds,
-                    watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
+                    watched, person.termsOn(today), person.getTerms(), person.getContact(), person.getAliases(), clashing,
                     person.getOriginSheetId(), person.getTags(), List.of());
         }
 
         /** The same person with these snapshot lines. */
         public PersonView withSnapshots(List<String> lines) {
             return new PersonView(id, name, grade, grades, version, retired, retiredFrom, retirements, held, holds,
-                    patronIds, watched, terms, contact, aliases, clashing, origin, tags, lines);
+                    patronIds, watched, terms, ownTerms, contact, aliases, clashing, origin, tags, lines);
         }
     }
 
@@ -83,14 +84,15 @@ public class PersonController {
     /** A person's fields, as entered on the form; a new person's grade applies from the beginning of time,
      *  their terms are whole days, blank for none; a blank contact is none; tags are comma separated. */
     public record PersonForm(@NotBlank @Size(max = 200) String name, @NotNull Grade grade,
-            @Pattern(regexp = TERMS) String terms, @Size(max = 200) String contact, @Size(max = 1000) String tags) {
+            @Pattern(regexp = TERMS) String terms, LocalDate termsFrom, @Size(max = 200) String contact,
+            @Size(max = 1000) String tags) {
     }
 
     /** A person's fields as edited, with the version of the person the editor loaded; the grade is
      *  given from the from-date, none meaning the sheet's today. */
     public record PersonEdit(@NotBlank @Size(max = 200) String name, @NotNull Grade grade, LocalDate gradeFrom,
-            @Pattern(regexp = TERMS) String terms, @Size(max = 200) String contact, @Size(max = 1000) String tags,
-            @NotNull Long version) {
+            @Pattern(regexp = TERMS) String terms, LocalDate termsFrom, @Size(max = 200) String contact,
+            @Size(max = 1000) String tags, @NotNull Long version) {
     }
 
     /** The person named as a patron. */
@@ -195,7 +197,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonForm form) {
         Person added = service.add(sheetId.trim(), SignedInUser.name(user), form.name(), form.grade(),
-                termsOf(form.terms()), form.contact(), form.tags());
+                termsOf(form.terms()), form.termsFrom(), form.contact(), form.tags());
         return PersonView.of(added, sheets.today(added.getSheetId()), false, service.isClashing(added));
     }
 
@@ -214,8 +216,8 @@ public class PersonController {
     public PersonView update(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid PersonEdit form) {
         return view(service.update(sheetId.trim(), SignedInUser.name(user), id, form.version(),
-                form.name(), form.grade(), form.gradeFrom(), termsOf(form.terms()), form.contact(),
-                form.tags()), user);
+                form.name(), form.grade(), form.gradeFrom(), termsOf(form.terms()), form.termsFrom(),
+                form.contact(), form.tags(), false), user);
     }
 
     /** Give a person a grade from the sheet's today, as the person form would. */

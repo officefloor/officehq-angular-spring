@@ -75,6 +75,11 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's own terms recorded from a from-date, each in force until the next. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private Set<PersonTerms> datedTerms = new LinkedHashSet<>();
+
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     @Column(name = "contact")
     private String contact;
@@ -118,6 +123,7 @@ public class Person {
         copy.setName(name);
         for (PersonGrade g : getGrades()) copy.grades.add(new PersonGrade(g.getGrade(), g.getFrom(), g.getMadeOn()));
         copy.terms = terms;
+        for (PersonTerms t : datedTerms) copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFrom()));
         copy.contact = contact;
         copy.tags = tags;
         getAliases().forEach(copy::addAlias);
@@ -141,6 +147,7 @@ public class Person {
         }
         for (PersonHold h : getHolds()) copy.holds.add(new PersonHold(h.getFrom(), h.getTo(), h.getMadeOn()));
         copy.terms = terms;
+        for (PersonTerms t : datedTerms) copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFrom()));
         copy.contact = contact;
         copy.tags = tags;
         getAliases().forEach(copy::addAlias);
@@ -315,8 +322,31 @@ public class Person {
         return terms;
     }
 
+    /** Record the person's own terms (null: none) from the beginning of time, keeping their dated terms. */
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** Record the person's own terms (null: none) from a date, replacing those recorded from that same
+     *  date and keeping every other. */
+    public void setTerms(Integer terms, LocalDate from) {
+        for (PersonTerms t : datedTerms) {
+            if (from.equals(t.getFrom())) {
+                t.setTerms(terms);
+                return;
+            }
+        }
+        datedTerms.add(new PersonTerms(terms, from));
+    }
+
+    /** The person's own terms in force on a date: those with the latest from-date on or before it, else
+     *  those from the beginning of time; null when none are in force. */
+    public Integer termsOn(LocalDate date) {
+        PersonTerms inForce = null;
+        for (PersonTerms t : datedTerms) {
+            if (!t.getFrom().isAfter(date) && (inForce == null || t.getFrom().isAfter(inForce.getFrom()))) inForce = t;
+        }
+        return inForce != null ? inForce.getTerms() : terms;
     }
 
     public String getContact() {
