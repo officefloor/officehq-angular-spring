@@ -104,6 +104,10 @@ public class SettingService implements ActingFor {
      *  plus these days is before the sheet's today is review-late; no value means none. Not dated. */
     public static final String REVIEW_SLA = "review-sla";
 
+    /** The key of the pending SLA: a PENDING claim whose pending day (the sheet's today when it went to PENDING)
+     *  plus these days is before the sheet's today is pending-late; no value means none. Not dated. */
+    public static final String PENDING_SLA = "pending-sla";
+
     /** The key of the maximum of open claims per person: opening a claim of a person who already has this
      *  many OPEN or PENDING claims is refused; no value means none. Not dated. */
     public static final String MAX_OPEN = "max-open";
@@ -524,6 +528,38 @@ public class SettingService implements ActingFor {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + REVIEW_SLA
+                + " value=" + (days == null ? "" : days.toString()));
+        return days;
+    }
+
+    /** The sheet's pending SLA in days, or null when it is blank (none). */
+    @Transactional(readOnly = true)
+    public Integer pendingSla(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, PENDING_SLA).map((s) -> Integer.valueOf(s.getValue()))
+                .orElse(null);
+    }
+
+    /** Set the sheet's pending SLA; null clears it, leaving none. */
+    @Transactional
+    public Integer setPendingSla(String sheetId, String user, Integer days) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, PENDING_SLA).orElse(null);
+        try {
+            if (days == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, PENDING_SLA, days.toString()));
+            } else {
+                setting.setValue(days.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + PENDING_SLA
                 + " value=" + (days == null ? "" : days.toString()));
         return days;
     }

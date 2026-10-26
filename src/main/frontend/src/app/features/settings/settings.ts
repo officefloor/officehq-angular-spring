@@ -15,6 +15,7 @@ import { DEFAULT_FISCAL_START_MONTH, SheetFiscal } from './sheet-fiscal';
 import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
 import { ROUNDING_MODES, SheetRounding } from './sheet-rounding';
 import { SheetGrace } from './sheet-grace';
+import { SheetPendingSla } from './sheet-pending-sla';
 import { SheetReviewSla } from './sheet-review-sla';
 import { SheetScoreBands } from './sheet-score-bands';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
@@ -77,7 +78,8 @@ function settled(control: AbstractControl): void {
 // it to above it audits an alert; blank: off), nor the escalation gap (reminding a claim whose previous
 // reminder was at least these days before the sheet's today escalates it, once per claim ever; blank: off),
 // nor the review SLA (a REVIEW claim whose review day plus these days is before the sheet's today is
-// review-late; blank: none).
+// review-late; blank: none), nor the pending SLA (a PENDING claim whose pending day plus these days is
+// before the sheet's today is pending-late; blank: none).
 // Saving the settings stores each setting whose field (or from-date field) was changed or visited since
 // the last save, so a value typed again as it was is still stored.
 @Component({
@@ -191,6 +193,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-review-sla">Review SLA (days a claim may wait in review from the day it went to review; blank: none)</label>
         <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric" />
         <p>Review SLA now: <span data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</span></p>
+        <label for="setting-pending-sla">Pending SLA (days a claim may wait pending from the day it went to pending; blank: none)</label>
+        <input id="setting-pending-sla" data-testid="setting-pending-sla" formControlName="pendingSla" inputmode="numeric" />
+        <p>Pending SLA now: <span data-testid="setting-pending-sla-current">{{ pendingSla() ?? '' }}</span></p>
         <label for="setting-max-open">Maximum open claims per person (OPEN or PENDING claims a person may have before opening another is refused; blank: none)</label>
         <input id="setting-max-open" data-testid="setting-max-open" formControlName="maxOpen" inputmode="numeric" />
         <p>Maximum open claims now: <span data-testid="setting-max-open-current">{{ maxOpen() ?? '' }}</span></p>
@@ -285,6 +290,7 @@ export class Settings {
   private readonly sheetParent = inject(SheetParent);
   private readonly sheetFiscal = inject(SheetFiscal);
   private readonly sheetReviewSla = inject(SheetReviewSla);
+  private readonly sheetPendingSla = inject(SheetPendingSla);
   private readonly sheetScoreBands = inject(SheetScoreBands);
   private readonly gradeStore = inject(Grades);
 
@@ -321,6 +327,7 @@ export class Settings {
   protected readonly defaultGrade = signal<string | null>(null);
   protected readonly escalateAfter = signal<number | null>(null);
   protected readonly reviewSla = signal<number | null>(null);
+  protected readonly pendingSla = signal<number | null>(null);
   protected readonly maxOpen = signal<number | null>(null);
   protected readonly scoreMid = signal<number | null>(null);
   protected readonly scoreHigh = signal<number | null>(null);
@@ -360,6 +367,7 @@ export class Settings {
     defaultGrade: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
     reviewSla: new FormControl('', { nonNullable: true }),
+    pendingSla: new FormControl('', { nonNullable: true }),
     maxOpen: new FormControl('', { nonNullable: true }),
     scoreMid: new FormControl('', { nonNullable: true }),
     scoreHigh: new FormControl('', { nonNullable: true }),
@@ -459,7 +467,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -501,7 +509,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, maxOpen, scoreMid, scoreHigh, scoreLog, parent, fiscalStartMonth } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, pendingSla, maxOpen, scoreMid, scoreHigh, scoreLog, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -543,6 +551,7 @@ export class Settings {
     const defaultGradeValue = defaultGrade.value.trim();
     const escalateAfterValue = escalateAfter.value.trim();
     const reviewSlaValue = reviewSla.value.trim();
+    const pendingSlaValue = pendingSla.value.trim();
     const maxOpenValue = maxOpen.value.trim();
     const scoreMidValue = scoreMid.value.trim();
     const scoreHighValue = scoreHigh.value.trim();
@@ -660,6 +669,10 @@ export class Settings {
     }
     if (changed(reviewSla) && reviewSlaValue !== '' && (!DAYS.test(reviewSlaValue) || Number(reviewSlaValue) > 36500)) {
       this.settingsError.set('Type the review SLA as a whole number of days, from 0 to 36500, or leave it blank for none.');
+      return;
+    }
+    if (changed(pendingSla) && pendingSlaValue !== '' && (!DAYS.test(pendingSlaValue) || Number(pendingSlaValue) > 36500)) {
+      this.settingsError.set('Type the pending SLA as a whole number of days, from 0 to 36500, or leave it blank for none.');
       return;
     }
     if (changed(maxOpen) && maxOpenValue !== '' && (!/^\d{1,7}$/.test(maxOpenValue) || Number(maxOpenValue) > 1000000)) {
@@ -828,6 +841,11 @@ export class Settings {
         settled(reviewSla);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(pendingSla)) {
+        const settings = await this.api.setPendingSla(sheet.id, pendingSlaValue === '' ? null : Number(pendingSlaValue));
+        settled(pendingSla);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       if (changed(maxOpen)) {
         const settings = await this.api.setMaxOpen(sheet.id, maxOpenValue === '' ? null : Number(maxOpenValue));
         settled(maxOpen);
@@ -904,6 +922,8 @@ export class Settings {
     this.escalateAfter.set(settings.escalateAfter);
     this.reviewSla.set(settings.reviewSla);
     this.sheetReviewSla.days.set(settings.reviewSla);
+    this.pendingSla.set(settings.pendingSla);
+    this.sheetPendingSla.days.set(settings.pendingSla);
     this.maxOpen.set(settings.maxOpen);
     this.scoreMid.set(settings.scoreMid);
     this.scoreHigh.set(settings.scoreHigh);

@@ -310,6 +310,22 @@ export function reviewDay(claim: ClaimView): string | null {
   return day;
 }
 
+/** The day a PENDING claim went to PENDING: the sheet's today then, the latest time its status log
+ *  records it; null when the claim is not PENDING. */
+export function pendingDay(claim: ClaimView): string | null {
+  if (claim.status !== 'PENDING') return null;
+  let day: string | null = null;
+  for (const line of claim.log) if (line.status === 'PENDING') day = line.on;
+  return day;
+}
+
+/** Whether the claim is pending-late: PENDING, with its pending day plus the pending SLA's `slaDays` before
+ *  the sheet's today; never when there is no SLA (null). */
+export function isPendingLate(claim: ClaimView, today: string | undefined, slaDays: number | null): boolean {
+  const day = pendingDay(claim);
+  return day !== null && slaDays !== null && today !== undefined && dateOfEpochDay(epochDay(day) + slaDays) < today;
+}
+
 /** Whether the claim is review-late: REVIEW, with its review day plus the review SLA's `slaDays` before
  *  the sheet's today; never when there is no SLA (null). */
 export function isReviewLate(claim: ClaimView, today: string | undefined, slaDays: number | null): boolean {

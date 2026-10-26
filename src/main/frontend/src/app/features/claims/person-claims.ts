@@ -8,6 +8,7 @@ import { GradeView, gradeOn } from '../people/people-api';
 import { RateView } from '../rates/rates-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetGrace } from '../settings/sheet-grace';
+import { SheetPendingSla } from '../settings/sheet-pending-sla';
 import { SheetReviewSla } from '../settings/sheet-review-sla';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
@@ -15,7 +16,7 @@ import { SheetRounding } from '../settings/sheet-rounding';
 import { Templates, TemplatesApi } from '../templates/templates-api';
 import { VoidReasons } from '../void-reasons/void-reasons-api';
 import { ClaimEditors } from './claim-editors';
-import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, PROOF_KINDS, ProofKind, SplitView, claimOwedCents, isDeferred, isOverdue, isReviewLate, money } from './claims-api';
+import { CLAIM_AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, PROOF_KINDS, ProofKind, SplitView, claimOwedCents, isDeferred, isOverdue, isPendingLate, isReviewLate, money } from './claims-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The claim form's fields, as typed. */
@@ -108,6 +109,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLate(c) ? 'yes' : 'no' }}</span></span>
+          <span>Pending late <span data-testid="claim-pending-late">{{ pendingLate(c) ? 'yes' : 'no' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
@@ -271,6 +273,7 @@ export class PersonClaims {
   private readonly latePct = inject(SheetLatePct);
   private readonly sheetGrace = inject(SheetGrace);
   private readonly reviewSla = inject(SheetReviewSla);
+  private readonly pendingSla = inject(SheetPendingSla);
   private readonly policyDate = inject(SheetPolicyDate);
   private readonly rounding = inject(SheetRounding);
   protected readonly voidReasons = inject(VoidReasons);
@@ -373,6 +376,11 @@ export class PersonClaims {
   /** Whether the claim is review-late: REVIEW past the sheet's review SLA from the day it went to REVIEW. */
   protected reviewLate(claim: ClaimView): boolean {
     return isReviewLate(claim, this.session.figuresToday(), this.reviewSla.days());
+  }
+
+  /** Whether the claim is pending-late: PENDING past the sheet's pending SLA from the day it last went to PENDING. */
+  protected pendingLate(claim: ClaimView): boolean {
+    return isPendingLate(claim, this.session.figuresToday(), this.pendingSla.days());
   }
 
   /** The grace days of the claim: those of the person's grade in force on its date, in force on that date. */

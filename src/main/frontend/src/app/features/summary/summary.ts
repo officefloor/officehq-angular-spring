@@ -32,7 +32,8 @@ export interface VoidReasonSummary {
 
 // The sheet in figures: per grade, the people on it today who are not retired and their due-totals
 // and how many are active; per period, its due-total and its change from the one before it; per status, how many claims have it;
-// how many REVIEW claims are review-late (waiting past the review SLA);
+// how many REVIEW claims are review-late (waiting past the review SLA); how many PENDING claims are
+// pending-late (waiting past the pending SLA);
 // per reason on the sheet's list of void reasons, how many VOID claims were voided with it. Each figure is the list's own.
 @Component({
   selector: 'app-summary',
@@ -83,6 +84,7 @@ export interface VoidReasonSummary {
         </tbody>
       </table>
       <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLate() }}</span></p>
+      <p>Late in pending: <span data-testid="summary-pending-late-count">{{ pendingLate() }}</span></p>
       @if (voidReasons().length > 0) {
         <table aria-label="Summary by void reason">
           <thead>
@@ -108,4 +110,6 @@ export class Summary {
   readonly voidReasons = input.required<VoidReasonSummary[]>();
   /** How many REVIEW claims are review-late. */
   readonly reviewLate = input.required<number>();
+  /** How many PENDING claims are pending-late. */
+  readonly pendingLate = input.required<number>();
 }
