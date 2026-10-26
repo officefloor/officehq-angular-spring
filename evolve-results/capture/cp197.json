@@ -1,0 +1,64 @@
+{
+  "checkpoint": 197,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp197_activity-counts",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the activity of the sheet: for every user and every event in the sheet's audit file, one\nline <user> <EVENT> <count>, sorted by user then event.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the activity of the sheet: for every user and every event in the sheet's audit file, one\nline <user> <EVENT> <count>, sorted by user then event.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9739240625344a58349ee2a755f62567dcfc384a",
+  "reset_sha": "",
+  "preagent_sha": "8e35e07e87c3dede3d66ac232ca91c9c6f0d6bf0",
+  "prev_sha": "8e35e07e87c3dede3d66ac232ca91c9c6f0d6bf0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.37184940000000005,
+    "input_tokens": 24,
+    "output_tokens": 4243,
+    "cache_read_tokens": 321907,
+    "cache_creation_tokens": 27814,
+    "num_turns": 12,
+    "duration_ms": 253251,
+    "duration_api_ms": 41100,
+    "model": "claude-opus-5-5",
+    "session_id": "3377617f-98ca-459a-ab4f-c69840901513",
+    "stop_reason": "success",
+    "result_text": "The sheet now has an Activity view: pressing **Show activity** lists one line `<user> <EVENT> <count>` for every user and event in the sheet's audit file, sorted by user then event. `bin/e2e` passes all 4 tests: the new activity test and the 3 other scenarios.\n\nWhat changed:\n- **Server:** `Audit.activity(sheetId)` in `src/main/java/net/officefloor/hq/app/Audit.java` reads the sheet's audit records and counts them per user and event. A new endpoint, `GET /api/sheets/{sheetId}/audit/activity` in `AuditController`, returns those lines.\n- **Front end:** a new `app-activity` component in `src/main/frontend/src/app/features/audit/activity.ts`, shown on the home screen beside the audit viewer, plus an `activity()` call in `audit-api.ts`.\n  - It uses the test's `activity-show` button and `activity-line` items, and shows an `activity-error` message if the lines can't be read.\n  - Pressing the button clears the old lines before showing the new ones, and loading a sheet resets the view.\n\nThe view only reads the audit file, so it adds no audit records of its own.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.37184940000000005,
+        "num_turns": 12,
+        "duration_ms": 253251,
+        "duration_api_ms": 41100,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp197.agent.jsonl",
+  "agent_diff_file": "cp197.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

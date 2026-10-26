@@ -1,0 +1,161 @@
+diff --git a/src/main/frontend/src/app/features/audit/activity.ts b/src/main/frontend/src/app/features/audit/activity.ts
+new file mode 100644
+index 00000000..bdba128f
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/activity.ts
+@@ -0,0 +1,60 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { AuditApi } from './audit-api';
++
++// The sheet's activity: for every user and every event in its audit records, one line
++// "<user> <EVENT> <count>", sorted by user then event.
++@Component({
++  selector: 'app-activity',
++  template: `
++    <section aria-labelledby="activity-heading">
++      <h2 id="activity-heading">Activity</h2>
++      <button type="button" data-testid="activity-show" [disabled]="loading()" (click)="show()">Show activity</button>
++      @if (error()) {
++        <p role="alert" data-testid="activity-error">{{ error() }}</p>
++      }
++      <ul data-testid="activity-lines" aria-label="Activity lines">
++        @for (line of lines(); track $index) {
++          <li data-testid="activity-line">{{ line }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class Activity {
++  private readonly session = inject(Session);
++  private readonly api = inject(AuditApi);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly loading = signal(false);
++  protected readonly error = signal('');
++  private request = 0;
++
++  constructor() {
++    // Each load of a sheet starts the activity afresh.
++    effect(() => {
++      this.session.loaded();
++      this.request++;
++      this.loading.set(false);
++      this.error.set('');
++      this.lines.set([]);
++    });
++  }
++
++  protected async show(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const request = ++this.request;
++    this.error.set('');
++    this.lines.set([]);
++    this.loading.set(true);
++    try {
++      const lines = await this.api.activity(sheet.id);
++      if (request === this.request) this.lines.set(lines);
++    } catch {
++      if (request === this.request) this.error.set('The activity could not be read.');
++    } finally {
++      if (request === this.request) this.loading.set(false);
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/audit/audit-api.ts b/src/main/frontend/src/app/features/audit/audit-api.ts
+index aaeb4be9..97e42130 100644
+--- a/src/main/frontend/src/app/features/audit/audit-api.ts
++++ b/src/main/frontend/src/app/features/audit/audit-api.ts
+@@ -13,4 +13,9 @@ export class AuditApi {
+       this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit`, { params: { name } }),
+     );
+   }
++
++  /** The sheet's activity: one line "<user> <EVENT> <count>" per user and event, sorted by user then event. */
++  activity(sheetId: string): Promise<string[]> {
++    return firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit/activity`));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 6ea0e348..f6e59537 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,6 +1,7 @@
+ import { Component, inject } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { AuditViewer } from '../audit/audit-viewer';
++import { Activity } from '../audit/activity';
+ import { Holidays } from '../holidays/holidays';
+ import { People } from '../people/people';
+ import { Settings } from '../settings/settings';
+@@ -17,7 +18,7 @@ import { NotesList } from '../notes/notes';
+ // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, Holidays, VoidReasonsList, NotesList, TemplatesList, People],
++  imports: [AuditViewer, Activity, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, Holidays, VoidReasonsList, NotesList, TemplatesList, People],
+   template: `
+     @if (session.user(); as user) {
+       <header>
+@@ -35,6 +36,7 @@ import { NotesList } from '../notes/notes';
+         <app-notes />
+         <app-templates />
+         <app-audit-viewer />
++        <app-activity />
+       }
+       <app-people />
+       @if (!session.sheet()) {
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 1093ca7c..6ac5c390 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -12,6 +12,7 @@ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.TreeMap;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.person.Person;
+@@ -125,6 +126,22 @@ public class Audit {
+         return false;
+     }
+ 
++    /**
++     * The sheet's activity: for every user and every event in the sheet's records, one line
++     * "<user> <EVENT> <count>", sorted by user then event.
++     */
++    public List<String> activity(String sheetId) {
++        TreeMap<String, TreeMap<String, Integer>> counts = new TreeMap<>();
++        for (String line : lines(sheetId, null)) {
++            Matcher head = HEAD.matcher(line);
++            if (!head.find()) continue;
++            counts.computeIfAbsent(head.group(3), (user) -> new TreeMap<>()).merge(head.group(1), 1, Integer::sum);
++        }
++        List<String> found = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, count) -> found.add(user + " " + event + " " + count)));
++        return found;
++    }
++
+     /** A record's field: its value runs up to the next field or the end. */
+     private static final Pattern FIELD = Pattern.compile(" ([a-z][a-z-]*)=(.*?)(?= [a-z][a-z-]*=|$)");
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/AuditController.java b/src/main/java/net/officefloor/hq/app/AuditController.java
+index c232066d..8ad36b4c 100644
+--- a/src/main/java/net/officefloor/hq/app/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/AuditController.java
+@@ -71,6 +71,12 @@ public class AuditController {
+         return all;
+     }
+ 
++    /** The sheet's activity: one line "<user> <EVENT> <count>" per user and event, sorted by user then event. */
++    @GetMapping("/activity")
++    public List<String> activity(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return audit.activity(sheetId.trim());
++    }
++
+     /** The sheet's descendants: the sheets naming it as their parent, then theirs, and so on; by id. */
+     private TreeSet<String> descendantsOf(String sheetId) {
+         TreeSet<String> found = new TreeSet<>();
