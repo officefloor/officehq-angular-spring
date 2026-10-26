@@ -39,6 +39,13 @@ export interface PlanFields {
   sheet: string | null;
 }
 
+/** A plan after its amount was changed, and the DRAFT claims it generated that took the new amount,
+ *  oldest first (on the sheet its claims are made on). */
+export interface AmountView {
+  plan: PlanView;
+  claims: ClaimView[];
+}
+
 /** What a generate made: how many claims, the claims oldest first, and the sheet's plans then. */
 export interface GenerateView {
   generated: number;
@@ -75,9 +82,9 @@ export class PlansApi {
   }
 
   /** Change a plan's amount on the sheet's today: refused for an amount not above 0.00 with up to two
-   *  decimals. */
-  changeAmount(sheetId: string, planId: number, amount: string): Promise<PlanView> {
-    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheetId)}/${planId}/amount`, { amount }));
+   *  decimals. The claims it generated that are still DRAFT take the new amount too. */
+  changeAmount(sheetId: string, planId: number, amount: string): Promise<AmountView> {
+    return firstValueFrom(this.http.post<AmountView>(`${this.url(sheetId)}/${planId}/amount`, { amount }));
   }
 
   /** Make every plan's claims due by the sheet's today. */
@@ -126,11 +133,13 @@ export class Plans {
     this.state.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
   }
 
-  /** Change the amount of a plan of the active sheet. */
-  async changeAmount(sheetId: string, planId: number, amount: string): Promise<void> {
-    const changed = await this.api.changeAmount(sheetId, planId, amount);
-    if (this.session.sheet()?.id !== sheetId) return;
+  /** Change the amount of a plan of the active sheet: the DRAFT claims it generated on this sheet that
+   *  took the new amount, or null once another sheet is loaded. */
+  async changeAmount(sheetId: string, planId: number, amount: string): Promise<ClaimView[] | null> {
+    const { plan: changed, claims } = await this.api.changeAmount(sheetId, planId, amount);
+    if (this.session.sheet()?.id !== sheetId) return null;
     this.state.update((list) => list.map((p) => (p.id === changed.id ? changed : p)));
+    return changed.sheet ? [] : claims;
   }
 
   /** Generate the plans' claims: the store's plans replace those shown. */

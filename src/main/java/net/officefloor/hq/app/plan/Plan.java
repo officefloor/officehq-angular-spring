@@ -65,6 +65,12 @@ public class Plan {
     @Column(name = "plan_date", nullable = false)
     private Set<LocalDate> generated = new HashSet<>();
 
+    /** The ids of the claims it has made. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
+    @Column(name = "claim_id", nullable = false)
+    private Set<Long> claimIds = new HashSet<>();
+
     /** Its pauses, oldest first; one is still open while the plan is paused. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
@@ -122,8 +128,15 @@ public class Plan {
         return generated.contains(date);
     }
 
-    void markGenerated(LocalDate date) {
+    /** Mark the date as having its claim, the claim with the id. */
+    void markGenerated(LocalDate date, Long claimId) {
         generated.add(date);
+        claimIds.add(claimId);
+    }
+
+    /** The ids of the claims it has made, lowest first. */
+    List<Long> claimIds() {
+        return claimIds.stream().sorted().toList();
     }
 
     /** Whether the plan is paused now. */

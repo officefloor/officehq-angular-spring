@@ -1,7 +1,8 @@
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure.pipe';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
+import { ClaimView } from '../claims/claims-api';
 import { Plans } from './plans-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -69,6 +70,9 @@ export class PersonPlans {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
 
+  /** The DRAFT claims a change of a plan's amount gave the new amount. */
+  readonly edited = output<ClaimView[]>();
+
   protected readonly plans = computed(() => this.store.plans().filter((p) => p.personId === this.personId()));
 
   protected readonly form = new FormGroup({
@@ -135,8 +139,11 @@ export class PersonPlans {
     }
     this.pausing.set(planId);
     try {
-      await this.store.changeAmount(sheet.id, planId, amount);
-      if (this.session.sheet()?.id === sheet.id) this.amounts.update((a) => ({ ...a, [planId]: '' }));
+      const edited = await this.store.changeAmount(sheet.id, planId, amount);
+      if (edited) {
+        this.amounts.update((a) => ({ ...a, [planId]: '' }));
+        this.edited.emit(edited);
+      }
     } catch {
       if (this.session.sheet()?.id === sheet.id) {
         this.rowError.set({ planId, message: 'The amount could not be changed.' });

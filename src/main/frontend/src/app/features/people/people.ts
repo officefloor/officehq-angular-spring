@@ -477,7 +477,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                   }
                 </td>
                 <td>
-                  <app-person-plans [personId]="p.id" [personName]="p.name" />
+                  <app-person-plans [personId]="p.id" [personName]="p.name" (edited)="pasted($event)" />
                 </td>
                 <td>
                   <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"

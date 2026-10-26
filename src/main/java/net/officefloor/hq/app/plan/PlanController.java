@@ -51,6 +51,11 @@ public class PlanController {
     public record AmountForm(@NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount) {
     }
 
+    /** A plan after its amount was changed, and the DRAFT claims it generated that took the new amount,
+     *  oldest first. */
+    public record AmountView(PlanView plan, List<ClaimView> claims) {
+    }
+
     /** How many claims a generate made, the claims, oldest first, and the sheet's plans as they are then. */
     public record GenerateView(int generated, List<ClaimView> claims, List<PlanView> plans) {
     }
@@ -97,11 +102,12 @@ public class PlanController {
 
     /** Change the plan's amount from the sheet's today. */
     @PostMapping("/{planId}/amount")
-    public PlanView changeAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+    public AmountView changeAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Valid AmountForm form) {
         String id = sheetId.trim();
-        return PlanView.of(service.changeAmount(id, SignedInUser.name(user), planId, form.amount()),
-                service.today(id));
+        PlanService.AmountChange change = service.changeAmount(id, SignedInUser.name(user), planId, form.amount());
+        return new AmountView(PlanView.of(change.plan(), service.today(id)),
+                change.edited().stream().map(ClaimView::of).toList());
     }
 
     /** Make the plans' claims due by the sheet's today. */

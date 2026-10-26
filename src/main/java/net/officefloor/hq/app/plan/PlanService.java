@@ -10,7 +10,9 @@ import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.setting.Role;
@@ -34,13 +36,14 @@ public class PlanService {
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final ClaimService claims;
+    private final ClaimRepository claimRows;
     private final Audit audit;
     private final SettingService settings;
     private final SheetParentRepository parents;
     private final TransactionTemplate transaction;
 
     public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
-            ClaimService claims, Audit audit, SettingService settings, SheetParentRepository parents,
+            ClaimService claims, ClaimRepository claimRows, Audit audit, SettingService settings, SheetParentRepository parents,
             PlatformTransactionManager transactions) {
         this.parents = parents;
         this.plans = plans;
@@ -48,6 +51,7 @@ public class PlanService {
         this.sheets = sheets;
         this.sheetRows = sheetRows;
         this.claims = claims;
+        this.claimRows = claimRows;
         this.audit = audit;
         this.settings = settings;
         this.transaction = new TransactionTemplate(transactions);
@@ -115,9 +119,36 @@ public class PlanService {
     }
 
     /** Change the plan's amount on the sheet's today, for the claims generated from then on: refused for an
-     *  amount not above 0.00 or with more than two decimals. */
-    @Transactional
-    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+     *  amount not above 0.00 or with more than two decimals. The claims it generated that are still DRAFT
+     *  then take the new amount too, oldest first, each edited on its own as the claim form would edit it
+     *  (its date, note, reference and tags as they are): one the form refuses keeps its amount. */
+    public AmountChange changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        Plan plan = transaction.execute((status) -> changePlanAmount(sheetId, user, planId, amount));
+        String claimSheet = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
+        List<Claim> edited = new ArrayList<>();
+        for (Long claimId : plan.claimIds()) {
+            try {
+                Claim claim = transaction.execute((status) -> {
+                    Claim draft = claimRows.findByIdAndSheetId(claimId, claimSheet).orElse(null);
+                    if (draft == null || draft.getStatus() != ClaimStatus.DRAFT
+                            || draft.getAmount().compareTo(plan.getAmount()) == 0) return null;
+                    return claims.update(claimSheet, user, claimId, plan.getAmount(), draft.getDate(), draft.getNote(),
+                            draft.getCorrects(), draft.getRef(), String.join(",", draft.getTags()));
+                });
+                if (claim != null) edited.add(claim);
+            } catch (ResponseStatusException refused) {
+                // The claim form refuses the edit: the claim keeps its amount.
+            }
+        }
+        return new AmountChange(plan, edited);
+    }
+
+    /** A plan after its amount was changed, and the DRAFT claims it generated that took the new amount,
+     *  oldest first. */
+    public record AmountChange(Plan plan, List<Claim> edited) {
+    }
+
+    private Plan changePlanAmount(String sheetId, String user, long planId, BigDecimal amount) {
         sheets.load(sheetId);
         sheetRows.findForUpdate(sheetId);
         Plan plan = plans.findForUpdate(planId).filter((p) -> p.getSheetId().equals(sheetId))
@@ -173,7 +204,7 @@ public class PlanService {
         }
         Claim claim = claims.add(target != null ? target : sheetId, user, personId, plan.getAmount(), date, "",
                 null, null, null);
-        plan.markGenerated(date);
+        plan.markGenerated(date, claim.getId());
         plans.saveAndFlush(plan);
         return claim;
     }
