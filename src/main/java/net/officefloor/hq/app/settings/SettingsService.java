@@ -305,6 +305,21 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Sets the sheet's pot (null for blank: none): shared among the members of each balanced pool by their shares.
+     * Not dated.
+     */
+    @Transactional
+    public Sheet setPot(String by, String sheetId, BigDecimal pot) {
+        BigDecimal scaled = pot == null ? null : pot.setScale(2, RoundingMode.UNNECESSARY);
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setPot(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=pot value="
+                + (scaled == null ? "" : scaled.toPlainString()));
+        return saved;
+    }
+
+    /**
      * Records the sheet's floor from the date (null for the sheet's today): the least the live due of a claim dated
      * on or after it can be. Settled, stated and closed-period figures keep what they were; the live figures it moves
      * are rolled up.

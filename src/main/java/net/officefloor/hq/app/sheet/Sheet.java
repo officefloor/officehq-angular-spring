@@ -94,6 +94,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The pot shared among the members of each balanced pool by their shares. Null (blank) for none. Not dated. */
+    @Column(name = "pot")
+    private BigDecimal pot;
+
     /** Whether a steward has archived the sheet: it stays visible and every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -158,6 +162,7 @@ public class Sheet {
         then.periodNumberingFrom = periodNumberingFrom;
         then.entryDate = entryDate;
         then.graceDays = graceDays;
+        then.pot = pot;
         then.archived = archived;
         then.lastSettleBatch = lastSettleBatch;
         // a value recorded before changes were kept stands as it is
@@ -306,6 +311,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public BigDecimal getPot() {
+        return pot;
+    }
+
+    public void setPot(BigDecimal pot) {
+        this.pot = pot;
     }
 
     public boolean isArchived() {

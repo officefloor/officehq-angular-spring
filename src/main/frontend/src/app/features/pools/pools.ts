@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { SettingsStore } from '../settings/settings';
 
 export interface PoolMemberView {
   personId: number;
@@ -9,6 +10,11 @@ export interface PoolMemberView {
   share: string;
   // A retired member (one with a retirement date set, whatever the date) counts 0.00 toward the pool's total.
   retired: boolean;
+}
+
+// A member as shown: with their cut of the pot, blank while the pool is unbalanced or the sheet has no pot.
+export interface ShownMember extends PoolMemberView {
+  cut: string;
 }
 
 export interface PoolView {
@@ -43,6 +49,38 @@ function hundredths(share: string): number {
 
 function percent(h: number): string {
   return `${Math.floor(h / 100)}.${String(h % 100).padStart(2, '0')}`;
+}
+
+// An amount of two decimals as a whole number of cents, and back.
+function cents(amount: string): bigint {
+  const [whole, frac = ''] = amount.split('.');
+  return BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
+}
+
+function money(c: bigint): string {
+  return `${c / 100n}.${String(c % 100n).padStart(2, '0')}`;
+}
+
+/**
+ * Each member's cut of the pot (in cents), in member order: the pot times their share over 100, rounded half to even
+ * to the cent, a retired member's 0; the remainder left by the rounding goes to the member with the largest share
+ * (the earliest added on a tie), so the cuts total exactly the pot.
+ */
+function cuts(pot: bigint, members: readonly { share: string; retired: boolean }[]): bigint[] {
+  const shares = members.map((m) => (m.retired ? 0n : BigInt(hundredths(m.share))));
+  const result = shares.map((h) => {
+    const exact = pot * h;
+    let q = exact / 10000n;
+    const r = exact % 10000n;
+    if (r > 5000n || (r === 5000n && q % 2n === 1n)) q += 1n;
+    return q;
+  });
+  let largest = 0;
+  shares.forEach((h, i) => {
+    if (h > shares[largest]) largest = i;
+  });
+  if (result.length) result[largest] += pot - result.reduce((sum, c) => sum + c, 0n);
+  return result;
 }
 
 // The active sheet's pools: each with its members and their shares, its total share and whether it is balanced
@@ -81,6 +119,7 @@ function percent(h: number): string {
                     <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
                       {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>%
                       @if (m.retired) { (retired) }
+                      <span class="visually-hidden">cut</span> <span data-testid="pool-cut">{{ m.cut }}</span>
                     </li>
                   }
                 </ul>
@@ -125,15 +164,21 @@ export class Pools {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   protected readonly roster = inject(PoolRoster);
+  private readonly settings = inject(SettingsStore);
 
   private readonly pools = signal<readonly PoolView[]>([]);
-  // The pools with each member counted retired as the people list has them now, and the totals to match.
+  // The pools with each member counted retired as the people list has them now, the totals to match, and each
+  // member's cut of the sheet's pot while the pool is balanced.
   protected readonly shown = computed(() => {
     const retired = new Map(this.roster.people().map((p) => [p.id, p.retiredFrom !== null]));
+    const pot = this.settings.pot();
     return this.pools().map((pool) => {
       const members = pool.members.map((m) => ({ ...m, retired: retired.get(m.personId) ?? m.retired }));
       const total = members.reduce((sum, m) => sum + (m.retired ? 0 : hundredths(m.share)), 0);
-      return { ...pool, members, totalShare: percent(total), balanced: total === 10000 };
+      const balanced = total === 10000;
+      const cut = balanced && pot !== null ? cuts(cents(pot), members).map(money) : null;
+      const shownMembers: ShownMember[] = members.map((m, i) => ({ ...m, cut: cut ? cut[i] : '' }));
+      return { ...pool, members: shownMembers, totalShare: percent(total), balanced };
     });
   });
 
