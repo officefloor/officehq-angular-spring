@@ -31,6 +31,9 @@ export interface Claim {
   dueBy: string;
   // The date the claim was deferred until; null for one never deferred. See deferred().
   deferredUntil: string | null;
+  // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
+  // settled or approved while it has none.
+  proofs: number;
   // The claim's status log, oldest first: a line for each status it has had, from its DRAFT on.
   log: ClaimLogLine[];
 }
@@ -204,7 +207,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Log</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Log</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -228,12 +231,13 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-due-by">{{ c.dueBy }}</td>
             <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-deferred">{{ deferred(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
-            <td data-testid="claim-deferred-until">{{ deferred(c, session.sheetToday()) ? c.deferredUntil : '' }}</td>
+            <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
             <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
             <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
             <td data-testid="claim-period">{{ periodName(c.date) }}</td>
             <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
+            <td data-testid="claim-proofs">{{ c.proofs }}</td>
             <td>
               <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
                 @for (l of c.log; track $index) {
@@ -274,6 +278,9 @@ export function claimedTotal(claims: readonly Claim[]): string {
               />
               <button type="button" data-testid="claim-defer" (click)="defer(c)">
                 Defer<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <button type="button" data-testid="claim-proof" (click)="addProof(c)">
+                Add proof<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               <button type="button" data-testid="claim-void" (click)="act(c, 'void')">
                 Void<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
@@ -422,8 +429,32 @@ export class Claims {
               ? 'Only a steward can re-settle a claim.'
               : action === 'approve' && opener
                 ? 'You opened this claim, so another steward must approve it.'
-                : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
+                : ((action === 'settle' && c.status === 'OPEN') || (action === 'approve' && c.status === 'PENDING')) &&
+                    c.proofs === 0
+                  ? 'This claim\'s due is above the proof threshold, so it needs a proof first.'
+                  : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
       this.setRowError(c.id, err);
+    }
+  }
+
+  /** Raises the claim's proofs count by one; a SETTLED or VOID claim, or one in a closed period, takes none. */
+  protected async addProof(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (c.status === 'SETTLED' || c.status === 'VOID') {
+      this.setRowError(c.id, `A ${c.status} claim cannot take a proof.`);
+      return;
+    }
+    if (inClosedPeriod(this.periods.list(), c.date)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/proof`;
+    try {
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
+    } catch {
+      this.setRowError(c.id, `This ${c.status} claim cannot take a proof.`);
     }
   }
 

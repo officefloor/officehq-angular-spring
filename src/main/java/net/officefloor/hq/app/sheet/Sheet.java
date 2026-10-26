@@ -27,6 +27,7 @@ public class Sheet {
     public static final String TERMS = "terms";
     public static final String LATE_PCT = "late-pct";
     public static final String CAP = "cap";
+    public static final String PROOF_THRESHOLD = "proof-threshold";
 
     /** The floor, the terms and the late percent a sheet starts with, in force before any is recorded. */
     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
@@ -138,6 +139,14 @@ public class Sheet {
     /** The most a person's due-total can be, in force on the sheet's today; null means no cap. */
     public BigDecimal getCap() {
         return inForce(CAP, today).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+    }
+
+    /**
+     * The due above which a claim dated on the date cannot be settled or approved without a proof, in force on that
+     * date; null means none.
+     */
+    public BigDecimal proofThresholdOn(LocalDate on) {
+        return inForce(PROOF_THRESHOLD, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
     }
 
     public LocalDate getPolicyDate() {

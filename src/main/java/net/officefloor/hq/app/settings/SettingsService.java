@@ -155,6 +155,15 @@ public class SettingsService {
     }
 
     /**
+     * Records the sheet's proof threshold (null for none) from the date (null for the sheet's today): a claim dated
+     * on or after it whose due is above it cannot be settled or approved while it has no proof.
+     */
+    @Transactional
+    public Sheet setProofThreshold(String by, String sheetId, BigDecimal threshold, LocalDate from) {
+        return record(by, sheetId, Sheet.PROOF_THRESHOLD, threshold == null ? null : money(threshold), from, false);
+    }
+
+    /**
      * Records the dated setting's value (null for none) from the date, or from the sheet's today when none is given,
      * replacing a value already recorded from that date. The audit line carries the from-date only when one was
      * given. When it can move live figures, the ones it moves are rolled up.

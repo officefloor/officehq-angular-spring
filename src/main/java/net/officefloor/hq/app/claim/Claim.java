@@ -103,6 +103,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs the claim has; raised by one at a time. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /**
      * The claim's place in the list, newest first: the next place when it is added or moved to another person. The
      * store gives it; a move takes the next through {@link ClaimRepository#relist}.
@@ -151,6 +155,15 @@ public class Claim {
      */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Raises the claim's proofs count by one. */
+    public void addProof() {
+        proofs++;
     }
 
     public LocalDate getRoundsOn() {

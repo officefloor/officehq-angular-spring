@@ -26,7 +26,8 @@ interface SettingsView {
 
 /**
  * One value recorded for a dated setting, in force from its from-date until the next one recorded for its key:
- * clerk-limit, floor, terms, terms-<grade>, late-pct or cap. The value is null for none (a blank clerk limit or cap).
+ * clerk-limit, floor, terms, terms-<grade>, late-pct, cap or proof-threshold. The value is null for none (a blank
+ * clerk limit, cap or proof threshold).
  */
 interface DatedSetting {
   key: string;
@@ -35,7 +36,7 @@ interface DatedSetting {
 }
 
 /** A dated setting's key as the form and its fields name it. */
-export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | `terms-${string}`;
+export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | `terms-${string}`;
 
 export const ROLES = ['clerk', 'steward'];
 
@@ -94,6 +95,8 @@ export class SettingsStore {
   readonly clerkLimit = computed(() => valueOn(this.dated(), 'clerk-limit', this.session.sheetToday()) ?? null);
   /** The cap in force on the sheet's today; null for none. */
   readonly cap = computed(() => valueOn(this.dated(), 'cap', this.session.sheetToday()) ?? null);
+  /** The proof threshold in force on the sheet's today; null for none. */
+  readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.session.sheetToday()) ?? null);
   /** The floor, the terms and the late percent in force on the sheet's today. */
   readonly floorToday = computed(() => this.floor()(this.session.sheetToday()));
   readonly termsToday = computed(() => this.termsFor('', this.session.sheetToday()));
@@ -325,6 +328,25 @@ export class SettingsStore {
           (input)="setFrom('cap', value($event))"
           (change)="setFrom('cap', value($event))"
         />
+        <label for="setting-proof-threshold">Proof threshold (a claim due above it needs a proof to settle; blank for none)</label>
+        <input
+          id="setting-proof-threshold"
+          data-testid="setting-proof-threshold"
+          inputmode="decimal"
+          [value]="proofThreshold()"
+          (input)="proofThreshold.set(value($event)); proofThresholdChanged = true; settingsError.set(null)"
+          (keydown.delete)="proofThresholdChanged = true; settingsError.set(null)"
+          (keydown.backspace)="proofThresholdChanged = true; settingsError.set(null)"
+        />
+        <label for="setting-proof-threshold-from">Proof threshold from (blank for the sheet's today)</label>
+        <input
+          id="setting-proof-threshold-from"
+          data-testid="setting-proof-threshold-from"
+          type="date"
+          [value]="from()['proof-threshold'] ?? ''"
+          (input)="setFrom('proof-threshold', value($event))"
+          (change)="setFrom('proof-threshold', value($event))"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -346,6 +368,10 @@ export class SettingsStore {
         <strong data-testid="setting-period-numbering-from-current">{{ store.periodNumberingFrom() ?? '' }}</strong>
       </p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ store.cap() ?? '' }}</strong></p>
+      <p>
+        Proof threshold in force:
+        <strong data-testid="setting-proof-threshold-current">{{ store.proofThreshold() ?? '' }}</strong>
+      </p>
 
       <form (submit)="saveRole($event)" aria-label="Set role">
         <label for="role-user">User name</label>
@@ -405,6 +431,7 @@ export class Settings {
   protected readonly policyDate = signal('');
   protected readonly periodNumberingFrom = signal('');
   protected readonly cap = signal('');
+  protected readonly proofThreshold = signal('');
   // The from-date typed for each dated setting, by key; blank for the sheet's today.
   protected readonly from = signal<Readonly<Partial<Record<DatedKey, string>>>>({});
   // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
@@ -417,6 +444,7 @@ export class Settings {
   protected policyDateChanged = false;
   protected periodNumberingFromChanged = false;
   protected capChanged = false;
+  protected proofThresholdChanged = false;
   protected readonly user = signal('');
   protected readonly role = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -473,6 +501,9 @@ export class Settings {
         break;
       case 'cap':
         this.capChanged ||= this.cap().trim() !== '';
+        break;
+      case 'proof-threshold':
+        this.proofThresholdChanged ||= this.proofThreshold().trim() !== '';
         break;
       default:
         if ((this.gradeTerms()[key.slice('terms-'.length)] ?? '').trim() !== '') {
@@ -539,6 +570,11 @@ export class Settings {
       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const proofThreshold = this.proofThreshold().trim();
+    if (this.proofThresholdChanged && proofThreshold && !LIMIT.test(proofThreshold)) {
+      this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     const keys: DatedKey[] = [];
     if (this.limitChanged) keys.push('clerk-limit');
     if (this.floorChanged) keys.push('floor');
@@ -546,6 +582,7 @@ export class Settings {
     for (const g of gradeTerms.keys()) keys.push(`terms-${g}`);
     if (this.latePctChanged) keys.push('late-pct');
     if (this.capChanged) keys.push('cap');
+    if (this.proofThresholdChanged) keys.push('proof-threshold');
     const from = new Map<DatedKey, string | null>();
     for (const k of keys) {
       const f = this.fromOf(k);
@@ -589,6 +626,10 @@ export class Settings {
       if (this.capChanged) {
         await this.store.setDated(sheet, 'cap', cap || null, from.get('cap') ?? null);
         this.capChanged = this.cap().trim() !== cap;
+      }
+      if (this.proofThresholdChanged) {
+        await this.store.setDated(sheet, 'proof-threshold', proofThreshold || null, from.get('proof-threshold') ?? null);
+        this.proofThresholdChanged = this.proofThreshold().trim() !== proofThreshold;
       }
     } catch {
       this.resubmit = false;

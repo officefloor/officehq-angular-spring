@@ -152,6 +152,7 @@ public class ClaimService {
                     : liveDue(sheetId, person, claim);
             BigDecimal fixed = claim.isCorrection() ? figure
                     : withLateCharge(figure, claim, sheets.load(sheetId));
+            refuseWithoutProof(sheetId, claim, fixed);
             if (settings.aboveClerkLimit(sheetId, by, fixed)) {
                 next = ClaimStatus.PENDING;
                 event = "CLAIM_PENDING";
@@ -194,6 +195,35 @@ public class ClaimService {
     }
 
     /**
+     * Raises the claim's proofs count by one. Refused for a SETTLED or VOID claim, and in a closed period.
+     */
+    @Transactional
+    public Claim addProof(String by, String sheetId, Long id) {
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot take a proof.");
+        }
+        claim.addProof();
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_PROOF_ADDED", by, person(sheetId, saved.getPersonId()), saved)
+                + " proofs=" + saved.getProofs());
+        return saved;
+    }
+
+    /**
+     * Refuses settling or approving the claim at the due (null for n/a) when the due is above the proof threshold in
+     * force on the claim's date and the claim has no proof; an n/a due is within any threshold.
+     */
+    private void refuseWithoutProof(String sheetId, Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheets.load(sheetId).proofThresholdOn(claim.getDate());
+        if (threshold != null && due != null && due.compareTo(threshold) > 0 && claim.getProofs() == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim with a due above " + threshold.toPlainString() + " needs a proof first.");
+        }
+    }
+
+    /**
      * A steward approves a pending claim: it is settled, its due fixed at the live figure it shows now. Refused
      * unless it is pending, unless the user is a steward, for the user who opened it, and in a closed period.
      */
@@ -206,6 +236,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal fixed = due(sheetId, person, claim);
+        refuseWithoutProof(sheetId, claim, fixed);
         claim.setSettledDue(fixed);
         claim.setStatus(ClaimStatus.SETTLED);
         logStatus(by, sheetId, person, claim);

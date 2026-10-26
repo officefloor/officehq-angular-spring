@@ -54,7 +54,8 @@ public class SettingsController {
     }
 
     /**
-     * One value recorded for a dated setting (clerk-limit, floor, terms, terms-<grade>, late-pct or cap), in force
+     * One value recorded for a dated setting (clerk-limit, floor, terms, terms-<grade>, late-pct, cap or
+     * proof-threshold), in force
      * from its from-date; null for none.
      */
     public record DatedSettingView(String key, LocalDate from, String value) {
@@ -76,6 +77,14 @@ public class SettingsController {
      * null for the sheet's today.
      */
     public record CapForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value, LocalDate from) {
+    }
+
+    /**
+     * The proof threshold as the form submits it: 0.00 or more with up to two decimals, or null for none; from the
+     * date, or null for the sheet's today.
+     */
+    public record ProofThresholdForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value,
+            LocalDate from) {
     }
 
     /** The floor as the form submits it: 0.00 or more with up to two decimals; from the date, or null for today. */
@@ -196,6 +205,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody CapForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setCap(user, sheetId, form.value(), form.from()));
+    }
+
+    @PutMapping("/settings/proof-threshold")
+    public SettingsView setProofThreshold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody ProofThresholdForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setProofThreshold(user, sheetId, form.value(), form.from()));
     }
 
     /** The roles set on the sheet, by user name; a name not listed is a clerk. */
