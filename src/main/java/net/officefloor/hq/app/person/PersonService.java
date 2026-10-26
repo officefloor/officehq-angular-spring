@@ -69,7 +69,7 @@ public class PersonService {
         LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.strip();
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
+        if (people.nameOrAliasInUse(sheetId, trimmed)) {
             throw nameInUse();
         }
         String key = contactKey(contact);
@@ -105,7 +105,8 @@ public class PersonService {
             throw stale();
         }
         String trimmed = name.strip();
-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)) {
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)
+                || people.findBySheetIdAndAlias(sheetId, trimmed).isPresent()) {
             throw nameInUse();
         }
         String key = contactKey(contact);
@@ -184,6 +185,28 @@ public class PersonService {
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
                 + " from=" + on);
         rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
+     * Gives the person the alias, without surrounding spaces; refused when blank, or when it equals, ignoring case,
+     * any name or alias on the sheet.
+     */
+    @Transactional
+    public Person addAlias(String by, String sheetId, Long id, String alias) {
+        String trimmed = alias == null ? "" : alias.strip();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter an alias.");
+        }
+        Person person = people.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (people.nameOrAliasInUse(sheetId, trimmed)) {
+            throw nameInUse();
+        }
+        person.addAlias(trimmed);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
+                + " alias=" + trimmed);
         return saved;
     }
 

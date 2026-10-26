@@ -34,12 +34,13 @@ public class PersonController {
      * terms their own (null: none).
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
-            LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact) {
+            LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
+            List<String> aliases) {
         public static PersonView of(Person p, LocalDate today) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
-                    p.getContact());
+                    p.getContact(), p.getAliases());
         }
     }
 
@@ -85,6 +86,10 @@ public class PersonController {
 
     /** A patron to add: the id of another person on the sheet. */
     public record PatronForm(@NotNull Long patronId) {
+    }
+
+    /** An alias to give a person; stored without surrounding spaces. */
+    public record AliasForm(@NotBlank @Size(max = 200) String alias) {
     }
 
     /** A retirement: the date it takes effect; a missing date takes the sheet's today. */
@@ -147,6 +152,15 @@ public class PersonController {
         return view(sheetId,
                 service.update(user, sheetId, id, form.version(), form.name(), form.grade(), form.gradeFrom(),
                         form.terms(), form.contact()));
+    }
+
+    /** Gives the person an alias; refused when blank or when it is a name or alias on the sheet. */
+    @PostMapping("/{id}/aliases")
+    public PersonView addAlias(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody AliasForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return view(sheetId, service.addAlias(user, sheetId, id, form.alias()));
     }
 
     @PostMapping("/{id}/retire")

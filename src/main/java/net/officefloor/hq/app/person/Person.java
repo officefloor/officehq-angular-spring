@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
@@ -63,6 +64,10 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedHold> holds = new ArrayList<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PersonAlias> aliases = new ArrayList<>();
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -100,6 +105,7 @@ public class Person {
             grades.stream().filter(g -> g.getFrom() == null).forEach(then.grades::add);
         }
         holds.stream().filter(h -> h.madeBy(day)).forEach(then.holds::add);
+        then.aliases.addAll(aliases);
         if (retiredOn == null || !retiredOn.isAfter(day)) {
             then.retiredFrom = retiredFrom;
             then.retiredOn = retiredOn;
@@ -183,6 +189,18 @@ public class Person {
     /** Whether the person's retirement date is reached on the day: the day is on or after it. */
     public boolean isRetiredOn(LocalDate day) {
         return retiredFrom != null && day != null && !day.isBefore(retiredFrom);
+    }
+
+    /** The person's aliases, sorted as names are compared: ignoring case. */
+    public List<String> getAliases() {
+        return aliases.stream().map(PersonAlias::getAlias)
+                .sorted(Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT)).thenComparing(a -> a))
+                .toList();
+    }
+
+    /** Gives the person the alias, without surrounding spaces; the ones already given are kept. */
+    public void addAlias(String alias) {
+        aliases.add(new PersonAlias(sheetId, alias));
     }
 
     /** Every hold put on the person, earliest from-date first. */

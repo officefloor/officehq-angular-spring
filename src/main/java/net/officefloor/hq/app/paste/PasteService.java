@@ -73,7 +73,7 @@ public class PasteService {
         }
         String name = f[0].strip();
         Person person = name.isEmpty() ? null
-                : people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
+                : people.findBySheetIdAndNameOrAlias(sheetId, name).orElse(null);
         if (person == null) {
             throw refused("Line " + n + " names no one on the sheet.");
         }

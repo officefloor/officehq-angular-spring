@@ -5,6 +5,8 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
@@ -21,6 +23,22 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     boolean existsBySheetIdAndNameIgnoreCase(String sheetId, String name);
 
     boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
+
+    /** The person on the sheet with the alias, compared as names are: ignoring case. */
+    @Query("SELECT p FROM Person p JOIN p.aliases a WHERE p.sheetId = :sheetId AND LOWER(a.alias) = LOWER(:alias)")
+    Optional<Person> findBySheetIdAndAlias(@Param("sheetId") String sheetId, @Param("alias") String alias);
+
+    /** Whether the name or alias is a name or an alias of anyone on the sheet, compared ignoring case. */
+    default boolean nameOrAliasInUse(String sheetId, String nameOrAlias) {
+        return existsBySheetIdAndNameIgnoreCase(sheetId, nameOrAlias)
+                || findBySheetIdAndAlias(sheetId, nameOrAlias).isPresent();
+    }
+
+    /** The person on the sheet with the name, or else with the alias, both compared ignoring case. */
+    default Optional<Person> findBySheetIdAndNameOrAlias(String sheetId, String nameOrAlias) {
+        return findBySheetIdAndNameIgnoreCase(sheetId, nameOrAlias)
+                .or(() -> findBySheetIdAndAlias(sheetId, nameOrAlias));
+    }
 
     boolean existsBySheetIdAndContact(String sheetId, String contact);
 

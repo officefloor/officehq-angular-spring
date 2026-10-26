@@ -19,6 +19,8 @@ interface Person {
   terms: number | null;
   // The person's contact, without surrounding spaces and lower-cased; null for none.
   contact: string | null;
+  // The person's aliases, sorted as names are compared: ignoring case.
+  aliases: string[];
   // Raised by the store on each save; an edit made from an older version is refused.
   version: number;
   // The date the person is retired from; null while not retired. A person with one set is retired at once.
@@ -292,7 +294,7 @@ interface StatementView {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Settled total</th><th scope="col">Open total</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
@@ -321,6 +323,7 @@ interface StatementView {
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
               <td data-testid="person-settled-total">{{ splitBy().get(p.id)?.settled ?? '0.00' }}</td>
@@ -409,6 +412,17 @@ interface StatementView {
                     }
                   </ul>
                 }
+                <label [for]="'alias-' + p.id">Alias<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  type="text"
+                  [id]="'alias-' + p.id"
+                  data-testid="person-alias-input"
+                  [value]="aliasInputs()[p.id] ?? ''"
+                  (input)="setAliasInput(p.id, value($event))"
+                />
+                <button type="button" data-testid="person-alias-add" (click)="addAlias(p)">
+                  Add alias<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -508,6 +522,8 @@ export class People {
   // The ids of the people the signed-in user watches on the sheet.
   protected readonly watched = signal<ReadonlySet<number>>(new Set());
   protected readonly patronChoices = signal<Record<number, string>>({});
+  // The alias typed on each row, by person id.
+  protected readonly aliasInputs = signal<Record<number, string>>({});
   protected readonly patronErrors = signal<Record<number, string>>({});
   // Each person's statements, by person id; a person with none is not in the map.
   protected readonly statements = signal<StatementView[]>([]);
@@ -819,6 +835,7 @@ export class People {
         this.patrons.set([]);
         this.watched.set(new Set());
         this.patronChoices.set({});
+        this.aliasInputs.set({});
         this.patronErrors.set({});
         this.rowErrors.set({});
         this.retireDates.set({});
@@ -926,6 +943,43 @@ export class People {
         err instanceof HttpErrorResponse && err.status === 409
           ? 'That person is already one of their patrons.'
           : 'Could not add that patron.',
+      );
+    }
+  }
+
+  protected setAliasInput(id: number, alias: string): void {
+    this.aliasInputs.update((a) => ({ ...a, [id]: alias }));
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  /** Gives the person the typed alias: never blank, nor any name or alias on the sheet, as names are compared. */
+  protected async addAlias(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const alias = (this.aliasInputs()[p.id] ?? '').trim();
+    const refuse = (message: string) => this.rowErrors.update((e) => ({ ...e, [p.id]: message }));
+    if (!alias) {
+      refuse('Enter an alias.');
+      return;
+    }
+    const key = alias.toLowerCase();
+    if (this.people().some((q) => q.name.toLowerCase() === key || q.aliases.some((a) => a.toLowerCase() === key))) {
+      refuse('That name is already in use on this sheet.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/aliases`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { alias }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      this.aliasInputs.update(({ [p.id]: _, ...rest }) => rest);
+      if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
+    } catch (err) {
+      refuse(
+        err instanceof HttpErrorResponse && err.status === 409
+          ? 'That name is already in use on this sheet.'
+          : 'Could not add that alias.',
       );
     }
   }

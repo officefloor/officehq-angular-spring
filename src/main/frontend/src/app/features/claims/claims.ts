@@ -136,6 +136,11 @@ export function keepsFigure(c: Claim): boolean {
   return c.settledDue !== null || (isBound(c) && c.statedDue !== null);
 }
 
+/** Whether the claim was deferred until a date after the sheet's today, whatever its status: as the row shows it. */
+export function deferredUntilAfter(c: Claim, today: string | null): boolean {
+  return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+}
+
 /**
  * Whether a claim is deferred: OPEN and deferred until a date after the sheet's today. Until today reaches that
  * date it counts in no total, is not overdue and cannot be settled; from then on it is an OPEN claim like any other.
@@ -319,7 +324,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-due">{{ dueOf(c, ratesOn(c.date), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a' }}</td>
             <td data-testid="claim-due-by">{{ c.dueBy }}</td>
             <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no' }}</td>
-            <td data-testid="claim-deferred">{{ deferred(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
+            <td data-testid="claim-deferred">{{ deferredUntilAfter(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
             <td data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</td>
             <td data-testid="claim-status">{{ c.status }}</td>
@@ -568,6 +573,7 @@ export class Claims {
   }
   protected readonly overdue = overdue;
   protected readonly deferred = deferred;
+  protected readonly deferredUntilAfter = deferredUntilAfter;
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
