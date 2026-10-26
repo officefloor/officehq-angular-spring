@@ -1676,16 +1676,16 @@ export class People {
     return today === undefined ? null : (rateInForce(this.ratesOf(grade), today)?.pct ?? null);
   }
 
-  /** The person's due-total in cents: the sum of their figures held to the sheet's cap; null (n/a), which
-   *  is not capped, when that sum is. */
+  /** The person's due-total in cents: the sum of their figures held to the sheet's cap less their cut total
+   *  (not below 0); null (n/a), which is not capped, when that sum is. */
   private dueCentsOf(person: PersonView): number | null {
     const sum = this.figureCentsOf(person);
     const cap = this.cap.cents();
-    return sum === null || cap === null ? sum : Math.min(sum, cap);
+    return sum === null || cap === null ? sum : Math.min(sum, Math.max(0, cap - (this.cutTotals().get(person.id) ?? 0)));
   }
 
-  /** The person's excess: how far the sum of their figures is above the cap, with two decimals; 0.00
-   *  when it is not above it, there is no cap, or it is n/a. */
+  /** The person's excess: how far the sum of their figures and their cut total is above the cap, with two
+   *  decimals; 0.00 when it is not above it, there is no cap, or it is n/a. */
   protected excess(person: PersonView): string {
     const sum = this.figureCentsOf(person);
     const due = this.dueCentsOf(person);

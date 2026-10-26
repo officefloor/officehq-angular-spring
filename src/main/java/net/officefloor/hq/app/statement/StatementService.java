@@ -126,10 +126,11 @@ public class StatementService {
             claim.bind(stood.due(), today);
         }
         // As the screen shows it: n/a when no rate of the grade in force on the statement's date is in force
-        // then and no claim keeps a figure; held to the sheet's cap.
+        // then and no claim keeps a figure; held to the sheet's cap less their cut total.
         Grade grade = person.gradeOn(on, asOf);
         boolean noRate = (asOf != null ? rates.inForceAsOf(sheetId, grade, on, asOf) : rates.inForce(sheetId, grade, on)) == null;
-        BigDecimal dueTotal = SettingService.capped(noRate && !keptFigure ? null : total, dated.capOn(on));
+        BigDecimal dueTotal = SettingService.capped(noRate && !keptFigure ? null : total, dated.capOn(on),
+                rollup.cutTotals(sheetId).get(personId));
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, counting, today, on, user));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

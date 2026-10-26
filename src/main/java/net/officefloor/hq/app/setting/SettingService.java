@@ -677,11 +677,13 @@ public class SettingService implements ActingFor {
                 .orElse(null);
     }
 
-    /** Set the sheet's pot, kept to two decimals; null clears it, leaving no pot. */
+    /** Set the sheet's pot, kept to two decimals; null clears it, leaving no pot. The due-totals it moves
+     *  (through the cuts the cap takes in) are audited after it. */
     @Transactional
     public BigDecimal setPot(String sheetId, String user, BigDecimal pot) {
         BigDecimal value = pot == null ? null : pot.setScale(2);
         sheets.load(sheetId);
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         SheetSetting setting = settings.findBySheetIdAndKey(sheetId, POT).orElse(null);
         try {
             if (value == null) {
@@ -700,6 +702,7 @@ public class SettingService implements ActingFor {
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + POT
                 + " value=" + (value == null ? "" : value.toPlainString()));
+        rollup.recordChanges(user, before);
         return value;
     }
 
@@ -918,9 +921,12 @@ public class SettingService implements ActingFor {
         return dated(sheetId).capOn(sheets.today(sheetId));
     }
 
-    /** A person's due-total held to the cap: the cap when it is above it; n/a (null) and no cap leave it as it is. */
-    public static BigDecimal capped(BigDecimal dueTotal, BigDecimal cap) {
-        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+    /** A person's due-total held to the cap less their cut total (not below 0.00): that when it is above it;
+     *  n/a (null) and no cap leave it as it is. */
+    public static BigDecimal capped(BigDecimal dueTotal, BigDecimal cap, BigDecimal cutTotal) {
+        if (dueTotal == null || cap == null) return dueTotal;
+        BigDecimal room = cap.subtract(cutTotal == null ? BigDecimal.ZERO : cutTotal).max(BigDecimal.ZERO.setScale(2));
+        return dueTotal.min(room);
     }
 
     /** Record the sheet's cap, kept to two decimals, from a date; null clears it from then, leaving no

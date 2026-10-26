@@ -15,9 +15,12 @@ import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolCuts;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rate.AppliedRates;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChangeRepository;
@@ -33,7 +36,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The sheet's figures as the screen shows them: each person's claimed, due-total (late charges
- * included, held to the sheet's cap) and overdue-total (what is owed on their counting claims that are
+ * included, held to the sheet's cap less their cut total, not below 0.00) and overdue-total (what is owed on their counting claims that are
  * open past their due-by, late charges included, skipping n/a; a claim shared with others counts its
  * due less the holders' parts, each holder's due-total counting their part), and the sheet's
  * claimed-total, due-total and overdue-total (the last two leaving out the single highest and lowest
@@ -71,12 +74,16 @@ public class Rollup {
     private final SheetSettingDatedRepository dated;
     private final SheetParentRepository parents;
     private final PersonSnapshotRepository snapshots;
+    private final PoolRepository pools;
+    private final CrewRepository crews;
     private final Audit audit;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates,
             RateChangeRepository rateChanges, SheetRepository sheets, SheetSettingRepository settings,
             SheetSettingDatedRepository dated, SheetParentRepository parents, PersonSnapshotRepository snapshots,
-            Audit audit) {
+            PoolRepository pools, CrewRepository crews, Audit audit) {
+        this.pools = pools;
+        this.crews = crews;
         this.rateChanges = rateChanges;
         this.snapshots = snapshots;
         this.people = people;
@@ -87,6 +94,20 @@ public class Rollup {
         this.dated = dated;
         this.parents = parents;
         this.audit = audit;
+    }
+
+    /** Each person's cut total on the sheet as the store holds it now, by person id: their cuts across every
+     *  pool and crew they are a member of, the sheet's today as it is; none for a person with no cut. */
+    public Map<Long, BigDecimal> cutTotals(String sheetId) {
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        return cutTotals(sheetId, people.findInListOrder(sheetId), today);
+    }
+
+    private Map<Long, BigDecimal> cutTotals(String sheetId, List<Person> listed, LocalDate today) {
+        BigDecimal pot = settings.findBySheetIdAndKey(sheetId, SettingService.POT)
+                .map((s) -> new BigDecimal(s.getValue()).setScale(2)).orElse(null);
+        return PoolCuts.personTotals(pools.findBySheetIdOrderByIdAsc(sheetId), crews.findBySheetIdOrderByIdAsc(sheetId),
+                listed, pot, today);
     }
 
     /** The sheet's figures as the store holds them now, within the caller's transaction. */
@@ -176,6 +197,7 @@ public class Rollup {
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
         }
+        Map<Long, BigDecimal> cuts = cutTotals(sheetId, listed, today);
         for (Person person : listed) {
             Grade gradeToday = today == null ? null : person.gradeOn(today);
             BigDecimal part = heldParts.get(person.getId());
@@ -183,10 +205,10 @@ public class Rollup {
             // A part of a claim shared with the person keeps a figure.
             boolean keptFigure = keptOf.get(person.getId()) || part != null;
             // n/a when no rate of the grade in force today is in force today and no claim keeps a figure.
-            // Held to the sheet's cap; n/a is not capped.
+            // Held to the sheet's cap less their cut total; n/a is not capped.
             BigDecimal personDue = SettingService.capped((today == null
                     || Rate.inForceInherited(ratesByGrade.getOrDefault(gradeToday, List.of()), today) == null) && !keptFigure
-                            ? null : due, cap);
+                            ? null : due, cap, cuts.get(person.getId()));
             Figures was = figures.get(person.getId());
             figures.put(person.getId(), new Figures(was.name(), was.claimed(), personDue, was.overdueTotal(),
                     was.settled(), was.overdueCount()));

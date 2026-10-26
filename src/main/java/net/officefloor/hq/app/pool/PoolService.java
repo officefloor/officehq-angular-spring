@@ -10,6 +10,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -32,10 +33,12 @@ public class PoolService {
     private final PersonRepository people;
     private final SheetService sheets;
     private final SheetRepository sheetRows;
+    private final Rollup rollup;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, CrewRepository crews, PersonRepository people, SheetService sheets, SheetRepository sheetRows,
-            Audit audit) {
+            Rollup rollup, Audit audit) {
+        this.rollup = rollup;
         this.pools = pools;
         this.crews = crews;
         this.people = people;
@@ -92,10 +95,13 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     person.getName() + " is already in the pool " + pool.getName() + ".");
         }
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         pool.addMember(personId, value, from, to);
         pool = pools.saveAndFlush(pool);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + person.getName() + " share=" + value.toPlainString() + datesOf(from, to));
+        // The cuts it moves move the due-totals the cap holds.
+        rollup.recordChanges(user, before);
         return pool;
     }
 
@@ -142,6 +148,7 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A chain of pools may be at most " + MAX_DEPTH + " deep.");
         }
+        Rollup.Snapshot before = rollup.snapshot(sheetId);
         pool.addMemberPool(member.getId(), value, from, to);
         try {
             pool = pools.saveAndFlush(pool);
@@ -151,6 +158,7 @@ public class PoolService {
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + member.getName() + " share=" + value.toPlainString() + datesOf(from, to));
+        rollup.recordChanges(user, before);
         return pool;
     }
 

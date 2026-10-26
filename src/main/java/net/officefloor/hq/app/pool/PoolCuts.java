@@ -80,6 +80,20 @@ public final class PoolCuts {
         return result;
     }
 
+    /** Each person's cut total with two decimals, by person id, as the people screen works it out: their cuts
+     *  across every pool (and crew) they are a member of added up; a pool that shows no cuts adds nothing. */
+    public static Map<Long, BigDecimal> personTotals(List<Pool> pools, List<Crew> crews, List<Person> people,
+            BigDecimal pot, LocalDate today) {
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        if (today == null) return totals;
+        for (Map<String, BigDecimal> cuts : of(pools, crews, people, pot, today).values()) {
+            cuts.forEach((key, cut) -> {
+                if (!key.startsWith("pool-")) totals.merge(Long.valueOf(key), cut, BigDecimal::add);
+            });
+        }
+        return totals;
+    }
+
     private static Map<String, Long> cutsFor(AnyPool pool, int depth, int poolCount, Map<Long, Map<String, Long>> out,
             Map<Long, Boolean> done, Map<Long, AnyPool> byId, Map<Long, AnyPool> parents, Map<Long, Person> people,
             BigDecimal pot, LocalDate today) {
