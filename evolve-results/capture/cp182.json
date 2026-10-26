@@ -1,0 +1,64 @@
+{
+  "checkpoint": 182,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp182_claim-hold",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN or PENDING claim can be held and released with a toggle on the claim (CLAIM_HELD and\nCLAIM_RELEASED naming the claim; any other status is refused with an error on the claim). A held\nclaim leaves every live total exactly as a held person's claims do (a figure bound by a statement\nstays in). Show held yes/no on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN or PENDING claim can be held and released with a toggle on the claim (CLAIM_HELD and\nCLAIM_RELEASED naming the claim; any other status is refused with an error on the claim). A held\nclaim leaves every live total exactly as a held person's claims do (a figure bound by a statement\nstays in). Show held yes/no on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2304d5f0f81fee137676a8a158c66b182bf6ea18",
+  "reset_sha": "",
+  "preagent_sha": "6841b151f8077ea8cfb025b8f579dcc155b769de",
+  "prev_sha": "6841b151f8077ea8cfb025b8f579dcc155b769de",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.9987110000000006,
+    "input_tokens": 116,
+    "output_tokens": 37422,
+    "cache_read_tokens": 5613435,
+    "cache_creation_tokens": 140890,
+    "num_turns": 59,
+    "duration_ms": 814161,
+    "duration_api_ms": 390412,
+    "model": "claude-opus-5-5",
+    "session_id": "1cc02ed9-e242-4662-9806-a9b0c3bce8e6",
+    "stop_reason": "success",
+    "result_text": "I added the claim hold toggle, and all 4 tests in `bin/e2e` now pass. To get scenario 1 passing I also had to change two existing person-grade behaviours, which you should check.\n\n**Claim hold:**\n- **Stored data:** migration `V87__claim_held.sql` adds a `held` flag to each claim. A new `claim_hold` table records every hold and release with the sheet's today at the time, so a statement taken as of a past date sees whether the claim was held then.\n- **Server:** `POST /claims/{id}/hold` holds the claim, or releases it if it's already held. An OPEN or PENDING claim writes `CLAIM_HELD` or `CLAIM_RELEASED` in the usual claim audit format. Any other status is refused and nothing is written.\n- **Totals:** a held claim is left out of totals exactly where a held person's claims are: rollups, statements (including as-of statements) and period closes. As with person holds, a claim bound by a statement stays in.\n- **Front end:** each claim shows \"Held yes/no\" (`claim-held`) and a Hold/Release button (`claim-hold`). A refusal shows the claim's error. The live totals on screen leave held claims out in the same way.\n\n**Changes outside the request.** Scenario 1 expects different results from two existing person features than the app gave:\n1. **Bulk grade printed terms it didn't change.** The bulk grade rewrote each person's terms and wrote a spurious `terms=20` on Ben's audit line. It now goes through a new `PersonService.regrade` that changes only the grade.\n2. **Editing a person without changing the grade recorded nothing.** The person form now always records the grade from its from-date (today if blank). Without this, a later grade dated earlier overrode the edit: Cam showed C, and the test expects B.\n\nThe second change goes against a design comment on `Person.setGrade`, which says an edit that keeps the same grade should *not* block a grade given later from an earlier date. I changed it only because the spec requires it. If that comment states the behaviour you actually want, the test expectation needs another look. Import and the inline grade still follow the old rule.\n\nThe hold can be used by anyone who isn't a viewer. Viewers are already blocked from all changes app-wide, and the request named no other role limit.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.9987110000000006,
+        "num_turns": 59,
+        "duration_ms": 814161,
+        "duration_api_ms": 390412,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp182.agent.jsonl",
+  "agent_diff_file": "cp182.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
