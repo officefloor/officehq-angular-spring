@@ -65,11 +65,13 @@ public class SheetService {
     }
 
     /** Change the sheet's today; it has no audit line of its own: first a snapshot of each person's
-     *  due-total on the day being left, then what it sets off (such as the periods it closes) and then
+     *  due-total on the day being left (refused to a role the
+     *  permission matrix does not allow to change it), then what it sets off (such as the periods it closes) and then
      *  the figures it moves. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id);
+        settings.getObject().refuseUnlessPermitted(id, user, "today", "Your role may not change the sheet's today.");
         Rollup.Snapshot before = rollup.snapshot(id);
         rollup.recordSnapshot(user, before);
         sheet.setToday(today);

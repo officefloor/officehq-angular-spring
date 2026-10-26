@@ -300,7 +300,7 @@ export class Settings {
   /** Who may take each action while its permission is blank. */
   protected readonly standing: Record<PermissionAction, string> = {
     open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward', close: 'clerk,steward',
-    reassign: 'steward', reopen: 'steward',
+    reassign: 'steward', reopen: 'steward', today: 'clerk,steward',
   };
   /** By key, the values the dated settings take from their from-dates. */
   private readonly dated = signal<Partial<Record<string, DatedValue[]>>>({});
@@ -431,6 +431,7 @@ export class Settings {
     reassign: new FormControl('', { nonNullable: true }),
     close: new FormControl('', { nonNullable: true }),
     reopen: new FormControl('', { nonNullable: true }),
+    today: new FormControl('', { nonNullable: true }),
   } satisfies Record<PermissionAction, FormControl<string>>);
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),

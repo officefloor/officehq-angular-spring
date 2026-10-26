@@ -13,7 +13,7 @@ export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
 export type Role = (typeof ROLES)[number];
 
 /** The actions the sheet's permission matrix names, each set under perm-<action>. */
-export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
 export interface RoleView {

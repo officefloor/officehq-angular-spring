@@ -155,13 +155,14 @@ public class SettingService implements ActingFor {
     public static final int PARENT_LEVELS = 3;
 
     /** The actions the sheet's permission matrix names, each set under perm-<action>. */
-    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
+    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen", "today");
 
     /** The roles that may take an action whose permission is blank: the standing rule. */
     private static final Map<String, Set<Role>> STANDING_PERMISSIONS = Map.of(
             "open", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD), "settle", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD),
             "void", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD), "close", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD),
-            "reassign", EnumSet.of(Role.STEWARD), "reopen", EnumSet.of(Role.STEWARD));
+            "reassign", EnumSet.of(Role.STEWARD), "reopen", EnumSet.of(Role.STEWARD),
+            "today", EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD));
 
     private final SheetSettingRepository settings;
     private final SheetSettingDatedRepository dated;
