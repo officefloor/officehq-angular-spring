@@ -161,6 +161,23 @@ public class Rollup {
         return new Snapshot(sheetId, figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
     }
 
+    /** How many of the sheet's claims are overdue and count, over everyone on it, as the store holds them
+     *  now, within the caller's transaction. */
+    public int overdueCount(String sheetId) {
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        DatedSettings values = DatedSettings.of(dated, sheetId);
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        for (Person person : people.findInListOrder(sheetId)) byId.put(person.getId(), person);
+        int count = 0;
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !counts(person, claim, today)) continue;
+            int grace = values.graceOn(person.gradeOn(claim.getDate()), claim.getDate());
+            if (isOverdue(claim, grace, today)) count++;
+        }
+        return count;
+    }
+
     /** Keep, and audit once the transaction commits, each person's due-total as it stood in the snapshot,
      *  in the order they were added, against the sheet's today: the day being left. */
     public void recordSnapshot(String user, Snapshot before) {

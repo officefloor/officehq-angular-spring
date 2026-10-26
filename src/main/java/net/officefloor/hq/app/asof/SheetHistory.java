@@ -131,7 +131,9 @@ public class SheetHistory {
 
     /** Put the sheet back to how it stood at the end of the date (see {@link #restore}), and with it each of
      *  the parents it names now, up to {@link SettingService#PARENT_LEVELS} levels up, whose rates it falls
-     *  back on. Only for a transaction that is rolled back afterwards. */
+     *  back on. A parent kept nothing on a today on or before the date (its today runs apart from the
+     *  sheet's) is put back to what it held when what the sheet is put back to was kept. Only for a
+     *  transaction that is rolled back afterwards. */
     public void restoreWithParents(String sheet, LocalDate asOf) {
         List<String> parents = new ArrayList<>();
         String at = sheet;
@@ -142,8 +144,20 @@ public class SheetHistory {
             at = parent.get(0);
             parents.add(at);
         }
+        Long keptAt = keptSeq(sheet, asOf);
         restore(sheet, asOf);
-        for (String parent : parents) restore(parent, asOf);
+        for (String parent : parents) {
+            if (keptSeq(parent, asOf) == null && keptAt != null) restoreAsKeptBy(parent, keptAt, asOf);
+            else restore(parent, asOf);
+        }
+    }
+
+    /** The sequence of what the sheet kept last on a today on or before the date; null when it kept nothing then. */
+    private Long keptSeq(String sheet, LocalDate asOf) {
+        List<Long> seq = jdbc.queryForList(
+                "SELECT seq FROM sheet_history WHERE sheet_id = ? AND today <= ? ORDER BY seq DESC LIMIT 1",
+                Long.class, sheet, asOf);
+        return seq.isEmpty() ? null : seq.get(0);
     }
 
     /**
@@ -152,9 +166,21 @@ public class SheetHistory {
      * for a transaction that is rolled back afterwards.
      */
     public void restore(String sheet, LocalDate asOf) {
-        List<byte[]> kept = jdbc.queryForList(
+        put(sheet, asOf, jdbc.queryForList(
                 "SELECT rows_data FROM sheet_history WHERE sheet_id = ? AND today <= ? ORDER BY seq DESC LIMIT 1",
-                byte[].class, sheet, asOf);
+                byte[].class, sheet, asOf));
+    }
+
+    /** Put the sheet back to what it kept last up to the sequence, with the date as its today, or an empty
+     *  sheet when it kept nothing by then. Only for a transaction that is rolled back afterwards. */
+    private void restoreAsKeptBy(String sheet, long seq, LocalDate asOf) {
+        put(sheet, asOf, jdbc.queryForList(
+                "SELECT rows_data FROM sheet_history WHERE sheet_id = ? AND seq <= ? ORDER BY seq DESC LIMIT 1",
+                byte[].class, sheet, seq));
+    }
+
+    /** Replace the sheet's rows with those kept (none: an empty sheet), with the date as its today. */
+    private void put(String sheet, LocalDate asOf, List<byte[]> kept) {
         List<Table> all = tables();
         for (int i = all.size() - 1; i >= 0; i--) {
             Table table = all.get(i);

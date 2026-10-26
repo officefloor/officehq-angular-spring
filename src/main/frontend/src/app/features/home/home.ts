@@ -8,6 +8,7 @@ import { SheetAsOf } from '../session/sheet-as-of';
 import { SheetPicker } from '../session/sheet-picker';
 import { SheetToday } from '../session/sheet-today';
 import { SignIn } from '../session/sign-in';
+import { StewardDashboard } from '../summary/steward-dashboard';
 import { UserLocaleChoice } from '../session/user-locale';
 import { TemplatesList } from '../templates/templates';
 import { VoidReasonsList } from '../void-reasons/void-reasons';
@@ -15,7 +16,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
 // The one screen: sign in, then choose a sheet; everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, Settings, Holidays, VoidReasonsList, TemplatesList, People],
+  imports: [AuditViewer, SignIn, UserLocaleChoice, SheetPicker, SheetToday, SheetAsOf, StewardDashboard, Settings, Holidays, VoidReasonsList, TemplatesList, People],
   template: `
     @if (session.user(); as user) {
       <header>
@@ -26,6 +27,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
       <app-sheet-today />
       <app-sheet-as-of />
       @if (session.sheet()) {
+        <app-steward-dashboard />
         <app-settings />
         <app-holidays />
         <app-void-reasons />
