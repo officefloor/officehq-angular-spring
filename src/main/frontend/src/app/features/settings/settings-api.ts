@@ -86,6 +86,9 @@ export interface SettingsView {
   /** The days a REVIEW claim may wait from its review day before it is review-late, or null when none.
    *  Not dated. */
   reviewSla: number | null;
+  /** The most OPEN or PENDING claims a person may have before opening another is refused, or null when
+   *  none. Not dated. */
+  maxOpen: number | null;
   /** The proof kinds a claim above the proof threshold needs a proof of each of, as a comma separated
    *  list, or null when none. Not dated. */
   proofKinds: string | null;
@@ -227,6 +230,11 @@ export class SettingsApi {
   /** Set the review SLA in days; null clears it, leaving none. */
   setReviewSla(sheetId: string, value: number | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/review-sla`, { value }));
+  }
+
+  /** Set the maximum of open claims per person; null clears it, leaving none. */
+  setMaxOpen(sheetId: string, value: number | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/max-open`, { value }));
   }
 
   /** Set the mid score threshold; null clears it. */

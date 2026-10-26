@@ -187,6 +187,9 @@ function settled(control: AbstractControl): void {
         <label for="setting-review-sla">Review SLA (days a claim may wait in review from the day it went to review; blank: none)</label>
         <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric" />
         <p>Review SLA now: <span data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</span></p>
+        <label for="setting-max-open">Maximum open claims per person (OPEN or PENDING claims a person may have before opening another is refused; blank: none)</label>
+        <input id="setting-max-open" data-testid="setting-max-open" formControlName="maxOpen" inputmode="numeric" />
+        <p>Maximum open claims now: <span data-testid="setting-max-open-current">{{ maxOpen() ?? '' }}</span></p>
         <label for="setting-score-mid">Mid score threshold (a whole number; a score at or above it is MID while both thresholds are set; blank: no bands)</label>
         <input id="setting-score-mid" data-testid="setting-score-mid" formControlName="scoreMid" inputmode="numeric" />
         <p>Mid score threshold now: <span data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</span></p>
@@ -313,6 +316,7 @@ export class Settings {
   protected readonly defaultGrade = signal<string | null>(null);
   protected readonly escalateAfter = signal<number | null>(null);
   protected readonly reviewSla = signal<number | null>(null);
+  protected readonly maxOpen = signal<number | null>(null);
   protected readonly scoreMid = signal<number | null>(null);
   protected readonly scoreHigh = signal<number | null>(null);
   protected readonly scoreLog = signal<'on' | null>(null);
@@ -351,6 +355,7 @@ export class Settings {
     defaultGrade: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
     reviewSla: new FormControl('', { nonNullable: true }),
+    maxOpen: new FormControl('', { nonNullable: true }),
     scoreMid: new FormControl('', { nonNullable: true }),
     scoreHigh: new FormControl('', { nonNullable: true }),
     scoreLog: new FormControl('', { nonNullable: true }),
@@ -449,7 +454,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null, scoreLog: null });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -491,7 +496,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, parent, fiscalStartMonth } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, maxOpen, scoreMid, scoreHigh, scoreLog, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -533,6 +538,7 @@ export class Settings {
     const defaultGradeValue = defaultGrade.value.trim();
     const escalateAfterValue = escalateAfter.value.trim();
     const reviewSlaValue = reviewSla.value.trim();
+    const maxOpenValue = maxOpen.value.trim();
     const scoreMidValue = scoreMid.value.trim();
     const scoreHighValue = scoreHigh.value.trim();
     const scoreLogValue = scoreLog.value.trim().toLowerCase();
@@ -649,6 +655,10 @@ export class Settings {
     }
     if (changed(reviewSla) && reviewSlaValue !== '' && (!DAYS.test(reviewSlaValue) || Number(reviewSlaValue) > 36500)) {
       this.settingsError.set('Type the review SLA as a whole number of days, from 0 to 36500, or leave it blank for none.');
+      return;
+    }
+    if (changed(maxOpen) && maxOpenValue !== '' && (!/^\d{1,7}$/.test(maxOpenValue) || Number(maxOpenValue) > 1000000)) {
+      this.settingsError.set('Type the maximum of open claims per person as a whole number, from 0 to 1000000, or leave it blank for none.');
       return;
     }
     if (changed(scoreMid) && scoreMidValue !== '' && !WHOLE.test(scoreMidValue)) {
@@ -813,6 +823,11 @@ export class Settings {
         settled(reviewSla);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(maxOpen)) {
+        const settings = await this.api.setMaxOpen(sheet.id, maxOpenValue === '' ? null : Number(maxOpenValue));
+        settled(maxOpen);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       if (changed(scoreMid)) {
         const settings = await this.api.setScoreMid(sheet.id, scoreMidValue === '' ? null : Number(scoreMidValue));
         settled(scoreMid);
@@ -884,6 +899,7 @@ export class Settings {
     this.escalateAfter.set(settings.escalateAfter);
     this.reviewSla.set(settings.reviewSla);
     this.sheetReviewSla.days.set(settings.reviewSla);
+    this.maxOpen.set(settings.maxOpen);
     this.scoreMid.set(settings.scoreMid);
     this.scoreHigh.set(settings.scoreHigh);
     this.scoreLog.set(settings.scoreLog);

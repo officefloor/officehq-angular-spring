@@ -102,6 +102,10 @@ public class SettingService implements ActingFor {
      *  plus these days is before the sheet's today is review-late; no value means none. Not dated. */
     public static final String REVIEW_SLA = "review-sla";
 
+    /** The key of the maximum of open claims per person: opening a claim of a person who already has this
+     *  many OPEN or PENDING claims is refused; no value means none. Not dated. */
+    public static final String MAX_OPEN = "max-open";
+
     /** The key of the mid score threshold: while both thresholds are set, a person whose score is at or
      *  above it (and below the high one) is in the MID band; no value means blank. Not dated. */
     public static final String SCORE_MID = "score-mid";
@@ -517,6 +521,38 @@ public class SettingService implements ActingFor {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + REVIEW_SLA
                 + " value=" + (days == null ? "" : days.toString()));
         return days;
+    }
+
+    /** The sheet's maximum of open claims per person, or null when it is blank (none). */
+    @Transactional(readOnly = true)
+    public Integer maxOpen(String sheetId) {
+        return settings.findBySheetIdAndKey(sheetId, MAX_OPEN).map((s) -> Integer.valueOf(s.getValue()))
+                .orElse(null);
+    }
+
+    /** Set the sheet's maximum of open claims per person; null clears it, leaving none. */
+    @Transactional
+    public Integer setMaxOpen(String sheetId, String user, Integer max) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, MAX_OPEN).orElse(null);
+        try {
+            if (max == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, MAX_OPEN, max.toString()));
+            } else {
+                setting.setValue(max.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + MAX_OPEN
+                + " value=" + (max == null ? "" : max.toString()));
+        return max;
     }
 
     /** The sheet's mid score threshold, or null when it is blank. */

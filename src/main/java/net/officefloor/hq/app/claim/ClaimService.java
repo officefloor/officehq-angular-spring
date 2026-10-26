@@ -322,6 +322,7 @@ public class ClaimService {
         BigDecimal dueOpening = next == ClaimStatus.OPEN ? due(sheetId, person, claim) : null;
         if (next == ClaimStatus.OPEN) refuseIfUnnoted(sheetId, claim, dueOpening);
         if (next == ClaimStatus.OPEN) refuseIfCapped(sheetId, claim);
+        if (next == ClaimStatus.OPEN) refuseIfAtMaxOpen(sheetId, claim);
         // Opened with a due above the review threshold, it waits for a steward's review.
         if (next == ClaimStatus.OPEN && isAboveReviewThreshold(sheetId, claim, dueOpening)) next = ClaimStatus.REVIEW;
         // Settled one at a time until a bulk settle marks it with its batch.
@@ -957,6 +958,21 @@ public class ClaimService {
         if (held >= period.getCap()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The person already has " + period.getCap()
                     + " open claims in period " + period.getName() + ".");
+        }
+    }
+
+    /** Refuse opening a claim of a person who already has the sheet's maximum of open claims per person
+     *  OPEN or PENDING (no maximum: never refused). The sheet is locked, so two opens cannot both pass it. */
+    private void refuseIfAtMaxOpen(String sheetId, Claim claim) {
+        Integer max = settings.maxOpen(sheetId);
+        if (max == null) return;
+        long held = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter((c) -> !c.getId().equals(claim.getId()) && c.getPersonId().equals(claim.getPersonId())
+                        && c.getStatus().isOpen())
+                .count();
+        if (held >= max) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The person already has " + max + " open claims, the most the sheet allows.");
         }
     }
 
