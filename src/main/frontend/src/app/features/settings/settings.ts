@@ -12,6 +12,7 @@ import { DEFAULT_FLOOR_CENTS, SheetFloor } from './sheet-floor';
 import { ROUNDING_MODES, SheetRounding } from './sheet-rounding';
 import { SheetGrace } from './sheet-grace';
 import { SheetReviewSla } from './sheet-review-sla';
+import { SheetScoreBands } from './sheet-score-bands';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
 import { SheetParent } from './sheet-parent';
 import { SheetPolicyDate } from './sheet-policy-date';
@@ -19,6 +20,7 @@ import { SheetPot } from './sheet-pot';
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
+const WHOLE = /^-?\d{1,9}$/;
 const PCT = /^\d{1,10}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH = /^\d{1,2}$/;
@@ -185,6 +187,12 @@ function settled(control: AbstractControl): void {
         <label for="setting-review-sla">Review SLA (days a claim may wait in review from the day it went to review; blank: none)</label>
         <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric" />
         <p>Review SLA now: <span data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</span></p>
+        <label for="setting-score-mid">Mid score threshold (a whole number; a score at or above it is MID while both thresholds are set; blank: no bands)</label>
+        <input id="setting-score-mid" data-testid="setting-score-mid" formControlName="scoreMid" inputmode="numeric" />
+        <p>Mid score threshold now: <span data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</span></p>
+        <label for="setting-score-high">High score threshold (a whole number; a score at or above it is HIGH while both thresholds are set; blank: no bands)</label>
+        <input id="setting-score-high" data-testid="setting-score-high" formControlName="scoreHigh" inputmode="numeric" />
+        <p>High score threshold now: <span data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</span></p>
         <label for="setting-parent">Parent sheet (its rates are used where this sheet has none; blank: none)</label>
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" />
         <p>Parent sheet now: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
@@ -267,6 +275,7 @@ export class Settings {
   private readonly sheetParent = inject(SheetParent);
   private readonly sheetFiscal = inject(SheetFiscal);
   private readonly sheetReviewSla = inject(SheetReviewSla);
+  private readonly sheetScoreBands = inject(SheetScoreBands);
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
@@ -301,6 +310,8 @@ export class Settings {
   protected readonly defaultGrade = signal<string | null>(null);
   protected readonly escalateAfter = signal<number | null>(null);
   protected readonly reviewSla = signal<number | null>(null);
+  protected readonly scoreMid = signal<number | null>(null);
+  protected readonly scoreHigh = signal<number | null>(null);
   protected readonly parent = signal<string | null>(null);
   protected readonly fiscalStartMonth = signal(DEFAULT_FISCAL_START_MONTH);
   protected readonly assigned = signal<RoleView[]>([]);
@@ -336,6 +347,8 @@ export class Settings {
     defaultGrade: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
     reviewSla: new FormControl('', { nonNullable: true }),
+    scoreMid: new FormControl('', { nonNullable: true }),
+    scoreHigh: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
   });
@@ -431,7 +444,7 @@ export class Settings {
       this.settingsError.set('');
       this.roleError.set('');
       this.delegateError.set('');
-      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null });
+      this.show({ clerkLimit: null, floor: (DEFAULT_FLOOR_CENTS / 100).toFixed(2), terms: DEFAULT_TERMS, latePct: DEFAULT_LATE_PCT, policyDate: null, roles: [], periodNumberingFrom: null, gradeTerms: {}, cap: null, proofThreshold: null, noteThreshold: null, dated: {}, permissions: {}, graceDays: null, delegations: [], entryDate: null, pot: null, parent: null, fiscalStartMonth: DEFAULT_FISCAL_START_MONTH, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, scoreMid: null, scoreHigh: null });
       this.settingsForm.markAsPristine();
       this.settingsForm.markAsUntouched();
       this.gradeTermsForm.markAsPristine();
@@ -473,7 +486,7 @@ export class Settings {
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, latePct, latePctFrom, policyDate,
       periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom,
-      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, parent, fiscalStartMonth } = this.settingsForm.controls;
+      noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, entryDate, pot, alertThreshold, proofKinds, defaultGrade, escalateAfter, reviewSla, scoreMid, scoreHigh, parent, fiscalStartMonth } = this.settingsForm.controls;
     // A dated setting is saved when its value or its from-date was changed; the from-date checked first.
     const froms = [
       { label: 'clerk limit', control: clerkLimitFrom }, { label: 'floor', control: floorFrom },
@@ -515,6 +528,8 @@ export class Settings {
     const defaultGradeValue = defaultGrade.value.trim();
     const escalateAfterValue = escalateAfter.value.trim();
     const reviewSlaValue = reviewSla.value.trim();
+    const scoreMidValue = scoreMid.value.trim();
+    const scoreHighValue = scoreHigh.value.trim();
     const parentValue = parent.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     if (dirty(clerkLimit, clerkLimitFrom) && limit !== '' && !MONEY.test(limit)) {
@@ -628,6 +643,14 @@ export class Settings {
     }
     if (changed(reviewSla) && reviewSlaValue !== '' && (!DAYS.test(reviewSlaValue) || Number(reviewSlaValue) > 36500)) {
       this.settingsError.set('Type the review SLA as a whole number of days, from 0 to 36500, or leave it blank for none.');
+      return;
+    }
+    if (changed(scoreMid) && scoreMidValue !== '' && !WHOLE.test(scoreMidValue)) {
+      this.settingsError.set('Type the mid score threshold as a whole number, or leave it blank.');
+      return;
+    }
+    if (changed(scoreHigh) && scoreHighValue !== '' && !WHOLE.test(scoreHighValue)) {
+      this.settingsError.set('Type the high score threshold as a whole number, or leave it blank.');
       return;
     }
     if (changed(fiscalStartMonth) && (!MONTH.test(fiscalStartMonthValue) || Number(fiscalStartMonthValue) < 1
@@ -780,6 +803,16 @@ export class Settings {
         settled(reviewSla);
         if (this.session.sheet()?.id === sheet.id) this.show(settings);
       }
+      if (changed(scoreMid)) {
+        const settings = await this.api.setScoreMid(sheet.id, scoreMidValue === '' ? null : Number(scoreMidValue));
+        settled(scoreMid);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
+      if (changed(scoreHigh)) {
+        const settings = await this.api.setScoreHigh(sheet.id, scoreHighValue === '' ? null : Number(scoreHighValue));
+        settled(scoreHigh);
+        if (this.session.sheet()?.id === sheet.id) this.show(settings);
+      }
       if (changed(parent)) {
         const settings = await this.api.setParent(sheet.id, parentValue === '' ? null : parentValue);
         settled(parent);
@@ -836,6 +869,10 @@ export class Settings {
     this.escalateAfter.set(settings.escalateAfter);
     this.reviewSla.set(settings.reviewSla);
     this.sheetReviewSla.days.set(settings.reviewSla);
+    this.scoreMid.set(settings.scoreMid);
+    this.scoreHigh.set(settings.scoreHigh);
+    this.sheetScoreBands.mid.set(settings.scoreMid);
+    this.sheetScoreBands.high.set(settings.scoreHigh);
     this.parent.set(settings.parent);
     this.sheetParent.parent.set(settings.parent);
     this.delegations.set(settings.delegations);

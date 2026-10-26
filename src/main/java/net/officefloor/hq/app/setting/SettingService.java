@@ -102,6 +102,14 @@ public class SettingService implements ActingFor {
      *  plus these days is before the sheet's today is review-late; no value means none. Not dated. */
     public static final String REVIEW_SLA = "review-sla";
 
+    /** The key of the mid score threshold: while both thresholds are set, a person whose score is at or
+     *  above it (and below the high one) is in the MID band; no value means blank. Not dated. */
+    public static final String SCORE_MID = "score-mid";
+
+    /** The key of the high score threshold: while both thresholds are set, a person whose score is at or
+     *  above it is in the HIGH band; no value means blank. Not dated. */
+    public static final String SCORE_HIGH = "score-high";
+
     /** The key of the fiscal year start month: the month (1 to 12) each fiscal year starts on its first day;
      *  no value means 1 (January). Not dated. */
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
@@ -505,6 +513,57 @@ public class SettingService implements ActingFor {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + REVIEW_SLA
                 + " value=" + (days == null ? "" : days.toString()));
         return days;
+    }
+
+    /** The sheet's mid score threshold, or null when it is blank. */
+    @Transactional(readOnly = true)
+    public Integer scoreMid(String sheetId) {
+        return wholeSetting(sheetId, SCORE_MID);
+    }
+
+    /** Set the sheet's mid score threshold; null clears it. */
+    @Transactional
+    public Integer setScoreMid(String sheetId, String user, Integer value) {
+        return setWholeSetting(sheetId, user, SCORE_MID, value);
+    }
+
+    /** The sheet's high score threshold, or null when it is blank. */
+    @Transactional(readOnly = true)
+    public Integer scoreHigh(String sheetId) {
+        return wholeSetting(sheetId, SCORE_HIGH);
+    }
+
+    /** Set the sheet's high score threshold; null clears it. */
+    @Transactional
+    public Integer setScoreHigh(String sheetId, String user, Integer value) {
+        return setWholeSetting(sheetId, user, SCORE_HIGH, value);
+    }
+
+    private Integer wholeSetting(String sheetId, String key) {
+        return settings.findBySheetIdAndKey(sheetId, key).map((s) -> Integer.valueOf(s.getValue())).orElse(null);
+    }
+
+    private Integer setWholeSetting(String sheetId, String user, String key, Integer value) {
+        sheets.load(sheetId);
+        SheetSetting setting = settings.findBySheetIdAndKey(sheetId, key).orElse(null);
+        try {
+            if (value == null) {
+                if (setting != null) {
+                    settings.delete(setting);
+                    settings.flush();
+                }
+            } else if (setting == null) {
+                settings.saveAndFlush(new SheetSetting(sheetId, key, value.toString()));
+            } else {
+                setting.setValue(value.toString());
+                settings.saveAndFlush(setting);
+            }
+        } catch (DataIntegrityViolationException raced) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The setting was changed by someone else.");
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + key
+                + " value=" + (value == null ? "" : value.toString()));
+        return value;
     }
 
     /** The sheet's fiscal year start month, 1 to 12; 1 when none is set. */

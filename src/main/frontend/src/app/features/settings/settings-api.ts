@@ -92,6 +92,10 @@ export interface SettingsView {
   /** The grade a new person given none takes (quick add, an import line with a blank grade), or null when
    *  blank (A then). Not dated. */
   defaultGrade: string | null;
+  /** The mid score threshold, a whole number, or null when blank. Not dated. */
+  scoreMid: number | null;
+  /** The high score threshold, a whole number, or null when blank. Not dated. */
+  scoreHigh: number | null;
 }
 
 // The sheet's settings and the roles it assigns user names, as the store holds them.
@@ -221,6 +225,16 @@ export class SettingsApi {
   /** Set the review SLA in days; null clears it, leaving none. */
   setReviewSla(sheetId: string, value: number | null): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/review-sla`, { value }));
+  }
+
+  /** Set the mid score threshold; null clears it. */
+  setScoreMid(sheetId: string, value: number | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/score-mid`, { value }));
+  }
+
+  /** Set the high score threshold; null clears it. */
+  setScoreHigh(sheetId: string, value: number | null): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheetId)}/settings/score-high`, { value }));
   }
 
   /** Set the escalation gap in days; null clears it, turning escalation off. */

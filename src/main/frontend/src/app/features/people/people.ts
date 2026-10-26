@@ -19,6 +19,7 @@ import { SheetCap } from '../settings/sheet-cap';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetGrace } from '../settings/sheet-grace';
 import { SheetReviewSla } from '../settings/sheet-review-sla';
+import { SheetScoreBands } from '../settings/sheet-score-bands';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetParent } from '../settings/sheet-parent';
 import { SheetPot } from '../settings/sheet-pot';
@@ -297,7 +298,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
         <app-people-columns />
         <table data-testid="people-list">
           <thead>
-            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (cols.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Grade</th><th scope="col">Change grade</th>@if (cols.shown('terms')) {<th scope="col">Terms</th>}@if (cols.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th>@if (cols.shown('claimed')) {<th scope="col">Claimed</th>}@if (cols.shown('due-total')) {<th scope="col">Due</th>}<th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}@if (cols.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Score</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (cols.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Grade</th><th scope="col">Change grade</th>@if (cols.shown('terms')) {<th scope="col">Terms</th>}@if (cols.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Clashing</th><th scope="col">Came from</th>@if (cols.shown('claimed')) {<th scope="col">Claimed</th>}@if (cols.shown('due-total')) {<th scope="col">Due</th>}<th scope="col">Snapshots</th><th scope="col">Settled</th><th scope="col">Open</th>@for (q of periods(); track q.id) {<th scope="col">Due in {{ q.name }}</th>}@if (cols.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut</th><th scope="col">Overdue</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Active</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Statements</th><th scope="col">Patrons</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             @for (p of shownPeople(); track p.id) {
@@ -372,6 +373,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
                   @if (cols.shown('overdue-total')) { due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) | figure }}</span> }
                 </td>
                 <td data-testid="person-score">{{ scoreOf(p.id) }}</td>
+                <td data-testid="person-band">{{ bandOf(p.id) }}</td>
                 <td data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) }}</td>
                 <td data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) }}</td>
                 <td data-testid="person-aged-61">{{ money(agedOf(p.id).over60) }}</td>
@@ -528,6 +530,7 @@ export class People {
   private readonly latePct = inject(SheetLatePct);
   private readonly sheetGrace = inject(SheetGrace);
   private readonly reviewSla = inject(SheetReviewSla);
+  private readonly scoreBands = inject(SheetScoreBands);
   private readonly sheetParent = inject(SheetParent);
   private readonly policyDate = inject(SheetPolicyDate);
   private readonly rounding = inject(SheetRounding);
@@ -1590,6 +1593,16 @@ export class People {
     const rest = scaled - floor * 10000;
     const whole = rest > 5000 || (rest === 5000 && floor % 2 !== 0) ? floor + 1 : floor;
     return String(whole === 0 ? 0 : whole);
+  }
+
+  /** The person's band while both score thresholds are set: HIGH at or above the high one, MID at or
+   *  above the mid one, else LOW; blank while either threshold is blank. */
+  protected bandOf(personId: number): string {
+    const mid = this.scoreBands.mid();
+    const high = this.scoreBands.high();
+    if (mid === null || high === null) return '';
+    const score = Number(this.scoreOf(personId));
+    return score >= high ? 'HIGH' : score >= mid ? 'MID' : 'LOW';
   }
 
   /** The due of the person's settled and of their open claims that count, in cents. */
