@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { readAsOf } from '../../core/as-of.interceptor';
 import { ClaimView } from '../claims/claims-api';
 
 export const GRADES = ['A', 'B', 'C'] as const;
@@ -146,8 +147,9 @@ export class PeopleApi {
     return `/api/sheets/${encodeURIComponent(sheetId)}/people`;
   }
 
-  list(sheetId: string): Promise<PersonView[]> {
-    return firstValueFrom(this.http.get<PersonView[]>(this.url(sheetId)));
+  /** The sheet's people; as they stood at the end of the as-of date when one is given. */
+  list(sheetId: string, asOf?: string): Promise<PersonView[]> {
+    return firstValueFrom(this.http.get<PersonView[]>(this.url(sheetId), readAsOf(asOf)));
   }
 
   add(sheetId: string, form: PersonForm): Promise<PersonView> {

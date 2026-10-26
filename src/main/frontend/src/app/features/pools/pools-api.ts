@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { readAsOf } from '../../core/as-of.interceptor';
 import { Session } from '../../core/session';
 
 /** A member of a pool, a person or another pool of the sheet (the other id null), with its share percent
@@ -35,9 +36,10 @@ export class PoolsApi {
     return `/api/sheets/${encodeURIComponent(sheetId)}/pools`;
   }
 
-  /** The sheet's pools in the order they were added. */
-  list(sheetId: string): Promise<PoolView[]> {
-    return firstValueFrom(this.http.get<PoolView[]>(this.url(sheetId)));
+  /** The sheet's pools in the order they were added; as they stood at the end of the as-of date when one
+   *  is given. */
+  list(sheetId: string, asOf?: string): Promise<PoolView[]> {
+    return firstValueFrom(this.http.get<PoolView[]>(this.url(sheetId), readAsOf(asOf)));
   }
 
   /** Add a pool: refused for a blank name or one the sheet already has. */

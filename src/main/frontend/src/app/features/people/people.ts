@@ -60,7 +60,7 @@ import { PeopleColumns, PeopleColumnsChoice } from '../columns/people-columns';
     @if (session.sheet()) {
       <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
       <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (added)="periodAdded($event)" (changed)="periodChanged($event)" />
-      <app-pools [people]="people()" />
+      <app-pools [people]="people()" [periods]="periods()" />
       <app-crews [people]="people()" [dues]="dueCents()" />
       <section aria-labelledby="people-heading">
         <h2 id="people-heading">People</h2>

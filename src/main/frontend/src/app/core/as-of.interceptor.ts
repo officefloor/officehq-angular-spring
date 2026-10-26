@@ -1,4 +1,4 @@
-import { HttpContextToken, HttpInterceptorFn } from '@angular/common/http';
+import { HttpContext, HttpContextToken, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Session } from './session';
 
@@ -14,3 +14,9 @@ export const asOfInterceptor: HttpInterceptorFn = (req, next) => {
   const asOf = inject(Session).asOf();
   return next(asOf && !req.context.get(LIVE_READ) ? req.clone({ setHeaders: { [AS_OF_HEADER]: asOf } }) : req);
 };
+
+/** The options of a read answered with the sheet as it stood at the end of a date, whatever the screen's
+ *  as-of date; none for a read as the screen shows it. */
+export function readAsOf(date?: string): { headers?: Record<string, string>; context?: HttpContext } {
+  return date === undefined ? {} : { headers: { [AS_OF_HEADER]: date }, context: new HttpContext().set(LIVE_READ, true) };
+}

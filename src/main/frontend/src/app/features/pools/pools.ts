@@ -1,14 +1,17 @@
 import { DOCUMENT } from '@angular/common';
 import { FigurePipe } from '../../core/figure.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { PersonView, heldOn } from '../people/people-api';
 import { SheetPot } from '../settings/sheet-pot';
-import { CrewView, Crews, crewIds } from '../crews/crews-api';
-import { PoolMemberView, Pools, PoolView } from './pools-api';
+import { CrewView, Crews, CrewsApi, crewIds } from '../crews/crews-api';
+import { PeopleApi } from '../people/people-api';
+import { PeriodView } from '../periods/periods-api';
+import { SettingsApi } from '../settings/settings-api';
+import { PoolMemberView, Pools, PoolsApi, PoolView } from './pools-api';
 
 /** A share percent as typed: up to two decimals. */
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
@@ -104,6 +107,9 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen 
 // is left out entirely, counting toward neither the total share nor the balance, and shows no cut.
 // A pool that is a member of none has the sheet's pot; a pool that is a member of another has its cut
 // there as its pot. An unbalanced pool, or no pot, shows no cut.
+// For every period whose to-date is on or before the sheet's today, each member also shows their cut as it
+// stood at the end of that period: worked out as above from the pools, their members, the pot and the holds
+// as the sheet held them then, with the period's to-date as the sheet's today; empty when there was none.
 @Component({
   selector: 'app-pool-row',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -123,6 +129,9 @@ function depthOf(pool: PoolView, poolsById: ReadonlyMap<number, PoolView>, seen 
             <span data-testid="pool-member-dates">{{ m.from ?? '' }}–{{ m.to ?? '' }}</span>
           }
           <span data-testid="pool-cut" aria-label="Cut">{{ (cuts()?.get(m.key) ?? '') | figure }}</span>
+          @for (q of ended(); track q.id) {
+            <span [attr.data-testid]="'pool-cut-' + q.name" [attr.aria-label]="'Cut at the end of ' + q.name">{{ (pastCuts().get(q.id)?.get(m.key) ?? '') | figure }}</span>
+          }
           @if (m.retired) {
             <span data-testid="pool-member-retired">(retired)</span>
           }
@@ -168,6 +177,11 @@ export class PoolRow {
   readonly crew = input(false);
   /** Each member's cut, with two decimals, by member key; null for an unbalanced pool or no pot. */
   readonly cuts = input.required<ReadonlyMap<string, string> | null>();
+  /** The periods whose to-date is on or before the sheet's today, in date order. */
+  readonly ended = input.required<PeriodView[]>();
+  /** Each member's cut as it stood at the end of each of those periods, with two decimals, by member key,
+   *  by period id; none for a period when the pool showed no cuts then (or is not yet read). */
+  readonly pastCuts = input.required<ReadonlyMap<number, ReadonlyMap<string, string> | null>>();
 
   private readonly poolsById = computed(() => new Map(this.pools().map((p) => [p.id, p])));
   protected readonly members = computed(() => membersOf(this.pool(), this.people(), this.poolsById(),
@@ -361,7 +375,7 @@ function cutsOf(potCents: bigint, members: readonly MemberRow[]): [string, bigin
       <div role="list" aria-label="Pools">
         @for (p of all(); track p.id) {
           <app-pool-row [pool]="p" [people]="people()" [pools]="store.pools()" [crew]="p.id < 0"
-            [cuts]="cuts().get(p.id) ?? null" />
+            [cuts]="cuts().get(p.id) ?? null" [ended]="ended()" [pastCuts]="pastCuts().get(p.id) ?? noPastCuts" />
         }
       </div>
     </section>
@@ -373,9 +387,34 @@ export class PoolsList {
   private readonly sheetPot = inject(SheetPot);
   private readonly document = inject(DOCUMENT);
   private readonly crews = inject(Crews);
+  private readonly poolsApi = inject(PoolsApi);
+  private readonly crewsApi = inject(CrewsApi);
+  private readonly peopleApi = inject(PeopleApi);
+  private readonly settingsApi = inject(SettingsApi);
 
   /** Everyone on the sheet, retired or not. */
   readonly people = input.required<PersonView[]>();
+  /** The sheet's periods in date order. */
+  readonly periods = input.required<PeriodView[]>();
+
+  protected readonly noPastCuts: ReadonlyMap<number, ReadonlyMap<string, string> | null> = new Map();
+
+  /** The periods whose to-date is on or before the sheet's today, in date order. */
+  protected readonly ended = computed(() => {
+    const today = this.session.sheet()?.today;
+    return today === undefined ? [] : this.periods().filter((q) => q.to <= today);
+  });
+
+  /** Each pool's cuts at the end of each ended period, by pool id and then period id, as last read. */
+  private readonly history = signal<Map<number, Map<number, Map<string, bigint> | null>>>(new Map());
+  /** Counts the readings of the history, so only the latest is shown. */
+  private historyReads = 0;
+
+  /** Each pool's cuts at the end of each ended period, with two decimals, by member key, by period id, by
+   *  pool id. */
+  protected readonly pastCuts = computed(() => new Map([...this.history()].map(([poolId, byPeriod]) =>
+    [poolId, new Map([...byPeriod].map(([periodId, cuts]) =>
+      [periodId, cuts && new Map([...cuts].map(([key, cut]) => [key, money(Number(cut))]))]))])));
 
   /** The sheet's pools and then its crews as pools. */
   protected readonly all = computed(() => poolsWithCrews(this.store.pools(), this.crews.crews()));
@@ -392,6 +431,42 @@ export class PoolsList {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    let shownSheet: string | undefined;
+    effect(() => {
+      // Re-read on each load of the sheet as well as on a change of its periods or its today.
+      this.session.loaded();
+      const sheetId = this.session.sheet()?.id;
+      const ended = this.ended();
+      untracked(() => {
+        if (sheetId !== shownSheet) this.history.set(new Map());
+        shownSheet = sheetId;
+        if (sheetId !== undefined) void this.readHistory(sheetId, ended);
+      });
+    });
+  }
+
+  /** Read the pools, crews, people and pot as they stood at the end of each period, and work out the cuts
+   *  then with the period's to-date as the sheet's today. */
+  private async readHistory(sheetId: string, ended: readonly PeriodView[]): Promise<void> {
+    const read = ++this.historyReads;
+    try {
+      const byPeriod = await this.session.reading(Promise.all(ended.map(async (q) => {
+        const [pools, crews, people, settings] = await Promise.all([this.poolsApi.list(sheetId, q.to),
+          this.crewsApi.list(sheetId, q.to), this.peopleApi.list(sheetId, q.to), this.settingsApi.get(sheetId, q.to)]);
+        return [q.id, allCuts(poolsWithCrews(pools, crews), people, settings.pot, q.to)] as const;
+      })));
+      if (read !== this.historyReads || this.session.sheet()?.id !== sheetId) return;
+      const history = new Map<number, Map<number, Map<string, bigint> | null>>();
+      for (const [periodId, cuts] of byPeriod) {
+        for (const [poolId, poolCuts] of cuts) {
+          if (!history.has(poolId)) history.set(poolId, new Map());
+          history.get(poolId)?.set(periodId, poolCuts);
+        }
+      }
+      this.history.set(history);
+    } catch {
+      if (read === this.historyReads && this.session.sheet()?.id === sheetId) this.history.set(new Map());
+    }
   }
 
   /** Downloads the pools as a CSV file: one line per member, pools and their members in the order they

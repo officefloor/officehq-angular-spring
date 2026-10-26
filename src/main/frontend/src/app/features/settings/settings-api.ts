@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { readAsOf } from '../../core/as-of.interceptor';
 import { Grade } from '../people/people-api';
 import { DatedValue } from './dated';
 
@@ -99,8 +100,9 @@ export class SettingsApi {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }
 
-  get(sheetId: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.get<SettingsView>(`${this.url(sheetId)}/settings`));
+  /** The sheet's settings; as they stood at the end of the as-of date when one is given. */
+  get(sheetId: string, asOf?: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.get<SettingsView>(`${this.url(sheetId)}/settings`, readAsOf(asOf)));
   }
 
   /** Record the clerk limit from a date (null: the sheet's today); null clears it from then, leaving no limit. */

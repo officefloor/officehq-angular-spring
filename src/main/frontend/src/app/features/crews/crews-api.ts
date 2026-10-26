@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { readAsOf } from '../../core/as-of.interceptor';
 import { Session } from '../../core/session';
 
 export interface CrewView {
@@ -26,9 +27,10 @@ export class CrewsApi {
     return `/api/sheets/${encodeURIComponent(sheetId)}/crews`;
   }
 
-  /** The sheet's crews in the order they were added. */
-  list(sheetId: string): Promise<CrewView[]> {
-    return firstValueFrom(this.http.get<CrewView[]>(this.url(sheetId)));
+  /** The sheet's crews in the order they were added; as they stood at the end of the as-of date when one
+   *  is given. */
+  list(sheetId: string, asOf?: string): Promise<CrewView[]> {
+    return firstValueFrom(this.http.get<CrewView[]>(this.url(sheetId), readAsOf(asOf)));
   }
 
   /** Add a crew with a lead: refused for a blank name or one the sheet already has. */
