@@ -44,7 +44,7 @@ public class PersonService {
 
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** The sheet's today, which the grade a person is listed with is in force on. */
@@ -87,6 +87,9 @@ public class PersonService {
         Person person = new Person(sheetId, trimmed, grade, today);
         person.setTerms(terms);
         person.setContact(key);
+        // the new person goes to the end of the list
+        sheets.lock(sheetId);
+        person.setPosition(people.nextPosition(sheetId));
         Person added = save(person);
         audit.recordOnCommit(record("PERSON_ADDED", by, added, today(sheetId))
                 + (terms != null ? " terms=" + terms : "")
@@ -160,7 +163,7 @@ public class PersonService {
      */
     @Transactional
     public List<Person> bulkGrade(String by, String sheetId, Set<Long> ids, String grade, LocalDate from) {
-        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> ids.contains(p.getId())).toList();
         if (chosen.size() != ids.size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person.");
@@ -171,6 +174,41 @@ public class PersonService {
                     p.getContact(), false));
         }
         return saved;
+    }
+
+    /**
+     * Swaps the person with the one above them in the list (up) or below them (down); refused for the top person
+     * moving up and the bottom one moving down. Neither person's version changes: their place is not an edit of them.
+     */
+    @Transactional
+    public void move(String by, String sheetId, Long id, boolean up) {
+        sheets.lock(sheetId);
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId().equals(id)) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person.");
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    up ? "The top person cannot move up." : "The bottom person cannot move down.");
+        }
+        Person person = listed.get(at);
+        Person other = listed.get(to);
+        // the positions are renumbered from 1 in list order, so swapping two always changes their order
+        for (int i = 0; i < listed.size(); i++) {
+            Person p = i == at ? other : i == to ? person : listed.get(i);
+            if (p.getPosition() != i + 1) {
+                people.placeAt(p.getId(), i + 1);
+            }
+        }
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + by + " name=" + person.getName()
+                + " position=" + (to + 1));
     }
 
     /** Retires the person from the date; a missing date takes the sheet's today. Their claims keep counting. */
@@ -288,7 +326,7 @@ public class PersonService {
             p.getAliases().forEach(a -> taken.add(a.toLowerCase(Locale.ROOT)));
         }
         Set<Long> clashing = new HashSet<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (taken.contains(p.getName().toLowerCase(Locale.ROOT))
                     || p.getAliases().stream().anyMatch(a -> taken.contains(a.toLowerCase(Locale.ROOT)))) {
                 clashing.add(p.getId());

@@ -42,6 +42,10 @@ public class Person {
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedGrade> grades = new ArrayList<>();
 
+    /** The person's place in the sheet's list, smallest first. */
+    @Column(name = "list_position", nullable = false)
+    private long position;
+
     @Column(name = "terms")
     private Integer terms;
 
@@ -96,6 +100,7 @@ public class Person {
         then.id = id;
         then.sheetId = sheetId;
         then.name = name;
+        then.position = position;
         then.terms = terms;
         then.addedOn = addedOn;
         then.version = version;
@@ -132,6 +137,14 @@ public class Person {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public long getPosition() {
+        return position;
+    }
+
+    public void setPosition(long position) {
+        this.position = position;
     }
 
     /** Every grade recorded for the person, earliest from-date first (the one from the beginning of time first). */

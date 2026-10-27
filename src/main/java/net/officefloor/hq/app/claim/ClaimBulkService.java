@@ -128,7 +128,7 @@ public class ClaimBulkService {
     /** The ids of the sheet's claims among the ids, in list order (the order of people, newest claim first). */
     private List<Long> ordered(String sheetId, Set<Long> ids) {
         Map<Long, Integer> personOrder = new HashMap<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             personOrder.put(p.getId(), personOrder.size());
         }
         return repository.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()

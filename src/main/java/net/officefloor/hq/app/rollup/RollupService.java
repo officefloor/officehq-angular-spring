@@ -28,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The figures a sheet shows: each person's claimed and due-total, and the sheet's totals. A change takes a
  * {@link #snapshot} before it and calls {@link #recordChanges} after it, so the audit gets one ROLLUP line per person
- * whose figures (claimed, due-total, overdue-total) moved (in the order they were added) and a TOTALS line when the sheet's totals moved.
+ * whose figures (claimed, due-total, overdue-total) moved (in list order) and a TOTALS line when the sheet's totals moved.
  */
 @Service
 public class RollupService {
@@ -37,7 +37,7 @@ public class RollupService {
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
     }
 
-    /** The figures of every person on a sheet, by person id in the order they were added, and the sheet's totals. */
+    /** The figures of every person on a sheet, by person id in list order, and the sheet's totals. */
     public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
             BigDecimal overdueTotal) {
     }
@@ -82,7 +82,7 @@ public class RollupService {
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             // an open claim dated within one of the person's holds counts in no live total, unless a statement binds it;
             // nor does one deferred on the sheet's today
             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()

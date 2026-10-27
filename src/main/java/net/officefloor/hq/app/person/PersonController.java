@@ -102,6 +102,9 @@ public class PersonController {
     }
 
     /** A retirement: the date it takes effect; a missing date takes the sheet's today. */
+    public record MoveForm(@NotNull @Pattern(regexp = "up|down") String direction) {
+    }
+
     public record RetireForm(LocalDate from) {
     }
 
@@ -154,7 +157,7 @@ public class PersonController {
         this.imports = imports;
     }
 
-    /** All the people on the sheet, in the order they were added. */
+    /** All the people on the sheet, in list order. */
     @GetMapping
     public List<PersonView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
@@ -231,6 +234,19 @@ public class PersonController {
         transfers.transfer(user, sheetId, id, form.toSheetId());
         // the request's own sheet is stored as it now stands once answered; the other sheet changed too
         asOf.capture(form.toSheetId());
+    }
+
+    /**
+     * Swaps the person with the one above them in the list (direction up) or below (down); refused for the top person
+     * moving up and the bottom one moving down. All the people on the sheet, in list order.
+     */
+    @PostMapping("/{id}/move")
+    public List<PersonView> move(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody MoveForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        service.move(user, sheetId, id, form.direction().equals("up"));
+        return list(sheetId);
     }
 
     @PostMapping("/{id}/retire")

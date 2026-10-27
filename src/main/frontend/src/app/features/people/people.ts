@@ -415,6 +415,12 @@ interface StatementView {
                   [value]="retireDates()[p.id] ?? ''"
                   (input)="setRetireDate(p.id, value($event))"
                 />
+                <button type="button" data-testid="person-move-up" (click)="move(p, 'up')">
+                  Move up<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="person-move-down" (click)="move(p, 'down')">
+                  Move down<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
                 <button type="button" data-testid="person-retire" (click)="retire(p)">
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
@@ -997,6 +1003,30 @@ export class People {
     }
   }
 
+  /**
+   * Swaps the person with the one above or below them in the list; the top person cannot move up, nor the bottom one
+   * down. The list comes back in its new order.
+   */
+  protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/move`;
+    try {
+      const list = await firstValueFrom(this.http.post<Person[]>(url, { direction }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.set(list);
+    } catch (e) {
+      const atEnd = e instanceof HttpErrorResponse && e.status === 409;
+      const message = !atEnd
+        ? 'Could not move this person.'
+        : direction === 'up'
+          ? 'The top person cannot move up.'
+          : 'The bottom person cannot move down.';
+      this.rowErrors.update((errors) => ({ ...errors, [p.id]: message }));
+    }
+  }
+
   /** Clears the row's refused actions: taking the next action on a row removes the last one's error. */
   private clearRowErrors(id: number): void {
     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
@@ -1434,6 +1464,7 @@ export class People {
 
   protected selectPerson(id: number, checked: boolean): void {
     this.bulkGradeError.set(null);
+    this.clearRowErrors(id);
     this.selectedPeople.update((selected) => {
       const next = new Set(selected);
       if (checked) next.add(id);
@@ -1453,6 +1484,8 @@ export class People {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const ids = [...this.selectedPeople()];
+    // grading the selected people is the next action on each of their rows
+    ids.forEach((id) => this.clearRowErrors(id));
     const grade = this.bulkGrade();
     const from = this.bulkGradeFrom().trim();
     if (ids.length === 0) {

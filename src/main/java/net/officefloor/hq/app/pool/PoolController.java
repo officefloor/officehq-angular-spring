@@ -63,7 +63,7 @@ public class PoolController {
     @GetMapping
     @Transactional(readOnly = true)
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, List<PoolMember>> byPool = service.members(sheetId).stream()
                 .collect(Collectors.groupingBy(PoolMember::getPoolId));

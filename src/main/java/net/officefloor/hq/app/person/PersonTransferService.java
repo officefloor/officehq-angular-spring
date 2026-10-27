@@ -113,6 +113,8 @@ public class PersonTransferService {
         statements.flush();
 
         person.moveToSheet(toSheetId);
+        // they go to the end of the other sheet's list
+        person.setPosition(people.nextPosition(toSheetId));
         people.saveAndFlush(person);
 
         List<Claim> moved = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, id));

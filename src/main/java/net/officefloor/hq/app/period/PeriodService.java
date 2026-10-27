@@ -195,7 +195,7 @@ public class PeriodService {
      * its last day, skipping n/a; 0.00 for a person with none.
      */
     private Map<Long, BigDecimal> personTotals(String sheetId, Period period, LocalDate today) {
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         // every person on the sheet now gets a figure, 0.00 when none of their counted claims is due by a date in it
         Map<Long, BigDecimal> personTotals = new HashMap<>();
