@@ -149,6 +149,20 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.OPEN));
     }
 
+    @PostMapping("/claims/{id}/delete")
+    public ClaimView delete(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.delete(user, sheetId, id));
+    }
+
+    @PostMapping("/claims/{id}/restore")
+    public ClaimView restore(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.restore(user, sheetId, id));
+    }
+
     @PostMapping("/claims/bulk-open")
     @ViewerPasses
     public BulkOpenView bulkOpen(

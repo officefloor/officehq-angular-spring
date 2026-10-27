@@ -76,10 +76,10 @@ export interface ClaimLogLine {
 }
 
 // A clerk settling a claim whose due is above the clerk limit makes it PENDING, for a steward to approve (SETTLED)
-// or reject (OPEN again).
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+// or reject (OPEN again). A deleted DRAFT is DELETED, counts nowhere, and on the day it was deleted can be restored.
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
 
-type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void';
+type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
 
 /** Only open, pending and settled claims count toward what is claimed and due. */
 export function counts(c: Claim): boolean {
@@ -455,6 +455,12 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-void" (click)="act(c, 'void')">
                 Void<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <button type="button" data-testid="claim-delete" (click)="act(c, 'delete')">
+                Delete<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <button type="button" data-testid="claim-restore" (click)="act(c, 'restore')">
+                Restore<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <label [for]="'claim-reassign-to-' + c.id">Move to</label>
               <select
                 [id]="'claim-reassign-to-' + c.id"
@@ -779,7 +785,13 @@ export class Claims {
       const editor = c.editedBy !== null && c.editedBy === this.session.user();
       const forbidden = e instanceof HttpErrorResponse && e.status === 403;
       const err =
-        action === 'settle' && deferred(c, this.session.sheetToday())
+        action === 'delete' && c.status !== 'DRAFT'
+          ? `A ${c.status} claim cannot be deleted; only a draft can.`
+          : action === 'restore' && c.status === 'DELETED'
+          ? 'A deleted claim can only be restored on the day it was deleted.'
+          : action === 'restore'
+          ? `A ${c.status} claim cannot be restored; only a deleted one can.`
+          : action === 'settle' && deferred(c, this.session.sheetToday())
           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
           : action === 'void' && e instanceof HttpErrorResponse && e.status === 422
           ? 'Choose a reason from the list to void this claim.'
@@ -807,12 +819,12 @@ export class Claims {
     }
   }
 
-  /** Raises the claim's proofs count by one; a SETTLED or VOID claim, or one in a closed period, takes none. */
+  /** Raises the claim's proofs count by one; a SETTLED, VOID or DELETED claim, or one in a closed period, takes none. */
   protected async addProof(c: Claim): Promise<void> {
     this.clearRowError(c.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    if (c.status === 'SETTLED' || c.status === 'VOID') {
+    if (c.status === 'SETTLED' || c.status === 'VOID' || c.status === 'DELETED') {
       this.setRowError(c.id, `A ${c.status} claim cannot take a proof.`);
       return;
     }
@@ -1001,7 +1013,7 @@ export class Claims {
       this.setRowError(c.id, 'Choose the person to move this claim to.');
       return;
     }
-    if (c.status === 'SETTLED' || c.status === 'VOID') {
+    if (c.status === 'SETTLED' || c.status === 'VOID' || c.status === 'DELETED') {
       this.setRowError(c.id, `A ${c.status} claim cannot move.`);
       return;
     }

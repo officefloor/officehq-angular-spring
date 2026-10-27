@@ -289,7 +289,7 @@ public class ClaimService {
             case OPEN -> "CLAIM_OPENED";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT, PENDING -> throw new IllegalStateException();
+            case DRAFT, PENDING, DELETED -> throw new IllegalStateException();
         };
         if (next == ClaimStatus.SETTLED) {
             // the due is fixed at the figure a statement bound it to, else at the rate the person's grade has in
@@ -314,6 +314,54 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(by, sheetId, person, saved.getNumber());
         }
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
+     * Deletes a DRAFT claim: it is DELETED, counts nowhere and can no longer be edited, opened or voided. Refused
+     * for a claim in any other status, one another user's editor holds, and in a closed period.
+     */
+    @Transactional
+    public Claim delete(String by, String sheetId, Long id) {
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a DRAFT claim can be deleted.");
+        }
+        refuseLockedByOther(by, claim);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setStatus(ClaimStatus.DELETED);
+        claim.setLockedBy(null);
+        logStatus(by, sheetId, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_DELETED", by, person, saved));
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
+     * Restores a DELETED claim to a DRAFT again. Refused for a claim that is not DELETED, unless the sheet's today is
+     * the one it was deleted on, and in a closed period.
+     */
+    @Transactional
+    public Claim restore(String by, String sheetId, Long id) {
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a DELETED claim can be restored.");
+        }
+        LocalDate today = sheets.load(sheetId).getToday();
+        LocalDate deletedOn = claim.deletedOn();
+        if (deletedOn == null ? today != null : !deletedOn.equals(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim can only be restored on the day it was deleted.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setStatus(ClaimStatus.DRAFT);
+        logStatus(by, sheetId, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_RESTORED", by, person, saved));
         rollup.recordChanges(by, sheetId, before);
         return saved;
     }
@@ -385,12 +433,13 @@ public class ClaimService {
     }
 
     /**
-     * Raises the claim's proofs count by one. Refused for a SETTLED or VOID claim, and in a closed period.
+     * Raises the claim's proofs count by one. Refused for a SETTLED, VOID or DELETED claim, and in a closed period.
      */
     @Transactional
     public Claim addProof(String by, String sheetId, Long id) {
         Claim claim = lockedClaim(sheetId, id);
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot take a proof.");
         }

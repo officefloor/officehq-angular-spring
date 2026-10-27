@@ -530,6 +530,17 @@ public class Claim {
         return on;
     }
 
+    /** The sheet's today its status log records it last deleted on; null for one never deleted. */
+    public LocalDate deletedOn() {
+        LocalDate on = null;
+        for (ClaimLogEntry e : log) {
+            if (e.getStatus() == ClaimStatus.DELETED) {
+                on = e.getOn();
+            }
+        }
+        return on;
+    }
+
     /** Logs the status the claim now has: by the user, on the sheet's today, at the due computed now. */
     public void logStatus(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogEntry(status, by, on, due));
