@@ -1,0 +1,151 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 015c54ef..e5d2e202 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -239,8 +239,9 @@ public class PersonController {
+     }
+ 
+     /**
+-     * A steward transfers the person, with their claims, to another sheet; they leave this one. Refused for a retired
+-     * person, this sheet's own id, and a name, alias or contact already on the other sheet.
++     * A steward transfers the person, with their claims, to another sheet; they leave this one, and are merged there
++     * into the person with their name or an alias. Refused for a retired person, this sheet's own id, and a contact
++     * already on the other sheet.
+      */
+     @PostMapping("/{id}/transfer")
+     public void transfer(
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index 4dfc0e89..5915c642 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -79,7 +79,16 @@ public class PersonMergeService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
+         }
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Person saved = absorb(by, sheetId, from, into);
++        rollup.recordChanges(by, sheetId, before);
++        return saved;
++    }
+ 
++    /**
++     * Merges the one person into the other, both of the sheet and locked, exactly as a merge does, recording it; the
++     * caller checks the merge may be made and records the changes to the figures.
++     */
++    Person absorb(String by, String sheetId, Person from, Person into) {
+         // the claims, in the order they were added, each listed as the other's newest in turn
+         List<Claim> moved = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, from.getId()));
+         moved.sort(Comparator.comparing(Claim::getId));
+@@ -107,12 +116,12 @@ public class PersonMergeService {
+         names.addAll(from.getAliases());
+         people.delete(from);
+         people.flush();
+-        names.forEach(into::addAlias);
++        // one they already have exactly is not given twice
++        names.stream().filter(n -> !n.equals(into.getName()) && !into.getAliases().contains(n)).forEach(into::addAlias);
+         Person saved = people.saveAndFlush(into);
+ 
+         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + by + " from=" + fromName + " into="
+                 + saved.getName());
+-        rollup.recordChanges(by, sheetId, before);
+         return saved;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index abcbe585..2763a7f7 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -37,7 +37,7 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
+ 
+     /** The person on the sheet with the alias, compared as names are: ignoring case. */
+-    @Query("SELECT p FROM Person p JOIN p.aliases a WHERE p.sheetId = :sheetId AND LOWER(a.alias) = LOWER(:alias)")
++    @Query("SELECT DISTINCT p FROM Person p JOIN p.aliases a WHERE p.sheetId = :sheetId AND LOWER(a.alias) = LOWER(:alias)")
+     Optional<Person> findBySheetIdAndAlias(@Param("sheetId") String sheetId, @Param("alias") String alias);
+ 
+     /** Whether the name or alias is a name or an alias of anyone on the sheet, compared ignoring case. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index d4def8d9..958ad2f9 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -34,12 +34,13 @@ public class PersonTransferService {
+     private final SheetService sheets;
+     private final SettingsService settings;
+     private final RollupService rollup;
++    private final PersonMergeService mergeService;
+     private final Audit audit;
+ 
+     public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
+             ClaimRepository claims, ClaimService claimService, StatementRepository statements,
+             PoolMemberRepository poolMembers, SheetService sheets, SettingsService settings, RollupService rollup,
+-            Audit audit) {
++            PersonMergeService mergeService, Audit audit) {
+         this.people = people;
+         this.patrons = patrons;
+         this.watches = watches;
+@@ -50,6 +51,7 @@ public class PersonTransferService {
+         this.sheets = sheets;
+         this.settings = settings;
+         this.rollup = rollup;
++        this.mergeService = mergeService;
+         this.audit = audit;
+     }
+ 
+@@ -60,8 +62,10 @@ public class PersonTransferService {
+      * claims were opened (by the sheet's today when each was opened, then the order they were added). Figures a
+      * statement bound are lost, their statements dropped, and references are not carried. Their patron links, pool
+      * memberships and watches are dropped, and they leave this sheet. Refused unless the user is a steward, for a
+-     * retired person, for this sheet's own id, for an archived sheet, and when their name, an alias or their contact
+-     * is already a name, alias or contact on the other sheet.
++     * retired person, for this sheet's own id, for an archived sheet, and when their contact is already a contact on
++     * the other sheet. When their name or an alias is already a name or alias of someone on the other sheet (compared
++     * as names are), they arrive and are merged into that person exactly as a merge does (their contact then dropped
++     * rather than refused); refused when that person is retired, or when their names match more than one person.
+      */
+     @Transactional
+     public void transfer(String by, String sheetId, Long id, String toSheetId) {
+@@ -90,10 +94,21 @@ public class PersonTransferService {
+         List<String> names = new ArrayList<>();
+         names.add(person.getName());
+         names.addAll(person.getAliases());
+-        if (names.stream().anyMatch(n -> people.nameOrAliasInUse(toSheetId, n))) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The name or an alias is already on the other sheet.");
++        List<Long> matches = names.stream()
++                .map(n -> people.findBySheetIdAndNameOrAlias(toSheetId, n).map(Person::getId).orElse(null))
++                .filter(m -> m != null).distinct().toList();
++        if (matches.size() > 1) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "The name and aliases match more than one person on the other sheet.");
+         }
+-        if (person.getContact() != null && people.existsBySheetIdAndContact(toSheetId, person.getContact())) {
++        Person into = matches.isEmpty() ? null
++                : people.findWithLockByIdAndSheetId(matches.get(0), toSheetId).orElseThrow();
++        if (into != null && into.isRetired()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "The person on the other sheet with the name is retired, so cannot be merged into.");
++        }
++        if (into == null && person.getContact() != null
++                && people.existsBySheetIdAndContact(toSheetId, person.getContact())) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The contact is already on the other sheet.");
+         }
+         RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
+@@ -153,6 +168,9 @@ public class PersonTransferService {
+         rollup.recordChanges(by, sheetId, beforeHere);
+         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + by + " name=" + name + " from="
+                 + sheetId);
++        if (into != null) {
++            mergeService.absorb(by, toSheetId, person, into);
++        }
+         rollup.recordChanges(by, toSheetId, beforeThere);
+     }
+ }
+diff --git a/src/main/resources/db/migration/V72__person_alias_merged.sql b/src/main/resources/db/migration/V72__person_alias_merged.sql
+new file mode 100644
+index 00000000..6b341675
+--- /dev/null
++++ b/src/main/resources/db/migration/V72__person_alias_merged.sql
+@@ -0,0 +1,5 @@
++-- A person merged in on arriving from another sheet brings their name and aliases as aliases, which may equal one the
++-- person merged into already has but for case; an alias is no longer kept unique on its sheet by the store, the app
++-- refusing one that is already a name or alias there.
++DROP INDEX person_alias_sheet_alias;
++CREATE INDEX person_alias_sheet_alias ON person_alias (sheet_id, alias_key);
