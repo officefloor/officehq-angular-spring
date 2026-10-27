@@ -75,6 +75,16 @@ public class RateController {
         return service.list(sheetId).stream().map(RateView::of).toList();
     }
 
+    /**
+     * The rates that apply on the sheet, by grade and from-date: its own, and for a date on which a grade has none in
+     * force, its parent sheets' (see {@link RateChain}); a grade with no rate is left out.
+     */
+    @GetMapping("/applying")
+    public List<RateView> applying(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.applying(sheetId).stream().map(RateView::of).toList();
+    }
+
     @PutMapping("/{grade}")
     public RateView set(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

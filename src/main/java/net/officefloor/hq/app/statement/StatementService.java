@@ -15,8 +15,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateChangeRepository;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -38,22 +37,20 @@ public class StatementService {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final ClaimService claimService;
-    private final RateRepository rates;
-    private final RateChangeRepository rateChanges;
+    private final RateChain rates;
     private final SheetService sheets;
     private final RollupService rollup;
     private final SettingsService settings;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateRepository rates, RateChangeRepository rateChanges, SheetService sheets, RollupService rollup,
+            ClaimService claimService, RateChain rates, SheetService sheets, RollupService rollup,
             SettingsService settings, Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
-        this.rateChanges = rateChanges;
         this.sheets = sheets;
         this.rollup = rollup;
         this.settings = settings;
@@ -150,7 +147,7 @@ public class StatementService {
         }
         Sheet then = sheet.asOf(asOf);
         Person person = current.asOf(asOf);
-        List<Rate> ratesThen = rateChanges.ratesAsOf(sheetId, asOf);
+        List<Rate> ratesThen = rates.applyingAsOf(sheetId, asOf);
         // the binding of the person's last statement counts when it was taken while the sheet's today was on or before
         List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         boolean bindingCounts = !theirs.isEmpty() && !theirs.get(theirs.size() - 1).getTakenOn().isAfter(asOf);

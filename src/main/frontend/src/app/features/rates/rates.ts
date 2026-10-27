@@ -155,9 +155,12 @@ export class RateStore {
 
   // Every rate on the sheet, by grade and then from-date.
   readonly list = signal<readonly RateView[]>([]);
+  // The rates that apply on the sheet: its own, and for a date on which a grade has none in force, its parent sheets'
+  // (up to three levels up), given as rates that do not overlap; by grade and then from-date.
+  readonly applying = signal<readonly RateView[]>([]);
   readonly rates = computed(() => {
     const by = new Map<string, RateView[]>();
-    for (const r of this.list()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
+    for (const r of this.applying()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
     return by as ReadonlyMap<string, readonly RateView[]>;
   });
   // Each grade's rate in force on the sheet's today; a grade with none is not in the map.
@@ -174,8 +177,24 @@ export class RateStore {
   /** Re-read the sheet's rates from the store. */
   async load(sheet: string): Promise<void> {
     this.list.set([]);
-    const list = await firstValueFrom(this.http.get<RateView[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`));
-    if (this.session.sheetId() === sheet) this.list.set([...list].sort(byGradeThenFrom));
+    this.applying.set([]);
+    const base = `/api/sheets/${encodeURIComponent(sheet)}/rates`;
+    const [list, applying] = await Promise.all([
+      firstValueFrom(this.http.get<RateView[]>(base)),
+      firstValueFrom(this.http.get<RateView[]>(`${base}/applying`)),
+    ]);
+    if (this.session.sheetId() === sheet) {
+      this.list.set([...list].sort(byGradeThenFrom));
+      this.applying.set([...applying].sort(byGradeThenFrom));
+    }
+  }
+
+  /** Re-read the rates that apply on the sheet, its parent sheets' filling in for its own. */
+  private async loadApplying(sheet: string): Promise<void> {
+    const applying = await firstValueFrom(
+      this.http.get<RateView[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/applying`),
+    );
+    if (this.session.sheetId() === sheet) this.applying.set([...applying].sort(byGradeThenFrom));
   }
 
   /**
@@ -188,6 +207,7 @@ export class RateStore {
     );
     if (this.session.sheetId() === sheet) {
       this.list.update((l) => [...l.filter((x) => x.grade !== r.grade || x.from !== r.from), r].sort(byGradeThenFrom));
+      await this.loadApplying(sheet);
     }
   }
 

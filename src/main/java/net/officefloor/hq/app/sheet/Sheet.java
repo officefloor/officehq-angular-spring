@@ -98,6 +98,13 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /**
+     * The id of the sheet's parent sheet, whose rates apply to a grade with no rate in force on a date on this sheet;
+     * null for none. Not dated.
+     */
+    @Column(name = "parent_id")
+    private String parentId;
+
     /** Whether a steward has archived the sheet: it stays visible and every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -163,6 +170,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.pot = pot;
+        then.parentId = parentId;
         then.archived = archived;
         then.lastSettleBatch = lastSettleBatch;
         // a value recorded before changes were kept stands as it is
@@ -319,6 +327,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public String getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
     }
 
     public boolean isArchived() {

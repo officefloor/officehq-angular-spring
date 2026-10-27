@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.sql.DataSource;
+import net.officefloor.hq.app.rate.RateChain;
 import org.springframework.data.domain.Limit;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -32,7 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
  * with a sheet_id, and of each table that refers to rows so kept; so a table added later is kept with no more ado.
  *
  * A sheet as of a day is a store of its own (see {@link #storeAsOf}): the schema, holding the last state stored
- * while the sheet's today was on or before the day (an empty sheet when there is none), with the day as its today.
+ * while the sheet's today was on or before the day (an empty sheet when there is none), with the day as its today;
+ * and the same for each of its parent sheets whose rates it can take, linked as they are now (a parent is not dated).
  * The whole app reads it unchanged, so every figure on the screen is as of the day.
  */
 @Service
@@ -103,14 +105,21 @@ public class AsOfService {
      */
     @Transactional(readOnly = true)
     public DataSource storeAsOf(String sheetId, LocalDate day) {
-        List<Long> ids = snapshots.idsMadeBy(sheetId, day, Limit.of(1));
-        Long id = ids.isEmpty() ? null : ids.get(0);
-        String key = sheetId + "|" + id + "|" + day;
+        Map<String, String> lineage = lineage(sheetId);
+        List<Long> ids = new ArrayList<>();
+        for (String id : lineage.keySet()) {
+            List<Long> made = snapshots.idsMadeBy(id, day, Limit.of(1));
+            ids.add(made.isEmpty() ? null : made.get(0));
+        }
+        String key = lineage + "|" + ids + "|" + day;
         synchronized (stores) {
             Store store = stores.get(key);
             if (store == null) {
-                SheetState state = id == null ? null : SheetState.of(snapshots.findById(id).orElseThrow().getData());
-                store = open(sheetId, day, state);
+                List<SheetState> states = new ArrayList<>();
+                for (Long id : ids) {
+                    states.add(id == null ? null : SheetState.of(snapshots.findById(id).orElseThrow().getData()));
+                }
+                store = open(lineage, day, states);
                 stores.put(key, store);
                 if (stores.size() > STORES_KEPT) {
                     String eldest = stores.keySet().iterator().next();
@@ -121,8 +130,28 @@ public class AsOfService {
         }
     }
 
-    /** Opens a store of its own with the schema, the state's rows and the day as the sheet's today. */
-    private Store open(String sheetId, LocalDate day, SheetState state) {
+    /**
+     * The sheet's id, then its parent's, and so on as far as its rates can be taken from (see {@link RateChain}), each
+     * with its parent's id as it is now (null for none).
+     */
+    private Map<String, String> lineage(String sheetId) {
+        Map<String, String> lineage = new LinkedHashMap<>();
+        String at = sheetId;
+        while (at != null && !lineage.containsKey(at) && lineage.size() <= RateChain.LEVELS_UP) {
+            List<String> parent = jdbc.queryForList("SELECT parent_id FROM sheet WHERE id = ?", String.class, at);
+            String next = parent.isEmpty() ? null : parent.get(0);
+            lineage.put(at, next);
+            at = next;
+        }
+        return lineage;
+    }
+
+    /**
+     * Opens a store of its own with the schema and, for each sheet of the lineage, its state's rows (an empty sheet
+     * with none) and its parent as it is now; the day stands in for the first one's today.
+     */
+    private Store open(Map<String, String> lineage, LocalDate day, List<SheetState> states) {
+        String sheetId = lineage.keySet().iterator().next();
         String url = "jdbc:h2:mem:asof-" + storeNames.incrementAndGet();
         try {
             Connection holder = DriverManager.getConnection(url, "sa", "");
@@ -135,7 +164,10 @@ public class AsOfService {
                 // the rows are as they stood together, in whatever order; they are read, never changed
                 st.execute("SET REFERENTIAL_INTEGRITY FALSE");
             }
-            if (state != null) {
+            for (SheetState state : states) {
+                if (state == null) {
+                    continue;
+                }
                 for (SheetState.Table t : state.tables()) {
                     if (t.rows().isEmpty()) {
                         continue;
@@ -157,12 +189,21 @@ public class AsOfService {
             try (PreparedStatement today = holder.prepareStatement("UPDATE sheet SET today = ? WHERE id = ?")) {
                 today.setObject(1, day);
                 today.setString(2, sheetId);
-                if (today.executeUpdate() == 0) {
-                    try (PreparedStatement empty = holder.prepareStatement(
-                            "INSERT INTO sheet (id, created_at, today) VALUES (?, CURRENT_TIMESTAMP, ?)")) {
-                        empty.setString(1, sheetId);
-                        empty.setObject(2, day);
-                        empty.executeUpdate();
+                today.executeUpdate();
+            }
+            for (Map.Entry<String, String> link : lineage.entrySet()) {
+                try (PreparedStatement parent = holder.prepareStatement(
+                        "UPDATE sheet SET parent_id = ? WHERE id = ?")) {
+                    parent.setString(1, link.getValue());
+                    parent.setString(2, link.getKey());
+                    if (parent.executeUpdate() == 0) {
+                        try (PreparedStatement empty = holder.prepareStatement("INSERT INTO sheet"
+                                + " (id, created_at, today, parent_id) VALUES (?, CURRENT_TIMESTAMP, ?, ?)")) {
+                            empty.setString(1, link.getKey());
+                            empty.setObject(2, day);
+                            empty.setString(3, link.getValue());
+                            empty.executeUpdate();
+                        }
                     }
                 }
             }

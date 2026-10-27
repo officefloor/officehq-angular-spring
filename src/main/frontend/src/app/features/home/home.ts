@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { People } from '../people/people';
 import { Rates } from '../rates/rates';
-import { Settings } from '../settings/settings';
+import { Settings, SettingsStore } from '../settings/settings';
 import { Delegation } from '../delegation/delegation';
 import { Holidays } from '../holidays/holidays';
 import { VoidReasons } from '../void-reasons/void-reasons';
@@ -36,6 +36,7 @@ import { AuditViewer } from '../audit-viewer/audit-viewer';
         <p>Sheet: <strong data-testid="sheet-current-id">{{ id }}</strong></p>
         <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
         <p>Archived: <strong data-testid="sheet-archived">{{ session.sheetArchived() ? 'yes' : 'no' }}</strong></p>
+        <p>Parent sheet: <strong data-testid="sheet-parent">{{ settings.parent() ?? '' }}</strong></p>
 
         <form (submit)="saveToday($event)" aria-label="Change today">
           <label for="sheet-today">New today</label>
@@ -99,6 +100,7 @@ import { AuditViewer } from '../audit-viewer/audit-viewer';
 })
 export class Home {
   protected readonly session = inject(Session);
+  protected readonly settings = inject(SettingsStore);
   protected readonly nameInput = signal('');
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal<string | null>(null);

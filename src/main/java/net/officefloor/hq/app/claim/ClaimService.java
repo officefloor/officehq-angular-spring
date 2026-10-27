@@ -16,7 +16,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.WatchService;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -42,7 +42,7 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final ClaimTagRepository tags;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RateChain rates;
     private final PeriodRepository periods;
     private final SheetService sheets;
     private final RollupService rollup;
@@ -52,7 +52,7 @@ public class ClaimService {
     private final VoidReasonService voidReasons;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, ClaimTagRepository tags, PersonRepository people, RateRepository rates,
+    public ClaimService(ClaimRepository claims, ClaimTagRepository tags, PersonRepository people, RateChain rates,
             PeriodRepository periods, SheetService sheets, RollupService rollup, SettingsService settings,
             WatchService watches, HolidayService holidays, VoidReasonService voidReasons, Audit audit) {
         this.claims = claims;

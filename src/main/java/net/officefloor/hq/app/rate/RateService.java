@@ -19,14 +19,16 @@ public class RateService {
 
     private final RateRepository rates;
     private final RateChangeRepository changes;
+    private final RateChain chain;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, RateChangeRepository changes, SheetService sheets, RollupService rollup,
-            Audit audit) {
+    public RateService(RateRepository rates, RateChangeRepository changes, RateChain chain, SheetService sheets,
+            RollupService rollup, Audit audit) {
         this.rates = rates;
         this.changes = changes;
+        this.chain = chain;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -36,6 +38,12 @@ public class RateService {
     @Transactional(readOnly = true)
     public List<Rate> list(String sheetId) {
         return rates.findBySheetIdOrderByGradeAscFromAsc(sheetId);
+    }
+
+    /** The rates that apply on the sheet, its parent sheets' filling in for it (see {@link RateChain}). */
+    @Transactional(readOnly = true)
+    public List<Rate> applying(String sheetId) {
+        return chain.applying(sheetId);
     }
 
     /**

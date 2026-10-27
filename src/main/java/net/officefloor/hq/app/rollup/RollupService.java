@@ -18,7 +18,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -44,11 +44,11 @@ public class RollupService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final RateRepository rates;
+    private final RateChain rates;
     private final SheetRepository sheets;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
+    public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates, SheetRepository sheets,
             Audit audit) {
         this.people = people;
         this.claims = claims;
@@ -63,7 +63,7 @@ public class RollupService {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
         Map<String, List<Rate>> byGrade = new HashMap<>();
-        for (Rate r : rates.findBySheetIdOrderByGradeAscFromAsc(sheetId)) {
+        for (Rate r : rates.applying(sheetId)) {
             byGrade.computeIfAbsent(r.getGrade(), g -> new ArrayList<>()).add(r);
         }
         Map<Long, List<Claim>> claimsBy = new HashMap<>();

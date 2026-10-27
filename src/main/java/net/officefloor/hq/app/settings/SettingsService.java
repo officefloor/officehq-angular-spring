@@ -4,9 +4,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -316,6 +318,41 @@ public class SettingsService implements Audit.OnBehalf {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=pot value="
                 + (scaled == null ? "" : scaled.toPlainString()));
+        return saved;
+    }
+
+    /**
+     * Sets the sheet's parent sheet (null for blank: none), whose rates apply to a grade with no rate in force on a
+     * date on this sheet. Refused for the sheet itself, for a sheet never loaded, and for a sheet that has this sheet
+     * as an ancestor. Not dated. The live figures it moves are rolled up.
+     */
+    @Transactional
+    public Sheet setParent(String by, String sheetId, String parentId) {
+        Sheet sheet = sheets.lock(sheetId);
+        if (parentId != null) {
+            if (parentId.equals(sheetId)) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                        "A sheet cannot be its own parent.");
+            }
+            if (!sheetRepository.existsById(parentId)) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                        "The parent must be a sheet that has been loaded.");
+            }
+            Set<String> seen = new HashSet<>();
+            for (String at = parentId; at != null && seen.add(at);
+                    at = sheetRepository.findById(at).map(Sheet::getParentId).orElse(null)) {
+                if (at.equals(sheetId)) {
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                            "That sheet has this sheet as an ancestor.");
+                }
+            }
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setParentId(parentId);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=parent value="
+                + (parentId == null ? "" : parentId));
+        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 
