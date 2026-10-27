@@ -1,0 +1,69 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 2b057a37..0292dbc0 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -2,7 +2,7 @@ import { Component, computed, input } from '@angular/core';
+ import { STATUSES } from '../summary/summary';
+ 
+ // The sheet's counters, shown at all times: each repeats a figure shown elsewhere — the status counts those of the
+-// summary, the two totals the sheet's totals.
++// summary, the two totals the sheet's totals, and the signed-in user's own figures those of their person's row.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -18,6 +18,10 @@ import { STATUSES } from '../summary/summary';
+         <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
+         <dt>Overdue</dt>
+         <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++        <dt>My due</dt>
++        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++        <dt>My overdue</dt>
++        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+       </dl>
+     </header>
+   `,
+@@ -29,6 +33,9 @@ export class Header {
+   readonly statuses = input<readonly string[]>([]);
+   readonly dueTotal = input('');
+   readonly overdueTotal = input('');
++  // The signed-in user's own figures, as on the row of the person with their name or alias; blank with no such person.
++  readonly myDueTotal = input('');
++  readonly myOverdueTotal = input('');
+ 
+   protected readonly byStatus = computed(() =>
+     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0c834660..976c2efb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -77,6 +77,8 @@ interface StatementView {
+       [statuses]="claimStatuses()"
+       [dueTotal]="dueTotal()"
+       [overdueTotal]="overdueTotal()"
++      [myDueTotal]="myFigures()?.dueTotal ?? ''"
++      [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+     />
+     <app-consolidated
+       [ownPeopleCount]="people().length"
+@@ -958,6 +960,21 @@ export class People {
+     return trimmedSum(this.people().map((p) => by.get(p.id) ?? '0.00'));
+   });
+ 
++  // The signed-in user's own figures: those of the person whose name or an alias is, ignoring case, the user's name,
++  // shown as on their row; null when there is no such person.
++  protected readonly myFigures = computed(() => {
++    const user = this.session.user()?.toLowerCase();
++    if (!user) return null;
++    const me = this.people().find(
++      (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
++    );
++    if (me === undefined) return null;
++    return {
++      dueTotal: this.dueBy().get(me.id) ?? 'n/a',
++      overdueTotal: this.overdueTotalBy().get(me.id) ?? '0.00',
++    };
++  });
++
+   constructor() {
+     // The pools offer these people, and count a member retired, or held, as soon as they are.
+     effect(() => {
