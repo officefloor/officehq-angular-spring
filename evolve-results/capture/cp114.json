@@ -1,0 +1,64 @@
+{
+  "checkpoint": 114,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp114_delete-and-restore-draft",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A DRAFT claim can be deleted (a button on the claim; any other status, or a claim in a closed\nperiod, is refused with an error on the claim): its status becomes DELETED, it counts nowhere (not\nin any total, not in the status counts of the header or the summary), it cannot be edited, opened\nor voided, its log gains a DELETED line, and CLAIM_DELETED is written naming the claim. On the same\nsheet-today it was deleted, a restore button makes it a DRAFT again (CLAIM_RESTORED, a DRAFT line in\nthe log); on a later day the restore is refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA DRAFT claim can be deleted (a button on the claim; any other status, or a claim in a closed\nperiod, is refused with an error on the claim): its status becomes DELETED, it counts nowhere (not\nin any total, not in the status counts of the header or the summary), it cannot be edited, opened\nor voided, its log gains a DELETED line, and CLAIM_DELETED is written naming the claim. On the same\nsheet-today it was deleted, a restore button makes it a DRAFT again (CLAIM_RESTORED, a DRAFT line in\nthe log); on a later day the restore is refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "dab5830d25a0279628c36c3407a92836ffeaede9",
+  "reset_sha": "",
+  "preagent_sha": "153965d5f422aedab35f242ff5d4e20809ebad0c",
+  "prev_sha": "153965d5f422aedab35f242ff5d4e20809ebad0c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3734592,
+    "input_tokens": 62,
+    "output_tokens": 11393,
+    "cache_read_tokens": 2151956,
+    "cache_creation_tokens": 89370,
+    "num_turns": 34,
+    "duration_ms": 453978,
+    "duration_api_ms": 172575,
+    "model": "claude-opus-5-5",
+    "session_id": "e86f3e97-a828-4505-a9c8-7cd2ac621e37",
+    "stop_reason": "success",
+    "result_text": "Draft claims can now be deleted and restored, and `bin/e2e` passes all 4 tests. Before my change, only the new delete/restore test failed and the other three already passed.\n\n**How it behaves**\n- **Delete** works only on a DRAFT claim. A claim in any other status, one in a closed period, or one another user is editing is refused, and the claim shows an error.\n- A deleted claim gets the new status DELETED. It counts in no total and in none of the header or summary status counts.\n- A deleted claim can't be edited, opened, voided, moved to another person or given a proof.\n- Deleting adds a DELETED line to the claim's log and writes `CLAIM_DELETED` to the audit file.\n- **Restore** makes it a DRAFT again only if the sheet's today is the day it was deleted. The app works out that day from the claim's last DELETED log line, so no database change was needed. A successful restore adds a DRAFT log line and writes `CLAIM_RESTORED`.\n\n**What changed**\n- **Server:** `DELETED` is added to `ClaimStatus`. `ClaimService` has new `delete`/`restore` methods, and `ClaimController` has new `POST /claims/{id}/delete` and `/restore` endpoints. `Claim` has a `deletedOn()` helper.\n- **Front end:** `claims.ts` has new `claim-delete` and `claim-restore` buttons on each claim, with error messages for refusals. The proof and move checks now also refuse deleted claims.\n\nTwo behaviours you may not expect:\n- Anyone who may change the sheet can delete or restore. I added no role-based permission for these actions, unlike open, settle and void.\n- A deleted claim still holds its external reference, so another claim on the sheet can't reuse that reference.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3734592,
+        "num_turns": 34,
+        "duration_ms": 453978,
+        "duration_api_ms": 172575,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp114.agent.jsonl",
+  "agent_diff_file": "cp114.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
