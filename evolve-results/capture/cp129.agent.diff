@@ -1,0 +1,59 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 976c2efb..70c3edc2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
+-import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../periods/periods';
++import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodDueTotals } from '../periods/periods';
+ import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
+ import { Header } from '../header/header';
+@@ -220,6 +220,7 @@ interface StatementView {
+         Show retired
+       </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
++      <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+ 
+       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+@@ -1404,11 +1405,36 @@ export class People {
+     for (const p of this.people()) {
+       lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', due.get(p.id) ?? 'n/a']);
+     }
++    this.downloadCsv('people.csv', lines);
++  }
++
++  /**
++   * Downloads every claim as a CSV file: people in list order, retired ones included, each person's claims
++   * oldest first, with the figures as the claims list shows them.
++   */
++  protected exportClaims(): void {
++    const rates = this.rates.rates();
++    const floor = this.settings.floor();
++    const late = this.settings.lateness();
++    const periods = this.periods.list();
++    const claimsBy = this.claimsBy();
++    const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
++    for (const p of this.people()) {
++      for (const c of [...(claimsBy.get(p.id) ?? [])].reverse()) {
++        const due = dueOf(c, rates.get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late));
++        const period = periodOn(periods, c.dueBy)?.name ?? '';
++        lines.push([p.name, c.number ?? '', c.date, c.amount, due ?? 'n/a', c.status, period]);
++      }
++    }
++    this.downloadCsv('claims.csv', lines);
++  }
++
++  private downloadCsv(fileName: string, lines: string[][]): void {
+     const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+     const link = this.document.createElement('a');
+     link.href = url;
+-    link.download = 'people.csv';
++    link.download = fileName;
+     link.click();
+     setTimeout(() => URL.revokeObjectURL(url));
+   }
