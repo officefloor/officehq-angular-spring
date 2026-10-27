@@ -1,0 +1,185 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 99dac64f..ff0b528c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,7 +9,7 @@ import { SettingsStore } from '../settings/settings';
+ import { Header } from '../header/header';
+ import { Consolidated } from '../consolidated/consolidated';
+ import { Summary, SummaryPerson } from '../summary/summary';
+-import { PoolRoster } from '../pools/pools';
++import { PoolRoster, PoolStore } from '../pools/pools';
+ 
+ interface Person {
+   id: number;
+@@ -215,6 +215,7 @@ interface StatementView {
+       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+       <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+       <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
++      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ poolStore.cutTotal() }}</strong></p>
+       @if (tagDueTotals().length > 0) {
+         <table>
+           <caption>Due by tag</caption>
+@@ -325,7 +326,7 @@ interface StatementView {
+       <table>
+         <thead>
+           <tr>
+-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th>
++            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Cut total</th><th scope="col">Claimed</th><th scope="col">Due</th>
+             <th scope="col">Settled total</th><th scope="col">Open total</th>
+             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
+@@ -356,6 +357,7 @@ interface StatementView {
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
++              <td data-testid="person-cut-total">{{ poolStore.cutTotals().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
+               <td data-testid="person-settled-total">{{ splitBy().get(p.id)?.settled ?? '0.00' }}</td>
+@@ -538,6 +540,7 @@ export class People {
+   private readonly settings = inject(SettingsStore);
+   protected readonly periods = inject(PeriodStore);
+   private readonly poolRoster = inject(PoolRoster);
++  protected readonly poolStore = inject(PoolStore);
+ 
+   protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 5a35fb8b..dc202ff3 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -104,6 +104,78 @@ function cuts(pot: bigint, members: readonly { share: string; retired: boolean }
+   return result;
+ }
+ 
++// The active sheet's pools as last read from the store, and what they work out to: each member's cut, and each
++// person's cut total.
++@Injectable({ providedIn: 'root' })
++export class PoolStore {
++  private readonly roster = inject(PoolRoster);
++  private readonly settings = inject(SettingsStore);
++
++  readonly pools = signal<readonly PoolView[]>([]);
++  // The pools with each member counted retired as the people list has them now, the totals to match, and each
++  // member's cut of the pool's pot while the pool is balanced: the sheet's pot for a pool that is a member of none,
++  // else its cut in the pool above.
++  readonly shown = computed(() => {
++    const retired = new Map(this.roster.people().map((p) => [p.id, p.retiredFrom !== null]));
++    const pools = this.pools();
++    const parent = parents(pools);
++    const counted = new Map(
++      pools.map((pool) => {
++        const members = pool.members.map((m) => ({
++          ...m,
++          key: m.personId !== null ? String(m.personId) : `pool-${m.name}`,
++          retired: m.personId !== null ? (retired.get(m.personId) ?? m.retired) : false,
++        }));
++        const total = members.reduce((sum, m) => sum + (m.retired ? 0 : hundredths(m.share)), 0);
++        return [pool.id, { pool, members, total, balanced: total === 10000 }] as const;
++      }),
++    );
++    const sheetPot = this.settings.pot();
++    // Each pool's cuts (in cents, in member order), or null for none; worked out top down.
++    const cutsOf = new Map<number, bigint[] | null>();
++    const poolCuts = (id: number): bigint[] | null => {
++      if (cutsOf.has(id)) return cutsOf.get(id)!;
++      const c = counted.get(id)!;
++      let pot: bigint | null = null;
++      const above = parent.get(id);
++      if (above === undefined) {
++        pot = sheetPot !== null ? cents(sheetPot) : null;
++      } else {
++        const i = counted.get(above)!.members.findIndex((m) => m.poolId === id);
++        pot = poolCuts(above)?.[i] ?? null;
++      }
++      const result = c.balanced && pot !== null ? cuts(pot, c.members) : null;
++      cutsOf.set(id, result);
++      return result;
++    };
++    return pools.map((pool) => {
++      const c = counted.get(pool.id)!;
++      const cut = poolCuts(pool.id);
++      const shownMembers: ShownMember[] = c.members.map((m, i) => ({ ...m, cut: cut ? money(cut[i]) : '' }));
++      return { ...pool, members: shownMembers, totalShare: percent(c.total), balanced: c.balanced };
++    });
++  });
++
++  // Each person's cut total (their cuts across every pool they are a member of, a pool showing no cuts adding
++  // nothing), by person id; a person in no pool with a cut is absent.
++  readonly cutTotals = computed(() => {
++    const totals = new Map<number, string>();
++    const sums = new Map<number, bigint>();
++    for (const pool of this.shown())
++      for (const m of pool.members)
++        if (m.personId !== null && m.cut !== '') sums.set(m.personId, (sums.get(m.personId) ?? 0n) + cents(m.cut));
++    for (const [id, c] of sums) totals.set(id, money(c));
++    return totals;
++  });
++
++  // The sheet's cut total: everyone's cut totals added up.
++  readonly cutTotal = computed(() => {
++    let sum = 0n;
++    for (const t of this.cutTotals().values()) sum += cents(t);
++    return money(sum);
++  });
++}
++
+ // The active sheet's pools: each with its members and their shares, its total share and whether it is balanced
+ // (the shares total exactly 100.00). A blank pool name, or one already a pool's, is refused; so is a person already
+ // in the pool, or a share not more than 0.00 and at most 100.00 with up to two decimals. A member may be another pool
+@@ -191,52 +263,10 @@ export class Pools {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
+   protected readonly roster = inject(PoolRoster);
+-  private readonly settings = inject(SettingsStore);
+ 
+-  protected readonly pools = signal<readonly PoolView[]>([]);
+-  // The pools with each member counted retired as the people list has them now, the totals to match, and each
+-  // member's cut of the pool's pot while the pool is balanced: the sheet's pot for a pool that is a member of none,
+-  // else its cut in the pool above.
+-  protected readonly shown = computed(() => {
+-    const retired = new Map(this.roster.people().map((p) => [p.id, p.retiredFrom !== null]));
+-    const pools = this.pools();
+-    const parent = parents(pools);
+-    const counted = new Map(
+-      pools.map((pool) => {
+-        const members = pool.members.map((m) => ({
+-          ...m,
+-          key: m.personId !== null ? String(m.personId) : `pool-${m.name}`,
+-          retired: m.personId !== null ? (retired.get(m.personId) ?? m.retired) : false,
+-        }));
+-        const total = members.reduce((sum, m) => sum + (m.retired ? 0 : hundredths(m.share)), 0);
+-        return [pool.id, { pool, members, total, balanced: total === 10000 }] as const;
+-      }),
+-    );
+-    const sheetPot = this.settings.pot();
+-    // Each pool's cuts (in cents, in member order), or null for none; worked out top down.
+-    const cutsOf = new Map<number, bigint[] | null>();
+-    const poolCuts = (id: number): bigint[] | null => {
+-      if (cutsOf.has(id)) return cutsOf.get(id)!;
+-      const c = counted.get(id)!;
+-      let pot: bigint | null = null;
+-      const above = parent.get(id);
+-      if (above === undefined) {
+-        pot = sheetPot !== null ? cents(sheetPot) : null;
+-      } else {
+-        const i = counted.get(above)!.members.findIndex((m) => m.poolId === id);
+-        pot = poolCuts(above)?.[i] ?? null;
+-      }
+-      const result = c.balanced && pot !== null ? cuts(pot, c.members) : null;
+-      cutsOf.set(id, result);
+-      return result;
+-    };
+-    return pools.map((pool) => {
+-      const c = counted.get(pool.id)!;
+-      const cut = poolCuts(pool.id);
+-      const shownMembers: ShownMember[] = c.members.map((m, i) => ({ ...m, cut: cut ? money(cut[i]) : '' }));
+-      return { ...pool, members: shownMembers, totalShare: percent(c.total), balanced: c.balanced };
+-    });
+-  });
++  private readonly store = inject(PoolStore);
++  protected readonly pools = this.store.pools;
++  protected readonly shown = this.store.shown;
+ 
+   protected readonly name = signal('');
+   protected readonly error = signal<string | null>(null);
