@@ -159,6 +159,24 @@ interface StatementView {
         }
       </form>
 
+      <form (submit)="importPeople($event)" aria-label="Import people">
+        <label for="import-people">Import people, one per line as name,grade,terms,contact</label>
+        <textarea
+          id="import-people"
+          data-testid="import-people"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-submit">Import people</button>
+        @if (importAdded() !== null) {
+          <p role="status">Added: <strong data-testid="import-added">{{ importAdded() }}</strong></p>
+        }
+        @if (importError(); as err) {
+          <p role="alert" data-testid="import-error">{{ err }}</p>
+        }
+      </form>
+
       <form (submit)="paste($event)" aria-label="Paste claims">
         <label for="paste-claims">Paste claims, one per line as name,amount,date,note</label>
         <textarea
@@ -551,6 +569,11 @@ export class People {
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteError = signal<string | null>(null);
   private pasting = false;
+  // The import box: lines of name,grade,terms,contact add a person each, all or none; and how many it added.
+  protected readonly importText = signal('');
+  protected readonly importAdded = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  private importing = false;
   // Each person's refused row action, by person id.
   protected readonly rowErrors = signal<Record<number, string>>({});
   // Every patron named on the sheet, the patron chosen on each row (a person id, by person id) and each row's
@@ -914,6 +937,9 @@ export class People {
         this.pasteText.set('');
         this.pasteAdded.set(null);
         this.pasteError.set(null);
+        this.importText.set('');
+        this.importAdded.set(null);
+        this.importError.set(null);
         this.selectedPeople.set(new Set());
         this.bulkGrade.set('A');
         this.bulkGradeFrom.set('');
@@ -1600,6 +1626,39 @@ export class People {
       this.pasteError.set(reason ? reason : 'Could not add the pasted claims; none were added.');
     } finally {
       this.pasting = false;
+    }
+  }
+
+  /**
+   * Adds a person for each line of the import box, in order; the store checks every line by the person form's rules
+   * first and adds none when any is refused. Shows how many were added.
+   */
+  protected async importPeople(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.importing) return;
+    this.importAdded.set(null);
+    this.importError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of name,grade,terms,contact.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const added = await firstValueFrom(
+        this.http.post<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people/import`, { text }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => [...list, ...added]);
+      this.importText.set('');
+      this.importAdded.set(added.length);
+    } catch (err) {
+      const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
+      this.importError.set(reason ? reason : 'Could not import those people; none were added.');
+    } finally {
+      this.importing = false;
     }
   }
 

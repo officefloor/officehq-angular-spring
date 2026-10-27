@@ -118,6 +118,10 @@ public class PersonController {
     public record BulkGradeView(List<PersonView> graded) {
     }
 
+    /** The import box: lines of name,grade,terms,contact. */
+    public record ImportForm(@NotNull @Size(max = 100_000) String text) {
+    }
+
     /** Whether the signed-in user is to watch the person. */
     public record WatchForm(@NotNull Boolean on) {
     }
@@ -132,15 +136,18 @@ public class PersonController {
     private final AsOfService asOf;
     private final WatchService watches;
     private final SettingsService settings;
+    private final PersonImportService imports;
 
     public PersonController(PersonService service, PersonMergeService merges,
-            PersonTransferService transfers, AsOfService asOf, WatchService watches, SettingsService settings) {
+            PersonTransferService transfers, AsOfService asOf, WatchService watches, SettingsService settings,
+            PersonImportService imports) {
         this.service = service;
         this.merges = merges;
         this.transfers = transfers;
         this.asOf = asOf;
         this.watches = watches;
         this.settings = settings;
+        this.imports = imports;
     }
 
     /** All the people on the sheet, in the order they were added. */
@@ -159,6 +166,18 @@ public class PersonController {
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId, service.add(user, sheetId, form.name(), form.grade(), form.terms(),
                 form.contact()));
+    }
+
+    /** Adds a person for each pasted line, in order, all or none; the people added, in the order of their lines. */
+    @PostMapping("/import")
+    public List<PersonView> importPeople(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody ImportForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        List<Person> added = imports.importPeople(user, sheetId, form.text());
+        LocalDate today = service.today(sheetId);
+        Set<Long> clashing = service.clashing(sheetId);
+        return added.stream().map(p -> PersonView.of(p, today, clashing)).toList();
     }
 
     @PutMapping("/{id}")
