@@ -103,7 +103,7 @@ public class PersonTransferService {
         patrons.deleteAll(patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(p -> p.getPersonId().equals(id) || p.getPatronId().equals(id)).toList());
         List<PoolMember> memberships = poolMembers.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(m -> m.getPersonId().equals(id)).toList();
+                .filter(m -> id.equals(m.getPersonId())).toList();
         poolMembers.deleteAll(memberships);
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(id));
         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id));

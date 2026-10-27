@@ -148,11 +148,11 @@ public class PersonMergeService {
     private void mergePools(String sheetId, Long from, Long into) {
         List<PoolMember> all = poolMembers.findBySheetIdOrderByIdAsc(sheetId);
         for (PoolMember m : all) {
-            if (!m.getPersonId().equals(from)) {
+            if (!from.equals(m.getPersonId())) {
                 continue;
             }
             PoolMember theirs = all.stream()
-                    .filter(o -> o.getPoolId().equals(m.getPoolId()) && o.getPersonId().equals(into))
+                    .filter(o -> o.getPoolId().equals(m.getPoolId()) && into.equals(o.getPersonId()))
                     .findFirst().orElse(null);
             if (theirs != null) {
                 theirs.setShare(theirs.getShare().add(m.getShare()).min(HUNDRED));
