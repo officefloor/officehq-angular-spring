@@ -60,11 +60,17 @@ public class RateController {
     public record PreviewView(int count, String diff) {
     }
 
+    /** The import box: lines of grade,rate,from,to. */
+    public record ImportForm(@NotNull @Size(max = 100_000) String text) {
+    }
+
     private final RateService service;
+    private final RateImportService imports;
     private final ClaimService claims;
 
-    public RateController(RateService service, ClaimService claims) {
+    public RateController(RateService service, RateImportService imports, ClaimService claims) {
         this.service = service;
+        this.imports = imports;
         this.claims = claims;
     }
 
@@ -91,6 +97,14 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody RateForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), form.pct()));
+    }
+
+    /** Sets a rate for each line of the import box, in order, all of them or none; the rates set, in line order. */
+    @PostMapping("/import")
+    public List<RateView> importRates(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody ImportForm form, @SessionAttribute(SessionController.USER) String user) {
+        return imports.importRates(user, sheetId, form.text()).stream().map(RateView::of).toList();
     }
 
     /** Previews the grade's rate at a candidate percent on every date; nothing is saved or audited, so a viewer may too. */

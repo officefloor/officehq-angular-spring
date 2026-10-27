@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -211,6 +211,18 @@ export class RateStore {
     }
   }
 
+  /**
+   * Set a rate for each line of grade,rate,from,to, in order, all of them or none; the store checks every line by the
+   * rate form's rules first. Resolves to how many were set.
+   */
+  async importRates(sheet: string, text: string): Promise<number> {
+    const set = await firstValueFrom(
+      this.http.post<RateView[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/import`, { text }),
+    );
+    if (this.session.sheetId() === sheet) await this.load(sheet);
+    return set.length;
+  }
+
   /** Preview the grade's rate at the percent on every date; nothing is saved. */
   preview(sheet: string, grade: string, pct: string): Promise<RatePreview> {
     return firstValueFrom(
@@ -264,6 +276,24 @@ export class RateStore {
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
+        }
+      </form>
+
+      <form (submit)="importRates($event)" aria-label="Import rates">
+        <label for="import-rates">Import rates, one per line as grade,rate,from,to</label>
+        <textarea
+          id="import-rates"
+          data-testid="import-rates"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (importSet() !== null) {
+          <p role="status">Set: <strong data-testid="import-rates-set">{{ importSet() }}</strong></p>
+        }
+        @if (importError(); as err) {
+          <p role="alert" data-testid="import-rates-error">{{ err }}</p>
         }
       </form>
 
@@ -347,14 +377,22 @@ export class Rates {
   protected readonly previewPct = signal('');
   protected readonly previewResult = signal<RatePreview | null>(null);
   protected readonly previewError = signal<string | null>(null);
+  protected readonly importText = signal('');
+  protected readonly importSet = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
   // A submit in flight: a second submit before it answers is ignored, so it stores one rate.
   private submitting = false;
+  // An import in flight: a second press before it answers is ignored, so it sets each line once.
+  private importing = false;
 
   constructor() {
-    // a preview belongs to the sheet as it was loaded; a load clears it
+    // a preview and an import's count belong to the sheet as it was loaded; a load clears them
     effect(() => {
       this.session.loads();
       this.clearPreview();
+      this.importText.set('');
+      this.importSet.set(null);
+      this.importError.set(null);
     });
   }
 
@@ -382,6 +420,36 @@ export class Rates {
       if (this.session.sheetId() === sheet) this.previewResult.set(r);
     } catch {
       this.previewError.set('Could not preview that rate.');
+    }
+  }
+
+  /**
+   * Sets a rate for each line of the import box, in order; the store checks every line by the rate form's rules first
+   * and sets none when any is refused. Shows how many were set.
+   */
+  protected async importRates(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.importing) return;
+    this.importSet.set(null);
+    this.importError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of grade,rate,from,to.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const count = await this.store.importRates(sheet, text);
+      if (this.session.sheetId() !== sheet) return;
+      this.importText.set('');
+      this.importSet.set(count);
+    } catch (err) {
+      const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
+      this.importError.set(reason ? reason : 'Could not import those rates; none were set.');
+    } finally {
+      this.importing = false;
     }
   }
 
