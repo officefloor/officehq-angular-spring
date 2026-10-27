@@ -323,6 +323,21 @@ interface StatementView {
         @if (bulkGradeError(); as err) {
           <p role="alert" data-testid="person-error">{{ err }}</p>
         }
+        <label for="bulk-retire-date">Retire selected people from</label>
+        <input
+          type="date"
+          id="bulk-retire-date"
+          data-testid="bulk-retire-date"
+          [value]="bulkRetireFrom()"
+          (input)="bulkRetireFrom.set(value($event)); bulkRetireError.set(null)"
+        />
+        <button type="button" data-testid="bulk-retire" (click)="applyBulkRetire()">Retire selected people</button>
+        @if (bulkRetired() !== null) {
+          <p role="status">Retired: <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></p>
+        }
+        @if (bulkRetireError(); as err) {
+          <p role="alert" data-testid="person-error">{{ err }}</p>
+        }
       </div>
 
       <table>
@@ -675,6 +690,11 @@ export class People {
   protected readonly bulkGradeFrom = signal('');
   protected readonly bulkGraded = signal<number | null>(null);
   protected readonly bulkGradeError = signal<string | null>(null);
+  // The bulk retire's from-date as typed (blank: the sheet's today) and the last one's count (none while one runs).
+  protected readonly bulkRetireFrom = signal('');
+  protected readonly bulkRetired = signal<number | null>(null);
+  protected readonly bulkRetireError = signal<string | null>(null);
+  private bulkRetiring = false;
   private bulkGrading = false;
   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
   // dated within one of their person's holds, or whose person's retirement date today has reached, that no statement
@@ -961,6 +981,9 @@ export class People {
         this.bulkGradeFrom.set('');
         this.bulkGraded.set(null);
         this.bulkGradeError.set(null);
+        this.bulkRetireFrom.set('');
+        this.bulkRetired.set(null);
+        this.bulkRetireError.set(null);
         this.bulkReassignTo.set('');
         this.bulkReassigned.set(null);
         this.bulkReassignError.set(null);
@@ -1470,6 +1493,7 @@ export class People {
 
   protected selectPerson(id: number, checked: boolean): void {
     this.bulkGradeError.set(null);
+    this.bulkRetireError.set(null);
     this.clearRowErrors(id);
     this.selectedPeople.update((selected) => {
       const next = new Set(selected);
@@ -1527,6 +1551,51 @@ export class People {
       this.bulkGradeError.set('Could not grade the selected people; none were changed.');
     } finally {
       this.bulkGrading = false;
+    }
+  }
+
+  /**
+   * Retires the selected people from the typed date (blank: the sheet's today) together: the store retires each one
+   * in list order, as the row's retire would, all or none. Shows how many were retired.
+   */
+  protected async applyBulkRetire(): Promise<void> {
+    if (this.bulkRetiring) return;
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = [...this.selectedPeople()];
+    // retiring the selected people is the next action on each of their rows
+    ids.forEach((id) => this.clearRowErrors(id));
+    const from = this.bulkRetireFrom().trim();
+    if (ids.length === 0) {
+      this.bulkRetireError.set('Select at least one person to retire.');
+      return;
+    }
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.bulkRetireError.set('Enter the retirement date as yyyy-mm-dd.');
+      return;
+    }
+    this.bulkRetiring = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ retired: Person[] }>(`/api/sheets/${encodeURIComponent(sheet)}/people/bulk-retire`, {
+          ids,
+          from: from || null,
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      const byId = new Map(result.retired.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
+      const editing = this.editingId();
+      if (editing !== null && byId.has(editing)) this.editingVersion.set(byId.get(editing)!.version);
+      this.selectedPeople.set(new Set());
+      this.bulkRetireFrom.set('');
+      this.bulkRetired.set(result.retired.length);
+    } catch {
+      this.bulkRetireError.set('Could not retire the selected people; none were retired.');
+    } finally {
+      this.bulkRetiring = false;
     }
   }
 

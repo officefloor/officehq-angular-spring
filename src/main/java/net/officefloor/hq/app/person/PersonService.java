@@ -228,6 +228,25 @@ public class PersonService {
     }
 
     /**
+     * Retires each of the people from the date (missing: the sheet's today), in list order, exactly as each one's
+     * retire would, all or none: one that is not a person of the sheet refuses them all. The people as saved, in list
+     * order.
+     */
+    @Transactional
+    public List<Person> bulkRetire(String by, String sheetId, Set<Long> ids, LocalDate from) {
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> ids.contains(p.getId())).toList();
+        if (chosen.size() != ids.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person.");
+        }
+        List<Person> saved = new ArrayList<>();
+        for (Person p : chosen) {
+            saved.add(retire(by, sheetId, p.getId(), from));
+        }
+        return saved;
+    }
+
+    /**
      * Puts a hold on the person from the date (missing: the sheet's today) to the to-date (missing: with no end); the
      * holds already put are kept, each ending on its to-date. Their open claims dated within a hold, not bound by a
      * statement, count in no live total. Refused when the to-date is before the from-date.

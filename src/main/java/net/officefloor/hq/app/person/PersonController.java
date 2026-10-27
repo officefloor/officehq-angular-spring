@@ -118,6 +118,14 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** A retirement for the people with the ids together, from its from-date (missing: the sheet's today). */
+    public record BulkRetireForm(@NotEmpty Set<Long> ids, LocalDate from) {
+    }
+
+    /** The people a bulk retire retired, in list order. */
+    public record BulkRetireView(List<PersonView> retired) {
+    }
+
     /** The people a bulk grade changed, in list order. */
     public record BulkGradeView(List<PersonView> graded) {
     }
@@ -284,6 +292,25 @@ public class PersonController {
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
         return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing)).toList());
+    }
+
+    /**
+     * Retires the people from the from-date together, in list order, as each one's retire would. A viewer, or anyone
+     * on an archived sheet, goes through with none retired.
+     */
+    @PostMapping("/bulk-retire")
+    @ViewerPasses
+    public BulkRetireView bulkRetire(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody BulkRetireForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        if (settings.isReadOnly(sheetId, user)) {
+            return new BulkRetireView(List.of());
+        }
+        List<Person> retired = service.bulkRetire(user, sheetId, form.ids(), form.from());
+        LocalDate today = service.today(sheetId);
+        Set<Long> clashing = service.clashing(sheetId);
+        return new BulkRetireView(retired.stream().map(p -> PersonView.of(p, today, clashing)).toList());
     }
 
     /** The person as listed on the sheet's today. */
