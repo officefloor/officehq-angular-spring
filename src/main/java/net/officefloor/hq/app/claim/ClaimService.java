@@ -774,6 +774,13 @@ public class ClaimService {
         keepTags(sheetId, claim.getTags());
     }
 
+    /** Gives a claim copied onto the sheet from another, where it had a number, the sheet's next. */
+    @Transactional
+    public void numberCopy(String sheetId, Claim claim) {
+        claim.clearNumber();
+        number(sheetId, claim);
+    }
+
     /**
      * Gives a numbered claim the next number in the sequence it would be numbered in now; its old one is retired, so it
      * is never given again (a sheet number never is: the sheet's count only rises).

@@ -7,10 +7,12 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import net.officefloor.hq.app.asof.AsOfReads;
+import net.officefloor.hq.app.asof.AsOfService;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.settings.ViewerPasses;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,10 +35,18 @@ public class SheetController {
     public record TodayChange(@NotNull LocalDate today) {
     }
 
-    private final SheetService service;
+    /** The id of the sheet to clone this one to. */
+    public record CloneForm(@NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String toSheetId) {
+    }
 
-    public SheetController(SheetService service) {
+    private final SheetService service;
+    private final SheetCloneService clones;
+    private final AsOfService asOf;
+
+    public SheetController(SheetService service, SheetCloneService clones, AsOfService asOf) {
         this.service = service;
+        this.clones = clones;
+        this.asOf = asOf;
     }
 
     /** Load a sheet by id, starting it empty if it was never loaded before. */
@@ -52,5 +62,14 @@ public class SheetController {
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String id,
             @Valid @RequestBody TodayChange change, @SessionAttribute(SessionController.USER) String user) {
         return SheetView.of(service.setToday(user, id, change.today()));
+    }
+
+    /** Clones the sheet to another id never used before; only a steward may. */
+    @PostMapping("/{id}/clone")
+    public void cloneSheet(@PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String id,
+            @Valid @RequestBody CloneForm form, @SessionAttribute(SessionController.USER) String user) {
+        clones.cloneSheet(user, id, form.toSheetId());
+        // the request's own sheet is stored as it now stands once answered; the clone is new too
+        asOf.capture(form.toSheetId());
     }
 }

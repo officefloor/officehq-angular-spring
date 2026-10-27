@@ -55,6 +55,13 @@ export class Session {
     this.sheetToday.set(s.today);
   }
 
+  // Clones the active sheet to another id, never used before.
+  async cloneSheet(toSheetId: string): Promise<void> {
+    const id = this.sheetId();
+    if (!id) return;
+    await firstValueFrom(this.http.post(`/api/sheets/${encodeURIComponent(id)}/clone`, { toSheetId }));
+  }
+
   async archive(): Promise<void> {
     const id = this.sheetId();
     if (!id) return;

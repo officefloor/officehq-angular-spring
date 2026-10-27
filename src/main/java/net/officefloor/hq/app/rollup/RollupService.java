@@ -208,6 +208,18 @@ public class RollupService {
         }
     }
 
+    /** Records, once the change commits, a ROLLUP line for every person on the sheet, then its TOTALS line. */
+    public void recordAll(String by, String sheetId) {
+        Snapshot now = snapshot(sheetId);
+        String head = " sheet=" + sheetId + " by=" + by;
+        for (Figures f : now.people().values()) {
+            audit.recordOnCommit("ROLLUP" + head + " person=" + f.name() + " claimed=" + f.claimed().toPlainString()
+                    + " due-total=" + text(f.dueTotal()) + " overdue-total=" + f.overdueTotal().toPlainString());
+        }
+        audit.recordOnCommit("TOTALS" + head + " claimed-total=" + now.claimedTotal().toPlainString() + " due-total="
+                + now.dueTotal().toPlainString() + " overdue-total=" + now.overdueTotal().toPlainString());
+    }
+
     /**
      * The figure of a claim: its settled due, else the one a statement bound it to, else its rate figure (no floor),
      * rounded as the sheet's policy date decides for it.

@@ -51,6 +51,18 @@ import { AuditViewer } from '../audit-viewer/audit-viewer';
         </form>
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
 
+        <form (submit)="cloneSheet($event)" aria-label="Clone sheet">
+          <label for="sheet-clone-to">Clone to sheet id</label>
+          <input
+            id="sheet-clone-to"
+            data-testid="sheet-clone-to"
+            [value]="cloneInput()"
+            (input)="cloneInput.set(value($event)); todayError.set(null)"
+          />
+          <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+        </form>
+        <p>Cloned to: <strong data-testid="sheet-cloned-to">{{ clonedTo() ?? '' }}</strong></p>
+
         <p>As of: <strong data-testid="sheet-asof">{{ session.sheetAsOf() ?? '' }}</strong></p>
         <form (submit)="setAsOf($event)" aria-label="Show the sheet as of a date">
           <label for="asof-date">Show as of</label>
@@ -106,7 +118,10 @@ export class Home {
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayInput = signal('');
-  // The sheet's own error: a refused today change or archive.
+  protected readonly cloneInput = signal('');
+  // The id the sheet was last cloned to; cleared while a clone runs.
+  protected readonly clonedTo = signal<string | null>(null);
+  // The sheet's own error: a refused today change, archive or clone.
   protected readonly todayError = signal<string | null>(null);
 
   protected readonly asOfInput = signal('');
@@ -183,6 +198,23 @@ export class Home {
       await this.session.setAsOf(null);
     } catch {
       this.asOfError.set('Could not show the sheet as it stands.');
+    }
+  }
+
+  protected async cloneSheet(e: Event): Promise<void> {
+    e.preventDefault();
+    this.todayError.set(null);
+    this.clonedTo.set(null);
+    const to = this.cloneInput().trim();
+    if (!to) {
+      this.todayError.set('Enter the id of the sheet to clone to.');
+      return;
+    }
+    try {
+      await this.session.cloneSheet(to);
+      this.clonedTo.set(to);
+    } catch {
+      this.todayError.set('Could not clone the sheet to that id.');
     }
   }
 
