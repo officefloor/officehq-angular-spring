@@ -1,6 +1,7 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { AsOf, LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
 import { sumSkippingNa } from '../rates/rates';
 
@@ -11,7 +12,8 @@ interface DescendantFigures {
   overdueTotal: string;
 }
 
-// The figures over the sheet and all its descendants: the sheet's own, as it shows them, plus each descendant's.
+// The figures over the sheet and all its descendants: the sheet's own, as it shows them, plus each descendant's. While
+// the sheet is shown as of a date they stay as the sheet and its descendants stand now, read from the store.
 @Component({
   selector: 'app-consolidated',
   template: `
@@ -31,6 +33,7 @@ interface DescendantFigures {
 export class Consolidated {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly asOf = inject(AsOf);
 
   // The sheet's own figures, as it shows them.
   readonly ownPeopleCount = input(0);
@@ -39,20 +42,30 @@ export class Consolidated {
 
   private readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
 
-  protected readonly peopleCount = computed(() => this.ownPeopleCount() + this.descendants().peopleCount);
-  protected readonly dueTotal = computed(() => sumSkippingNa([this.ownDueTotal(), this.descendants().dueTotal]));
-  protected readonly overdueTotal = computed(() =>
-    sumSkippingNa([this.ownOverdueTotal(), this.descendants().overdueTotal]),
+  // The sheet's and its descendants' figures as they stand now, read while the sheet is shown as of a date.
+  private readonly live = signal<DescendantFigures | null>(null);
+
+  protected readonly peopleCount = computed(
+    () => this.live()?.peopleCount ?? this.ownPeopleCount() + this.descendants().peopleCount,
+  );
+  protected readonly dueTotal = computed(
+    () => this.live()?.dueTotal ?? sumSkippingNa([this.ownDueTotal(), this.descendants().dueTotal]),
+  );
+  protected readonly overdueTotal = computed(
+    () => this.live()?.overdueTotal ?? sumSkippingNa([this.ownOverdueTotal(), this.descendants().overdueTotal]),
   );
 
   constructor() {
     // Re-read the descendants' figures from the store each time a sheet is loaded.
     effect(() => {
       const id = this.session.sheetId();
+      const asOf = this.asOf.date();
       this.session.loads();
       untracked(() => {
         this.descendants.set({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
-        if (id) void this.load(id);
+        this.live.set(null);
+        if (id && asOf) void this.loadLive(id);
+        else if (id) void this.load(id);
       });
     });
   }
@@ -65,6 +78,19 @@ export class Consolidated {
       if (this.session.sheetId() === id) this.descendants.set(figures);
     } catch {
       // with none read, the sheet's own figures stand alone
+    }
+  }
+
+  private async loadLive(id: string): Promise<void> {
+    try {
+      const figures = await firstValueFrom(
+        this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(id)}/descendants/consolidated`, {
+          context: new HttpContext().set(LIVE, true),
+        }),
+      );
+      if (this.session.sheetId() === id && this.asOf.date()) this.live.set(figures);
+    } catch {
+      // with none read, the figures shown as of the date stand
     }
   }
 }

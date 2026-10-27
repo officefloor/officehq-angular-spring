@@ -466,6 +466,17 @@ interface StatementView {
                 <button type="button" data-testid="person-merge" (click)="merge(p)">
                   Merge<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'transfer-to-' + p.id">Transfer to sheet<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  type="text"
+                  [id]="'transfer-to-' + p.id"
+                  data-testid="person-transfer-to"
+                  [value]="transferTargets()[p.id] ?? ''"
+                  (input)="setTransferTarget(p.id, value($event))"
+                />
+                <button type="button" data-testid="person-transfer" (click)="transfer(p)">
+                  Transfer<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
               </td>
               <td>
                 <app-claims
@@ -549,6 +560,8 @@ export class People {
   protected readonly patronErrors = signal<Record<number, string>>({});
   // The person chosen on each row to merge that row's person into (a person id, by person id).
   protected readonly mergeChoices = signal<Record<number, string>>({});
+  // The sheet id typed on each row to transfer that row's person to, by person id.
+  protected readonly transferTargets = signal<Record<number, string>>({});
   // Each person's statements, by person id; a person with none is not in the map.
   protected readonly statements = signal<StatementView[]>([]);
   protected readonly statementsBy = computed(() => new Map(this.statements().map((s) => [s.personId, s])));
@@ -884,6 +897,7 @@ export class People {
         this.aliasInputs.set({});
         this.patronErrors.set({});
         this.mergeChoices.set({});
+        this.transferTargets.set({});
         this.rowErrors.set({});
         this.retireDates.set({});
         this.statementAsOfs.set({});
@@ -1034,6 +1048,49 @@ export class People {
       return;
     }
     // the merge moves claims, patrons and pool memberships: every view re-reads the sheet
+    if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
+  }
+
+  protected setTransferTarget(id: number, sheetId: string): void {
+    this.transferTargets.update((t) => ({ ...t, [id]: sheetId }));
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  /**
+   * A steward transfers the person, with their claims, to the sheet with the typed id; they leave this sheet. Refused
+   * for a retired person and for this sheet's own id.
+   */
+  protected async transfer(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const toSheet = (this.transferTargets()[p.id] ?? '').trim();
+    const refuse = (message: string) => this.rowErrors.update((e) => ({ ...e, [p.id]: message }));
+    if (!/^[A-Za-z0-9_.-]{1,100}$/.test(toSheet)) {
+      refuse('Enter the id of the sheet to transfer to.');
+      return;
+    }
+    if (toSheet === sheet) {
+      refuse('A person cannot be transferred to their own sheet.');
+      return;
+    }
+    if (p.retiredFrom !== null) {
+      refuse('A retired person cannot be transferred.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/transfer`;
+    try {
+      await firstValueFrom(this.http.post<void>(url, { toSheetId: toSheet }));
+    } catch (err) {
+      refuse(
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can transfer people.'
+          : 'Could not transfer this person.',
+      );
+      return;
+    }
+    this.transferTargets.update(({ [p.id]: _, ...rest }) => rest);
+    // the person leaves with their claims, patron links and pool memberships: every view re-reads the sheet
     if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
   }
 

@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.asof.AsOfService;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.settings.ViewerPasses;
@@ -96,6 +97,10 @@ public class PersonController {
     public record MergeForm(@NotNull Long intoId) {
     }
 
+    /** A transfer: the id of the sheet the person is transferred to. */
+    public record TransferForm(@NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String toSheetId) {
+    }
+
     /** A retirement: the date it takes effect; a missing date takes the sheet's today. */
     public record RetireForm(LocalDate from) {
     }
@@ -123,13 +128,17 @@ public class PersonController {
 
     private final PersonService service;
     private final PersonMergeService merges;
+    private final PersonTransferService transfers;
+    private final AsOfService asOf;
     private final WatchService watches;
     private final SettingsService settings;
 
-    public PersonController(PersonService service, PersonMergeService merges, WatchService watches,
-            SettingsService settings) {
+    public PersonController(PersonService service, PersonMergeService merges,
+            PersonTransferService transfers, AsOfService asOf, WatchService watches, SettingsService settings) {
         this.service = service;
         this.merges = merges;
+        this.transfers = transfers;
+        this.asOf = asOf;
         this.watches = watches;
         this.settings = settings;
     }
@@ -180,6 +189,20 @@ public class PersonController {
             @PathVariable Long id, @Valid @RequestBody MergeForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId, merges.merge(user, sheetId, id, form.intoId()));
+    }
+
+    /**
+     * A steward transfers the person, with their claims, to another sheet; they leave this one. Refused for a retired
+     * person, this sheet's own id, and a name, alias or contact already on the other sheet.
+     */
+    @PostMapping("/{id}/transfer")
+    public void transfer(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody TransferForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        transfers.transfer(user, sheetId, id, form.toSheetId());
+        // the request's own sheet is stored as it now stands once answered; the other sheet changed too
+        asOf.capture(form.toSheetId());
     }
 
     @PostMapping("/{id}/retire")

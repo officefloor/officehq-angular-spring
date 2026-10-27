@@ -301,6 +301,21 @@ public class Claim {
         this.personId = personId;
     }
 
+    /** Moves the claim to the other sheet, still the person's; what holds only on its old sheet is left behind there. */
+    public void moveToSheet(String sheetId) {
+        this.sheetId = sheetId;
+        this.ref = null;
+        this.settleBatch = null;
+        this.lockedBy = null;
+        unbind();
+    }
+
+    /** The sheet's today when the claim was first opened, as its status log records it; null when it does not. */
+    public LocalDate openedOn() {
+        return log.stream().filter(e -> e.getStatus() == ClaimStatus.OPEN).map(ClaimLogEntry::getOn).findFirst()
+                .orElse(null);
+    }
+
     public Long getListed() {
         return listed;
     }

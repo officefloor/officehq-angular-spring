@@ -33,4 +33,11 @@ public class RollupController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
         return ConsolidatedView.of(service.descendants(sheetId));
     }
+
+    /** The sheet's own figures and its descendants' added up, as the store holds them now. */
+    @GetMapping("/consolidated")
+    public ConsolidatedView consolidated(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return ConsolidatedView.of(service.consolidated(sheetId));
+    }
 }

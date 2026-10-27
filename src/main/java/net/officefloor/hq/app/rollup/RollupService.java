@@ -157,6 +157,15 @@ public class RollupService {
         return new Consolidated(peopleCount, due, overdue);
     }
 
+    /** The sheet's own figures and its descendants' added up: the consolidated figures as the store holds them now. */
+    @Transactional(readOnly = true)
+    public Consolidated consolidated(String sheetId) {
+        Snapshot own = snapshot(sheetId);
+        Consolidated below = descendants(sheetId);
+        return new Consolidated(own.people().size() + below.peopleCount(), own.dueTotal().add(below.dueTotal()),
+                own.overdueTotal().add(below.overdueTotal()));
+    }
+
     /** The sheet-total of the people's figures: with three or more, the single highest and lowest are left out. */
     static BigDecimal trimmedSum(List<BigDecimal> figures) {
         BigDecimal sum = figures.stream().reduce(ZERO, BigDecimal::add);

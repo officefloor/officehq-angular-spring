@@ -198,6 +198,14 @@ public class Person {
                 .toList();
     }
 
+    /** Moves the person, with their grades, holds and aliases, to the other sheet. */
+    public void moveToSheet(String sheetId) {
+        this.sheetId = sheetId;
+        List<PersonAlias> moved = aliases.stream().map(a -> new PersonAlias(sheetId, a.getAlias())).toList();
+        aliases.clear();
+        aliases.addAll(moved);
+    }
+
     /** Gives the person the alias, without surrounding spaces; the ones already given are kept. */
     public void addAlias(String alias) {
         aliases.add(new PersonAlias(sheetId, alias));

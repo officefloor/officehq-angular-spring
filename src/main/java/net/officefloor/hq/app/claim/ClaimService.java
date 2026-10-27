@@ -713,6 +713,19 @@ public class ClaimService {
     }
 
     /**
+     * Takes in a claim moved to the sheet from another: one that had a number there gets the sheet's next, as one
+     * being opened would, and its tags are kept as used on the sheet.
+     */
+    @Transactional
+    public void takeIn(String sheetId, Claim claim) {
+        if (claim.getNumber() != null) {
+            claim.clearNumber();
+            number(sheetId, claim);
+        }
+        keepTags(sheetId, claim.getTags());
+    }
+
+    /**
      * Gives a numbered claim the next number in the sequence it would be numbered in now; its old one is retired, so it
      * is never given again (a sheet number never is: the sheet's count only rises).
      */
