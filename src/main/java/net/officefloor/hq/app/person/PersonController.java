@@ -239,8 +239,9 @@ public class PersonController {
     }
 
     /**
-     * A steward transfers the person, with their claims, to another sheet; they leave this one. Refused for a retired
-     * person, this sheet's own id, and a name, alias or contact already on the other sheet.
+     * A steward transfers the person, with their claims, to another sheet; they leave this one, and are merged there
+     * into the person with their name or an alias. Refused for a retired person, this sheet's own id, and a contact
+     * already on the other sheet.
      */
     @PostMapping("/{id}/transfer")
     public void transfer(

@@ -34,12 +34,13 @@ public class PersonTransferService {
     private final SheetService sheets;
     private final SettingsService settings;
     private final RollupService rollup;
+    private final PersonMergeService mergeService;
     private final Audit audit;
 
     public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, ClaimService claimService, StatementRepository statements,
             PoolMemberRepository poolMembers, SheetService sheets, SettingsService settings, RollupService rollup,
-            Audit audit) {
+            PersonMergeService mergeService, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -50,6 +51,7 @@ public class PersonTransferService {
         this.sheets = sheets;
         this.settings = settings;
         this.rollup = rollup;
+        this.mergeService = mergeService;
         this.audit = audit;
     }
 
@@ -60,8 +62,10 @@ public class PersonTransferService {
      * claims were opened (by the sheet's today when each was opened, then the order they were added). Figures a
      * statement bound are lost, their statements dropped, and references are not carried. Their patron links, pool
      * memberships and watches are dropped, and they leave this sheet. Refused unless the user is a steward, for a
-     * retired person, for this sheet's own id, for an archived sheet, and when their name, an alias or their contact
-     * is already a name, alias or contact on the other sheet.
+     * retired person, for this sheet's own id, for an archived sheet, and when their contact is already a contact on
+     * the other sheet. When their name or an alias is already a name or alias of someone on the other sheet (compared
+     * as names are), they arrive and are merged into that person exactly as a merge does (their contact then dropped
+     * rather than refused); refused when that person is retired, or when their names match more than one person.
      */
     @Transactional
     public void transfer(String by, String sheetId, Long id, String toSheetId) {
@@ -90,10 +94,21 @@ public class PersonTransferService {
         List<String> names = new ArrayList<>();
         names.add(person.getName());
         names.addAll(person.getAliases());
-        if (names.stream().anyMatch(n -> people.nameOrAliasInUse(toSheetId, n))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The name or an alias is already on the other sheet.");
+        List<Long> matches = names.stream()
+                .map(n -> people.findBySheetIdAndNameOrAlias(toSheetId, n).map(Person::getId).orElse(null))
+                .filter(m -> m != null).distinct().toList();
+        if (matches.size() > 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The name and aliases match more than one person on the other sheet.");
         }
-        if (person.getContact() != null && people.existsBySheetIdAndContact(toSheetId, person.getContact())) {
+        Person into = matches.isEmpty() ? null
+                : people.findWithLockByIdAndSheetId(matches.get(0), toSheetId).orElseThrow();
+        if (into != null && into.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The person on the other sheet with the name is retired, so cannot be merged into.");
+        }
+        if (into == null && person.getContact() != null
+                && people.existsBySheetIdAndContact(toSheetId, person.getContact())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The contact is already on the other sheet.");
         }
         RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
@@ -153,6 +168,9 @@ public class PersonTransferService {
         rollup.recordChanges(by, sheetId, beforeHere);
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + by + " name=" + name + " from="
                 + sheetId);
+        if (into != null) {
+            mergeService.absorb(by, toSheetId, person, into);
+        }
         rollup.recordChanges(by, toSheetId, beforeThere);
     }
 }

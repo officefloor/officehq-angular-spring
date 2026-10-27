@@ -79,7 +79,16 @@ public class PersonMergeService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person saved = absorb(by, sheetId, from, into);
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
 
+    /**
+     * Merges the one person into the other, both of the sheet and locked, exactly as a merge does, recording it; the
+     * caller checks the merge may be made and records the changes to the figures.
+     */
+    Person absorb(String by, String sheetId, Person from, Person into) {
         // the claims, in the order they were added, each listed as the other's newest in turn
         List<Claim> moved = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, from.getId()));
         moved.sort(Comparator.comparing(Claim::getId));
@@ -107,12 +116,12 @@ public class PersonMergeService {
         names.addAll(from.getAliases());
         people.delete(from);
         people.flush();
-        names.forEach(into::addAlias);
+        // one they already have exactly is not given twice
+        names.stream().filter(n -> !n.equals(into.getName()) && !into.getAliases().contains(n)).forEach(into::addAlias);
         Person saved = people.saveAndFlush(into);
 
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + by + " from=" + fromName + " into="
                 + saved.getName());
-        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 
