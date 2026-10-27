@@ -9,7 +9,7 @@ import { SettingsStore } from '../settings/settings';
 import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
 import { Summary, SummaryPerson } from '../summary/summary';
-import { PoolRoster } from '../pools/pools';
+import { PoolRoster, PoolStore } from '../pools/pools';
 
 interface Person {
   id: number;
@@ -215,6 +215,7 @@ interface StatementView {
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
       <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ poolStore.cutTotal() }}</strong></p>
       @if (tagDueTotals().length > 0) {
         <table>
           <caption>Due by tag</caption>
@@ -325,7 +326,7 @@ interface StatementView {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Cut total</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Settled total</th><th scope="col">Open total</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
@@ -356,6 +357,7 @@ interface StatementView {
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+              <td data-testid="person-cut-total">{{ poolStore.cutTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
               <td data-testid="person-settled-total">{{ splitBy().get(p.id)?.settled ?? '0.00' }}</td>
@@ -538,6 +540,7 @@ export class People {
   private readonly settings = inject(SettingsStore);
   protected readonly periods = inject(PeriodStore);
   private readonly poolRoster = inject(PoolRoster);
+  protected readonly poolStore = inject(PoolStore);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
