@@ -1,0 +1,369 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ae25cfb3..027a3da0 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -520,6 +520,8 @@ export class Claims {
+   readonly grades = input<readonly DatedGrade[]>([]);
+   // The date the person is retired from; no claim dated after it can be added or saved. Null while not retired.
+   readonly retiredFrom = input<string | null>(null);
++  // The retirements the person was unretired from; no claim dated after a from and before its to can be added or saved.
++  readonly pastRetirements = input<readonly { from: string; to: string }[]>([]);
+   // Every person on the sheet, whom a steward can move a claim to.
+   readonly people = input<readonly { id: number; name: string }[]>([]);
+   // Every claim on the sheet, whose references a claim's own must not repeat.
+@@ -702,6 +704,11 @@ export class Claims {
+       this.setRowError(c.id, `${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
+       return;
+     }
++    const past = this.pastRetirementCovering(c.date);
++    if (past) {
++      this.setRowError(c.id, `${this.personName()} was retired from ${past.from} to ${past.to}, so a claim cannot be dated within it.`);
++      return;
++    }
+     const form = { amount, date: c.date, note: c.note, corrects: correction ? c.corrects : null, ref: c.ref, tags: c.tags.join(',') };
+     try {
+       const saved = await firstValueFrom(
+@@ -1035,6 +1042,11 @@ export class Claims {
+     }
+   }
+ 
++  // The past retirement a claim dated on the date falls within: after its from and before its to; undefined if none.
++  private pastRetirementCovering(date: string): { from: string; to: string } | undefined {
++    return this.pastRetirements().find((r) => date > r.from && date < r.to);
++  }
++
+   private setRowError(id: number, err: string): void {
+     this.rowErrors.update((e) => ({ ...e, [id]: err }));
+   }
+@@ -1139,6 +1151,11 @@ export class Claims {
+       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
+       return;
+     }
++    const past = this.pastRetirementCovering(on);
++    if (past) {
++      this.error.set(`${this.personName()} was retired from ${past.from} to ${past.to}, so a claim cannot be dated within it.`);
++      return;
++    }
+     const ref = this.ref().trim();
+     const refKey = ref.toLowerCase();
+     if (ref && this.sheetClaims().some((c) => c.id !== editing && c.ref?.toLowerCase() === refKey)) {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 398acc76..0c834660 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -30,6 +30,8 @@ interface Person {
+   version: number;
+   // The date the person is retired from; null while not retired. A person with one set is retired at once.
+   retiredFrom: string | null;
++  // The retirements the person was unretired from, earliest first: each from its from-date to the day unretired.
++  pastRetirements: PastRetirement[];
+   // The sheet the person was transferred from; null when they were not.
+   originSheet: string | null;
+   // Whether the person has any hold, and every hold put on them, earliest from-date first.
+@@ -44,6 +46,12 @@ interface DatedHold {
+   to: string | null;
+ }
+ 
++// A retirement a person was unretired from: from its from-date to the sheet's today when they were unretired.
++interface PastRetirement {
++  from: string;
++  to: string;
++}
++
+ // One person named as another's patron.
+ interface PatronView {
+   id: number;
+@@ -444,6 +452,16 @@ interface StatementView {
+                 <button type="button" data-testid="person-retire" (click)="retire(p)">
+                   Retire<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="person-unretire" (click)="unretire(p)">
++                  Unretire<span class="visually-hidden"> {{ p.name }}</span>
++                </button>
++                @if (p.pastRetirements.length > 0) {
++                  <ul aria-label="Past retirements">
++                    @for (r of p.pastRetirements; track $index) {
++                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
++                    }
++                  </ul>
++                }
+                 <label [for]="'hold-from-' + p.id">Hold from<span class="visually-hidden"> for {{ p.name }}</span></label>
+                 <input
+                   type="date"
+@@ -537,6 +555,7 @@ interface StatementView {
+                   [sheetClaims]="claims()"
+                   [grades]="p.grades"
+                   [retiredFrom]="p.retiredFrom"
++                  [pastRetirements]="p.pastRetirements"
+                   [people]="people()"
+                   [selected]="selectedClaims()"
+                   (selectedChange)="selectClaim($event.id, $event.checked)"
+@@ -1032,6 +1051,26 @@ export class People {
+     }
+   }
+ 
++  /** Unretires a retired person; their retirement is kept on the row, to the sheet's today. */
++  protected async unretire(p: Person): Promise<void> {
++    this.clearRowErrors(p.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    if (p.retiredFrom === null) {
++      this.rowErrors.update((e) => ({ ...e, [p.id]: `${p.name} is not retired.` }));
++      return;
++    }
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/unretire`;
++    try {
++      const saved = await firstValueFrom(this.http.post<Person>(url, {}));
++      if (this.session.sheetId() !== sheet) return;
++      this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
++      if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
++    } catch {
++      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not unretire this person.' }));
++    }
++  }
++
+   /**
+    * Swaps the person with the one above or below them in the list; the top person cannot move up, nor the bottom one
+    * down. The list comes back in its new order.
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ec0c396d..b5584d88 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -944,9 +944,12 @@ public class ClaimService {
+         return corrects;
+     }
+ 
+-    /** Refuses a claim for the person dated after their retirement date; one on or before it is allowed. */
++    /**
++     * Refuses a claim for the person dated after their retirement date, or after the from-date and before the to-date
++     * of a past retirement; one on or before the retirement date, or on either end of a past one, is allowed.
++     */
+     private static void refuseAfterRetirement(Person person, LocalDate date) {
+-        if (person.getRetiredFrom() != null && date.isAfter(person.getRetiredFrom())) {
++        if (person.refusesClaimOn(date)) {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                     "That claim is dated after the person's retirement.");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PastRetirement.java b/src/main/java/net/officefloor/hq/app/person/PastRetirement.java
+new file mode 100644
+index 00000000..d3ffa73c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PastRetirement.java
+@@ -0,0 +1,61 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.time.LocalDate;
++
++/** A retirement a person was unretired from: from its from-date to the sheet's today when they were unretired. */
++@Embeddable
++public class PastRetirement {
++
++    @Column(name = "from_date", nullable = false)
++    private LocalDate from;
++
++    @Column(name = "to_date", nullable = false)
++    private LocalDate to;
++
++    /** The sheet's today when the retirement date was set; null: before that was kept. */
++    @Column(name = "retired_on")
++    private LocalDate retiredOn;
++
++    /** The sheet's today when the person was unretired. */
++    @Column(name = "made_on")
++    private LocalDate madeOn;
++
++    protected PastRetirement() {
++    }
++
++    public PastRetirement(LocalDate from, LocalDate to, LocalDate retiredOn, LocalDate madeOn) {
++        this.from = from;
++        this.to = to;
++        this.retiredOn = retiredOn;
++        this.madeOn = madeOn;
++    }
++
++    public LocalDate getFrom() {
++        return from;
++    }
++
++    public LocalDate getTo() {
++        return to;
++    }
++
++    public LocalDate getRetiredOn() {
++        return retiredOn;
++    }
++
++    /** Whether the retirement had been set by the end of the day: set while the sheet's today was on or before it. */
++    public boolean retiredBy(LocalDate day) {
++        return retiredOn == null || !retiredOn.isAfter(day);
++    }
++
++    /** Whether the person had been unretired by the end of the day. */
++    public boolean unretiredBy(LocalDate day) {
++        return madeOn == null || !madeOn.isAfter(day);
++    }
++
++    /** Whether the date falls strictly after the from-date and before the to-date. */
++    public boolean refuses(LocalDate date) {
++        return date != null && date.isAfter(from) && date.isBefore(to);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 844b2a53..0b3b484d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -72,6 +72,11 @@ public class Person {
+     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+     private List<DatedHold> holds = new ArrayList<>();
+ 
++    /** The retirements the person was unretired from. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
++    private List<PastRetirement> pastRetirements = new ArrayList<>();
++
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+     private List<PersonAlias> aliases = new ArrayList<>();
+@@ -120,6 +125,15 @@ public class Person {
+             then.retiredFrom = retiredFrom;
+             then.retiredOn = retiredOn;
+         }
++        for (PastRetirement r : pastRetirements) {
++            if (r.unretiredBy(day)) {
++                then.pastRetirements.add(r);
++            } else if (r.retiredBy(day)) {
++                // not yet unretired at the end of the day: still retired then
++                then.retiredFrom = r.getFrom();
++                then.retiredOn = r.getRetiredOn();
++            }
++        }
+         return then;
+     }
+ 
+@@ -199,6 +213,31 @@ public class Person {
+         this.retiredOn = madeOn;
+     }
+ 
++    /**
++     * Unretires the person, while the sheet's today is the date: their retirement is kept as a past one, from its
++     * from-date to the date, and they are no longer retired.
++     */
++    public void unretire(LocalDate on) {
++        pastRetirements.add(new PastRetirement(retiredFrom, on, retiredOn, on));
++        this.retiredFrom = null;
++        this.retiredOn = null;
++    }
++
++    /** The retirements the person was unretired from, earliest from-date first. */
++    public List<PastRetirement> getPastRetirements() {
++        return pastRetirements.stream().sorted(Comparator.comparing(PastRetirement::getFrom)
++                .thenComparing(PastRetirement::getTo)).toList();
++    }
++
++    /**
++     * Whether a claim of the person's dated on the date is refused for a retirement: dated after their retirement
++     * date, or after the from-date and before the to-date of a past retirement.
++     */
++    public boolean refusesClaimOn(LocalDate date) {
++        return (retiredFrom != null && date != null && date.isAfter(retiredFrom))
++                || pastRetirements.stream().anyMatch(r -> r.refuses(date));
++    }
++
+     /** A person with a retirement date set is retired at once, whatever the date. */
+     public boolean isRetired() {
+         return retiredFrom != null;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 3490245b..015c54ef 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -36,13 +36,20 @@ public class PersonController {
+      */
+     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
+-            List<String> aliases, boolean clashing, String originSheet) {
++            List<String> aliases, boolean clashing, String originSheet, List<RetirementView> pastRetirements) {
+         public static PersonView of(Person p, LocalDate today, Set<Long> clashing) {
+             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
+                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
+                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
+                     p.getContact(), p.getAliases(), clashing.contains(p.getId()),
+-                    p.getOriginSheet());
++                    p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList());
++        }
++    }
++
++    /** A retirement the person was unretired from: from its from-date to the day they were unretired. */
++    public record RetirementView(LocalDate from, LocalDate to) {
++        public static RetirementView of(PastRetirement r) {
++            return new RetirementView(r.getFrom(), r.getTo());
+         }
+     }
+ 
+@@ -266,6 +273,15 @@ public class PersonController {
+         return view(sheetId, service.retire(user, sheetId, id, form.from()));
+     }
+ 
++    /** Unretires a retired person; their retirement is kept as a past one, to the sheet's today. */
++    @PostMapping("/{id}/unretire")
++    public PersonView unretire(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable Long id,
++            @SessionAttribute(SessionController.USER) String user) {
++        return view(sheetId, service.unretire(user, sheetId, id));
++    }
++
+     /** Puts a hold on the person, from its from-date to its to-date; the holds already put are kept. */
+     @PostMapping("/{id}/hold")
+     public PersonView hold(
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index afefd881..7a716026 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -227,6 +227,27 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /**
++     * Unretires the person while the sheet's today: their retirement is kept as a past one, from its from-date to
++     * today, and they are no longer retired. Refused for anyone not retired.
++     */
++    @Transactional
++    public Person unretire(String by, String sheetId, Long id) {
++        LocalDate today = sheets.load(sheetId).getToday();
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Person person = people.findWithLockByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
++        if (!person.isRetired()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is not retired.");
++        }
++        person.unretire(today);
++        Person saved = save(person);
++        audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
++                + " on=" + today);
++        rollup.recordChanges(by, sheetId, before);
++        return saved;
++    }
++
+     /**
+      * Retires each of the people from the date (missing: the sheet's today), in list order, exactly as each one's
+      * retire would, all or none: one that is not a person of the sheet refuses them all. The people as saved, in list
+diff --git a/src/main/resources/db/migration/V71__person_past_retirement.sql b/src/main/resources/db/migration/V71__person_past_retirement.sql
+new file mode 100644
+index 00000000..0b90c870
+--- /dev/null
++++ b/src/main/resources/db/migration/V71__person_past_retirement.sql
+@@ -0,0 +1,11 @@
++-- A retired person may be unretired: their retirement is kept as a past one, from its from-date to the sheet's today
++-- when they were unretired, and they are no longer retired. A claim dated after the from-date and before the to-date of
++-- a past retirement is refused, as one after a retirement is.
++CREATE TABLE person_retirement (
++    person_id  BIGINT NOT NULL REFERENCES person (id),
++    from_date  DATE   NOT NULL,
++    to_date    DATE   NOT NULL,
++    retired_on DATE,
++    made_on    DATE
++);
++CREATE INDEX person_retirement_person ON person_retirement (person_id);
