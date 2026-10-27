@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
+import java.util.ArrayDeque;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -22,6 +23,7 @@ import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The figures a sheet shows: each person's claimed and due-total, and the sheet's totals. A change takes a
@@ -38,6 +40,10 @@ public class RollupService {
     /** The figures of every person on a sheet, by person id in the order they were added, and the sheet's totals. */
     public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
             BigDecimal overdueTotal) {
+    }
+
+    /** Figures added up over sheets: their people, and each sheet's due-total and overdue-total. */
+    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
     }
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
@@ -123,6 +129,32 @@ public class RollupService {
             }
         }
         return new Snapshot(figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+    }
+
+    /**
+     * The sheet's descendants' figures added up: each sheet naming it as parent, their children, and so on, each
+     * sheet counted once and the sheet itself left out (the screen adds its own figures as it shows them).
+     */
+    @Transactional(readOnly = true)
+    public Consolidated descendants(String sheetId) {
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        ArrayDeque<String> toVisit = new ArrayDeque<>(List.of(sheetId));
+        int peopleCount = 0;
+        BigDecimal due = ZERO;
+        BigDecimal overdue = ZERO;
+        while (!toVisit.isEmpty()) {
+            for (Sheet child : sheets.findByParentIdOrderByIdAsc(toVisit.poll())) {
+                if (!seen.add(child.getId())) {
+                    continue;
+                }
+                toVisit.add(child.getId());
+                Snapshot s = snapshot(child.getId());
+                peopleCount += s.people().size();
+                due = due.add(s.dueTotal());
+                overdue = overdue.add(s.overdueTotal());
+            }
+        }
+        return new Consolidated(peopleCount, due, overdue);
     }
 
     /** The sheet-total of the people's figures: with three or more, the single highest and lowest are left out. */

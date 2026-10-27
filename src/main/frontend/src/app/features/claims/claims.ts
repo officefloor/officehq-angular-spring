@@ -842,10 +842,6 @@ export class Claims {
       this.setRowError(c.id, `This claim was already reminded on ${today}.`);
       return;
     }
-    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
-      this.setRowError(c.id, CLOSED);
-      return;
-    }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/remind`;
     try {
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));

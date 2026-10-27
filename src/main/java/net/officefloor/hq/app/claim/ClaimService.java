@@ -345,11 +345,14 @@ public class ClaimService {
 
     /**
      * Writes a reminder for an OPEN or PENDING claim, which shows the sheet's today as its reminded date. Refused for
-     * a claim in any other status, one already reminded on the sheet's today, and in a closed period.
+     * a claim in any other status and one already reminded on the sheet's today; a reminder changes none of the
+     * claim's figures, so one whose due-by falls in a closed period may still be reminded.
      */
     @Transactional
     public Claim remind(String by, String sheetId, Long id) {
-        Claim claim = lockedClaim(sheetId, id);
+        sheets.lock(sheetId);
+        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         if (!claim.getStatus().isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be reminded.");

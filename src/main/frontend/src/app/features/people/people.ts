@@ -7,6 +7,7 @@ import { DatedFigure, PeriodStore, Periods, personPeriodDueTotals } from '../per
 import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { Header } from '../header/header';
+import { Consolidated } from '../consolidated/consolidated';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { PoolRoster } from '../pools/pools';
 
@@ -56,13 +57,18 @@ interface StatementView {
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Header, Periods, Summary],
+  imports: [Claims, Consolidated, Header, Periods, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
       [statuses]="claimStatuses()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
+    />
+    <app-consolidated
+      [ownPeopleCount]="people().length"
+      [ownDueTotal]="dueTotal()"
+      [ownOverdueTotal]="overdueTotal()"
     />
     <app-periods [figures]="countedFigures()" />
     <app-summary
