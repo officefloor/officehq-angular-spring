@@ -170,7 +170,10 @@ interface StatementView {
         ></textarea>
         <button type="submit" data-testid="import-submit">Import people</button>
         @if (importAdded() !== null) {
-          <p role="status">Added: <strong data-testid="import-added">{{ importAdded() }}</strong></p>
+          <p role="status">
+            Added: <strong data-testid="import-added">{{ importAdded() }}</strong>, updated:
+            <strong data-testid="import-updated">{{ importUpdated() }}</strong>
+          </p>
         }
         @if (importError(); as err) {
           <p role="alert" data-testid="import-error">{{ err }}</p>
@@ -572,6 +575,7 @@ export class People {
   // The import box: lines of name,grade,terms,contact add a person each, all or none; and how many it added.
   protected readonly importText = signal('');
   protected readonly importAdded = signal<number | null>(null);
+  protected readonly importUpdated = signal(0);
   protected readonly importError = signal<string | null>(null);
   private importing = false;
   // Each person's refused row action, by person id.
@@ -1630,8 +1634,9 @@ export class People {
   }
 
   /**
-   * Adds a person for each line of the import box, in order; the store checks every line by the person form's rules
-   * first and adds none when any is refused. Shows how many were added.
+   * Adds a person for each line of the import box, or updates the person on the sheet it names, in order; the store
+   * checks every line by the person form's rules first and changes none when any is refused. Shows how many were
+   * added and how many updated.
    */
   protected async importPeople(e: Event): Promise<void> {
     e.preventDefault();
@@ -1647,12 +1652,17 @@ export class People {
     }
     this.importing = true;
     try {
-      const added = await firstValueFrom(
-        this.http.post<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people/import`, { text }),
+      const { added, updated } = await firstValueFrom(
+        this.http.post<{ added: Person[]; updated: Person[] }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/import`,
+          { text },
+        ),
       );
       if (this.session.sheetId() !== sheet) return;
-      this.people.update((list) => [...list, ...added]);
+      const byId = new Map(updated.map((p) => [p.id, p]));
+      this.people.update((list) => [...list.map((p) => byId.get(p.id) ?? p), ...added]);
       this.importText.set('');
+      this.importUpdated.set(updated.length);
       this.importAdded.set(added.length);
     } catch (err) {
       const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;

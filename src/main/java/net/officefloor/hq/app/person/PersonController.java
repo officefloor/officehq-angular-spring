@@ -122,6 +122,10 @@ public class PersonController {
     public record ImportForm(@NotNull @Size(max = 100_000) String text) {
     }
 
+    /** What an import did: the people added and the people updated, each as listed now. */
+    public record ImportView(List<PersonView> added, List<PersonView> updated) {
+    }
+
     /** Whether the signed-in user is to watch the person. */
     public record WatchForm(@NotNull Boolean on) {
     }
@@ -168,16 +172,20 @@ public class PersonController {
                 form.contact()));
     }
 
-    /** Adds a person for each pasted line, in order, all or none; the people added, in the order of their lines. */
+    /**
+     * Adds a person for each pasted line, or updates the person it names, in order, all or none; the people added and
+     * the people updated, each in the order of their lines.
+     */
     @PostMapping("/import")
-    public List<PersonView> importPeople(
+    public ImportView importPeople(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody ImportForm form,
             @SessionAttribute(SessionController.USER) String user) {
-        List<Person> added = imports.importPeople(user, sheetId, form.text());
+        PersonImportService.Result result = imports.importPeople(user, sheetId, form.text());
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
-        return added.stream().map(p -> PersonView.of(p, today, clashing)).toList();
+        return new ImportView(result.added().stream().map(p -> PersonView.of(p, today, clashing)).toList(),
+                result.updated().stream().map(p -> PersonView.of(p, today, clashing)).toList());
     }
 
     @PutMapping("/{id}")
