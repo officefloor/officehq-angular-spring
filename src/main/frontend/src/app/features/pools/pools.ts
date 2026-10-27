@@ -29,11 +29,13 @@ export interface PoolView {
   balanced: boolean;
 }
 
-// A person as the pools see them: who may be chosen as a member, and whether they are retired.
+// A person as the pools see them: who may be chosen as a member, whether they are retired, and their holds (each
+// from its from-date to its to-date, null: with no end, both included).
 export interface RosterPerson {
   id: number;
   name: string;
   retiredFrom: string | null;
+  holds: readonly { from: string; to: string | null }[];
 }
 
 // The people of the active sheet as the people list holds them now, so a pool offers each and counts a member retired
@@ -83,24 +85,27 @@ function money(c: bigint): string {
 }
 
 /**
- * Each member's cut of the pot (in cents), in member order: the pot times their share over 100, rounded half to even
- * to the cent, a retired member's 0; the remainder left by the rounding goes to the member with the largest share
- * (the earliest added on a tie), so the cuts total exactly the pot.
+ * Each member's cut of the pot (in cents), in member order: the pot times their share over the shares of the members
+ * with a cut added up, rounded half to even to the cent; a retired member, and one held on the sheet's today, has none
+ * (0). The remainder left by the rounding goes to the member with a cut with the largest share (the earliest added on
+ * a tie), so the cuts total exactly the pot; with no member left with a cut, each is 0.
  */
-function cuts(pot: bigint, members: readonly { share: string; retired: boolean }[]): bigint[] {
-  const shares = members.map((m) => (m.retired ? 0n : BigInt(hundredths(m.share))));
+function cuts(pot: bigint, members: readonly { share: string; retired: boolean; held: boolean }[]): bigint[] {
+  const shares = members.map((m) => (m.retired || m.held ? 0n : BigInt(hundredths(m.share))));
+  const of = shares.reduce((sum, h) => sum + h, 0n);
+  if (of === 0n) return shares.map(() => 0n);
   const result = shares.map((h) => {
     const exact = pot * h;
-    let q = exact / 10000n;
-    const r = exact % 10000n;
-    if (r > 5000n || (r === 5000n && q % 2n === 1n)) q += 1n;
+    let q = exact / of;
+    const r = (exact % of) * 2n;
+    if (r > of || (r === of && q % 2n === 1n)) q += 1n;
     return q;
   });
   let largest = 0;
   shares.forEach((h, i) => {
     if (h > shares[largest]) largest = i;
   });
-  if (result.length) result[largest] += pot - result.reduce((sum, c) => sum + c, 0n);
+  result[largest] += pot - result.reduce((sum, c) => sum + c, 0n);
   return result;
 }
 
@@ -110,13 +115,21 @@ function cuts(pot: bigint, members: readonly { share: string; retired: boolean }
 export class PoolStore {
   private readonly roster = inject(PoolRoster);
   private readonly settings = inject(SettingsStore);
+  private readonly session = inject(Session);
 
   readonly pools = signal<readonly PoolView[]>([]);
   // The pools with each member counted retired as the people list has them now, the totals to match, and each
   // member's cut of the pool's pot while the pool is balanced: the sheet's pot for a pool that is a member of none,
-  // else its cut in the pool above.
+  // else its cut in the pool above. A member held on the sheet's today counts toward the total but has no cut.
   readonly shown = computed(() => {
     const retired = new Map(this.roster.people().map((p) => [p.id, p.retiredFrom !== null]));
+    const today = this.session.sheetToday();
+    const held = new Set(
+      this.roster
+        .people()
+        .filter((p) => today !== null && p.holds.some((h) => h.from <= today && (h.to === null || today <= h.to)))
+        .map((p) => p.id),
+    );
     const pools = this.pools();
     const parent = parents(pools);
     const counted = new Map(
@@ -125,6 +138,7 @@ export class PoolStore {
           ...m,
           key: m.personId !== null ? String(m.personId) : `pool-${m.name}`,
           retired: m.personId !== null ? (retired.get(m.personId) ?? m.retired) : false,
+          held: m.personId !== null && held.has(m.personId),
         }));
         const total = members.reduce((sum, m) => sum + (m.retired ? 0 : hundredths(m.share)), 0);
         return [pool.id, { pool, members, total, balanced: total === 10000 }] as const;

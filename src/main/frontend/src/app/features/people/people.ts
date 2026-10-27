@@ -917,9 +917,9 @@ export class People {
   });
 
   constructor() {
-    // The pools offer these people, and count a member retired as soon as they are.
+    // The pools offer these people, and count a member retired, or held, as soon as they are.
     effect(() => {
-      const list = this.people().map((p) => ({ id: p.id, name: p.name, retiredFrom: p.retiredFrom }));
+      const list = this.people().map((p) => ({ id: p.id, name: p.name, retiredFrom: p.retiredFrom, holds: p.holds }));
       untracked(() => this.poolRoster.people.set(list));
     });
     // Re-read the people from the store each time a sheet is loaded.
