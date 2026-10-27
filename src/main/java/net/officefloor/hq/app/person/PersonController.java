@@ -36,13 +36,20 @@ public class PersonController {
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String originSheet) {
+            List<String> aliases, boolean clashing, String originSheet, List<RetirementView> pastRetirements) {
         public static PersonView of(Person p, LocalDate today, Set<Long> clashing) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
                     p.getContact(), p.getAliases(), clashing.contains(p.getId()),
-                    p.getOriginSheet());
+                    p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList());
+        }
+    }
+
+    /** A retirement the person was unretired from: from its from-date to the day they were unretired. */
+    public record RetirementView(LocalDate from, LocalDate to) {
+        public static RetirementView of(PastRetirement r) {
+            return new RetirementView(r.getFrom(), r.getTo());
         }
     }
 
@@ -264,6 +271,15 @@ public class PersonController {
             @PathVariable Long id, @RequestBody RetireForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId, service.retire(user, sheetId, id, form.from()));
+    }
+
+    /** Unretires a retired person; their retirement is kept as a past one, to the sheet's today. */
+    @PostMapping("/{id}/unretire")
+    public PersonView unretire(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id,
+            @SessionAttribute(SessionController.USER) String user) {
+        return view(sheetId, service.unretire(user, sheetId, id));
     }
 
     /** Puts a hold on the person, from its from-date to its to-date; the holds already put are kept. */

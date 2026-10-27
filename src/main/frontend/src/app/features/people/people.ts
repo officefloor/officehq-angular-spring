@@ -30,6 +30,8 @@ interface Person {
   version: number;
   // The date the person is retired from; null while not retired. A person with one set is retired at once.
   retiredFrom: string | null;
+  // The retirements the person was unretired from, earliest first: each from its from-date to the day unretired.
+  pastRetirements: PastRetirement[];
   // The sheet the person was transferred from; null when they were not.
   originSheet: string | null;
   // Whether the person has any hold, and every hold put on them, earliest from-date first.
@@ -42,6 +44,12 @@ interface Person {
 interface DatedHold {
   from: string;
   to: string | null;
+}
+
+// A retirement a person was unretired from: from its from-date to the sheet's today when they were unretired.
+interface PastRetirement {
+  from: string;
+  to: string;
 }
 
 // One person named as another's patron.
@@ -444,6 +452,16 @@ interface StatementView {
                 <button type="button" data-testid="person-retire" (click)="retire(p)">
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-unretire" (click)="unretire(p)">
+                  Unretire<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                @if (p.pastRetirements.length > 0) {
+                  <ul aria-label="Past retirements">
+                    @for (r of p.pastRetirements; track $index) {
+                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                    }
+                  </ul>
+                }
                 <label [for]="'hold-from-' + p.id">Hold from<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   type="date"
@@ -537,6 +555,7 @@ interface StatementView {
                   [sheetClaims]="claims()"
                   [grades]="p.grades"
                   [retiredFrom]="p.retiredFrom"
+                  [pastRetirements]="p.pastRetirements"
                   [people]="people()"
                   [selected]="selectedClaims()"
                   (selectedChange)="selectClaim($event.id, $event.checked)"
@@ -1029,6 +1048,26 @@ export class People {
       if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
     } catch {
       this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not retire this person.' }));
+    }
+  }
+
+  /** Unretires a retired person; their retirement is kept on the row, to the sheet's today. */
+  protected async unretire(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (p.retiredFrom === null) {
+      this.rowErrors.update((e) => ({ ...e, [p.id]: `${p.name} is not retired.` }));
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/unretire`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, {}));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
+    } catch {
+      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Could not unretire this person.' }));
     }
   }
 

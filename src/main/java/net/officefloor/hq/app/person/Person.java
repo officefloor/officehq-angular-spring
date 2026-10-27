@@ -72,6 +72,11 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedHold> holds = new ArrayList<>();
 
+    /** The retirements the person was unretired from. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PastRetirement> pastRetirements = new ArrayList<>();
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
     private List<PersonAlias> aliases = new ArrayList<>();
@@ -119,6 +124,15 @@ public class Person {
         if (retiredOn == null || !retiredOn.isAfter(day)) {
             then.retiredFrom = retiredFrom;
             then.retiredOn = retiredOn;
+        }
+        for (PastRetirement r : pastRetirements) {
+            if (r.unretiredBy(day)) {
+                then.pastRetirements.add(r);
+            } else if (r.retiredBy(day)) {
+                // not yet unretired at the end of the day: still retired then
+                then.retiredFrom = r.getFrom();
+                then.retiredOn = r.getRetiredOn();
+            }
         }
         return then;
     }
@@ -197,6 +211,31 @@ public class Person {
     public void setRetiredFrom(LocalDate retiredFrom, LocalDate madeOn) {
         this.retiredFrom = retiredFrom;
         this.retiredOn = madeOn;
+    }
+
+    /**
+     * Unretires the person, while the sheet's today is the date: their retirement is kept as a past one, from its
+     * from-date to the date, and they are no longer retired.
+     */
+    public void unretire(LocalDate on) {
+        pastRetirements.add(new PastRetirement(retiredFrom, on, retiredOn, on));
+        this.retiredFrom = null;
+        this.retiredOn = null;
+    }
+
+    /** The retirements the person was unretired from, earliest from-date first. */
+    public List<PastRetirement> getPastRetirements() {
+        return pastRetirements.stream().sorted(Comparator.comparing(PastRetirement::getFrom)
+                .thenComparing(PastRetirement::getTo)).toList();
+    }
+
+    /**
+     * Whether a claim of the person's dated on the date is refused for a retirement: dated after their retirement
+     * date, or after the from-date and before the to-date of a past retirement.
+     */
+    public boolean refusesClaimOn(LocalDate date) {
+        return (retiredFrom != null && date != null && date.isAfter(retiredFrom))
+                || pastRetirements.stream().anyMatch(r -> r.refuses(date));
     }
 
     /** A person with a retirement date set is retired at once, whatever the date. */

@@ -520,6 +520,8 @@ export class Claims {
   readonly grades = input<readonly DatedGrade[]>([]);
   // The date the person is retired from; no claim dated after it can be added or saved. Null while not retired.
   readonly retiredFrom = input<string | null>(null);
+  // The retirements the person was unretired from; no claim dated after a from and before its to can be added or saved.
+  readonly pastRetirements = input<readonly { from: string; to: string }[]>([]);
   // Every person on the sheet, whom a steward can move a claim to.
   readonly people = input<readonly { id: number; name: string }[]>([]);
   // Every claim on the sheet, whose references a claim's own must not repeat.
@@ -700,6 +702,11 @@ export class Claims {
     const retiredFrom = this.retiredFrom();
     if (retiredFrom !== null && c.date > retiredFrom) {
       this.setRowError(c.id, `${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
+      return;
+    }
+    const past = this.pastRetirementCovering(c.date);
+    if (past) {
+      this.setRowError(c.id, `${this.personName()} was retired from ${past.from} to ${past.to}, so a claim cannot be dated within it.`);
       return;
     }
     const form = { amount, date: c.date, note: c.note, corrects: correction ? c.corrects : null, ref: c.ref, tags: c.tags.join(',') };
@@ -1035,6 +1042,11 @@ export class Claims {
     }
   }
 
+  // The past retirement a claim dated on the date falls within: after its from and before its to; undefined if none.
+  private pastRetirementCovering(date: string): { from: string; to: string } | undefined {
+    return this.pastRetirements().find((r) => date > r.from && date < r.to);
+  }
+
   private setRowError(id: number, err: string): void {
     this.rowErrors.update((e) => ({ ...e, [id]: err }));
   }
@@ -1137,6 +1149,11 @@ export class Claims {
     const on = date || (this.session.sheetToday() ?? '');
     if (retiredFrom !== null && on > retiredFrom) {
       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
+      return;
+    }
+    const past = this.pastRetirementCovering(on);
+    if (past) {
+      this.error.set(`${this.personName()} was retired from ${past.from} to ${past.to}, so a claim cannot be dated within it.`);
       return;
     }
     const ref = this.ref().trim();

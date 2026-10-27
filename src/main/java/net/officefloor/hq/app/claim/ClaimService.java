@@ -944,9 +944,12 @@ public class ClaimService {
         return corrects;
     }
 
-    /** Refuses a claim for the person dated after their retirement date; one on or before it is allowed. */
+    /**
+     * Refuses a claim for the person dated after their retirement date, or after the from-date and before the to-date
+     * of a past retirement; one on or before the retirement date, or on either end of a past one, is allowed.
+     */
     private static void refuseAfterRetirement(Person person, LocalDate date) {
-        if (person.getRetiredFrom() != null && date.isAfter(person.getRetiredFrom())) {
+        if (person.refusesClaimOn(date)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "That claim is dated after the person's retirement.");
         }
