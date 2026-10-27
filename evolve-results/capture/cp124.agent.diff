@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 1a73f0b3..99ca63b4 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -10,7 +10,8 @@ export interface PoolMemberView {
+   poolId: number | null;
+   name: string;
+   share: string;
+-  // A retired member (one with a retirement date set, whatever the date) counts 0.00 toward the pool's total.
++  // A retired member (one with a retirement date set, whatever the date) counts toward the pool's total but has no cut:
++  // their share is spread over the other members, as a held member's is.
+   retired: boolean;
+   // The membership's from-date and to-date (both included; null: no bound). A member whose dates do not include the
+   // sheet's today is left out: their share counts 0.00 toward the total and they have no cut.
+@@ -99,10 +100,15 @@ function money(c: bigint): string {
+ /**
+  * Each member's cut of the pot (in cents), in member order: the pot times their share over the shares of the members
+  * with a cut added up, rounded half to even to the cent; a retired member, one held on the sheet's today, and one
+- * whose dates do not include it, has none (0). The remainder left by the rounding goes to the member with a cut with the largest share (the earliest added on
+- * a tie), so the cuts total exactly the pot; with no member left with a cut, each is 0.
++ * whose dates do not include it, has none (0). The remainder left by the rounding goes to the member with a cut with the
++ * largest share (the earliest added on a tie), so the cuts total exactly the pot; with no member left with a cut, each
++ * is 0, except that a pool whose every member is retired has no cuts at all (null).
+  */
+-function cuts(pot: bigint, members: readonly { share: string; retired: boolean; held: boolean; out: boolean }[]): bigint[] {
++function cuts(
++  pot: bigint,
++  members: readonly { share: string; retired: boolean; held: boolean; out: boolean }[],
++): bigint[] | null {
++  if (members.length > 0 && members.every((m) => m.retired)) return null;
+   const shares = members.map((m) => (m.retired || m.held || m.out ? 0n : BigInt(hundredths(m.share))));
+   const of = shares.reduce((sum, h) => sum + h, 0n);
+   if (of === 0n) return shares.map(() => 0n);
+@@ -132,8 +138,8 @@ export class PoolStore {
+   readonly pools = signal<readonly PoolView[]>([]);
+   // The pools with each member counted retired as the people list has them now, the totals to match, and each
+   // member's cut of the pool's pot while the pool is balanced: the sheet's pot for a pool that is a member of none,
+-  // else its cut in the pool above. A member held on the sheet's today counts toward the total but has no cut; a member
+-  // whose dates do not include the sheet's today is left out entirely, counted like a retired one.
++  // else its cut in the pool above. A member retired, or held on the sheet's today, counts toward the total but has no
++  // cut; a member whose dates do not include the sheet's today is left out entirely.
+   readonly shown = computed(() => {
+     const retired = new Map(this.roster.people().map((p) => [p.id, p.retiredFrom !== null]));
+     const today = this.session.sheetToday();
+@@ -154,7 +160,7 @@ export class PoolStore {
+           out: !dated(m, today),
+           held: m.personId !== null && held.has(m.personId),
+         }));
+-        const total = members.reduce((sum, m) => sum + (m.retired || m.out ? 0 : hundredths(m.share)), 0);
++        const total = members.reduce((sum, m) => sum + (m.out ? 0 : hundredths(m.share)), 0);
+         return [pool.id, { pool, members, total, balanced: total === 10000 }] as const;
+       }),
+     );
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index e5a1f416..065afbf6 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -37,7 +37,8 @@ public class PoolController {
+ 
+     /**
+      * A member of a pool: the person (or, for a pool that is a member, that pool and a null person), the name, the
+-     * share, whether a person member is retired (so their share counts 0.00), a pool member never being retired, and
++     * share, whether a person member is retired (their share still counts toward the total, but they have no cut: it is
++     * spread over the other members), a pool member never being retired, and
+      * the membership's from-date and to-date (null: no bound) with whether they include the sheet's today (when not,
+      * the member is left out: their share counts 0.00 and they have no cut).
+      */
+@@ -46,8 +47,8 @@ public class PoolController {
+     }
+ 
+     /**
+-     * A pool, its members, and its total share, a retired member's, or one whose dates do not include the sheet's today,
+-     * counting 0.00; balanced at exactly 100.00.
++     * A pool, its members, and its total share, a retired member's counting as given and one whose dates do not include
++     * the sheet's today counting 0.00; balanced at exactly 100.00.
+      */
+     public record PoolView(Long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
+     }
+@@ -123,7 +124,7 @@ public class PoolController {
+             }
+             Person person = byId.get(m.getPersonId());
+             boolean retired = person == null || person.getRetiredFrom() != null;
+-            if (!retired && current) {
++            if (current) {
+                 total = total.add(m.getShare());
+             }
+             views.add(new MemberView(m.getPersonId(), null, person == null ? "" : person.getName(),
