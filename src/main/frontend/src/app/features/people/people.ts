@@ -77,6 +77,8 @@ interface StatementView {
       [statuses]="claimStatuses()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
+      [myDueTotal]="myFigures()?.dueTotal ?? ''"
+      [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
     />
     <app-consolidated
       [ownPeopleCount]="people().length"
@@ -956,6 +958,21 @@ export class People {
   protected readonly overdueTotal = computed(() => {
     const by = this.overdueTotalBy();
     return trimmedSum(this.people().map((p) => by.get(p.id) ?? '0.00'));
+  });
+
+  // The signed-in user's own figures: those of the person whose name or an alias is, ignoring case, the user's name,
+  // shown as on their row; null when there is no such person.
+  protected readonly myFigures = computed(() => {
+    const user = this.session.user()?.toLowerCase();
+    if (!user) return null;
+    const me = this.people().find(
+      (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
+    );
+    if (me === undefined) return null;
+    return {
+      dueTotal: this.dueBy().get(me.id) ?? 'n/a',
+      overdueTotal: this.overdueTotalBy().get(me.id) ?? '0.00',
+    };
   });
 
   constructor() {
