@@ -37,7 +37,8 @@ public class PoolController {
 
     /**
      * A member of a pool: the person (or, for a pool that is a member, that pool and a null person), the name, the
-     * share, whether a person member is retired (so their share counts 0.00), a pool member never being retired, and
+     * share, whether a person member is retired (their share still counts toward the total, but they have no cut: it is
+     * spread over the other members), a pool member never being retired, and
      * the membership's from-date and to-date (null: no bound) with whether they include the sheet's today (when not,
      * the member is left out: their share counts 0.00 and they have no cut).
      */
@@ -46,8 +47,8 @@ public class PoolController {
     }
 
     /**
-     * A pool, its members, and its total share, a retired member's, or one whose dates do not include the sheet's today,
-     * counting 0.00; balanced at exactly 100.00.
+     * A pool, its members, and its total share, a retired member's counting as given and one whose dates do not include
+     * the sheet's today counting 0.00; balanced at exactly 100.00.
      */
     public record PoolView(Long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
     }
@@ -123,7 +124,7 @@ public class PoolController {
             }
             Person person = byId.get(m.getPersonId());
             boolean retired = person == null || person.getRetiredFrom() != null;
-            if (!retired && current) {
+            if (current) {
                 total = total.add(m.getShare());
             }
             views.add(new MemberView(m.getPersonId(), null, person == null ? "" : person.getName(),
