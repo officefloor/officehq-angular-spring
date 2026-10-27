@@ -1,6 +1,6 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { DatedFigure, PeriodStore, periodDueTotals } from '../periods/periods';
-import { GRADES, sumSkippingNa } from '../rates/rates';
+import { GRADES, difference, sumSkippingNa } from '../rates/rates';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
 
 /**
@@ -42,13 +42,14 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
       <table>
         <caption>By period</caption>
         <thead>
-          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Period</th><th scope="col">Due</th><th scope="col">Change</th></tr>
         </thead>
         <tbody>
           @for (p of byPeriod(); track p.name) {
             <tr>
               <th scope="row">{{ p.name }}</th>
               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
             </tr>
           }
         </tbody>
@@ -109,9 +110,22 @@ export class Summary {
       };
     }),
   );
+  // Per period: its due-total, and its change from the period before it by from-date (none for the earliest).
   protected readonly byPeriod = computed(() => {
     const totals = periodDueTotals(this.periods.list(), this.figures());
-    return this.periods.list().map((p) => ({ name: p.name, dueTotal: totals.get(p.id) ?? '' }));
+    const byFrom = [...this.periods.list()].sort((a, b) => a.from.localeCompare(b.from));
+    const changes = new Map(
+      byFrom.map((p, i) => {
+        const before = i > 0 ? totals.get(byFrom[i - 1].id) : undefined;
+        const now = totals.get(p.id);
+        return [p.id, before !== undefined && now !== undefined ? difference(now, before) : ''];
+      }),
+    );
+    return this.periods.list().map((p) => ({
+      name: p.name,
+      dueTotal: totals.get(p.id) ?? '',
+      change: changes.get(p.id) ?? '',
+    }));
   });
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),

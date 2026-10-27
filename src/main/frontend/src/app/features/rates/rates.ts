@@ -83,6 +83,11 @@ export function sumSkippingNa(values: readonly (string | null)[]): string {
   return formatCents(values.reduce((sum, v) => (v === null ? sum : sum + cents(v)), 0n));
 }
 
+/** One two-decimal figure minus another, as a two-decimal figure with a minus sign when negative. */
+export function difference(value: string, minus: string): string {
+  return formatCents(cents(value) - cents(minus));
+}
+
 /**
  * 100.00 split equally into the given number of two-decimal shares, each rounded half to even, with the remainder
  * (100.00 minus the shares added up) given to the first.
