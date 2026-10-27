@@ -2,6 +2,7 @@ package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
  * The sheet's pools and their members. A person is in a pool at most once, with a share percent of more than 0.00 and
  * at most 100.00, and may be in several pools. A pool may be a member of another, with a share like a person's: of at
  * most one pool, never containing itself through any chain, and in a chain of pools at most {@value #MAX_DEPTH} deep.
+ * A membership may carry a from-date and a to-date (each optional, both included); a to-date before the from-date is
+ * refused. A member whose dates do not include the sheet's today is left out of the pool.
  */
 @Service
 public class PoolService {
@@ -75,8 +78,10 @@ public class PoolService {
      * than 0.00 and at most 100.00 with up to two decimals.
      */
     @Transactional
-    public PoolMember addMember(String by, String sheetId, Long poolId, Long personId, BigDecimal share) {
+    public PoolMember addMember(String by, String sheetId, Long poolId, Long personId, BigDecimal share,
+            LocalDate from, LocalDate to) {
         BigDecimal scaled = validShare(share);
+        validDates(from, to);
         sheets.lock(sheetId);
         Pool pool = pool(sheetId, poolId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
@@ -85,9 +90,11 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     person.getName() + " is already in " + pool.getName() + ".");
         }
-        PoolMember added = members.saveAndFlush(new PoolMember(sheetId, pool.getId(), person.getId(), scaled));
+        PoolMember member = new PoolMember(sheetId, pool.getId(), person.getId(), scaled);
+        member.setDates(from, to);
+        PoolMember added = members.saveAndFlush(member);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + by + " pool=" + pool.getName()
-                + " name=" + person.getName() + " share=" + scaled.toPlainString());
+                + " name=" + person.getName() + " share=" + scaled.toPlainString() + dated(from, to));
         return added;
     }
 
@@ -97,8 +104,10 @@ public class PoolService {
      * any chain, or when the chain of pools would be more than {@value #MAX_DEPTH} deep.
      */
     @Transactional
-    public PoolMember addPoolMember(String by, String sheetId, Long poolId, Long memberPoolId, BigDecimal share) {
+    public PoolMember addPoolMember(String by, String sheetId, Long poolId, Long memberPoolId,
+            BigDecimal share, LocalDate from, LocalDate to) {
         BigDecimal scaled = validShare(share);
+        validDates(from, to);
         sheets.lock(sheetId);
         Pool pool = pool(sheetId, poolId);
         Pool member = pools.findById(memberPoolId).filter(p -> p.getSheetId().equals(sheetId))
@@ -125,9 +134,11 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A chain of pools may be at most " + MAX_DEPTH + " deep.");
         }
-        PoolMember added = members.saveAndFlush(PoolMember.ofPool(sheetId, pool.getId(), member.getId(), scaled));
+        PoolMember membership = PoolMember.ofPool(sheetId, pool.getId(), member.getId(), scaled);
+        membership.setDates(from, to);
+        PoolMember added = members.saveAndFlush(membership);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + by + " pool=" + pool.getName()
-                + " name=" + member.getName() + " share=" + scaled.toPlainString());
+                + " name=" + member.getName() + " share=" + scaled.toPlainString() + dated(from, to));
         return added;
     }
 
@@ -145,6 +156,19 @@ public class PoolService {
     private Pool pool(String sheetId, Long poolId) {
         return pools.findById(poolId).filter(p -> p.getSheetId().equals(sheetId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool."));
+    }
+
+    /** Refused when both dates are given and the to-date is before the from-date. */
+    private static void validDates(LocalDate from, LocalDate to) {
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A membership cannot end before it starts.");
+        }
+    }
+
+    /** The audit fields for the dates given: from=<date> and to=<date>, each only when given. */
+    private static String dated(LocalDate from, LocalDate to) {
+        return (from == null ? "" : " from=" + from) + (to == null ? "" : " to=" + to);
     }
 
     /** The share at two decimals; refused unless more than 0.00 and at most 100.00 with up to two decimals. */

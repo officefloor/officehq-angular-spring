@@ -12,12 +12,18 @@ export interface PoolMemberView {
   share: string;
   // A retired member (one with a retirement date set, whatever the date) counts 0.00 toward the pool's total.
   retired: boolean;
+  // The membership's from-date and to-date (both included; null: no bound). A member whose dates do not include the
+  // sheet's today is left out: their share counts 0.00 toward the total and they have no cut.
+  from: string | null;
+  to: string | null;
 }
 
 // A member as shown: keyed for its row (the person's id, or pool-<name>), with their cut of the pool's pot, blank
-// while the pool is unbalanced or has no pot.
+// while the pool is unbalanced or has no pot, or while the member's dates do not include the sheet's today.
 export interface ShownMember extends PoolMemberView {
   key: string;
+  // Whether the membership's dates leave out the sheet's today.
+  out: boolean;
   cut: string;
 }
 
@@ -46,6 +52,12 @@ export class PoolRoster {
 }
 
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Whether a membership's dates include the day (with no day known, every membership counts).
+function dated(m: { from: string | null; to: string | null }, day: string | null): boolean {
+  return day === null || ((m.from === null || m.from <= day) && (m.to === null || day <= m.to));
+}
 
 // The most pools in a chain, the top one counted.
 const MAX_DEPTH = 3;
@@ -86,12 +98,12 @@ function money(c: bigint): string {
 
 /**
  * Each member's cut of the pot (in cents), in member order: the pot times their share over the shares of the members
- * with a cut added up, rounded half to even to the cent; a retired member, and one held on the sheet's today, has none
- * (0). The remainder left by the rounding goes to the member with a cut with the largest share (the earliest added on
+ * with a cut added up, rounded half to even to the cent; a retired member, one held on the sheet's today, and one
+ * whose dates do not include it, has none (0). The remainder left by the rounding goes to the member with a cut with the largest share (the earliest added on
  * a tie), so the cuts total exactly the pot; with no member left with a cut, each is 0.
  */
-function cuts(pot: bigint, members: readonly { share: string; retired: boolean; held: boolean }[]): bigint[] {
-  const shares = members.map((m) => (m.retired || m.held ? 0n : BigInt(hundredths(m.share))));
+function cuts(pot: bigint, members: readonly { share: string; retired: boolean; held: boolean; out: boolean }[]): bigint[] {
+  const shares = members.map((m) => (m.retired || m.held || m.out ? 0n : BigInt(hundredths(m.share))));
   const of = shares.reduce((sum, h) => sum + h, 0n);
   if (of === 0n) return shares.map(() => 0n);
   const result = shares.map((h) => {
@@ -120,7 +132,8 @@ export class PoolStore {
   readonly pools = signal<readonly PoolView[]>([]);
   // The pools with each member counted retired as the people list has them now, the totals to match, and each
   // member's cut of the pool's pot while the pool is balanced: the sheet's pot for a pool that is a member of none,
-  // else its cut in the pool above. A member held on the sheet's today counts toward the total but has no cut.
+  // else its cut in the pool above. A member held on the sheet's today counts toward the total but has no cut; a member
+  // whose dates do not include the sheet's today is left out entirely, counted like a retired one.
   readonly shown = computed(() => {
     const retired = new Map(this.roster.people().map((p) => [p.id, p.retiredFrom !== null]));
     const today = this.session.sheetToday();
@@ -138,9 +151,10 @@ export class PoolStore {
           ...m,
           key: m.personId !== null ? String(m.personId) : `pool-${m.name}`,
           retired: m.personId !== null ? (retired.get(m.personId) ?? m.retired) : false,
+          out: !dated(m, today),
           held: m.personId !== null && held.has(m.personId),
         }));
-        const total = members.reduce((sum, m) => sum + (m.retired ? 0 : hundredths(m.share)), 0);
+        const total = members.reduce((sum, m) => sum + (m.retired || m.out ? 0 : hundredths(m.share)), 0);
         return [pool.id, { pool, members, total, balanced: total === 10000 }] as const;
       }),
     );
@@ -165,7 +179,7 @@ export class PoolStore {
     return pools.map((pool) => {
       const c = counted.get(pool.id)!;
       const cut = poolCuts(pool.id);
-      const shownMembers: ShownMember[] = c.members.map((m, i) => ({ ...m, cut: cut ? money(cut[i]) : '' }));
+      const shownMembers: ShownMember[] = c.members.map((m, i) => ({ ...m, cut: cut && !m.out ? money(cut[i]) : '' }));
       return { ...pool, members: shownMembers, totalShare: percent(c.total), balanced: c.balanced };
     });
   });
@@ -228,7 +242,9 @@ export class PoolStore {
                   @for (m of p.members; track m.key) {
                     <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
                       {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>%
+                      @if (m.from || m.to) { ({{ m.from ?? '…' }} to {{ m.to ?? '…' }}) }
                       @if (m.retired) { (retired) }
+                      @if (m.out) { (not in the pool today) }
                       <span class="visually-hidden">cut</span> <span data-testid="pool-cut">{{ m.cut }}</span>
                     </li>
                   }
@@ -260,6 +276,22 @@ export class PoolStore {
                     [value]="shares()[p.id] ?? ''"
                     (input)="setShare(p.id, value($event))"
                   />
+                  <label [for]="'pool-member-from-' + p.id">From<span class="visually-hidden"> for {{ p.name }}</span></label>
+                  <input
+                    [id]="'pool-member-from-' + p.id"
+                    data-testid="pool-member-from"
+                    placeholder="yyyy-mm-dd"
+                    [value]="froms()[p.id] ?? ''"
+                    (input)="setFrom(p.id, value($event))"
+                  />
+                  <label [for]="'pool-member-to-' + p.id">To<span class="visually-hidden"> for {{ p.name }}</span></label>
+                  <input
+                    [id]="'pool-member-to-' + p.id"
+                    data-testid="pool-member-to"
+                    placeholder="yyyy-mm-dd"
+                    [value]="tos()[p.id] ?? ''"
+                    (input)="setTo(p.id, value($event))"
+                  />
                   <button type="submit" data-testid="pool-member-add">Add member<span class="visually-hidden"> to {{ p.name }}</span></button>
                   @if (rowErrors()[p.id]; as err) {
                     <p role="alert" data-testid="pool-error">{{ err }}</p>
@@ -286,6 +318,8 @@ export class Pools {
   protected readonly error = signal<string | null>(null);
   protected readonly choices = signal<Record<number, string>>({});
   protected readonly shares = signal<Record<number, string>>({});
+  protected readonly froms = signal<Record<number, string>>({});
+  protected readonly tos = signal<Record<number, string>>({});
   protected readonly rowErrors = signal<Record<number, string>>({});
   // A submit in flight: a second one before it answers is ignored.
   private submitting = false;
@@ -300,6 +334,8 @@ export class Pools {
         this.pools.set([]);
         this.choices.set({});
         this.shares.set({});
+        this.froms.set({});
+        this.tos.set({});
         this.rowErrors.set({});
         if (id) this.load(id).catch(() => this.error.set('Could not load the pools.'));
       });
@@ -326,6 +362,16 @@ export class Pools {
 
   protected setShare(pool: number, v: string): void {
     this.shares.update((s) => ({ ...s, [pool]: v }));
+    this.clearRowError(pool);
+  }
+
+  protected setFrom(pool: number, v: string): void {
+    this.froms.update((s) => ({ ...s, [pool]: v }));
+    this.clearRowError(pool);
+  }
+
+  protected setTo(pool: number, v: string): void {
+    this.tos.update((s) => ({ ...s, [pool]: v }));
     this.clearRowError(pool);
   }
 
@@ -399,6 +445,16 @@ export class Pools {
       this.setRowError(pool.id, 'Enter a share of more than 0.00 and at most 100.00, with up to two decimals.');
       return;
     }
+    const from = (this.froms()[pool.id] ?? '').trim();
+    const to = (this.tos()[pool.id] ?? '').trim();
+    if ((from && !DATE.test(from)) || (to && !DATE.test(to))) {
+      this.setRowError(pool.id, 'Enter membership dates as yyyy-mm-dd.');
+      return;
+    }
+    if (from && to && to < from) {
+      this.setRowError(pool.id, 'A membership cannot end before it starts.');
+      return;
+    }
     const current = this.pools().find((p) => p.id === pool.id);
     if (personId !== null && current?.members.some((m) => m.personId === personId)) {
       this.setRowError(pool.id, 'That person is already in the pool.');
@@ -414,7 +470,13 @@ export class Pools {
     this.submitting = true;
     try {
       const saved = await firstValueFrom(
-        this.http.post<PoolView>(`${this.url(sheet)}/${pool.id}/members`, { personId, poolId: memberPool, share }),
+        this.http.post<PoolView>(`${this.url(sheet)}/${pool.id}/members`, {
+          personId,
+          poolId: memberPool,
+          share,
+          from: from || null,
+          to: to || null,
+        }),
       );
       if (this.session.sheetId() === sheet) this.pools.update((l) => l.map((p) => (p.id === saved.id ? saved : p)));
     } catch (err) {
