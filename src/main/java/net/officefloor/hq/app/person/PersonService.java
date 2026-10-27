@@ -1,13 +1,18 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -23,13 +28,16 @@ public class PersonService {
     private final PersonRepository people;
     private final PatronRepository patrons;
     private final SheetService sheets;
+    private final SheetRepository sheetRepository;
     private final RollupService rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets, RollupService rollup, Audit audit) {
+    public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
+            SheetRepository sheetRepository, RollupService rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.sheets = sheets;
+        this.sheetRepository = sheetRepository;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -69,7 +77,7 @@ public class PersonService {
         LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.strip();
-        if (people.nameOrAliasInUse(sheetId, trimmed)) {
+        if (nameOrAliasInUse(sheetId, trimmed)) {
             throw nameInUse();
         }
         String key = contactKey(contact);
@@ -97,6 +105,16 @@ public class PersonService {
     @Transactional
     public Person update(String by, String sheetId, Long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        return update(by, sheetId, id, version, name, grade, gradeFrom, terms, contact, true);
+    }
+
+    /**
+     * Saves the edit as {@link #update(String, String, Long, long, String, String, LocalDate, Integer, String)} does;
+     * when checking the tree, refused too when the name, or any alias the person keeps, is a name or alias on another
+     * sheet of the sheet's tree.
+     */
+    private Person update(String by, String sheetId, Long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, boolean checkTree) {
         LocalDate today = today(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -108,6 +126,12 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)
                 || people.findBySheetIdAndAlias(sheetId, trimmed).isPresent()) {
             throw nameInUse();
+        }
+        if (checkTree) {
+            Set<String> tree = tree(sheetId);
+            if (inUseOn(tree, trimmed) || person.getAliases().stream().anyMatch(a -> inUseOn(tree, a))) {
+                throw nameInUse();
+            }
         }
         String key = contactKey(contact);
         if (key != null && people.existsBySheetIdAndContactAndIdNot(sheetId, key, id)) {
@@ -144,7 +168,7 @@ public class PersonService {
         List<Person> saved = new ArrayList<>();
         for (Person p : chosen) {
             saved.add(update(by, sheetId, p.getId(), p.getVersion(), p.getName(), grade, from, p.getTerms(),
-                    p.getContact()));
+                    p.getContact(), false));
         }
         return saved;
     }
@@ -190,7 +214,7 @@ public class PersonService {
 
     /**
      * Gives the person the alias, without surrounding spaces; refused when blank, or when it equals, ignoring case,
-     * any name or alias on the sheet.
+     * any name or alias on the sheet or on another sheet of its tree.
      */
     @Transactional
     public Person addAlias(String by, String sheetId, Long id, String alias) {
@@ -200,7 +224,7 @@ public class PersonService {
         }
         Person person = people.findWithLockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
-        if (people.nameOrAliasInUse(sheetId, trimmed)) {
+        if (nameOrAliasInUse(sheetId, trimmed)) {
             throw nameInUse();
         }
         person.addAlias(trimmed);
@@ -237,6 +261,76 @@ public class PersonService {
         audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + by + " name=" + person.getName()
                 + " patron=" + patron.getName());
         return added;
+    }
+
+    /**
+     * Whether the name or alias is, ignoring case, a name or an alias of anyone on the sheet or on another sheet of
+     * its tree: its ancestors, and its descendants and theirs.
+     */
+    @Transactional(readOnly = true)
+    public boolean nameOrAliasInUse(String sheetId, String nameOrAlias) {
+        return people.nameOrAliasInUse(sheetId, nameOrAlias) || inUseOn(tree(sheetId), nameOrAlias);
+    }
+
+    /**
+     * The ids of the people on the sheet who clash: whose name or an alias is, ignoring case, a name or an alias on
+     * another sheet of its tree (they came to clash before such names were refused, or as the tree was linked).
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> clashing(String sheetId) {
+        Set<String> tree = tree(sheetId);
+        if (tree.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> taken = new HashSet<>();
+        for (Person p : people.findBySheetIdIn(tree)) {
+            taken.add(p.getName().toLowerCase(Locale.ROOT));
+            p.getAliases().forEach(a -> taken.add(a.toLowerCase(Locale.ROOT)));
+        }
+        Set<Long> clashing = new HashSet<>();
+        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (taken.contains(p.getName().toLowerCase(Locale.ROOT))
+                    || p.getAliases().stream().anyMatch(a -> taken.contains(a.toLowerCase(Locale.ROOT)))) {
+                clashing.add(p.getId());
+            }
+        }
+        return clashing;
+    }
+
+    /**
+     * The other sheets of the sheet's tree, among the sheets that exist: its parent, their parent and so on, and the
+     * sheets naming it as parent, the ones naming those, and so on.
+     */
+    private Set<String> tree(String sheetId) {
+        Set<String> tree = new LinkedHashSet<>();
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        String at = sheetRepository.findById(sheetId).map(Sheet::getParentId).orElse(null);
+        while (at != null && seen.add(at)) {
+            Sheet parent = sheetRepository.findById(at).orElse(null);
+            if (parent == null) {
+                break;
+            }
+            tree.add(at);
+            at = parent.getParentId();
+        }
+        ArrayDeque<String> toVisit = new ArrayDeque<>(List.of(sheetId));
+        Set<String> below = new HashSet<>(Set.of(sheetId));
+        while (!toVisit.isEmpty()) {
+            for (Sheet child : sheetRepository.findByParentIdOrderByIdAsc(toVisit.poll())) {
+                if (below.add(child.getId())) {
+                    toVisit.add(child.getId());
+                    if (!child.getId().equals(sheetId)) {
+                        tree.add(child.getId());
+                    }
+                }
+            }
+        }
+        tree.remove(sheetId);
+        return tree;
+    }
+
+    private boolean inUseOn(Set<String> sheetIds, String nameOrAlias) {
+        return !sheetIds.isEmpty() && people.nameOrAliasInUseOn(sheetIds, nameOrAlias);
     }
 
     /** A contact as stored: without surrounding spaces and lower-cased; null when blank. */

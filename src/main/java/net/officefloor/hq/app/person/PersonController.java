@@ -32,16 +32,16 @@ public class PersonController {
 
     /**
      * A person as listed: the grade is the one in force on the sheet's today, the grades every one recorded, the
-     * terms their own (null: none).
+     * terms their own (null: none); clashing when their name or an alias is on another sheet of the sheet's tree.
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
-            List<String> aliases) {
-        public static PersonView of(Person p, LocalDate today) {
+            List<String> aliases, boolean clashing) {
+        public static PersonView of(Person p, LocalDate today, Set<Long> clashing) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
-                    p.getContact(), p.getAliases());
+                    p.getContact(), p.getAliases(), clashing.contains(p.getId()));
         }
     }
 
@@ -148,7 +148,8 @@ public class PersonController {
     public List<PersonView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
         LocalDate today = service.today(sheetId);
-        return service.list(sheetId).stream().map(p -> PersonView.of(p, today)).toList();
+        Set<Long> clashing = service.clashing(sheetId);
+        return service.list(sheetId).stream().map(p -> PersonView.of(p, today, clashing)).toList();
     }
 
     @PostMapping
@@ -237,12 +238,13 @@ public class PersonController {
         }
         List<Person> graded = service.bulkGrade(user, sheetId, form.ids(), form.grade(), form.from());
         LocalDate today = service.today(sheetId);
-        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today)).toList());
+        Set<Long> clashing = service.clashing(sheetId);
+        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing)).toList());
     }
 
     /** The person as listed on the sheet's today. */
     private PersonView view(String sheetId, Person person) {
-        return PersonView.of(person, service.today(sheetId));
+        return PersonView.of(person, service.today(sheetId), service.clashing(sheetId));
     }
 
     /** The ids of the people on the sheet the signed-in user watches, in the order they started watching. */

@@ -48,6 +48,6 @@ public class QuickAddController {
             @Valid @RequestBody QuickAddForm form,
             @SessionAttribute(SessionController.USER) String user) {
         QuickAddService.Added added = service.add(user, sheetId, form.name(), form.amount());
-        return new QuickAddView(PersonView.of(added.person(), people.today(sheetId)), added.personAdded(), ClaimView.of(added.claim()));
+        return new QuickAddView(PersonView.of(added.person(), people.today(sheetId), people.clashing(sheetId)), added.personAdded(), ClaimView.of(added.claim()));
     }
 }

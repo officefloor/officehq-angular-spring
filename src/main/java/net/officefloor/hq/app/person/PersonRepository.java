@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
@@ -39,6 +40,15 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
         return findBySheetIdAndNameIgnoreCase(sheetId, nameOrAlias)
                 .or(() -> findBySheetIdAndAlias(sheetId, nameOrAlias));
     }
+
+    /** Whether the name or alias is a name or an alias of anyone on any of the sheets, compared ignoring case. */
+    @Query("SELECT COUNT(p) > 0 FROM Person p WHERE p.sheetId IN :sheetIds AND (LOWER(p.name) = LOWER(:nameOrAlias)"
+            + " OR EXISTS (SELECT a FROM p.aliases a WHERE LOWER(a.alias) = LOWER(:nameOrAlias)))")
+    boolean nameOrAliasInUseOn(@Param("sheetIds") Collection<String> sheetIds,
+            @Param("nameOrAlias") String nameOrAlias);
+
+    /** The people on any of the sheets. */
+    List<Person> findBySheetIdIn(Collection<String> sheetIds);
 
     boolean existsBySheetIdAndContact(String sheetId, String contact);
 
