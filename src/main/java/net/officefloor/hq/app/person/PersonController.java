@@ -32,16 +32,17 @@ public class PersonController {
 
     /**
      * A person as listed: the grade is the one in force on the sheet's today, the grades every one recorded, the
-     * terms their own (null: none); clashing when their name or an alias is on another sheet of the sheet's tree.
+     * terms their own (null: none), the sheet they were transferred from (null: none); clashing when their name or an alias is on another sheet of the sheet's tree.
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
-            List<String> aliases, boolean clashing) {
+            List<String> aliases, boolean clashing, String originSheet) {
         public static PersonView of(Person p, LocalDate today, Set<Long> clashing) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
-                    p.getContact(), p.getAliases(), clashing.contains(p.getId()));
+                    p.getContact(), p.getAliases(), clashing.contains(p.getId()),
+                    p.getOriginSheet());
         }
     }
 

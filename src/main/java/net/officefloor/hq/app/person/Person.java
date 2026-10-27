@@ -56,6 +56,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The sheet the person was transferred from; null: not transferred. */
+    @Column(name = "origin_sheet")
+    private String originSheet;
+
     /** The sheet's today when the person was added; null: before that was kept. */
     @Column(name = "added_on")
     private LocalDate addedOn;
@@ -101,6 +105,7 @@ public class Person {
         then.sheetId = sheetId;
         then.name = name;
         then.position = position;
+        then.originSheet = originSheet;
         then.terms = terms;
         then.addedOn = addedOn;
         then.version = version;
@@ -211,8 +216,14 @@ public class Person {
                 .toList();
     }
 
-    /** Moves the person, with their grades, holds and aliases, to the other sheet. */
+    /** The sheet the person was transferred from; null: not transferred. */
+    public String getOriginSheet() {
+        return originSheet;
+    }
+
+    /** Moves the person, with their grades, holds and aliases, to the other sheet; they came from this one. */
     public void moveToSheet(String sheetId) {
+        this.originSheet = this.sheetId;
         this.sheetId = sheetId;
         List<PersonAlias> moved = aliases.stream().map(a -> new PersonAlias(sheetId, a.getAlias())).toList();
         aliases.clear();

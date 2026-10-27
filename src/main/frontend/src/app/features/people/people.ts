@@ -30,6 +30,8 @@ interface Person {
   version: number;
   // The date the person is retired from; null while not retired. A person with one set is retired at once.
   retiredFrom: string | null;
+  // The sheet the person was transferred from; null when they were not.
+  originSheet: string | null;
   // Whether the person has any hold, and every hold put on them, earliest from-date first.
   held: boolean;
   holds: DatedHold[];
@@ -326,7 +328,7 @@ interface StatementView {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Cut total</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Settled total</th><th scope="col">Open total</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
@@ -357,6 +359,7 @@ interface StatementView {
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+              <td data-testid="person-origin">{{ p.originSheet ?? '' }}</td>
               <td data-testid="person-cut-total">{{ poolStore.cutTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
