@@ -12,7 +12,7 @@ import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { PoolRoster, PoolStore } from '../pools/pools';
-import { CrewRoster } from '../crews/crews';
+import { CrewRoster, crewDueTotal } from '../crews/crews';
 import { PersonPlans, PlanStore } from '../plans/plans';
 
 interface Person {
@@ -95,6 +95,7 @@ interface StatementView {
       [overdueTotal]="overdueTotal()"
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+      [myCrewDueTotal]="myCrewDueTotal()"
     />
     <app-consolidated
       [ownPeopleCount]="people().length"
@@ -1153,17 +1154,30 @@ export class People {
 
   // The signed-in user's own figures: those of the person whose name or an alias is, ignoring case, the user's name,
   // shown as on their row; null when there is no such person.
-  protected readonly myFigures = computed(() => {
+  private readonly me = computed(() => {
     const user = this.session.user()?.toLowerCase();
-    if (!user) return null;
-    const me = this.people().find(
+    if (!user) return undefined;
+    return this.people().find(
       (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
     );
+  });
+  protected readonly myFigures = computed(() => {
+    const me = this.me();
     if (me === undefined) return null;
     return {
       dueTotal: this.dueBy().get(me.id) ?? 'n/a',
       overdueTotal: this.overdueTotalBy().get(me.id) ?? '0.00',
     };
+  });
+  // The signed-in user's crew total: the due-totals of the crews their person leads, added up; blank when they lead
+  // none, or there is no such person.
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    if (me === undefined) return '';
+    const led = this.crewRoster.crews().filter((c) => c.leadId === me.id);
+    if (led.length === 0) return '';
+    const due = this.dueBy();
+    return sumSkippingNa(led.map((c) => crewDueTotal(c, due)));
   });
 
   constructor() {

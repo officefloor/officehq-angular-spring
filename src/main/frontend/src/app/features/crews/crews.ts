@@ -19,11 +19,18 @@ export interface CrewView {
 }
 
 // The people of the active sheet as the people list holds them now: who may be chosen as a lead or member, and each
-// person's due-total as the list shows it (null: n/a), so a crew's due-total follows theirs.
+// person's due-total as the list shows it (null: n/a), so a crew's due-total follows theirs; and the sheet's crews as
+// the crews list holds them now.
 @Injectable({ providedIn: 'root' })
 export class CrewRoster {
   readonly people = signal<readonly { id: number; name: string }[]>([]);
   readonly dueBy = signal<ReadonlyMap<number, string | null>>(new Map());
+  readonly crews = signal<readonly CrewView[]>([]);
+}
+
+/** A crew's due-total: its lead's and members' due-totals added up, n/a skipped. */
+export function crewDueTotal(crew: CrewView, dueBy: ReadonlyMap<number, string | null>): string {
+  return sumSkippingNa([crew.leadId, ...crew.members.map((m) => m.personId)].map((id) => dueBy.get(id) ?? null));
 }
 
 // The active sheet's crews: each with its lead and members, and its due-total: the lead's and the members' due-totals
@@ -104,7 +111,7 @@ export class Crews {
   private readonly session = inject(Session);
   protected readonly roster = inject(CrewRoster);
 
-  protected readonly crews = signal<readonly CrewView[]>([]);
+  protected readonly crews = this.roster.crews;
   // Each crew with its lead's and members' names as the people list has them now, and its due-total.
   protected readonly shown = computed(() => {
     const names = new Map(this.roster.people().map((p) => [p.id, p.name]));
@@ -113,7 +120,7 @@ export class Crews {
       ...c,
       leadName: names.get(c.leadId) ?? c.leadName,
       members: c.members.map((m) => ({ ...m, name: names.get(m.personId) ?? m.name })),
-      dueTotal: sumSkippingNa([c.leadId, ...c.members.map((m) => m.personId)].map((id) => due.get(id) ?? null)),
+      dueTotal: crewDueTotal(c, due),
     }));
   });
 
