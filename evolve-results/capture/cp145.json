@@ -1,0 +1,64 @@
+{
+  "checkpoint": 145,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp145_bulk-redate",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be re-dated together: a date entry and a button beside the bulk buttons.\nEach selected claim is re-dated in list order exactly as the row's re-date does (who may, which\nstatuses, closed periods, renumbering on a period change, CLAIM_REDATED); show how many were re-dated\nand how many refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be re-dated together: a date entry and a button beside the bulk buttons.\nEach selected claim is re-dated in list order exactly as the row's re-date does (who may, which\nstatuses, closed periods, renumbering on a period change, CLAIM_REDATED); show how many were re-dated\nand how many refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ace3fb5d97733edf25229b52bae7187c0405e503",
+  "reset_sha": "",
+  "preagent_sha": "ffe0f693db099545c053b34ad1efc40e9cb9ec96",
+  "prev_sha": "ffe0f693db099545c053b34ad1efc40e9cb9ec96",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7068163999999999,
+    "input_tokens": 28,
+    "output_tokens": 6292,
+    "cache_read_tokens": 532842,
+    "cache_creation_tokens": 59287,
+    "num_turns": 15,
+    "duration_ms": 260813,
+    "duration_api_ms": 62083,
+    "model": "claude-opus-5-5",
+    "session_id": "0a2eae34-560e-4eb2-86ad-853cd6699259",
+    "stop_reason": "success",
+    "result_text": "Selected claims can now be re-dated together. All 4 tests in the acceptance spec pass with `bin/e2e`.\n\n**What the user sees:** a date entry (`bulk-redate-date`) and a \"Re-date selected claims\" button (`bulk-redate`) sit beside the other bulk buttons. Afterwards the screen shows how many claims were re-dated (`bulk-redated`) and how many were refused (`bulk-redate-refused`). The old counts are cleared each time the button is pressed. If the date is missing or the request fails, an error shows (`bulk-redate-error`).\n\n**How it works:** the new endpoint `POST /claims/bulk-redate` calls the same re-date code as the single-row button, once per claim in list order. So all the rules come from that one place: who may re-date, which statuses, closed periods, the retirement date, and the `CLAIM_REDATED` audit record. Each claim is re-dated on its own, so one refusal doesn't stop the others. A viewer, or anyone on an archived sheet, gets every claim refused, the same as the other bulk actions.\n\n**Renumbering on a period change:** I didn't add any. The existing re-date keeps a claim's number and due-by as they were fixed, and the tests expect exactly that (claim X-2 is still X-2 after being moved to a different month). If the request meant that re-dating should renumber a claim when its period changes, that would be a change to the existing re-date and would conflict with these tests.\n\nThe changes are in three files:\n- `ClaimBulkService.java`: the new `redate` method.\n- `ClaimController.java`: the new endpoint.\n- `people.ts`: the date entry, button, counts and error.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7068163999999999,
+        "num_turns": 15,
+        "duration_ms": 260813,
+        "duration_api_ms": 62083,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp145.agent.jsonl",
+  "agent_diff_file": "cp145.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
