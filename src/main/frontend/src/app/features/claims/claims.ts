@@ -172,17 +172,21 @@ export function keepsFigure(c: Claim): boolean {
   return c.settledDue !== null || (isBound(c) && c.statedDue !== null);
 }
 
-/** Whether the claim was deferred until a date after the sheet's today, whatever its status: as the row shows it. */
+/**
+ * Whether the claim was deferred until a date after the sheet's today, whatever its status, and no statement binds
+ * it (the deferral waits for the binding to end): as the row shows it.
+ */
 export function deferredUntilAfter(c: Claim, today: string | null): boolean {
-  return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+  return !isBound(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
 }
 
 /**
- * Whether a claim is deferred: OPEN and deferred until a date after the sheet's today. Until today reaches that
- * date it counts in no total, is not overdue and cannot be settled; from then on it is an OPEN claim like any other.
+ * Whether a claim is deferred: deferred until a date after the sheet's today, bound by no statement, and counting
+ * (OPEN, or settled while a statement bound it). Until today reaches that date it counts in no total, is not
+ * overdue and cannot be settled; from then on it is a claim like any other.
  */
 export function deferred(c: Claim, today: string | null): boolean {
-  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+  return counts(c) && deferredUntilAfter(c, today);
 }
 
 /** Whether a claim's late charge is waived on the date: waived on or before it, so it bears no late charge. */

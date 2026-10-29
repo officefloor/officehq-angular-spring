@@ -318,21 +318,23 @@ public class Claim {
     }
 
     /**
-     * Whether the claim was deferred at the end of the day: OPEN then, deferred while the sheet's today was on or
+     * Whether the claim was deferred at the end of the day, binding aside: counting then, deferred while the sheet's today was on or
      * before the day, until a date after it.
      */
     public boolean isDeferredAsOf(LocalDate day) {
-        return statusAtEndOf(day) == ClaimStatus.OPEN && deferredUntil != null
+        ClaimStatus then = statusAtEndOf(day);
+        return then != null && then.counts() && deferredUntil != null
                 && (deferredOn == null || !deferredOn.isAfter(day)) && day.isBefore(deferredUntil);
     }
 
     /**
-     * Whether the claim is deferred on the date: OPEN and deferred until a date after it. A deferred claim counts in
-     * no total, is not overdue, cannot be settled and is left unbound by a statement; from its date on it is an OPEN
-     * claim like any other.
+     * Whether the claim is deferred on the date: deferred until a date after it and bound by no statement, and OPEN
+     * (or, when settled while a statement bound it, still counting). A deferred claim counts in no total, is not
+     * overdue, cannot be settled and is left unbound by a statement; from its date on it is a claim like any other.
+     * While a statement binds it the deferral waits: it takes effect once the binding ends.
      */
     public boolean isDeferredOn(LocalDate today) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+        return status.counts() && !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     public boolean isLateEntry() {

@@ -177,7 +177,7 @@ public class StatementService {
         for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
             ClaimStatus status = c.statusAtEndOf(asOf);
             boolean bound = bindingCounts && c.isStated();
-            boolean counts = status != null && status.counts() && !c.isDeferredAsOf(asOf)
+            boolean counts = status != null && status.counts() && !(c.isDeferredAsOf(asOf) && !bound)
                     && !(status.isOpen() && !bound && person.isRetiredOn(asOf));
             if (!counts) {
                 c.unbind();
