@@ -300,6 +300,9 @@ interface StatementView {
       <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | fig }}</strong></p>
       <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() | fig }}</strong></p>
       <p>Cut in total: <strong data-testid="rollup-cut-total">{{ poolStore.cutTotal() | fig }}</strong></p>
+      <p>Due aged 0 to 30 days: <strong data-testid="rollup-aged-0-30">{{ agedTotal()[0] | fig }}</strong></p>
+      <p>Due aged 31 to 60 days: <strong data-testid="rollup-aged-31-60">{{ agedTotal()[1] | fig }}</strong></p>
+      <p>Due aged 61 or more days: <strong data-testid="rollup-aged-61">{{ agedTotal()[2] | fig }}</strong></p>
       @if (tagDueTotals().length > 0) {
         <table>
           <caption>Due by tag</caption>
@@ -1239,6 +1242,11 @@ export class People {
       by.set(id, buckets.map(sumSkippingNa));
     }
     return by;
+  });
+  // The sheet's age buckets: each the people's figures for it added up, not trimmed.
+  protected readonly agedTotal = computed(() => {
+    const by = [...this.agedBy().values()];
+    return [0, 1, 2].map((i) => sumSkippingNa(by.map((b) => b[i])));
   });
   // The sheet's overdue-total: every person has a figure (0.00 with nothing overdue), trimmed like the due-total.
   protected readonly overdueTotal = computed(() => {
