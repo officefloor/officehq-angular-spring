@@ -78,6 +78,8 @@ interface StatementView {
   count: number;
   dueTotal: string | null;
   date: string;
+  // Each statement still standing, oldest first.
+  lines: { date: string; dueTotal: string | null }[];
 }
 
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
@@ -581,6 +583,13 @@ interface StatementView {
                   <ul aria-label="Past retirements">
                     @for (r of p.pastRetirements; track $index) {
                       <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                    }
+                  </ul>
+                }
+                @if (statementsBy().get(p.id)?.lines?.length) {
+                  <ul aria-label="Statements">
+                    @for (l of statementsBy().get(p.id)!.lines; track $index) {
+                      <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal ?? 'n/a' }}</li>
                     }
                   </ul>
                 }

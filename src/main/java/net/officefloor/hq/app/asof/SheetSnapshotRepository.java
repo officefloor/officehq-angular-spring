@@ -13,6 +13,10 @@ public interface SheetSnapshotRepository extends JpaRepository<SheetSnapshot, Lo
     @Query("SELECT s.digest FROM SheetSnapshot s WHERE s.sheetId = :sheetId ORDER BY s.id DESC")
     List<String> latestDigests(@Param("sheetId") String sheetId, Limit limit);
 
+    /** The ids of the sheet's states, latest first. */
+    @Query("SELECT s.id FROM SheetSnapshot s WHERE s.sheetId = :sheetId ORDER BY s.id DESC")
+    List<Long> latestIds(@Param("sheetId") String sheetId, Limit limit);
+
     /** The ids of the sheet's states stored while its today was on or before the day, latest first. */
     @Query("SELECT s.id FROM SheetSnapshot s WHERE s.sheetId = :sheetId AND s.madeOn <= :day ORDER BY s.id DESC")
     List<Long> idsMadeBy(@Param("sheetId") String sheetId, @Param("day") LocalDate day, Limit limit);

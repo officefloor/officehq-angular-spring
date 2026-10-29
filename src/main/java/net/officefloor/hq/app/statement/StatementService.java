@@ -2,6 +2,7 @@ package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,8 +30,18 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class StatementService {
 
-    /** A person's statements: how many have been taken, and the last one (null with none). */
-    public record Summary(Long personId, int count, Statement last) {
+    /** A person's statements still standing, in their order. */
+    public record Summary(Long personId, List<Statement> statements) {
+
+        /** How many statements stand. */
+        public int count() {
+            return statements.size();
+        }
+
+        /** The last statement; null with none. */
+        public Statement last() {
+            return statements.isEmpty() ? null : statements.get(statements.size() - 1);
+        }
     }
 
     private final StatementRepository statements;
@@ -60,12 +71,11 @@ public class StatementService {
     /** Each person's statements on the sheet, for the people who have any. */
     @Transactional(readOnly = true)
     public List<Summary> list(String sheetId) {
-        Map<Long, Summary> by = new LinkedHashMap<>();
+        Map<Long, List<Statement>> by = new LinkedHashMap<>();
         for (Statement s : statements.findBySheetIdInOrder(sheetId)) {
-            Summary was = by.get(s.getPersonId());
-            by.put(s.getPersonId(), new Summary(s.getPersonId(), was == null ? 1 : was.count() + 1, s));
+            by.computeIfAbsent(s.getPersonId(), k -> new ArrayList<>()).add(s);
         }
-        return List.copyOf(by.values());
+        return by.entrySet().stream().map(e -> new Summary(e.getKey(), e.getValue())).toList();
     }
 
     /**
@@ -121,8 +131,7 @@ public class StatementService {
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + by + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count);
         rollup.recordChanges(by, sheetId, before);
-        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId).size(),
-                taken);
+        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId));
     }
 
     /**
@@ -197,8 +206,7 @@ public class StatementService {
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count
                 + " asof=" + asOf);
         rollup.recordChanges(by, sheetId, before);
-        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId).size(),
-                taken);
+        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId));
     }
 
     /** The grade's rate in force on the date among the rates; null with none. */
@@ -245,7 +253,6 @@ public class StatementService {
         audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + by + " name=" + person.getName()
                 + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
         rollup.recordChanges(by, sheetId, before);
-        int count = theirs.size() - 1;
-        return new Summary(personId, count, count == 0 ? null : theirs.get(count - 1));
+        return new Summary(personId, theirs.subList(0, theirs.size() - 1));
     }
 }

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -23,18 +24,27 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 @RequestMapping("/api/sheets/{sheetId}")
 public class StatementController {
 
+    /** One statement standing, as its line shows it: its date and due-total (null for n/a). */
+    public record LineView(LocalDate date, String dueTotal) {
+        static LineView of(Statement s) {
+            return new LineView(s.getDate(), s.getDueTotal() == null ? null : s.getDueTotal().toPlainString());
+        }
+    }
+
     /**
-     * A person's statements as the screen shows them: how many, and the last one's due-total (null for n/a) and
-     * date.
+     * A person's statements as the screen shows them: how many, the last one's due-total (null for n/a) and date,
+     * and a line for each, oldest first (by date, then in their order).
      */
-    public record StatementView(Long personId, int count, String dueTotal, LocalDate date) {
+    public record StatementView(Long personId, int count, String dueTotal, LocalDate date, List<LineView> lines) {
         static StatementView of(StatementService.Summary s) {
+            List<LineView> lines = s.statements().stream().map(LineView::of)
+                    .sorted(Comparator.comparing(LineView::date)).toList();
             if (s.last() == null) {
-                return new StatementView(s.personId(), 0, null, null);
+                return new StatementView(s.personId(), 0, null, null, lines);
             }
             return new StatementView(s.personId(), s.count(),
                     s.last().getDueTotal() == null ? null : s.last().getDueTotal().toPlainString(),
-                    s.last().getDate());
+                    s.last().getDate(), lines);
         }
     }
 
