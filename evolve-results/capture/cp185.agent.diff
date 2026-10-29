@@ -1,0 +1,201 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 69a7c2a6..4943f815 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -549,6 +549,17 @@ export function claimedTotal(claims: readonly Claim[]): string {
+               <button type="button" data-testid="claim-split" (click)="split(c)">
+                 Split<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
++              <label [for]="'claim-settle-part-amount-' + c.id">Amount to settle</label>
++              <input
++                [id]="'claim-settle-part-amount-' + c.id"
++                inputmode="decimal"
++                data-testid="claim-settle-part-amount"
++                [value]="settlePartAmounts()[c.id] ?? ''"
++                (input)="setSettlePartAmount(c.id, value($event))"
++              />
++              <button type="button" data-testid="claim-settle-part" (click)="settlePart(c)">
++                Part-settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
++              </button>
+               <button type="button" data-testid="claim-remind" (click)="remind(c)">
+                 Remind<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
+@@ -692,6 +703,8 @@ export class Claims {
+   protected readonly redates = signal<Record<number, string>>({});
+   // The amount typed to split off each claim, by claim id.
+   protected readonly splitAmounts = signal<Record<number, string>>({});
++  // The amount typed to part-settle each claim, by claim id.
++  protected readonly settlePartAmounts = signal<Record<number, string>>({});
+   // The person (by id) chosen to move each claim to, by claim id.
+   protected readonly reassignTo = signal<Record<number, string>>({});
+   // The comment typed for each claim, by claim id.
+@@ -1300,6 +1313,47 @@ export class Claims {
+     }
+   }
+ 
++  protected setSettlePartAmount(id: number, amount: string): void {
++    this.settlePartAmounts.update((a) => ({ ...a, [id]: amount }));
++    this.clearRowError(id);
++  }
++
++  /**
++   * Splits the typed amount off an OPEN claim as the split button does, and settles the new claim at once as the
++   * settle button does (PENDING above the clerk limit); a refused split or settle refuses the whole.
++   */
++  protected async settlePart(c: Claim): Promise<void> {
++    this.clearRowError(c.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const amount = (this.settlePartAmounts()[c.id] ?? '').trim();
++    if (!AMOUNT.test(amount) || Number(amount) <= 0 || Number(amount) >= Number(c.amount)) {
++      this.setRowError(c.id, `Enter an amount more than 0.00 and less than ${c.amount} to settle off this claim.`);
++      return;
++    }
++    if (c.status !== 'OPEN' || deferred(c, this.session.sheetToday())) {
++      this.setRowError(c.id, `Only an OPEN claim that is not deferred can be part-settled.`);
++      return;
++    }
++    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
++      this.setRowError(c.id, CLOSED);
++      return;
++    }
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/settle-part`;
++    try {
++      const result = await firstValueFrom(this.http.post<{ original: Claim; settled: Claim }>(url, { amount }));
++      this.settlePartAmounts.update(({ [c.id]: _, ...rest }) => rest);
++      this.saved.emit(result.original);
++      this.saved.emit(result.settled);
++    } catch (e) {
++      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
++      this.setRowError(
++        c.id,
++        forbidden ? 'Your role may not split and settle this claim.' : `This ${c.status} claim cannot be part-settled.`,
++      );
++    }
++  }
++
+   protected setReassignTo(id: number, personId: string): void {
+     this.reassignTo.update((r) => ({ ...r, [id]: personId }));
+     this.clearRowError(id);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index fb755cbd..06f194ce 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -334,6 +334,19 @@ public class ClaimController {
+         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+     }
+ 
++    /** An open claim after a part-settle, and the part split off it, now settled or pending. */
++    public record PartSettleView(ClaimView original, ClaimView settled) {
++    }
++
++    @PostMapping("/claims/{id}/settle-part")
++    public PartSettleView settlePart(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable Long id, @Valid @RequestBody SplitForm form,
++            @SessionAttribute(SessionController.USER) String user) {
++        ClaimService.PartSettle result = service.settlePart(user, sheetId, id, form.amount());
++        return new PartSettleView(ClaimView.of(result.original()), ClaimView.of(result.settled()));
++    }
++
+     @PostMapping("/claims/{id}/waive")
+     public ClaimView waive(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 61b5012f..405fdfe0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -254,7 +254,7 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
+-        return changeStatus(by, sheetId, id, next, null);
++        return changeStatus(by, sheetId, id, next, null, false);
+     }
+ 
+     /**
+@@ -263,10 +263,14 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim voidClaim(String by, String sheetId, Long id, String reason) {
+-        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason);
++        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason, false);
+     }
+ 
+-    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason) {
++    /**
++     * Moves the claim to its next status. A part being settled was judged by the four-eyes rules and the proof rule
++     * on the claim it was split off, so they are not judged on it again.
++     */
++    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason, boolean part) {
+         Claim claim = lockedClaim(sheetId, id);
+         switch (next) {
+             case OPEN -> settings.refuseUnlessMay(sheetId, by, "open");
+@@ -288,11 +292,8 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "The claim is deferred until " + claim.getDeferredUntil() + ".");
+         }
+-        if (next == ClaimStatus.SETTLED && by.equals(claim.getOpenedBy())) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot settle it.");
+-        }
+-        if (next == ClaimStatus.SETTLED && by.equals(claim.getEditedBy())) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who last edited a claim cannot settle it.");
++        if (next == ClaimStatus.SETTLED && !part) {
++            refuseFourEyes(by, claim);
+         }
+         if (next == ClaimStatus.DRAFT && claim.getCorrects() != null) {
+             // a restored correction counts against its claim again
+@@ -336,7 +337,9 @@ public class ClaimService {
+             // at least the floor in force on its date; with none it stays live
+             BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
+                     : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
+-            refuseWithoutProof(sheetId, claim, fixed);
++            if (!part) {
++                refuseWithoutProof(sheetId, claim, fixed);
++            }
+             if (settings.aboveClerkLimit(sheetId, by, fixed)) {
+                 next = ClaimStatus.PENDING;
+                 event = "CLAIM_PENDING";
+@@ -912,6 +915,42 @@ public class ClaimService {
+         return new Split(original, added);
+     }
+ 
++    /** An OPEN claim after a part-settle, and the part split off it, now SETTLED or PENDING. */
++    public record PartSettle(Claim original, Claim settled) {
++    }
++
++    /**
++     * Part-settles an OPEN claim: the amount is split off it as {@link #split} does, and the new claim settled at once
++     * by the user as the settle button does (PENDING when above the user's clerk limit). The four-eyes rules and the
++     * proof rule are judged on the original claim before the split; a refused split or settle refuses the whole.
++     */
++    @Transactional
++    public PartSettle settlePart(String by, String sheetId, Long id, BigDecimal amount) {
++        settings.refuseUnlessMay(sheetId, by, "settle");
++        Claim claim = lockedClaim(sheetId, id);
++        if (claim.getStatus() != ClaimStatus.OPEN) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an OPEN claim can be part-settled.");
++        }
++        refuseFourEyes(by, claim);
++        Person person = person(sheetId, claim.getPersonId());
++        BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
++                : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
++        refuseWithoutProof(sheetId, claim, fixed);
++        Split split = split(by, sheetId, id, amount);
++        Claim settled = changeStatus(by, sheetId, split.split().getId(), ClaimStatus.SETTLED, null, true);
++        return new PartSettle(split.original(), settled);
++    }
++
++    /** Refuses settling the claim by the user who opened it or last edited it. */
++    private void refuseFourEyes(String by, Claim claim) {
++        if (by.equals(claim.getOpenedBy())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot settle it.");
++        }
++        if (by.equals(claim.getEditedBy())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who last edited a claim cannot settle it.");
++        }
++    }
++
+     /**
+      * Refuses voiding a SETTLED claim unless the user is a steward and the sheet's today is within
+      * {@link #VOID_SETTLED_DAYS} days of the date its status log records it settled.
