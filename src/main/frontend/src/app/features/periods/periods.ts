@@ -35,11 +35,23 @@ export interface DatedFigure {
   log: ClaimLogLine[];
 }
 
+/** Whether a claim with the status counts: open, pending or settled. */
+function countingStatus(status: ClaimStatus | null | undefined): boolean {
+  return status === 'OPEN' || status === 'PENDING' || status === 'SETTLED';
+}
+
 /** Whether the claim counted at the end of the day: its status then is open, pending or settled. */
 function countedAtEndOf(f: DatedFigure, day: string): boolean {
-  const then = statusAtEndOf(f, day);
-  return then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
+  return countingStatus(statusAtEndOf(f, day));
 }
+
+/** Whether the claim counts by its status now (open, pending or settled), whatever it was at the end of the day. */
+function countedNow(f: DatedFigure): boolean {
+  return countingStatus(f.status);
+}
+
+/** How a period's due-total decides whether a claim counts: given the claim and the period's last day. */
+export type PeriodCounting = (f: DatedFigure, lastDay: string) => boolean;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -72,13 +84,14 @@ export function personPeriodDueTotals(
   periods: readonly PeriodView[],
   personId: number,
   figures: readonly DatedFigure[],
+  counted: PeriodCounting = countedAtEndOf,
 ): Map<number, string> {
   const by = new Map<number, (string | null)[]>();
   for (const p of periods) by.set(p.id, []);
   for (const f of figures) {
     if (f.personId !== personId) continue;
     const p = periodOn(periods, f.dueBy);
-    if (p && countedAtEndOf(f, p.to)) by.get(p.id)?.push(f.figure);
+    if (p && counted(f, p.to)) by.get(p.id)?.push(f.figure);
   }
   return new Map(
     periods.map((p) => [
@@ -92,12 +105,24 @@ export function personPeriodDueTotals(
 export function periodDueTotals(
   periods: readonly PeriodView[],
   figures: readonly DatedFigure[],
+  counted: PeriodCounting = countedAtEndOf,
 ): Map<number, string> {
   // everyone with a figure for some period: a counted claim, or one fixed when a period closed
   const people = new Set(figures.map((f) => f.personId));
   for (const p of periods) for (const id of Object.keys(p.closedPersonTotals)) people.add(Number(id));
-  const each = [...people].map((id) => personPeriodDueTotals(periods, id, figures));
+  const each = [...people].map((id) => personPeriodDueTotals(periods, id, figures, counted));
   return new Map(periods.map((p) => [p.id, sumSkippingNa(each.map((m) => m.get(p.id) ?? null))]));
+}
+
+/**
+ * Each period's classic due-total, by period id: as periodDueTotals, but each claim counted by its status now (open,
+ * pending or settled) rather than at the end of the period; a closed period still shows the figure fixed when it closed.
+ */
+export function classicPeriodDueTotals(
+  periods: readonly PeriodView[],
+  figures: readonly DatedFigure[],
+): Map<number, string> {
+  return periodDueTotals(periods, figures, countedNow);
 }
 
 // The periods of the active sheet, by from-date.

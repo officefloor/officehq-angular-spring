@@ -1,5 +1,5 @@
 import { Component, computed, inject, input } from '@angular/core';
-import { DatedFigure, PeriodStore, periodDueTotals } from '../periods/periods';
+import { DatedFigure, PeriodStore, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
 import { GRADES, difference, sumSkippingNa } from '../rates/rates';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
 
@@ -83,6 +83,24 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
         </tbody>
       </table>
     </section>
+    <section aria-label="Classic summary">
+      <h2>Classic summary</h2>
+      <table>
+        <caption>By period, counting each claim by its status now</caption>
+        <thead>
+          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
+        </thead>
+        <tbody>
+          @for (p of classicByPeriod(); track p.name) {
+            <tr>
+              <th scope="row">{{ p.name }}</th>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <p>Due in total, not trimmed: <strong data-testid="classic-due-total">{{ classicDueTotal() }}</strong></p>
+    </section>
   `,
 })
 export class Summary {
@@ -127,6 +145,13 @@ export class Summary {
       change: changes.get(p.id) ?? '',
     }));
   });
+  // Per period: its due-total with each claim counted by its status now; a closed period keeps its fixed figure.
+  protected readonly classicByPeriod = computed(() => {
+    const totals = classicPeriodDueTotals(this.periods.list(), this.figures());
+    return this.periods.list().map((p) => ({ name: p.name, dueTotal: totals.get(p.id) ?? '' }));
+  });
+  // The sheet's due-total with no trimming: everyone's due-total added up, skipping n/a.
+  protected readonly classicDueTotal = computed(() => sumSkippingNa(this.people().map((p) => p.dueTotal)));
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),
   );
