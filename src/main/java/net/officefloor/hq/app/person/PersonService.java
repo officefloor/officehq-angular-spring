@@ -414,6 +414,25 @@ public class PersonService {
     }
 
     /**
+     * Puts the hold on each of the people from the date (missing: the sheet's today) to the to-date (missing: with no
+     * end), in list order, exactly as each one's hold would, all or none: one that is not a person of the sheet, or a
+     * to-date before the from-date, refuses them all. The people as saved, in list order.
+     */
+    @Transactional
+    public List<Person> bulkHold(String by, String sheetId, Set<Long> ids, LocalDate from, LocalDate to) {
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> ids.contains(p.getId())).toList();
+        if (chosen.size() != ids.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person.");
+        }
+        List<Person> saved = new ArrayList<>();
+        for (Person p : chosen) {
+            saved.add(hold(by, sheetId, p.getId(), from, to));
+        }
+        return saved;
+    }
+
+    /**
      * Puts a hold on the person from the date (missing: the sheet's today) to the to-date (missing: with no end); the
      * holds already put are kept, each ending on its to-date. Their open claims dated within a hold, not bound by a
      * statement, count in no live total. Refused when the to-date is before the from-date.

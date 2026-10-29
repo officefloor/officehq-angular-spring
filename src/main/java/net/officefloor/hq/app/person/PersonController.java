@@ -153,6 +153,15 @@ public class PersonController {
     public record BulkRetireForm(@NotEmpty Set<Long> ids, LocalDate from) {
     }
 
+    /** A hold for the people with the ids together, from its from-date (missing: the sheet's today) to its to-date
+     *  (missing: with no end). */
+    public record BulkHoldForm(@NotEmpty Set<Long> ids, LocalDate from, LocalDate to) {
+    }
+
+    /** The people a bulk hold held, in list order. */
+    public record BulkHoldView(List<PersonView> held) {
+    }
+
     /** The people a bulk retire retired, in list order. */
     public record BulkRetireView(List<PersonView> retired) {
     }
@@ -416,6 +425,26 @@ public class PersonController {
         Set<Long> clashing = service.clashing(sheetId);
         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
         return new BulkRetireView(retired.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
+    }
+
+    /**
+     * Puts the hold on the people together, in list order, as each one's hold would. A viewer, or anyone on an
+     * archived sheet, goes through with none held.
+     */
+    @PostMapping("/bulk-hold")
+    @ViewerPasses
+    public BulkHoldView bulkHold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody BulkHoldForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        if (settings.isReadOnly(sheetId, user)) {
+            return new BulkHoldView(List.of());
+        }
+        List<Person> held = service.bulkHold(user, sheetId, form.ids(), form.from(), form.to());
+        LocalDate today = service.today(sheetId);
+        Set<Long> clashing = service.clashing(sheetId);
+        Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+        return new BulkHoldView(held.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
     }
 
     /** The person as listed on the sheet's today. */

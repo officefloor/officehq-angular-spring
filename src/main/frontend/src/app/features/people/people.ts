@@ -497,6 +497,29 @@ interface TreePerson {
         @if (bulkRetireError(); as err) {
           <p role="alert" data-testid="person-error">{{ err | fig }}</p>
         }
+        <label for="bulk-hold-from">Hold selected people from</label>
+        <input
+          type="date"
+          id="bulk-hold-from"
+          data-testid="bulk-hold-from"
+          [value]="bulkHoldFrom()"
+          (input)="bulkHoldFrom.set(value($event)); bulkHoldError.set(null)"
+        />
+        <label for="bulk-hold-to">Hold selected people to</label>
+        <input
+          type="date"
+          id="bulk-hold-to"
+          data-testid="bulk-hold-to"
+          [value]="bulkHoldTo()"
+          (input)="bulkHoldTo.set(value($event)); bulkHoldError.set(null)"
+        />
+        <button type="button" data-testid="bulk-hold" (click)="applyBulkHold()">Hold selected people</button>
+        @if (bulkHeld() !== null) {
+          <p role="status">Held: <strong data-testid="bulk-held">{{ bulkHeld() | fig }}</strong></p>
+        }
+        @if (bulkHoldError(); as err) {
+          <p role="alert" data-testid="person-error">{{ err | fig }}</p>
+        }
       </div>
 
       <table>
@@ -1057,6 +1080,13 @@ export class People {
   protected readonly bulkRetired = signal<number | null>(null);
   protected readonly bulkRetireError = signal<string | null>(null);
   private bulkRetiring = false;
+  // The bulk hold's from-date (blank: the sheet's today) and to-date (blank: no end) as typed, and the last one's
+  // count (none while one runs).
+  protected readonly bulkHoldFrom = signal('');
+  protected readonly bulkHoldTo = signal('');
+  protected readonly bulkHeld = signal<number | null>(null);
+  protected readonly bulkHoldError = signal<string | null>(null);
+  private bulkHolding = false;
   private bulkGrading = false;
   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
   // whose person's retirement date today has reached, that no statement binds, and the deferred ones. A hold (the
@@ -1535,6 +1565,10 @@ export class People {
         this.bulkRetireFrom.set('');
         this.bulkRetired.set(null);
         this.bulkRetireError.set(null);
+        this.bulkHoldFrom.set('');
+        this.bulkHoldTo.set('');
+        this.bulkHeld.set(null);
+        this.bulkHoldError.set(null);
         this.bulkReassignTo.set('');
         this.bulkReassigned.set(null);
         this.bulkReassignError.set(null);
@@ -2387,6 +2421,7 @@ export class People {
   protected selectPerson(id: number, checked: boolean): void {
     this.bulkGradeError.set(null);
     this.bulkRetireError.set(null);
+    this.bulkHoldError.set(null);
     this.clearRowErrors(id);
     this.selectedPeople.update((selected) => {
       const next = new Set(selected);
@@ -2489,6 +2524,55 @@ export class People {
       this.bulkRetireError.set('Could not retire the selected people; none were retired.');
     } finally {
       this.bulkRetiring = false;
+    }
+  }
+
+  /**
+   * Puts a hold on the selected people from the typed date (blank: the sheet's today) to the typed to-date (blank: no
+   * end) together: the store holds each one in list order, as the row's hold would, all or none. Shows how many were
+   * held.
+   */
+  protected async applyBulkHold(): Promise<void> {
+    if (this.bulkHolding) return;
+    this.bulkHeld.set(null);
+    this.bulkHoldError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = [...this.selectedPeople()];
+    // holding the selected people is the next action on each of their rows
+    ids.forEach((id) => this.clearRowErrors(id));
+    const from = this.bulkHoldFrom().trim();
+    const to = this.bulkHoldTo().trim();
+    if (ids.length === 0) {
+      this.bulkHoldError.set('Select at least one person to hold.');
+      return;
+    }
+    if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
+      this.bulkHoldError.set('Enter hold dates as yyyy-mm-dd.');
+      return;
+    }
+    this.bulkHolding = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ held: Person[] }>(`/api/sheets/${encodeURIComponent(sheet)}/people/bulk-hold`, {
+          ids,
+          from: from || null,
+          to: to || null,
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      const byId = new Map(result.held.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
+      const editing = this.editingId();
+      if (editing !== null && byId.has(editing)) this.editingVersion.set(byId.get(editing)!.version);
+      this.selectedPeople.set(new Set());
+      this.bulkHoldFrom.set('');
+      this.bulkHoldTo.set('');
+      this.bulkHeld.set(result.held.length);
+    } catch {
+      this.bulkHoldError.set('Could not hold the selected people; none were held.');
+    } finally {
+      this.bulkHolding = false;
     }
   }
 
