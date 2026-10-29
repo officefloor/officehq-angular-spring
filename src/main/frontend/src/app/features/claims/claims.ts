@@ -49,6 +49,9 @@ export interface Claim {
   log: ClaimLogLine[];
   // The user whose open editor holds the claim, so no one else may edit it; null while none does.
   lockedBy: string | null;
+  // The mark the claim was added at: a forward-only rate applies only to claims with a greater one than its own;
+  // null for a claim just added (the newest).
+  mark: number | null;
   // Whether the claim was added while its period was soft-closed.
   lateEntry: boolean;
   // The reason the claim was voided with, chosen from the sheet's list; null for one voided without one, or not voided.
@@ -376,7 +379,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-note">{{ c.note }}</td>
             <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
             <td data-testid="claim-tags">{{ c.tags.join(', ') }}</td>
-            <td data-testid="claim-due">{{ dueOf(c, ratesOn(c.date), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a' }}</td>
+            <td data-testid="claim-due">{{ dueOf(c, ratesOf(c), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a' }}</td>
             <td data-testid="claim-due-by">{{ c.dueBy }}</td>
             <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no' }}</td>
             <td data-testid="claim-deferred">{{ deferredUntilAfter(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
@@ -667,9 +670,9 @@ export class Claims {
     });
   }
 
-  /** Every rate set for the person's grade in force on the date. */
-  protected ratesOn(date: string): readonly RateView[] {
-    return this.rateStore.rates().get(gradeOn(this.grades(), date)) ?? [];
+  /** Every rate that applies to the claim for its person's grade in force on its date. */
+  protected ratesOf(c: Claim): readonly RateView[] {
+    return this.rateStore.byClaim()(c).get(gradeOn(this.grades(), c.date)) ?? [];
   }
   /** The claim's grace days: those its person's grade in force on its date has in force on that date. */
   protected graceOn(c: Claim): number {

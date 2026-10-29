@@ -39,12 +39,13 @@ public class ClaimController {
      * Locked-by is the user whose open editor holds it, or null. Late-entry is whether it was added while its period
      * was soft-closed. Ref is its external reference, or null. Tags are its tags, sorted (none for a claim with none).
      * Comments are its comments, in the order they were written. Lines are its lines, in the order they were added.
+     * Mark is the mark it was added at (see {@link Claim#getAddedMark}), or null for one just added.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
             String number, String settledDue, String openedBy, String editedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
-            List<CommentView> comments, Integer batch, List<LineView> lines) {
+            List<CommentView> comments, Integer batch, List<LineView> lines, Long mark) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
@@ -52,7 +53,8 @@ public class ClaimController {
                     c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
                     c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason(),
                     c.getComments().stream().map(CommentView::of).toList(), c.getSettleBatch(),
-                    c.getLines().stream().map(LineView::of).toList());
+                    c.getLines().stream().map(LineView::of).toList(),
+                    c.getAddedMark() == Long.MAX_VALUE ? null : c.getAddedMark());
         }
     }
 

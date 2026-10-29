@@ -39,6 +39,10 @@ public class RateChange {
     @Column(name = "made_on")
     private LocalDate madeOn;
 
+    /** The claim mark a forward-only rate was set at; null for one applying to every claim. */
+    @Column(name = "after_mark")
+    private Long afterMark;
+
     protected RateChange() {
     }
 
@@ -49,6 +53,7 @@ public class RateChange {
         this.to = rate.getTo();
         this.pct = rate.getPct();
         this.madeOn = madeOn;
+        this.afterMark = rate.getAfterMark();
     }
 
     public String getGrade() {
@@ -68,6 +73,7 @@ public class RateChange {
     public Rate rate() {
         Rate rate = new Rate(sheetId, grade, from, pct);
         rate.setTo(to);
+        rate.setAfterMark(afterMark);
         return rate;
     }
 }

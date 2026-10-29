@@ -917,13 +917,15 @@ public class ClaimService {
     }
 
     /**
-     * The claim's rate figure: at the rate its person's grade in force on its date has in force on that date, rounded
-     * as the sheet's policy date decides for it, with no floor; null (n/a) with none.
+     * The claim's rate figure: at the rate its person's grade in force on its date has in force on that date (leaving
+     * out forward-only rates saved after the claim was added), rounded as the sheet's policy date decides for it, with
+     * no floor; null (n/a) with none.
      */
     public BigDecimal rateFigure(String sheetId, Person person, Claim claim) {
         Sheet sheet = sheets.load(sheetId);
         RoundingMode rounding = sheet.roundingOn(claim.getRoundsOn());
-        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
+        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate(), claim.getAddedMark())
+                .map(Rate::getPct)
                 .map(pct -> dueOn(claim.getAmount(), pct, rounding)).orElse(null);
     }
 

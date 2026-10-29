@@ -104,10 +104,10 @@ public class SheetCloneService {
                 + " SELECT ?, action_name, roles FROM sheet_permission WHERE sheet_id = ?", toSheetId, sheetId);
         jdbc.update("INSERT INTO sheet_role (sheet_id, user_name, role) SELECT ?, user_name, role FROM sheet_role"
                 + " WHERE sheet_id = ? ORDER BY id", toSheetId, sheetId);
-        jdbc.update("INSERT INTO rate (sheet_id, grade, pct, from_date, to_date) SELECT ?, grade, pct, from_date,"
-                + " to_date FROM rate WHERE sheet_id = ? ORDER BY id", toSheetId, sheetId);
-        jdbc.update("INSERT INTO rate_change (sheet_id, grade, from_date, to_date, pct, made_on) SELECT ?, grade,"
-                + " from_date, to_date, pct, made_on FROM rate_change WHERE sheet_id = ? ORDER BY id",
+        jdbc.update("INSERT INTO rate (sheet_id, grade, pct, from_date, to_date, after_mark) SELECT ?, grade, pct,"
+                + " from_date, to_date, after_mark FROM rate WHERE sheet_id = ? ORDER BY id", toSheetId, sheetId);
+        jdbc.update("INSERT INTO rate_change (sheet_id, grade, from_date, to_date, pct, made_on, after_mark)"
+                + " SELECT ?, grade, from_date, to_date, pct, made_on, after_mark FROM rate_change WHERE sheet_id = ? ORDER BY id",
                 toSheetId, sheetId);
         jdbc.update("INSERT INTO holiday (sheet_id, on_date) SELECT ?, on_date FROM holiday WHERE sheet_id = ?"
                 + " ORDER BY id", toSheetId, sheetId);
@@ -178,10 +178,10 @@ public class SheetCloneService {
                 }
                 Long copy = insert("INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status,"
                         + " settled_due, opened_by, edited_by, corrects, split_from, rounds_on, due_by, terms,"
-                        + " deferred_until, deferred_on, reminded_on, late_entry, proofs, ref, tags, void_reason)"
-                        + " SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by, edited_by,"
-                        + " corrects, split_from, rounds_on, due_by, terms, deferred_until, deferred_on, reminded_on,"
-                        + " late_entry, proofs, ref, tags, void_reason FROM claim WHERE id = ?", toSheetId,
+                        + " deferred_until, deferred_on, reminded_on, late_entry, proofs, ref, tags, void_reason,"
+                        + " added_mark) SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,"
+                        + " edited_by, corrects, split_from, rounds_on, due_by, terms, deferred_until, deferred_on,"
+                        + " reminded_on, late_entry, proofs, ref, tags, void_reason, added_mark FROM claim WHERE id = ?", toSheetId,
                         people.get(person), c.getId());
                 copies.put(c.getId(), copy);
                 jdbc.update("INSERT INTO claim_log (claim_id, status, by_user, on_date, due) SELECT ?, status,"

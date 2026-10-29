@@ -30,6 +30,10 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate to;
 
+    /** The claim mark the version was saved at, for a forward-only one; null for one applying to every claim. */
+    @Column(name = "after_mark")
+    private Long afterMark;
+
     protected RateVersion() {
     }
 
@@ -39,6 +43,11 @@ public class RateVersion {
         this.version = rate.getVersion();
         this.pct = rate.getPct();
         this.to = rate.getTo();
+        this.afterMark = rate.getAfterMark();
+    }
+
+    public Long getRateId() {
+        return rateId;
     }
 
     public int getVersion() {
@@ -51,5 +60,9 @@ public class RateVersion {
 
     public LocalDate getTo() {
         return to;
+    }
+
+    public Long getAfterMark() {
+        return afterMark;
     }
 }

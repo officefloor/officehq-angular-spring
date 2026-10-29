@@ -14,6 +14,13 @@ export interface RateView {
   version: number;
 }
 
+// The rates that apply to the claims added up to a mark (inclusive; null: with no end) and after the previous tier's:
+// a forward-only rate applies only to the claims added after it was saved.
+export interface RateTier {
+  upTo: number | null;
+  rates: RateView[];
+}
+
 export const GRADES = ['A', 'B', 'C'];
 
 // What a candidate rate for a grade would change: how many claims would show a different due, and the sum of the
@@ -148,6 +155,13 @@ function formatCents(c: bigint): string {
   return `${c < 0n ? '-' : ''}${size / 100n}.${(size % 100n).toString().padStart(2, '0')}`;
 }
 
+/** The rates by grade, each grade's in the order given. */
+function byGrade(rates: readonly RateView[]): ReadonlyMap<string, readonly RateView[]> {
+  const by = new Map<string, RateView[]>();
+  for (const r of rates) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
+  return by;
+}
+
 /** Orders rates by grade, then from-date with no from-date first. */
 function byGradeThenFrom(a: RateView, b: RateView): number {
   if (a.grade !== b.grade) return a.grade < b.grade ? -1 : 1;
@@ -165,10 +179,17 @@ export class RateStore {
   // The rates that apply on the sheet: its own, and for a date on which a grade has none in force, its parent sheets'
   // (up to three levels up), given as rates that do not overlap; by grade and then from-date.
   readonly applying = signal<readonly RateView[]>([]);
-  readonly rates = computed(() => {
-    const by = new Map<string, RateView[]>();
-    for (const r of this.applying()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
-    return by as ReadonlyMap<string, readonly RateView[]>;
+  readonly rates = computed(() => byGrade(this.applying()));
+  // The rates that apply on the sheet by the mark of the claims they apply to, in mark order; the last, with no end,
+  // is the rates as they apply to claims added from now on.
+  readonly tiers = signal<readonly RateTier[]>([]);
+  // The rates that apply to a claim, by grade: those of the first tier its mark is within (a claim just added, with
+  // no mark yet, is the newest). The rates panel and the rate in force today do not go by this.
+  readonly byClaim = computed(() => {
+    const tiers = this.tiers().map((t) => ({ upTo: t.upTo, rates: byGrade(t.rates) }));
+    const newest = tiers.length ? tiers[tiers.length - 1].rates : this.rates();
+    return (c: { mark: number | null }): ReadonlyMap<string, readonly RateView[]> =>
+      (c.mark === null ? undefined : tiers.find((t) => t.upTo === null || c.mark! <= t.upTo))?.rates ?? newest;
   });
   // Each grade's rate in force on the sheet's today; a grade with none is not in the map.
   readonly current = computed(() => {
@@ -185,23 +206,31 @@ export class RateStore {
   async load(sheet: string): Promise<void> {
     this.list.set([]);
     this.applying.set([]);
+    this.tiers.set([]);
     const base = `/api/sheets/${encodeURIComponent(sheet)}/rates`;
-    const [list, applying] = await Promise.all([
+    const [list, applying, tiers] = await Promise.all([
       firstValueFrom(this.http.get<RateView[]>(base)),
       firstValueFrom(this.http.get<RateView[]>(`${base}/applying`)),
+      firstValueFrom(this.http.get<RateTier[]>(`${base}/tiers`)),
     ]);
     if (this.session.sheetId() === sheet) {
       this.list.set([...list].sort(byGradeThenFrom));
       this.applying.set([...applying].sort(byGradeThenFrom));
+      this.tiers.set(tiers);
     }
   }
 
-  /** Re-read the rates that apply on the sheet, its parent sheets' filling in for its own. */
+  /** Re-read the rates that apply on the sheet, its parent sheets' filling in for its own, and their tiers. */
   private async loadApplying(sheet: string): Promise<void> {
-    const applying = await firstValueFrom(
-      this.http.get<RateView[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/applying`),
-    );
-    if (this.session.sheetId() === sheet) this.applying.set([...applying].sort(byGradeThenFrom));
+    const base = `/api/sheets/${encodeURIComponent(sheet)}/rates`;
+    const [applying, tiers] = await Promise.all([
+      firstValueFrom(this.http.get<RateView[]>(`${base}/applying`)),
+      firstValueFrom(this.http.get<RateTier[]>(`${base}/tiers`)),
+    ]);
+    if (this.session.sheetId() === sheet) {
+      this.applying.set([...applying].sort(byGradeThenFrom));
+      this.tiers.set(tiers);
+    }
   }
 
   /**

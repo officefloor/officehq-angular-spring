@@ -161,6 +161,14 @@ public class Claim {
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
 
+    /**
+     * The mark the claim was added at, from one sequence across the store: a forward-only rate applies only to a claim
+     * with a greater mark than its own (see {@link net.officefloor.hq.app.rate.Rate#appliesTo}). The store gives it;
+     * null until it is read back, for a claim just added (the newest of all).
+     */
+    @Column(name = "added_mark", insertable = false, updatable = false)
+    private Long addedMark;
+
     /** The claim's status log, oldest first: a line for each status it has had, from its DRAFT on. */
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @JoinColumn(name = "claim_id", nullable = false)
@@ -324,6 +332,11 @@ public class Claim {
 
     public Long getListed() {
         return listed;
+    }
+
+    /** The mark the claim was added at; {@link Long#MAX_VALUE} for one just added, not yet read back. */
+    public long getAddedMark() {
+        return addedMark == null ? Long.MAX_VALUE : addedMark;
     }
 
     public BigDecimal getAmount() {

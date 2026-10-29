@@ -9,9 +9,12 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.TreeSet;
 
@@ -45,6 +48,14 @@ public class Rate {
     /** The number of this, the newest version, counting from 1; the older ones are kept as {@link RateVersion}s. */
     @Column(name = "version", nullable = false)
     private int version = 1;
+
+    /**
+     * For a forward-only rate (one saved with a from-date on or after the sheet's today), the claim mark it was saved
+     * at: it applies only to claims added after, those with a greater mark (see {@link #appliesTo}). Null for a rate
+     * that applies to every claim.
+     */
+    @Column(name = "after_mark")
+    private Long afterMark;
 
     protected Rate() {
     }
@@ -92,11 +103,46 @@ public class Rate {
         return version;
     }
 
-    /** Replaces this version with a newer one of the percent and to-date; the caller keeps the one replaced. */
-    public void newVersion(BigDecimal pct, LocalDate to) {
+    public Long getAfterMark() {
+        return afterMark;
+    }
+
+    public void setAfterMark(Long afterMark) {
+        this.afterMark = afterMark;
+    }
+
+    /** Whether this version applies to a claim added at the mark: it is not forward-only, or was saved before it. */
+    public boolean appliesTo(long mark) {
+        return afterMark == null || mark > afterMark;
+    }
+
+    /**
+     * Replaces this version with a newer one of the percent, to-date and mark (null: applying to every claim); the
+     * caller keeps the one replaced.
+     */
+    public void newVersion(BigDecimal pct, LocalDate to, Long afterMark) {
         this.version++;
         this.pct = pct;
         this.to = to;
+        this.afterMark = afterMark;
+    }
+
+    /**
+     * The rates a claim added at the mark sees among one sheet's rate versions, given oldest first: for each grade and
+     * from-date, the newest version that applies to it (see {@link #appliesTo}); none for one with no such version.
+     * By grade, then from-date (no from-date first). Not to be saved.
+     */
+    public static List<Rate> seenBy(List<Rate> versions, long mark) {
+        Map<List<Object>, Rate> by = new LinkedHashMap<>();
+        for (Rate r : versions) {
+            if (r.appliesTo(mark)) {
+                by.put(Arrays.asList(r.getGrade(), r.getFrom()), r);
+            }
+        }
+        List<Rate> seen = new ArrayList<>(by.values());
+        seen.sort(Comparator.comparing(Rate::getGrade).thenComparing(Rate::getFrom,
+                Comparator.nullsFirst(Comparator.naturalOrder())));
+        return seen;
     }
 
     /**

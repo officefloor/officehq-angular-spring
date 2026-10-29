@@ -24,4 +24,9 @@ public interface RateChangeRepository extends JpaRepository<RateChange, Long> {
         }
         return List.copyOf(by.values());
     }
+
+    /** Every rate set while the sheet's today was on or before the day, in the order set (see {@link Rate#seenBy}). */
+    default List<Rate> versionsAsOf(String sheetId, LocalDate day) {
+        return findBySheetIdOrderByIdAsc(sheetId).stream().filter(c -> c.madeBy(day)).map(RateChange::rate).toList();
+    }
 }

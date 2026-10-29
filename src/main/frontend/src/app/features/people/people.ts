@@ -772,7 +772,7 @@ export class People {
     ]);
     const personTags = new Map(this.people().map((p) => [p.id, p.tags]));
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
-    const rates = this.rates.rates();
+    const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const dues = new Map<string, (string | null)[]>();
@@ -780,7 +780,7 @@ export class People {
       const carried = new Set([...c.tags, ...(personTags.get(c.personId) ?? [])]);
       if (carried.size === 0) continue;
       const own = grades.get(c.personId) ?? [];
-      const due = dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
+      const due = dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
       for (const t of carried) dues.set(t, [...(dues.get(t) ?? []), due]);
     }
     return [...all]
@@ -792,14 +792,14 @@ export class People {
   protected readonly monthDueTotals = computed(() => {
     const all = new Set(this.claims().map((c) => c.date.slice(0, 7)));
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
-    const rates = this.rates.rates();
+    const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const dues = new Map<string, (string | null)[]>();
     for (const c of this.liveClaims()) {
       const own = grades.get(c.personId) ?? [];
       const month = c.date.slice(0, 7);
-      dues.set(month, [...(dues.get(month) ?? []), dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late))]);
+      dues.set(month, [...(dues.get(month) ?? []), dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late))]);
     }
     return [...all]
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
@@ -876,14 +876,14 @@ export class People {
   private readonly uncappedDueBy = computed(() => {
     const by = new Map<number, string | null>();
     const current = this.rates.current();
-    const rates = this.rates.rates();
+    const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     for (const p of this.people()) {
       const counted = this.liveBy().get(p.id) ?? [];
       // the grades whose rate today decides n/a: the one in force today and each counted claim's
       const grades = [this.gradeToday(p), ...counted.map((c) => gradeOn(p.grades, c.date))];
-      const dues = counted.map((c) => dueOf(c, rates.get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late)));
+      const dues = counted.map((c) => dueOf(c, rates(c).get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late)));
       if (!grades.some((g) => current.has(g)) && dues.every((d) => d === null)) {
         by.set(p.id, null);
         continue;
@@ -897,13 +897,13 @@ export class People {
   // before the cap.
   protected readonly splitBy = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
-    const rates = this.rates.rates();
+    const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const by = new Map<number, { settled: string; open: string }>();
     for (const [id, list] of this.liveBy()) {
       const own = grades.get(id) ?? [];
-      const due = (c: Claim) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
+      const due = (c: Claim) => dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
       by.set(id, {
         settled: sumSkippingNa(list.filter((c) => c.status === 'SETTLED').map(due)),
         open: sumSkippingNa(list.filter(isOpen).map(due)),
@@ -932,7 +932,7 @@ export class People {
   // periods' due-totals, which count it by its status at each period's end.
   protected readonly countedFigures = computed<DatedFigure[]>(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
-    const rates = this.rates.rates();
+    const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const leftOut = this.leftOut();
@@ -943,7 +943,7 @@ export class People {
         return {
           personId: c.personId,
           dueBy: c.dueBy,
-          figure: dueOf(c, rates.get(grade) ?? [], floor, late, late.grace(grade, c.date)),
+          figure: dueOf(c, rates(c).get(grade) ?? [], floor, late, late.grace(grade, c.date)),
           status: c.status,
           log: c.log,
         };
@@ -1041,13 +1041,13 @@ export class People {
   // Each person's overdue-total: the sum of their overdue claims' figures, skipping n/a.
   protected readonly overdueTotalBy = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
-    const rates = this.rates.rates();
+    const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const by = new Map<number, string>();
     for (const [id, list] of this.overdueBy()) {
       const own = grades.get(id) ?? [];
-      by.set(id, sumSkippingNa(list.map((c) => dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late)))));
+      by.set(id, sumSkippingNa(list.map((c) => dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late)))));
     }
     return by;
   });
@@ -1056,7 +1056,7 @@ export class People {
   protected readonly agedBy = computed(() => {
     const today = this.session.sheetToday();
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
-    const rates = this.rates.rates();
+    const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const by = new Map<number, string[]>();
@@ -1067,7 +1067,7 @@ export class People {
       const own = grades.get(id) ?? [];
       const buckets: (string | null)[][] = [[], [], []];
       for (const c of list.filter(isOpen)) {
-        const due = dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
+        const due = dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
         buckets[c.date >= from30 ? 0 : c.date >= from60 ? 1 : 2].push(due);
       }
       by.set(id, buckets.map(sumSkippingNa));
@@ -1582,7 +1582,7 @@ export class People {
    * oldest first, with the figures as the claims list shows them.
    */
   protected exportClaims(): void {
-    const rates = this.rates.rates();
+    const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const periods = this.periods.list();
@@ -1590,7 +1590,7 @@ export class People {
     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
     for (const p of this.people()) {
       for (const c of [...(claimsBy.get(p.id) ?? [])].reverse()) {
-        const due = dueOf(c, rates.get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late));
+        const due = dueOf(c, rates(c).get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late));
         const period = periodOn(periods, c.dueBy)?.name ?? '';
         lines.push([p.name, c.number ?? '', c.date, c.amount, due ?? 'n/a', c.status, period]);
       }

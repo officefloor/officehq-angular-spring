@@ -61,6 +61,10 @@ public class RateController {
     public record PreviewView(int count, String diff) {
     }
 
+    /** The rates that apply to the claims added up to a mark (null: with no end), and after the previous tier's. */
+    public record TierView(Long upTo, List<RateView> rates) {
+    }
+
     /** The import box: lines of grade,rate,from,to. */
     public record ImportForm(@NotNull @Size(max = 100_000) String text) {
     }
@@ -90,6 +94,18 @@ public class RateController {
     public List<RateView> applying(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
         return service.applying(sheetId).stream().map(RateView::of).toList();
+    }
+
+    /**
+     * The rates that apply on the sheet (as {@link #applying}) by the claim mark they apply to, in mark order: a
+     * forward-only rate applies only to the claims added after it was saved. The last tier, with no end, is the rates
+     * as they apply to claims added from now on.
+     */
+    @GetMapping("/tiers")
+    public List<TierView> tiers(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.tiers(sheetId).stream()
+                .map(t -> new TierView(t.upTo(), t.rates().stream().map(RateView::of).toList())).toList();
     }
 
     @PutMapping("/{grade}")

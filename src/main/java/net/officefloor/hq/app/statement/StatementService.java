@@ -147,7 +147,8 @@ public class StatementService {
         }
         Sheet then = sheet.asOf(asOf);
         Person person = current.asOf(asOf);
-        List<Rate> ratesThen = rates.applyingAsOf(sheetId, asOf);
+        List<RateChain.Tier> tiersThen = rates.tiersAsOf(sheetId, asOf);
+        List<Rate> ratesThen = tiersThen.get(tiersThen.size() - 1).rates();
         // the binding of the person's last statement counts when it was taken while the sheet's today was on or before
         List<Statement> theirs = statements.findBySheetIdAndPersonIdInOrder(sheetId, personId);
         boolean bindingCounts = !theirs.isEmpty() && !theirs.get(theirs.size() - 1).getTakenOn().isAfter(asOf);
@@ -176,7 +177,8 @@ public class StatementService {
                 due = figure;
                 kept = true;
             } else {
-                figure = bound ? c.getStatedDue() : rateFigure(ratesThen, then, person.gradeOn(c.getDate()), c);
+                figure = bound ? c.getStatedDue() : rateFigure(RateChain.forMark(tiersThen, c.getAddedMark()), then,
+                        person.gradeOn(c.getDate()), c);
                 kept |= bound && figure != null;
                 due = ClaimService.liveDue(figure, c, person, then, status.isOpen());
             }

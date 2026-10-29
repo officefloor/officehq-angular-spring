@@ -72,10 +72,18 @@ public class RollupService {
         claims.flush();
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
-        Map<String, List<Rate>> byGrade = new HashMap<>();
-        for (Rate r : rates.applying(sheetId)) {
-            byGrade.computeIfAbsent(r.getGrade(), g -> new ArrayList<>()).add(r);
+        // the rates by grade for each tier of claims by the mark they were added at; the last is the rates as they
+        // apply on the sheet, forward-only ones included, which decide n/a today
+        List<RateChain.Tier> tiers = rates.tiers(sheetId);
+        Map<RateChain.Tier, Map<String, List<Rate>>> byTier = new HashMap<>();
+        for (RateChain.Tier t : tiers) {
+            Map<String, List<Rate>> by = new HashMap<>();
+            for (Rate r : t.rates()) {
+                by.computeIfAbsent(r.getGrade(), g -> new ArrayList<>()).add(r);
+            }
+            byTier.put(t, by);
         }
+        Map<String, List<Rate>> byGrade = byTier.get(tiers.get(tiers.size() - 1));
         Map<Long, List<Claim>> claimsBy = new HashMap<>();
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (c.getStatus().counts()) {
@@ -106,7 +114,9 @@ public class RollupService {
                 }
                 kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
                 // the claim's rate is the one its person's grade in force on its date has
-                BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
+                Map<String, List<Rate>> claimRates = byTier.get(tiers.stream()
+                        .filter(t -> t.upTo() == null || c.getAddedMark() <= t.upTo()).findFirst().orElseThrow());
+                BigDecimal figure = figure(c, claimRates.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
                 if (c.getSettledDue() == null) {
                     figure = ClaimService.liveDue(figure, c, p, sheet, c.getStatus().isOpen());
                 }

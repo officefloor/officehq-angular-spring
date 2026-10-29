@@ -4,10 +4,15 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface RateRepository extends JpaRepository<Rate, Long> {
 
     List<Rate> findBySheetIdOrderByGradeAscFromAsc(String sheetId);
+
+    /** The next claim mark: claims added from now on have greater ones (see {@link Rate#appliesTo}). */
+    @Query(value = "SELECT NEXT VALUE FOR claim_mark", nativeQuery = true)
+    long nextClaimMark();
 
     List<Rate> findBySheetIdAndGrade(String sheetId, String grade);
 
