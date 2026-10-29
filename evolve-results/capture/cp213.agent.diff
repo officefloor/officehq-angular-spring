@@ -1,0 +1,252 @@
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 8ae3137b..f268224f 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -22,6 +22,8 @@ export interface PlanView {
+   paused: boolean;
+   // The plan's changes of amount, oldest first.
+   changes: { on: string; amount: string }[];
++  // The descendant sheet the plan makes its claims on, or null for this sheet.
++  sheet: string | null;
+ }
+ 
+ // The plans of the active sheet, in the order they were added.
+@@ -39,7 +41,7 @@ export class PlanStore {
+     if (this.session.sheetId() === sheet) this.list.set(l);
+   }
+ 
+-  async add(sheet: string, personId: number, form: { amount: string; start: string; every: number | null; day: number | null; end: string }): Promise<void> {
++  async add(sheet: string, personId: number, form: { amount: string; start: string; every: number | null; day: number | null; end: string; sheet: string | null }): Promise<void> {
+     const p = await firstValueFrom(
+       this.http.post<PlanView>(`/api/sheets/${encodeURIComponent(sheet)}/people/${personId}/plans`, form),
+     );
+@@ -88,7 +90,7 @@ export class PlanStore {
+         <tr>
+           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
+           <th scope="col">Day of month</th><th scope="col">End</th><th scope="col">Claims made</th>
+-          <th scope="col">Next dates</th><th scope="col">Paused</th><th scope="col">Changes</th>
++          <th scope="col">Next dates</th><th scope="col">Sheet</th><th scope="col">Paused</th><th scope="col">Changes</th>
+           <th scope="col">Actions</th>
+         </tr>
+       </thead>
+@@ -102,6 +104,7 @@ export class PlanStore {
+             <td data-testid="plan-end">{{ pl.end | fig }}</td>
+             <td data-testid="plan-generated">{{ pl.generated | fig }}</td>
+             <td data-testid="plan-next-dates">{{ (pl.nextDates.join(', ')) | fig }}</td>
++            <td data-testid="plan-sheet">{{ (pl.sheet ?? '') | fig }}</td>
+             <td data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</td>
+             <td>
+               <ul>
+@@ -169,6 +172,13 @@ export class PlanStore {
+         [value]="day()"
+         (input)="day.set(value($event)); error.set(null)"
+       />
++      <label [for]="'plan-sheet-' + personId()">On descendant sheet</label>
++      <input
++        [id]="'plan-sheet-' + personId()"
++        data-testid="plan-form-sheet"
++        [value]="targetSheet()"
++        (input)="targetSheet.set(value($event)); error.set(null)"
++      />
+       <label [for]="'plan-end-' + personId()">End</label>
+       <input
+         type="date"
+@@ -199,6 +209,7 @@ export class PersonPlans {
+   protected readonly every = signal('');
+   protected readonly day = signal('');
+   protected readonly end = signal('');
++  protected readonly targetSheet = signal('');
+   protected readonly error = signal<string | null>(null);
+   // The refusal of the last action taken on a plan's row.
+   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+@@ -302,6 +313,7 @@ export class PersonPlans {
+         every: every ? Number(every) : null,
+         day: day ? Number(day) : null,
+         end,
++        sheet: this.targetSheet().trim() || null,
+       });
+     } catch (err) {
+       const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 64893197..d4909aa0 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -54,6 +54,10 @@ public class Plan {
+     @Column(name = "end_date", nullable = false)
+     private LocalDate end;
+ 
++    /** The descendant sheet the plan makes its claims on; null for the plan's own sheet. */
++    @Column(name = "target_sheet_id")
++    private String targetSheetId;
++
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
+     @Column(name = "on_date", nullable = false)
+@@ -74,8 +78,9 @@ public class Plan {
+     }
+ 
+     public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end) {
++            LocalDate end, String targetSheetId) {
+         this.sheetId = sheetId;
++        this.targetSheetId = targetSheetId;
+         this.personId = personId;
+         this.amount = amount;
+         this.start = start;
+@@ -92,6 +97,11 @@ public class Plan {
+         return sheetId;
+     }
+ 
++    /** The descendant sheet the plan makes its claims on; null for the plan's own sheet. */
++    public String getTargetSheetId() {
++        return targetSheetId;
++    }
++
+     public Long getPersonId() {
+         return personId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 698eeb49..3ef64d24 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -31,11 +31,12 @@ public class PlanController {
+      * sheet's today, and its changes of amount, oldest first.
+      */
+     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
++            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes,
++            String sheet) {
+         static PlanView of(Plan p, LocalDate today) {
+             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(),
+                     p.getEvery(), p.getDay(), p.getEnd(), p.getGenerated(), p.nextDates(today, 5),
+-                    p.isPaused(), p.getChanges().stream().map(ChangeView::of).toList());
++                    p.isPaused(), p.getChanges().stream().map(ChangeView::of).toList(), p.getTargetSheetId());
+         }
+     }
+ 
+@@ -50,7 +51,7 @@ public class PlanController {
+     }
+ 
+     public record PlanForm(@NotNull BigDecimal amount, @NotNull LocalDate start, Integer every, Integer day,
+-            @NotNull LocalDate end) {
++            @NotNull LocalDate end, @Size(max = 100) String sheet) {
+     }
+ 
+     /** The claims a generate made, in the order made, and the sheet's plans as they stand. */
+@@ -79,7 +80,7 @@ public class PlanController {
+             @PathVariable Long personId, @Valid @RequestBody PlanForm form,
+             @SessionAttribute(SessionController.USER) String user) {
+         Plan added = service.add(user, sheetId, personId, form.amount(), form.start(), form.every(), form.day(),
+-                form.end());
++                form.end(), form.sheet());
+         return PlanView.of(added, sheets.load(sheetId).getToday());
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 6eeb612c..69de23f7 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -22,7 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * The sheet's plans. Generating makes, for each plan in the order they were added, a draft claim of its amount on
+  * each of its plan dates up to its end and the sheet's today that has none yet, dated that day with an empty note, by
+- * every rule of the claim form; a date the form refuses is skipped and tried again next time.
++ * every rule of the claim form; a date the form refuses is skipped and tried again next time. A plan naming one of the
++ * sheet's descendants makes its claims there instead, for the person of the same name, by that sheet's rules.
+  */
+ @Service
+ public class PlanService {
+@@ -59,7 +60,7 @@ public class PlanService {
+      */
+     @Transactional
+     public Plan add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every,
+-            Integer day, LocalDate end) {
++            Integer day, LocalDate end, String targetSheetId) {
+         checkAmount(amount);
+         if ((every == null) == (day == null)) {
+             throw refused("Enter either a number of days or a day of the month.");
+@@ -76,13 +77,18 @@ public class PlanService {
+         if (end.isBefore(start)) {
+             throw refused("The end date is before the start date.");
+         }
++        String target = targetSheetId == null || targetSheetId.isBlank() ? null : targetSheetId.trim();
++        if (target != null && !sheets.isDescendant(sheetId, target)) {
++            throw refused("That sheet is not a descendant of this sheet.");
++        }
+         sheets.lock(sheetId);
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+         BigDecimal scaled = amount.setScale(2, RoundingMode.UNNECESSARY);
+-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, scaled, start, every, day, end));
++        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, scaled, start, every, day, end, target));
+         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + by + " name=" + person.getName() + " amount="
+-                + scaled.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
++                + scaled.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end
++                + (target != null ? " sheet=" + target : ""));
+         return saved;
+     }
+ 
+@@ -157,8 +163,23 @@ public class PlanService {
+                         if (current.hasMade(date) || current.isSkipped(date)) {
+                             return null;
+                         }
+-                        Claim claim = claims.add(by, sheetId, current.getPersonId(), current.getAmount(), date, "",
+-                                null, null, null);
++                        Claim claim;
++                        if (current.getTargetSheetId() == null) {
++                            claim = claims.add(by, sheetId, current.getPersonId(), current.getAmount(), date, "",
++                                    null, null, null);
++                        } else {
++                            // on the descendant, for the person of the same name there; none when there is no such
++                            // person or the user may change nothing there
++                            String target = current.getTargetSheetId();
++                            Person named = people.findByIdAndSheetId(current.getPersonId(), sheetId).orElse(null);
++                            Person there = named == null ? null
++                                    : people.findBySheetIdAndNameIgnoreCase(target, named.getName()).orElse(null);
++                            if (there == null || settings.isReadOnly(target, by)) {
++                                return null;
++                            }
++                            claim = claims.add(by, target, there.getId(), current.getAmount(), date, "", null, null,
++                                    null);
++                        }
+                         current.markMade(date);
+                         plans.saveAndFlush(current);
+                         return claim;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 8b60d4a2..ae74f8c1 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -103,6 +103,24 @@ public class SheetService {
+         return tree;
+     }
+ 
++    /** Whether the other sheet is one of the sheet's descendants: a sheet naming it as parent, one naming that, and so on. */
++    @Transactional(readOnly = true)
++    public boolean isDescendant(String id, String other) {
++        Set<String> seen = new HashSet<>(Set.of(id));
++        ArrayDeque<String> toVisit = new ArrayDeque<>(List.of(id));
++        while (!toVisit.isEmpty()) {
++            for (Sheet child : sheets.findByParentIdOrderByIdAsc(toVisit.poll())) {
++                if (child.getId().equals(other)) {
++                    return true;
++                }
++                if (seen.add(child.getId())) {
++                    toVisit.add(child.getId());
++                }
++            }
++        }
++        return false;
++    }
++
+     /** Takes the sheet's next settle batch number; two callers at once never get the same one. */
+     @Transactional
+     public int nextSettleBatch(String id) {
+diff --git a/src/main/resources/db/migration/V109__plan_target_sheet.sql b/src/main/resources/db/migration/V109__plan_target_sheet.sql
+new file mode 100644
+index 00000000..332dffef
+--- /dev/null
++++ b/src/main/resources/db/migration/V109__plan_target_sheet.sql
+@@ -0,0 +1,3 @@
++-- The descendant sheet a plan makes its claims on, for the person of the plan's person's name there; null for the
++-- plan's own sheet.
++ALTER TABLE plan ADD COLUMN target_sheet_id VARCHAR(100);
