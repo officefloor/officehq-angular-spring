@@ -169,6 +169,16 @@ public class Period {
         personOpenings.merge(personId, amount, BigDecimal::add);
     }
 
+    /** Takes the amount back off the person's opening balance for the period; one taken back to nothing is removed. */
+    public void takeOpening(Long personId, BigDecimal amount) {
+        BigDecimal left = personOpenings.getOrDefault(personId, BigDecimal.ZERO).subtract(amount);
+        if (left.signum() == 0) {
+            personOpenings.remove(personId);
+        } else {
+            personOpenings.put(personId, left);
+        }
+    }
+
     /**
      * Folds the due-total and carried figure fixed for one person, and their opening balance, into another's (a person with none fixed takes them as theirs): the
      * merged person leaves the period, their figure kept under the person they were merged into.

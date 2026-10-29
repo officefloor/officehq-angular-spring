@@ -215,6 +215,12 @@ export class PeriodStore {
     return made.length;
   }
 
+  /** Undo the sheet's last rollover: its periods are removed and the opening balances it set taken back. */
+  async undoRollover(sheet: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`/api/sheets/${encodeURIComponent(sheet)}/periods/rollover/undo`, {}));
+    await this.load(sheet);
+  }
+
   /** Generate the calendar year's four quarterly periods, <yyyy>-Q1 to <yyyy>-Q4; answers how many were made. */
   async generateQuarters(sheet: string, year: number): Promise<number> {
     const made = await firstValueFrom(
@@ -377,6 +383,7 @@ export class PeriodStore {
           (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
         />
         <button type="submit" data-testid="rollover">Roll year over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo last rollover</button>
         @if (rolloverMade() !== null) {
           <p role="status">Periods made: <strong data-testid="rollover-made">{{ rolloverMade() | fig }}</strong></p>
         }
@@ -676,6 +683,30 @@ export class Periods {
           : err instanceof HttpErrorResponse && err.status === 422
             ? `FY${year} has no periods to roll over.`
             : 'Could not roll that year over.',
+      );
+    } finally {
+      this.rollingOver = false;
+    }
+  }
+
+  /** Undoes the last rollover; only the steward who made it, on the same sheet-today, while no claim is in its periods. */
+  protected async undoRollover(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolloverMade.set(null);
+    this.rolloverError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.rollingOver = true;
+    try {
+      await this.store.undoRollover(sheet);
+    } catch (err) {
+      if (this.session.sheetId() !== sheet) return;
+      this.rolloverError.set(
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only the steward who rolled the year over may undo it.'
+          : err instanceof HttpErrorResponse && err.status === 422
+            ? 'That rollover cannot be undone: there is none, it was made on another day, or a claim is in its periods.'
+            : 'Could not undo the rollover.',
       );
     } finally {
       this.rollingOver = false;

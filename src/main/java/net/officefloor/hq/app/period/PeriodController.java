@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.session.SessionController;
+import net.officefloor.hq.app.settings.ViewerPasses;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -108,6 +109,7 @@ public class PeriodController {
     }
 
     /** Generates monthly periods; answers the ones made, by month. */
+    @ViewerPasses
     @PostMapping("/generate")
     public List<PeriodView> generate(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
@@ -129,6 +131,14 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody RolloverForm form, @SessionAttribute(SessionController.USER) String user) {
         return service.rollover(user, sheetId, form.year()).stream().map(PeriodView::of).toList();
+    }
+
+    /** Undoes the sheet's last rollover. */
+    @PostMapping("/rollover/undo")
+    public void undoRollover(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @SessionAttribute(SessionController.USER) String user) {
+        service.undoRollover(user, sheetId);
     }
 
     /** Generates the calendar year's quarterly periods; answers the ones made, by quarter. */
