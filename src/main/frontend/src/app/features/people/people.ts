@@ -651,6 +651,9 @@ interface TreePerson {
                 <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)">
                   Cancel statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-export" (click)="exportPerson(p)">
+                  Export row (CSV)<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)">
                   Export statement (CSV)<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
@@ -2244,6 +2247,25 @@ export class People {
       lines.push([c.number ?? '', c.date, c.amount, figure ?? 'n/a', c.status]);
     }
     this.downloadCsv(`statement-${p.name}.csv`, lines);
+  }
+
+  /** Downloads the person's row as a CSV file: one line per cell, with the value as the row shows it. */
+  protected async exportPerson(p: Person): Promise<void> {
+    await this.session.settled();
+    const lines = [
+      ['cell', 'value'],
+      ['person-name', this.nameWithGrade(p)],
+      ['person-grade', this.gradeToday(p)],
+      ['person-claimed', this.claimedBy().get(p.id) ?? '0.00'],
+      ['person-due-total', this.dueBy().get(p.id) ?? 'n/a'],
+      ['person-statement-count', String(this.statementsBy().get(p.id)?.count ?? 0)],
+      ['person-overdue-total', this.overdueTotalBy().get(p.id) ?? '0.00'],
+      ['person-hold', p.held ? 'yes' : 'no'],
+      ['person-retired', p.retiredFrom !== null ? 'yes' : 'no'],
+      ['person-aliases', p.aliases.join(', ')],
+      ['person-score', String(this.scoreBy().get(p.id) ?? '0')],
+    ];
+    this.downloadCsv(`person-${p.name}.csv`, lines);
   }
 
   private downloadCsv(fileName: string, lines: string[][]): void {
