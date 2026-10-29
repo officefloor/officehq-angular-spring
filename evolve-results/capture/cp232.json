@@ -1,0 +1,68 @@
+{
+  "checkpoint": 232,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp232_grade-merge-retroactive",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    225
+  ],
+  "replaced_tests": [
+    "cp225_grade-merge.spec.ts::grade merge"
+  ],
+  "request": {
+    "spec": "A grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b2c041d7ae7c5093095b4348883ca59cb8316bb8",
+  "reset_sha": "",
+  "preagent_sha": "09c9d5fc8090947a3e9b784afd3357e975d68e0e",
+  "prev_sha": "09c9d5fc8090947a3e9b784afd3357e975d68e0e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.40417820000000004,
+    "input_tokens": 28,
+    "output_tokens": 4151,
+    "cache_read_tokens": 409751,
+    "cache_creation_tokens": 29887,
+    "num_turns": 14,
+    "duration_ms": 314696,
+    "duration_api_ms": 64440,
+    "model": "claude-opus-5-5",
+    "session_id": "375af543-2130-4156-b0ef-0ea593523e04",
+    "stop_reason": "success",
+    "result_text": "A grade merge now reaches back in time: for each person it moves, every grade record they have on the merged grade becomes the other grade. All their claims, whatever their date, then use the other grade's rates, terms and thresholds. `bin/e2e` passes all 4 tests in the spec.\n\n**Changes:**\n- **`Person.regrade(merged, into)`** (in `Person.java`) swaps the grade on each matching record. It keeps the record's from-date and the day it was recorded, so views of the sheet as of an earlier day still work as before.\n- **`PersonService.mergeGrade`** still moves people from the sheet's today the way it did, so the audit lines keep their current order. It then calls `regrade` on each moved person and saves them. The merge's final ROLLUP/TOTALS lines show the full effect, matching what the test expects.\n- **`DatedGrade`** gets a package-private `madeOn()` getter so the recorded day can be copied over.\n\nI didn't add anything for frozen figures or figures bound by a statement. I'm relying on the app's existing logic to leave those alone, since only the person's grade records change, and the tests pass with that. Nothing changed in the stored data's schema or in the front end.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.40417820000000004,
+        "num_turns": 14,
+        "duration_ms": 314696,
+        "duration_api_ms": 64440,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp232.agent.jsonl",
+  "agent_diff_file": "cp232.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
