@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "11bec14c0715667512792728aec506d653ad7a97",
+  "reset_sha": "",
+  "preagent_sha": "ec15189e2335c4408e410bbfdd2fc160953246c3",
+  "prev_sha": "ec15189e2335c4408e410bbfdd2fc160953246c3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6752114,
+    "input_tokens": 38,
+    "output_tokens": 8190,
+    "cache_read_tokens": 735177,
+    "cache_creation_tokens": 45528,
+    "num_turns": 19,
+    "duration_ms": 309954,
+    "duration_api_ms": 85212,
+    "model": "claude-opus-5-5",
+    "session_id": "67a78c93-daf6-4047-aeff-a806648b949a",
+    "stop_reason": "success",
+    "result_text": "The new `restricted` role is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**What changed**\n- **Stored data:** a new migration, `V106__role_restricted.sql`, rebuilds the `sheet_role` table so its check also accepts `restricted`. It follows the same pattern the `viewer` role's migration (V38) used.\n- **Server:** `SheetRole.RESTRICTED` is added, and `SettingsService.setRole` now accepts it. Any other value is still refused, so `x` shows the error, and setting the role writes the usual `ROLE_SET \u2026 role=restricted` audit line.\n- **Front end:**\n  - The role form in `settings.ts` now accepts and suggests `restricted`.\n  - In `people.ts`, the people list reads the user's role from `/my-role` again on every sheet load. For a restricted user, only these rows are shown:\n    - the person with the user's name (or alias);\n    - everyone in the crews that person leads or belongs to, leads and members alike.\n  - A restricted user with no matching person sees no rows.\n  - The totals row, header, summary, periods and pools are still worked out from the full list, so they cover everyone on the sheet.\n\n**Two things you might not expect**\n- **The hiding happens in the browser only.** The server still sends every person, because the totals are calculated on the page from that full list. That keeps rows off the screen, but anyone looking at the network data can still see everyone. Real access control would need the totals to come from the server.\n- **A restricted user is not treated as a clerk for actions.** The permission rules only list clerk and steward, so by default a restricted user is refused opening, settling, voiding and closing. The request didn't say either way and the tests don't cover it. If restricted users should act like clerks, I can add the role to those defaults.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6752114,
+        "num_turns": 19,
+        "duration_ms": 309954,
+        "duration_api_ms": 85212,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
