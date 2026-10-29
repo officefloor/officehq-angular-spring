@@ -1,0 +1,71 @@
+{
+  "checkpoint": 168,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp168_crews-are-pools",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    166,
+    167
+  ],
+  "replaced_tests": [
+    "cp166_crews.spec.ts::crews",
+    "cp166_crews.spec.ts::crews scenario 1",
+    "cp167_crew-lead-total.spec.ts::crew lead total scenario 1"
+  ],
+  "request": {
+    "spec": "A crew is now also a pool: it appears among the pools under its name, with the lead and the\nmembers as its members at equal shares (100.00 split as patrons' shares are, the remainder on the\nlead), and receives cuts like any pool. A pool cannot be added with a crew's name nor a crew with a\npool's name. Crew totals stay as they are.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA crew is now also a pool: it appears among the pools under its name, with the lead and the\nmembers as its members at equal shares (100.00 split as patrons' shares are, the remainder on the\nlead), and receives cuts like any pool. A pool cannot be added with a crew's name nor a crew with a\npool's name. Crew totals stay as they are.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f8a21a52288d5eb593803d7061b0d9c17992c98b",
+  "reset_sha": "",
+  "preagent_sha": "0cf7435906b92b7a928440b96a4ff689924181fc",
+  "prev_sha": "0cf7435906b92b7a928440b96a4ff689924181fc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4938152,
+    "input_tokens": 64,
+    "output_tokens": 15549,
+    "cache_read_tokens": 2174656,
+    "cache_creation_tokens": 93456,
+    "num_turns": 33,
+    "duration_ms": 730453,
+    "duration_api_ms": 162895,
+    "model": "claude-opus-5-5",
+    "session_id": "c85e3502-6f0c-40ca-b5c9-ce1ba282c883",
+    "stop_reason": "success",
+    "result_text": "I've made crews show up as pools, but `bin/e2e` doesn't fully pass yet: 3 of the 4 tests pass and **scenario 3 fails every time**, on a check that has nothing to do with pools or crews.\n\n**The failure.** At `e2e/specs/acceptance.spec.ts:1454` the screen is set to show the sheet as it was on 2026-03-15. The test expects `rate-current-A` to be `n/a`, but it shows `7.50`. That 7.50 comes from the sheet's parent sheet, which the test creates and links. `AsOfService.java` says a parent sheet is \"not dated\": in that view the parent appears as it was last saved, so its 7.50 rate applies. The test expects the parent to be dated as well, or ignored. Making it pass would mean changing that documented, deliberate behaviour of the \"as of\" view. That's well outside this change request, and I can't confirm whether it failed before my edits because there is no git history or original copy. I've left it alone, but can take it on if you want the \"as of\" behaviour changed.\n\n**What the change does**\n- **Crews in the pool list:** each crew appears after the stored pools, under its own name, in the order the crews were added. Its members are the lead then the other members, at equal shares of 100.00 split the same way as patrons' shares, with the remainder on the lead (e.g. 33.34 / 33.33 / 33.33). These pools are worked out on the screen from the crew list rather than stored.\n- **Cuts:** a crew's pool goes through the same cut logic as any pool, so retired or held members get 0.00. Cut totals per person and for the whole sheet include it, and so does the pools CSV export. Crew due-totals are unchanged.\n- **Adding members:** a crew's pool row has no \"add member\" form, because its members come from the crew. It also isn't offered as a member of other pools.\n- **Name clashes:** a pool can't be added with a crew's name, nor a crew with a pool's name. The server refuses both (`PoolService.add`, `CrewService.add`) and the forms catch it first and show their error.\n\nThe code changes are in `pools.ts`, `crews.ts`, `PoolService.java` and `CrewService.java`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4938152,
+        "num_turns": 33,
+        "duration_ms": 730453,
+        "duration_api_ms": 162895,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp168.agent.jsonl",
+  "agent_diff_file": "cp168.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

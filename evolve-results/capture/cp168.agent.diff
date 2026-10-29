@@ -1,0 +1,274 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 99e1e730..23e1625d 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -4,6 +4,7 @@ import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { sumSkippingNa } from '../rates/rates';
++import { PoolStore } from '../pools/pools';
+ 
+ export interface CrewMemberView {
+   personId: number;
+@@ -110,6 +111,7 @@ export class Crews {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
+   protected readonly roster = inject(CrewRoster);
++  private readonly pools = inject(PoolStore);
+ 
+   protected readonly crews = this.roster.crews;
+   // Each crew with its lead's and members' names as the people list has them now, and its due-total.
+@@ -187,8 +189,8 @@ export class Crews {
+       this.error.set('Enter a crew name.');
+       return;
+     }
+-    if (this.crews().some((c) => c.name === name)) {
+-      this.error.set(`${name} is already a crew.`);
++    if (this.pools.names().has(name)) {
++      this.error.set(`${name} is already a crew or a pool.`);
+       return;
+     }
+     const leadId = Number(this.lead());
+@@ -202,7 +204,7 @@ export class Crews {
+       if (this.session.sheetId() === sheet) this.crews.update((l) => [...l, added]);
+     } catch (err) {
+       this.error.set(
+-        err instanceof HttpErrorResponse && err.status === 409 ? `${name} is already a crew.` : 'Could not add the crew.',
++        err instanceof HttpErrorResponse && err.status === 409 ? `${name} is already a crew or a pool.` : 'Could not add the crew.',
+       );
+     } finally {
+       this.submitting = false;
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 6aafd06d..2523c53c 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -4,6 +4,8 @@ import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { SettingsStore } from '../settings/settings';
++import { CrewRoster, CrewView } from '../crews/crews';
++import { equalShares } from '../rates/rates';
+ 
+ // A member is a person, or another pool (with a null personId); a pool member is never retired.
+ export interface PoolMemberView {
+@@ -35,6 +37,36 @@ export interface PoolView {
+   members: PoolMemberView[];
+   totalShare: string;
+   balanced: boolean;
++  // Set on a crew's pool: the crew it stands for (its members are the crew's, and none are added here).
++  crewId?: number;
++}
++
++/**
++ * A crew as a pool, under the crew's name (keyed by the negated crew id, apart from the stored pools): its lead and
++ * members, in that order, at equal shares of 100.00 split as patrons' shares are, the remainder on the lead.
++ */
++function crewPool(crew: CrewView, names: ReadonlyMap<number, string>): PoolView {
++  const people = [
++    { personId: crew.leadId, name: crew.leadName },
++    ...crew.members.map((m) => ({ personId: m.personId, name: m.name })),
++  ];
++  const shares = equalShares(people.length);
++  return {
++    id: -crew.id,
++    name: crew.name,
++    members: people.map((p, i) => ({
++      personId: p.personId,
++      poolId: null,
++      name: names.get(p.personId) ?? p.name,
++      share: shares[i],
++      retired: false,
++      from: null,
++      to: null,
++    })),
++    totalShare: '100.00',
++    balanced: true,
++    crewId: crew.id,
++  };
+ }
+ 
+ // A person as the pools see them: who may be chosen as a member, whether they are retired, and their holds (each
+@@ -140,8 +172,16 @@ export class PoolStore {
+   private readonly roster = inject(PoolRoster);
+   private readonly settings = inject(SettingsStore);
+   private readonly session = inject(Session);
++  private readonly crews = inject(CrewRoster);
+ 
+   readonly pools = signal<readonly PoolView[]>([]);
++  // The stored pools, then each crew as a pool, in the order the crews were added.
++  readonly all = computed(() => {
++    const names = new Map(this.roster.people().map((p) => [p.id, p.name]));
++    return [...this.pools(), ...this.crews.crews().map((c) => crewPool(c, names))];
++  });
++  // Every name a pool or a crew goes by: a pool cannot take a crew's name, nor a crew a pool's.
++  readonly names = computed(() => new Set(this.all().map((p) => p.name)));
+   // The pools with each member counted retired as the people list has them now, the totals to match, and each
+   // member's cut of the pool's pot while the pool is balanced: the sheet's pot for a pool that is a member of none,
+   // else its cut in the pool above. A member retired, or held on the sheet's today, counts toward the total but has no
+@@ -155,7 +195,7 @@ export class PoolStore {
+         .filter((p) => today !== null && p.holds.some((h) => h.from <= today && (h.to === null || today <= h.to)))
+         .map((p) => p.id),
+     );
+-    const pools = this.pools();
++    const pools = this.all();
+     const parent = parents(pools);
+     const counted = new Map(
+       pools.map((pool) => {
+@@ -217,7 +257,8 @@ export class PoolStore {
+ }
+ 
+ // The active sheet's pools: each with its members and their shares, its total share and whether it is balanced
+-// (the shares total exactly 100.00). A blank pool name, or one already a pool's, is refused; so is a person already
++// (the shares total exactly 100.00), each crew following as a pool of its own. A blank pool name, or one already a
++// pool's or a crew's, is refused; so is a person already
+ // in the pool, or a share not more than 0.00 and at most 100.00 with up to two decimals. A member may be another pool
+ // (chosen as pool:<name>): of at most one pool, never containing itself through any chain, in a chain at most three
+ // deep. A pool that is a member of another has no pot of its own: its pot is its cut in the pool above; the sheet's
+@@ -268,6 +309,7 @@ export class PoolStore {
+               <td data-testid="pool-total-share">{{ p.totalShare | fig }}</td>
+               <td data-testid="pool-balanced">{{ (p.balanced ? 'yes' : 'no') | fig }}</td>
+               <td>
++                @if (p.crewId === undefined) {
+                 <form (submit)="addMember($event, p)" [attr.aria-label]="'Add a member to ' + p.name">
+                   <label [for]="'pool-member-select-' + p.id">Member<span class="visually-hidden"> for {{ p.name }}</span></label>
+                   <select
+@@ -312,6 +354,9 @@ export class PoolStore {
+                     <p role="alert" data-testid="pool-error">{{ err | fig }}</p>
+                   }
+                 </form>
++                } @else {
++                  Members of crew {{ p.name }}
++                }
+               </td>
+             </tr>
+           }
+@@ -444,8 +489,8 @@ export class Pools {
+       this.error.set('Enter a pool name.');
+       return;
+     }
+-    if (this.pools().some((p) => p.name === name)) {
+-      this.error.set(`${name} is already a pool.`);
++    if (this.store.names().has(name)) {
++      this.error.set(`${name} is already a pool or a crew.`);
+       return;
+     }
+     this.submitting = true;
+@@ -454,7 +499,7 @@ export class Pools {
+       if (this.session.sheetId() === sheet) this.pools.update((l) => [...l, added]);
+     } catch (err) {
+       this.error.set(
+-        err instanceof HttpErrorResponse && err.status === 409 ? `${name} is already a pool.` : 'Could not add the pool.',
++        err instanceof HttpErrorResponse && err.status === 409 ? `${name} is already a pool or a crew.` : 'Could not add the pool.',
+       );
+     } finally {
+       this.submitting = false;
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index 220792a5..2004aca5 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -4,6 +4,7 @@ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -13,7 +14,8 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * The sheet's crews and their members. A crew has a name (trimmed, not blank, at most once on the sheet) and a lead
+  * chosen from the sheet's people; its members are other people of the sheet, each at most once, never its lead. A
+- * person may lead or be in several crews.
++ * person may lead or be in several crews. A crew is also a pool under its name (its lead and members at equal shares),
++ * so a crew cannot take a pool's name.
+  */
+ @Service
+ public class CrewService {
+@@ -21,12 +23,14 @@ public class CrewService {
+     private final CrewRepository crews;
+     private final CrewMemberRepository members;
+     private final PersonRepository people;
++    private final PoolRepository pools;
+     private final SheetService sheets;
+     private final Audit audit;
+ 
+     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
+-            SheetService sheets, Audit audit) {
++            PoolRepository pools, SheetService sheets, Audit audit) {
+         this.crews = crews;
++        this.pools = pools;
+         this.members = members;
+         this.people = people;
+         this.sheets = sheets;
+@@ -45,7 +49,10 @@ public class CrewService {
+         return members.findBySheetIdOrderByIdAsc(sheetId);
+     }
+ 
+-    /** Adds a crew under its name, trimmed, led by the person; refused when blank, already a crew's name, or no lead. */
++    /**
++     * Adds a crew under its name, trimmed, led by the person; refused when blank, already a crew's name or a pool's, or
++     * no lead.
++     */
+     @Transactional
+     public Crew add(String by, String sheetId, String name, Long leadId) {
+         String key = name == null ? "" : name.strip();
+@@ -57,6 +64,9 @@ public class CrewService {
+         if (crews.existsBySheetIdAndName(sheetId, key)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, key + " is already a crew.");
+         }
++        if (pools.existsBySheetIdAndName(sheetId, key)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, key + " is already a pool.");
++        }
+         Crew added = crews.saveAndFlush(new Crew(sheetId, key, lead.getId()));
+         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + by + " name=" + key + " lead=" + lead.getName());
+         return added;
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 7667198a..d9124a76 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -7,6 +7,7 @@ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -33,12 +34,14 @@ public class PoolService {
+     private final PoolRepository pools;
+     private final PoolMemberRepository members;
+     private final PersonRepository people;
++    private final CrewRepository crews;
+     private final SheetService sheets;
+     private final Audit audit;
+ 
+     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
+-            SheetService sheets, Audit audit) {
++            CrewRepository crews, SheetService sheets, Audit audit) {
+         this.pools = pools;
++        this.crews = crews;
+         this.members = members;
+         this.people = people;
+         this.sheets = sheets;
+@@ -57,7 +60,10 @@ public class PoolService {
+         return members.findBySheetIdOrderByIdAsc(sheetId);
+     }
+ 
+-    /** Adds a pool under its name, trimmed; refused when blank or already a pool's name. */
++    /**
++     * Adds a pool under its name, trimmed; refused when blank or already a pool's name or a crew's (a crew is also a
++     * pool, under its name).
++     */
+     @Transactional
+     public Pool add(String by, String sheetId, String name) {
+         String key = name == null ? "" : name.strip();
+@@ -68,6 +74,9 @@ public class PoolService {
+         if (pools.existsBySheetIdAndName(sheetId, key)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, key + " is already a pool.");
+         }
++        if (crews.existsBySheetIdAndName(sheetId, key)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, key + " is already a crew.");
++        }
+         Pool added = pools.saveAndFlush(new Pool(sheetId, key));
+         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + by + " name=" + key);
+         return added;
