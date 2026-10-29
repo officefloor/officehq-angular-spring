@@ -1100,30 +1100,31 @@ export class People {
   });
   // Each person's settled-total and open-total: the figures of their counted settled claims (frozen, corrections
   // included) and of their counted open and pending claims, each skipping n/a. Together they make the due-total
-  // before the cap.
+  // before the cap. The scored figure is the settled one leaving out corrections.
   protected readonly splitBy = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
-    const by = new Map<number, { settled: string; open: string }>();
+    const by = new Map<number, { settled: string; open: string; scored: string }>();
     for (const [id, list] of this.liveBy()) {
       const own = grades.get(id) ?? [];
       const due = (c: Claim) => dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
       by.set(id, {
         settled: sumSkippingNa(list.filter((c) => c.status === 'SETTLED').map(due)),
         open: sumSkippingNa(list.filter(isOpen).map(due)),
+        scored: sumSkippingNa(list.filter((c) => c.status === 'SETTLED' && !c.corrects).map(due)),
       });
     }
     return by;
   });
-  // Each person's score: their settled-total divided by 100, minus 5 for each of their overdue claims that count,
+  // Each person's score: their settled-total leaving out corrections divided by 100, minus 5 for each of their overdue claims that count,
   // rounded half to even to a whole number.
   protected readonly scoreBy = computed(() => {
     const split = this.splitBy();
     const overdue = this.overdueBy();
     const by = new Map<number, string>();
-    for (const p of this.people()) by.set(p.id, scoreOf(split.get(p.id)?.settled ?? '0.00', overdue.get(p.id)?.length ?? 0));
+    for (const p of this.people()) by.set(p.id, scoreOf(split.get(p.id)?.scored ?? '0.00', overdue.get(p.id)?.length ?? 0));
     return by;
   });
   // Each person's band while both score thresholds are set: HIGH at or above the high one, MID at or above the mid

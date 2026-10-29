@@ -43,7 +43,7 @@ public class RollupService {
 
     /**
      * One person's figures; a null due-total is n/a. The overdue-total sums their overdue claims' dues. The
-     * settled-total sums their counted settled claims' figures, and the overdue count is how many of their counted
+     * settled-total sums the figures of their counted settled claims that correct nothing, and the overdue count is how many of their counted
      * claims are overdue (whether or not they have a figure).
      */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
@@ -219,7 +219,8 @@ public class RollupService {
                     if (late) {
                         overdue = overdue.add(figure);
                     }
-                    if (c.getStatus() == ClaimStatus.SETTLED) {
+                    // a correction's figure counts toward no score
+                    if (c.getStatus() == ClaimStatus.SETTLED && c.getCorrects() == null) {
                         settled = settled.add(figure);
                     }
                 }
