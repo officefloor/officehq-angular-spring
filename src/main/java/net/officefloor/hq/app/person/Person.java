@@ -86,6 +86,14 @@ public class Person {
     @Column(name = "retired_on")
     private LocalDate retiredOn;
 
+    /** The reason a steward flagged the person; null: never flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day the person's flag is in force; null: never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedHold> holds = new ArrayList<>();
@@ -309,6 +317,17 @@ public class Person {
     /** The sheet the person was transferred from; null: not transferred. */
     public String getOriginSheet() {
         return originSheet;
+    }
+
+    /** Flags the person with the reason until the date, replacing any flag before it. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    /** The reason of the person's flag while it is in force on the day (on or before its until-date); else null. */
+    public String flagOn(LocalDate day) {
+        return flagReason != null && flagUntil != null && !day.isAfter(flagUntil) ? flagReason : null;
     }
 
     /** The sheet's today when the person arrived by transfer; null: not transferred, or before that was kept. */

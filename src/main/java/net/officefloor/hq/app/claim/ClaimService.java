@@ -230,6 +230,15 @@ public class ClaimService {
         claims.flush();
     }
 
+    /** Refuses opening a claim of a person flagged on the sheet's today, unless the user is a steward. */
+    private void refuseFlaggedUnlessSteward(String by, String sheetId, Person person) {
+        String reason = person.flagOn(sheets.load(sheetId).getToday());
+        if (reason != null && !settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    person.getName() + " is flagged (" + reason + "); only a steward can open their claims.");
+        }
+    }
+
     private static void refuseLockedByOther(String by, Claim claim) {
         if (claim.getLockedBy() != null && !claim.getLockedBy().equals(by)) {
             throw new ResponseStatusException(HttpStatus.LOCKED,
@@ -303,6 +312,7 @@ public class ClaimService {
         }
         Person person = person(sheetId, claim.getPersonId());
         if (next == ClaimStatus.OPEN) {
+            refuseFlaggedUnlessSteward(by, sheetId, person);
             refuseWithoutNote(sheetId, claim);
             refuseOverPeriodCap(sheetId, claim);
             if (aboveReviewThreshold(sheetId, person, claim)) {

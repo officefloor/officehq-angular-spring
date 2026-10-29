@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimTag;
 import net.officefloor.hq.app.claim.ClaimTagRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -39,10 +40,12 @@ public class PersonService {
     private final Audit audit;
     private final ClaimTagRepository tags;
     private final PersonSnapshotRepository snapshotLines;
+    private final SettingsService settings;
 
     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
             SheetRepository sheetRepository, RollupService rollup, Audit audit, ClaimTagRepository tags,
-            PersonSnapshotRepository snapshotLines) {
+            PersonSnapshotRepository snapshotLines, SettingsService settings) {
+        this.settings = settings;
         this.snapshotLines = snapshotLines;
         this.tags = tags;
         this.people = people;
@@ -227,7 +230,8 @@ public class PersonService {
                     && Objects.equals(t.getTerms(), terms));
             person.recordTerms(terms, termsFrom, today);
         } else {
-            termsChanged = !Objects.equals(terms, person.termsOn(today)) && !Objects.equals(terms, person.getTerms());
+            // a change is one from the terms in force today, dated terms included
+            termsChanged = !Objects.equals(terms, person.termsOn(today));
             if (termsChanged) {
                 person.setTerms(terms);
             }
@@ -377,6 +381,30 @@ public class PersonService {
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
                 + " from=" + on);
         rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
+     * A steward flags the person with the reason until the date (missing: the sheet's today); while the sheet's today
+     * is on or before it, only a steward may open their claims. Refused unless the user is a steward, and for a blank
+     * reason.
+     */
+    @Transactional
+    public Person flag(String by, String sheetId, Long id, String reason, LocalDate until) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can flag a person.");
+        }
+        String trimmed = reason == null ? "" : reason.strip();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a reason for the flag.");
+        }
+        LocalDate on = until != null ? until : sheets.load(sheetId).getToday();
+        Person person = people.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        person.flag(trimmed, on);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
+                + " reason=" + trimmed + " until=" + on);
         return saved;
     }
 

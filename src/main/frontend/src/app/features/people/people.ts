@@ -46,6 +46,8 @@ interface Person {
   // Whether the person has any hold, and every hold put on them, earliest from-date first.
   held: boolean;
   holds: DatedHold[];
+  // The reason of the steward's flag on the person while it is in force on the sheet's today; null for none.
+  flag: string | null;
 }
 
 // A hold on a person from its from-date to its to-date (null: with no end), both included. Their open claims dated
@@ -445,7 +447,7 @@ interface StatementView {
             @if (columns.shown('overdue-count')) {<th scope="col">Overdue</th>}@if (columns.shown('overdue-total')) {<th scope="col">Overdue total</th>}
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
             @if (columns.shown('statement-count')) {<th scope="col">Statements</th>}@if (columns.shown('stated-total')) {<th scope="col">Last stated total</th>}@if (columns.shown('statement-date')) {<th scope="col">Last statement</th>}
-            @if (columns.shown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columns.shown('hold')) {<th scope="col">On hold</th>}<th scope="col">Active</th>
+            @if (columns.shown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columns.shown('hold')) {<th scope="col">On hold</th>}<th scope="col">Flag</th><th scope="col">Active</th>
             @if (columns.shown('patrons')) {<th scope="col">Patrons</th>}@if (columns.shown('backing')) {<th scope="col">Backing</th>}@if (columns.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Watched</th>
             @for (pd of periods.list(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
@@ -514,6 +516,7 @@ interface StatementView {
               @if (columns.shown('hold')) {
                 <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | fig }}</td>
               }
+              <td data-testid="person-flag-shown">{{ (p.flag ?? '') | fig }}</td>
               <td data-testid="person-active">{{ (activeIds().has(p.id) ? 'yes' : 'no') | fig }}</td>
               @if (columns.shown('patrons')) {
                 <td data-testid="person-patrons">{{ (patronNamesBy().get(p.id) ?? '') | fig }}</td>
@@ -639,6 +642,25 @@ interface StatementView {
                     }
                   </ul>
                 }
+                <label [for]="'flag-reason-' + p.id">Flag reason<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  type="text"
+                  [id]="'flag-reason-' + p.id"
+                  data-testid="person-flag-reason"
+                  [value]="flagReasons()[p.id] ?? ''"
+                  (input)="setFlagReason(p.id, value($event))"
+                />
+                <label [for]="'flag-until-' + p.id">Flag until<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  type="date"
+                  [id]="'flag-until-' + p.id"
+                  data-testid="person-flag-until"
+                  [value]="flagUntils()[p.id] ?? ''"
+                  (input)="setFlagUntil(p.id, value($event))"
+                />
+                <button type="button" data-testid="person-flag" (click)="flag(p)">
+                  Flag<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
                 <label [for]="'alias-' + p.id">Alias<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   type="text"
@@ -779,6 +801,9 @@ export class People {
   // to-date puts a hold with no end.
   protected readonly holdFroms = signal<Record<number, string>>({});
   protected readonly holdTos = signal<Record<number, string>>({});
+  // Each row's flag reason and until-date as typed, by person id; a blank until-date takes the sheet's today.
+  protected readonly flagReasons = signal<Record<number, string>>({});
+  protected readonly flagUntils = signal<Record<number, string>>({});
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   // The date the form's grade applies from; blank takes the sheet's today.
@@ -1241,6 +1266,8 @@ export class People {
         this.statementAsOfs.set({});
         this.holdFroms.set({});
         this.holdTos.set({});
+        this.flagReasons.set({});
+        this.flagUntils.set({});
         this.reset();
         this.quickName.set('');
         this.quickAmount.set('');
@@ -1629,6 +1656,48 @@ export class People {
       if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
     } catch {
       refuse('Could not put this person on hold.');
+    }
+  }
+
+  protected setFlagReason(id: number, reason: string): void {
+    this.flagReasons.update((d) => ({ ...d, [id]: reason }));
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  protected setFlagUntil(id: number, date: string): void {
+    this.flagUntils.update((d) => ({ ...d, [id]: date }));
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  /**
+   * A steward flags the person with the typed reason until the typed date (blank: the sheet's today); while it is in
+   * force only a steward may open their claims. Refused for anyone else, and for a blank reason.
+   */
+  protected async flag(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const reason = (this.flagReasons()[p.id] ?? '').trim();
+    const until = (this.flagUntils()[p.id] ?? '').trim();
+    const refuse = (message: string) => this.rowErrors.update((e) => ({ ...e, [p.id]: message }));
+    if (!reason) {
+      refuse('Enter a reason for the flag.');
+      return;
+    }
+    if (until && !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      refuse('Enter an until-date as yyyy-mm-dd.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/flag`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { reason, until: until || null }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      this.flagReasons.update(({ [p.id]: _, ...rest }) => rest);
+      this.flagUntils.update(({ [p.id]: _, ...rest }) => rest);
+      if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
+    } catch (e) {
+      refuse(e instanceof HttpErrorResponse && e.status === 403 ? 'Only a steward can flag a person.' : 'Could not flag this person.');
     }
   }
 
