@@ -1,0 +1,64 @@
+{
+  "checkpoint": 231,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp231_period-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the period figures as a CSV file: a header line person,period,figure,carried\nthen one line per person and period, people in list order and periods in the order added, with the\nfigures as the rows show them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the period figures as a CSV file: a header line person,period,figure,carried\nthen one line per person and period, people in list order and periods in the order added, with the\nfigures as the rows show them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "da45b3b378bb3758ff222a0d7b03c8587f1e5488",
+  "reset_sha": "",
+  "preagent_sha": "8f8d9112cb1b0d95262cd5d9268e30cbb145473b",
+  "prev_sha": "8f8d9112cb1b0d95262cd5d9268e30cbb145473b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45543920000000004,
+    "input_tokens": 28,
+    "output_tokens": 3106,
+    "cache_read_tokens": 452996,
+    "cache_creation_tokens": 37826,
+    "num_turns": 15,
+    "duration_ms": 320524,
+    "duration_api_ms": 54400,
+    "model": "claude-opus-5-5",
+    "session_id": "f50197cc-e9da-4ffd-a311-04acf8541bed",
+    "stop_reason": "success",
+    "result_text": "I added an **Export period figures (CSV)** button (`data-testid=\"export-periods\"`) to the people list. It downloads `periods.csv`, and `bin/e2e` passes all 4 tests.\n\n**What the file contains:**\n- The header line `person,period,figure,carried`.\n- One line per person and period. People come in list order, with retired people included, as the other exports already do. Periods come in the order they were added (by id), not the date order the screen sorts them in.\n- The figure and carried values come straight from the same numbers the person rows show. A closed period keeps the figures it was fixed at, so changing a rate afterwards doesn't change them; the test checks this.\n- Names containing a comma are quoted (e.g. `\"Lee, Jo\"`), using the existing CSV quoting.\n\nThe change is only in `src/main/frontend/src/app/features/people/people.ts`. The server and stored data didn't need to change, and nothing is written to the audit file.\n\n**Decision for you:** the numbers are written as plain values like `1234.50`, even if the user has picked a display format such as `1.234,50`. That matches the existing people and claims exports, and keeps the decimal comma from colliding with the CSV's commas. If \"as the rows show them\" should also mean the display format, it would be a small change, but those numbers would then need quoting.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45543920000000004,
+        "num_turns": 15,
+        "duration_ms": 320524,
+        "duration_api_ms": 54400,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp231.agent.jsonl",
+  "agent_diff_file": "cp231.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
