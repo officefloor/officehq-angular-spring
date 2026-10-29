@@ -1,0 +1,63 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 5acafbbd..e0dae9ac 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -252,24 +252,25 @@ export function plusDays(date: string, days: number): string {
+ }
+ 
+ /**
+- * The due a claim shows and totals: a settled claim's frozen due; else its live due, the greater of the floor in
+- * force on its date and its figure plus the late charge: for an overdue claim, for each full 30 days it is overdue,
+- * the late percent in force on that boundary date (its due-by plus its grace, plus 30, 60, 90 ... days) of the figure
+- * plus the charges of the boundaries before it (it compounds), rounded like the claim; a boundary whose percent is 0.00 adds nothing. A claim a statement binds shows the due it
++ * The due a claim shows and totals: a settled claim's frozen due; else its live due, its floored figure (the greater
++ * of the floor in force on its date and its figure) plus the late charge worked out on that floored figure: for an
++ * overdue claim, for each full 30 days it is overdue, the late percent in force on that boundary date (its due-by
++ * plus its grace, plus 30, 60, 90 ... days) of the floored figure plus the charges of the boundaries before it (it compounds), rounded like the claim; a boundary whose percent is 0.00 adds nothing. A claim a statement binds shows the due it
+  * bound, charge and floor included. A correction has neither; a waived claim bears no charge.
+  */
+ export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness, grace = 0): string | null {
+   const figure = figureOf(c, rates, late);
+   if (figure === null || c.settledDue !== null || isBound(c) || isCorrection(c)) return figure;
+-  if (!overdue(c, late.today, grace) || waivedOn(c, late.today)) return atLeast(figure, floor(c.date));
++  const floored = atLeast(figure, floor(c.date));
++  if (!overdue(c, late.today, grace) || waivedOn(c, late.today)) return floored;
+   const from = lateFrom(c, grace);
+   const periods = Math.floor(daysBetween(from, late.today!) / 30);
+   const halfUp = roundsHalfUp(c, late);
+-  let due = figure;
++  let due = floored;
+   for (let k = 1; k <= periods; k++) {
+     due = sumSkippingNa([due, dueOn(due, late.latePct(plusDays(from, 30 * k)), halfUp)]);
+   }
+-  return atLeast(due, floor(c.date));
++  return due;
+ }
+ 
+ const CLOSED = 'That claim is due by a date in a closed period, so it cannot change.';
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 275bc3eb..b240767c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -1167,16 +1167,16 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * The live due of a claim on its (unfloored) figure: the greater of the floor in force on its date and the figure
+-     * plus the late charge it has gained (when charged); a correction has neither floor nor charge. Null (n/a) for an
+-     * n/a figure.
++     * The live due of a claim on its (unfloored) figure: its floored figure (the greater of the floor in force on its
++     * date and the figure) plus the late charge gained on that floored figure (when charged); a correction has neither
++     * floor nor charge. Null (n/a) for an n/a figure.
+      */
+     public static BigDecimal liveDue(BigDecimal figure, Claim claim, Person person, Sheet sheet, boolean charged) {
+         if (figure == null || claim.isCorrection()) {
+             return figure;
+         }
+-        BigDecimal due = charged ? withLateCharge(figure, claim, person, sheet) : figure;
+-        return sheet == null ? due : floored(due, sheet.floorOn(claim.getDate()));
++        BigDecimal base = sheet == null ? figure : floored(figure, sheet.floorOn(claim.getDate()));
++        return charged ? withLateCharge(base, claim, person, sheet) : base;
+     }
+ 
+     /**
