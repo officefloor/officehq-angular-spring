@@ -42,7 +42,8 @@ interface SettingsView {
 /**
  * One value recorded for a dated setting, in force from its from-date until the next one recorded for its key:
  * clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold, proof-threshold-<grade> or
- * note-threshold. The value is null for none (a blank clerk limit, grace, cap, proof threshold or note threshold).
+ * note-threshold or rounding. The value is null for none (a blank clerk limit, grace, cap, proof threshold, note
+ * threshold or rounding mode).
  */
 interface DatedSetting {
   key: string;
@@ -51,7 +52,7 @@ interface DatedSetting {
 }
 
 /** A dated setting's key as the form and its fields name it. */
-export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}`;
+export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | 'rounding' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}`;
 
 export const ROLES = ['clerk', 'steward', 'viewer'];
 /** The roles the permission matrix can list; a viewer may take no action. */
@@ -89,6 +90,10 @@ export const DEFAULT_LATE_PCT = '0.00';
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** The rounding modes a sheet can have in force; blank for none (claims round by the policy date). */
+export const ROUNDING_MODES = ['half-up', 'half-even'];
+/** How a claim's live figures round: half up or half to even. */
+export type RoundingModeName = 'half-up' | 'half-even';
 /** A month number, 1 to 12. */
 const MONTH = /^(0?[1-9]|1[0-2])$/;
 /** A sheet id: letters, digits, dots, dashes and underscores. */
@@ -136,6 +141,16 @@ export class SettingsStore {
   readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.session.sheetToday()) ?? null);
   /** The note threshold in force on the sheet's today; null for none. */
   readonly noteThreshold = computed(() => valueOn(this.dated(), 'note-threshold', this.session.sheetToday()) ?? null);
+  /** The rounding mode in force on a date; null for none (blank, or none recorded): the policy date decides. */
+  readonly rounding = computed(() => {
+    const dated = this.dated();
+    return (date: string): RoundingModeName | null => (valueOn(dated, 'rounding', date) as RoundingModeName | null) ?? null;
+  });
+  /** The rounding mode in force on the sheet's today; null for none. */
+  readonly roundingToday = computed(() => {
+    const today = this.session.sheetToday();
+    return today === null ? null : this.rounding()(today);
+  });
   /** The floor, the terms and the late percent in force on the sheet's today. */
   readonly floorToday = computed(() => this.floor()(this.session.sheetToday()));
   readonly termsToday = computed(() => this.termsFor('', this.session.sheetToday()));
@@ -160,12 +175,13 @@ export class SettingsStore {
   readonly permissions = signal<Readonly<Record<string, string>>>({});
   /**
    * What an overdue claim's late charge follows: the sheet's today, the grace days a grade has in force on a claim's
-   * date and the late percent in force on each 30-day boundary past its due-by plus that grace; and the policy date in force (the sheet's today when blank), which decides how live figures round.
+   * date and the late percent in force on each 30-day boundary past its due-by plus that grace; and the policy date in force (the sheet's today when blank) and the rounding mode in force on a date, which decide how live figures round.
    */
   readonly lateness = computed(() => ({
     today: this.session.sheetToday(),
     latePct: this.latePct(),
     policyDate: this.policyDate() ?? this.session.sheetToday(),
+    rounding: this.rounding(),
     grace: (grade: string | null, date: string) => this.graceFor(grade, date),
   }));
 
@@ -611,6 +627,24 @@ export class SettingsStore {
           (input)="setFrom('note-threshold', value($event))"
           (change)="setFrom('note-threshold', value($event))"
         />
+        <label for="setting-rounding">Rounding mode (half-up or half-even; blank for none: the policy date decides)</label>
+        <input
+          id="setting-rounding"
+          data-testid="setting-rounding"
+          [value]="rounding()"
+          (input)="rounding.set(value($event)); roundingChanged = true; settingsError.set(null)"
+          (keydown.delete)="roundingChanged = true; settingsError.set(null)"
+          (keydown.backspace)="roundingChanged = true; settingsError.set(null)"
+        />
+        <label for="setting-rounding-from">Rounding mode from (blank for the sheet's today)</label>
+        <input
+          id="setting-rounding-from"
+          data-testid="setting-rounding-from"
+          type="date"
+          [value]="from()['rounding'] ?? ''"
+          (input)="setFrom('rounding', value($event))"
+          (change)="setFrom('rounding', value($event))"
+        />
         <fieldset>
           <legend>Permissions (roles that may take each action, comma separated; blank for the standing rule)</legend>
           @for (p of permissionActions; track p.action) {
@@ -672,6 +706,7 @@ export class SettingsStore {
         Note threshold in force:
         <strong data-testid="setting-note-threshold-current">{{ store.noteThreshold() ?? '' }}</strong>
       </p>
+      <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ store.roundingToday() ?? '' }}</strong></p>
       @for (p of permissionActions; track p.action) {
         <p>
           Roles that may {{ p.action }}:
@@ -754,6 +789,7 @@ export class Settings {
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
   protected readonly noteThreshold = signal('');
+  protected readonly rounding = signal('');
   // The from-date typed for each dated setting, by key; blank for the sheet's today.
   protected readonly from = signal<Readonly<Partial<Record<DatedKey, string>>>>({});
   // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
@@ -776,6 +812,7 @@ export class Settings {
   protected capChanged = false;
   protected proofThresholdChanged = false;
   protected noteThresholdChanged = false;
+  protected roundingChanged = false;
   protected readonly permsChanged = new Set<string>();
   protected readonly user = signal('');
   protected readonly role = signal('');
@@ -865,6 +902,9 @@ export class Settings {
         break;
       case 'note-threshold':
         this.noteThresholdChanged ||= this.noteThreshold().trim() !== '';
+        break;
+      case 'rounding':
+        this.roundingChanged ||= this.rounding().trim() !== '';
         break;
       default:
         if (key.startsWith('proof-threshold-')) {
@@ -995,6 +1035,11 @@ export class Settings {
       this.settingsError.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const rounding = this.rounding().trim();
+    if (this.roundingChanged && rounding && !ROUNDING_MODES.includes(rounding)) {
+      this.settingsError.set('Enter a rounding mode of half-up or half-even, or leave it blank for none.');
+      return;
+    }
     const perms = new Map<string, string>();
     for (const a of this.permsChanged) {
       const typed = (this.perms()[a] ?? '').trim();
@@ -1015,6 +1060,7 @@ export class Settings {
     if (this.proofThresholdChanged) keys.push('proof-threshold');
     for (const g of gradeProof.keys()) keys.push(`proof-threshold-${g}`);
     if (this.noteThresholdChanged) keys.push('note-threshold');
+    if (this.roundingChanged) keys.push('rounding');
     const from = new Map<DatedKey, string | null>();
     for (const k of keys) {
       const f = this.fromOf(k);
@@ -1100,6 +1146,10 @@ export class Settings {
       if (this.noteThresholdChanged) {
         await this.store.setDated(sheet, 'note-threshold', noteThreshold || null, from.get('note-threshold') ?? null);
         this.noteThresholdChanged = this.noteThreshold().trim() !== noteThreshold;
+      }
+      if (this.roundingChanged) {
+        await this.store.setDated(sheet, 'rounding', rounding || null, from.get('rounding') ?? null);
+        this.roundingChanged = this.rounding().trim() !== rounding;
       }
       for (const [a, roles] of perms) {
         await this.store.setPermission(sheet, a, roles || null);

@@ -33,6 +33,9 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String ROUNDING = "rounding";
+    public static final String HALF_UP = "half-up";
+    public static final String HALF_EVEN = "half-even";
     /** The key prefix of a grade's grace days: grace-<grade>. */
     public static final String GRACE = "grace";
 
@@ -385,11 +388,20 @@ public class Sheet {
         return cap != null && dueTotal != null && dueTotal.compareTo(cap) > 0 ? cap.setScale(2) : dueTotal;
     }
 
+    /** The rounding mode (half-up or half-even) in force on the date; empty when none is (blank, or none recorded). */
+    public Optional<String> roundingModeOn(LocalDate on) {
+        return inForce(ROUNDING, on).map(DatedSetting::getValue);
+    }
+
     /**
-     * How a claim's live figures round, by the date its rounding follows: half up before the policy date (the
-     * sheet's today when it is blank), half to even on or after it.
+     * How a claim's live figures round, by the date its rounding follows: by the rounding mode in force on it when
+     * one is; else half up before the policy date (the sheet's today when it is blank), half to even on or after it.
      */
     public RoundingMode roundingOn(LocalDate roundsOn) {
+        Optional<String> mode = roundingModeOn(roundsOn);
+        if (mode.isPresent()) {
+            return HALF_UP.equals(mode.get()) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+        }
         LocalDate policy = policyDate != null ? policyDate : today;
         return policy != null && roundsOn.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }

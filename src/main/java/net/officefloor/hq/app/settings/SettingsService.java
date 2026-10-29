@@ -393,6 +393,22 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Records the sheet's rounding mode, half-up or half-even (null for none), from the date (null for the sheet's
+     * today): a claim whose rounding follows a date it is in force on rounds every live figure by it; one with none in
+     * force rounds by the policy date. Refused for any other value. Settled and stated figures keep what they were;
+     * the live figures it moves are rolled up.
+     */
+    @Transactional
+    public Sheet setRounding(String by, String sheetId, String mode, LocalDate from) {
+        String value = mode == null || mode.isBlank() ? null : mode.strip();
+        if (value != null && !Sheet.HALF_UP.equals(value) && !Sheet.HALF_EVEN.equals(value)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A rounding mode is half-up or half-even, or blank for none.");
+        }
+        return record(by, sheetId, Sheet.ROUNDING, value, from, true);
+    }
+
+    /**
      * Records the sheet's cap (null for none) from the date (null for the sheet's today): the most a person's
      * due-total can be while it is in force on the sheet's today. The due-totals it moves are rolled up.
      */

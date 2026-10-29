@@ -123,22 +123,25 @@ export function isCorrection(c: Claim): boolean {
 }
 
 /**
- * Whether the claim's live figures round half up: when the date its rounding follows is before the policy date
- * (the sheet's today when the setting is blank); else they round half to even.
+ * Whether the claim's live figures round half up: by the rounding mode in force on the date its rounding follows
+ * when one is; else when that date is before the policy date (the sheet's today when the setting is blank). Else
+ * they round half to even.
  */
-export function roundsHalfUp(c: Claim, policyDate: string | null): boolean {
-  return policyDate !== null && c.roundsOn < policyDate;
+export function roundsHalfUp(c: Claim, late: Rounding): boolean {
+  const mode = late.rounding(c.roundsOn);
+  if (mode !== null) return mode === 'half-up';
+  return late.policyDate !== null && c.roundsOn < late.policyDate;
 }
 
 /**
  * The figure of a claim: its settled due, else the one a statement bound it to (not while it is pending), else its
- * rate figure at the rate in force on its date (no floor), rounded as the policy date decides for it; null (n/a)
- * with none.
+ * rate figure at the rate in force on its date (no floor), rounded as the rounding mode or the policy date decides
+ * for it; null (n/a) with none.
  */
-export function figureOf(c: Claim, rates: readonly RateView[], policyDate: string | null): string | null {
+export function figureOf(c: Claim, rates: readonly RateView[], late: Rounding): string | null {
   if (c.settledDue !== null) return c.settledDue;
   if (isBound(c)) return c.statedDue;
-  return dueOn(c.amount, rateOn(rates, c.date), roundsHalfUp(c, policyDate));
+  return dueOn(c.amount, rateOn(rates, c.date), roundsHalfUp(c, late));
 }
 
 /** Whether the claim keeps a figure whatever the rates: a settled or bound one with a figure. */
@@ -186,13 +189,21 @@ export function graceOf(c: Claim, grades: readonly DatedGrade[], late: Lateness)
 export type FloorOn = (date: string) => string;
 
 /**
- * What the late charge follows: the sheet's today and the late percent in force on a date; and the policy
- * date in force (the sheet's today when the setting is blank), which decides how a claim's live figures round.
+ * What decides how a claim's live figures round: the rounding mode in force on a date (null for none), else the
+ * policy date in force (the sheet's today when the setting is blank).
  */
-export interface Lateness {
+export interface Rounding {
+  policyDate: string | null;
+  rounding: (date: string) => 'half-up' | 'half-even' | null;
+}
+
+/**
+ * What the late charge follows: the sheet's today and the late percent in force on a date; and how a claim's live
+ * figures round.
+ */
+export interface Lateness extends Rounding {
   today: string | null;
   latePct: (date: string) => string;
-  policyDate: string | null;
   /** The grace days the grade has in force on a date; 0 with none. */
   grace: (grade: string | null, date: string) => number;
 }
@@ -220,12 +231,12 @@ export function plusDays(date: string, days: number): string {
  * statement. A correction has neither.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness, grace = 0): string | null {
-  const figure = figureOf(c, rates, late.policyDate);
+  const figure = figureOf(c, rates, late);
   if (figure === null || c.settledDue !== null || isCorrection(c)) return figure;
   if (!overdue(c, late.today, grace)) return atLeast(figure, floor(c.date));
   const from = lateFrom(c, grace);
   const periods = Math.floor(daysBetween(from, late.today!) / 30);
-  const halfUp = roundsHalfUp(c, late.policyDate);
+  const halfUp = roundsHalfUp(c, late);
   let due = figure;
   for (let k = 1; k <= periods; k++) {
     due = sumSkippingNa([due, dueOn(due, late.latePct(plusDays(from, 30 * k)), halfUp)]);

@@ -62,7 +62,7 @@ public class SettingsController {
 
     /**
      * One value recorded for a dated setting (clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap,
-     * proof-threshold, proof-threshold-<grade> or note-threshold), in force
+     * proof-threshold, proof-threshold-<grade>, note-threshold or rounding), in force
      * from its from-date; null for none.
      */
     public record DatedSettingView(String key, LocalDate from, String value) {
@@ -100,6 +100,13 @@ public class SettingsController {
      */
     public record NoteThresholdForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value,
             LocalDate from) {
+    }
+
+    /**
+     * The rounding mode as the form submits it: half-up or half-even, or null (blank) for none; from the date, or null
+     * for the sheet's today.
+     */
+    public record RoundingForm(@Size(max = 30) String value, LocalDate from) {
     }
 
     /** The floor as the form submits it: 0.00 or more with up to two decimals; from the date, or null for today. */
@@ -214,6 +221,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody FloorForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setFloor(user, sheetId, form.value(), form.from()));
+    }
+
+    @PutMapping("/settings/rounding")
+    public SettingsView setRounding(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody RoundingForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setRounding(user, sheetId, form.value(), form.from()));
     }
 
     @PutMapping("/settings/terms")
