@@ -270,6 +270,21 @@ public class PersonController {
     }
 
     /**
+     * The steward who transferred the person to this sheet undoes it on the sheet's today they arrived: they are
+     * transferred back to the sheet they came from. Refused on a later day, for anyone else, and for a person who did
+     * not arrive by transfer.
+     */
+    @PostMapping("/{id}/transfer-undo")
+    public void transferUndo(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id,
+            @SessionAttribute(SessionController.USER) String user) {
+        String from = transfers.undo(user, sheetId, id);
+        // the request's own sheet is stored as it now stands once answered; the sheet they went back to changed too
+        asOf.capture(from);
+    }
+
+    /**
      * Swaps the person with the one above them in the list (direction up) or below (down); refused for the top person
      * moving up and the bottom one moving down. All the people on the sheet, in list order.
      */

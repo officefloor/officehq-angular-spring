@@ -70,6 +70,14 @@ public class Person {
     @Column(name = "origin_sheet")
     private String originSheet;
 
+    /** The sheet's today when the person arrived by transfer; null: not transferred, or before that was kept. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
+    /** The user who transferred the person here; null: not transferred, or before that was kept. */
+    @Column(name = "arrived_by")
+    private String arrivedBy;
+
     /** The sheet's today when the person was added; null: before that was kept. */
     @Column(name = "added_on")
     private LocalDate addedOn;
@@ -303,10 +311,25 @@ public class Person {
         return originSheet;
     }
 
-    /** Moves the person, with their grades, holds and aliases, to the other sheet; they came from this one. */
-    public void moveToSheet(String sheetId) {
+    /** The sheet's today when the person arrived by transfer; null: not transferred, or before that was kept. */
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
+    }
+
+    /** The user who transferred the person here; null: not transferred, or before that was kept. */
+    public String getArrivedBy() {
+        return arrivedBy;
+    }
+
+    /**
+     * Moves the person, with their grades, holds and aliases, to the other sheet; they came from this one, transferred
+     * by the user while the other sheet's today was the date.
+     */
+    public void moveToSheet(String sheetId, LocalDate arrivedOn, String arrivedBy) {
         this.originSheet = this.sheetId;
         this.sheetId = sheetId;
+        this.arrivedOn = arrivedOn;
+        this.arrivedBy = arrivedBy;
         List<PersonAlias> moved = aliases.stream().map(a -> new PersonAlias(sheetId, a.getAlias())).toList();
         aliases.clear();
         aliases.addAll(moved);

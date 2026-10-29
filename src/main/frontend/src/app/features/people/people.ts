@@ -695,6 +695,11 @@ interface StatementView {
                 <button type="button" data-testid="person-transfer" (click)="transfer(p)">
                   Transfer<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                @if (p.originSheet !== null) {
+                  <button type="button" data-testid="person-transfer-undo" (click)="transferUndo(p)">
+                    Undo transfer<span class="visually-hidden"> of {{ p.name }}</span>
+                  </button>
+                }
               </td>
               <td>
                 <app-person-plans [personId]="p.id" [personName]="p.name" />
@@ -1521,6 +1526,31 @@ export class People {
     }
     this.transferTargets.update(({ [p.id]: _, ...rest }) => rest);
     // the person leaves with their claims, patron links and pool memberships: every view re-reads the sheet
+    if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
+  }
+
+  /**
+   * The steward who transferred the person here undoes it on the sheet's today they arrived: they go back to the
+   * sheet they came from. Refused on a later day, for anyone else, and for a person who did not arrive by transfer.
+   */
+  protected async transferUndo(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/transfer-undo`;
+    try {
+      await firstValueFrom(this.http.post<void>(url, {}));
+    } catch (err) {
+      this.rowErrors.update((e) => ({
+        ...e,
+        [p.id]:
+          err instanceof HttpErrorResponse && err.status === 403
+            ? 'Only the steward who made the transfer can undo it.'
+            : 'Could not undo this transfer.',
+      }));
+      return;
+    }
+    // the person goes back with their claims: every view re-reads the sheet
     if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
   }
 

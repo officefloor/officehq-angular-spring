@@ -142,7 +142,7 @@ public class PersonTransferService {
 
         // one merged on arrival is never listed there: their name is already someone's on the other sheet
         if (into == null) {
-            person.moveToSheet(toSheetId);
+            person.moveToSheet(toSheetId, sheets.load(toSheetId).getToday(), by);
             // they go to the end of the other sheet's list
             person.setPosition(people.nextPosition(toSheetId));
             people.saveAndFlush(person);
@@ -188,5 +188,37 @@ public class PersonTransferService {
         }
         rollup.recordChanges(by, sheetId, beforeHere);
         rollup.recordChanges(by, toSheetId, beforeThere);
+    }
+
+    /**
+     * The steward who transferred the person to this sheet undoes it on the sheet's today they arrived: the person is
+     * transferred back to the sheet they came from, exactly as a transfer does. Refused on any later day, for anyone
+     * else, and for a person who did not arrive by transfer. The sheet they went back to.
+     */
+    @Transactional
+    public String undo(String by, String sheetId, Long id) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can undo a transfer.");
+        }
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        String from = person.getOriginSheet();
+        if (from == null || person.getArrivedOn() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The person did not arrive by transfer.");
+        }
+        if (!by.equals(person.getArrivedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the steward who made the transfer can undo it.");
+        }
+        if (!person.getArrivedOn().equals(sheets.load(sheetId).getToday())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A transfer can only be undone on the day the person arrived.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        String name = person.getName();
+        transfer(by, sheetId, id, from);
+        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + by + " name=" + name + " to=" + from);
+        rollup.recordChanges(by, sheetId, before);
+        return from;
     }
 }
