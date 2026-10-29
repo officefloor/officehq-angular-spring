@@ -17,6 +17,9 @@ public class UserPref {
     @Column(name = "locale", nullable = false)
     private String locale;
 
+    @Column(name = "hidden_columns", nullable = false)
+    private String hiddenColumns = "";
+
     protected UserPref() {
     }
 
@@ -35,5 +38,13 @@ public class UserPref {
 
     public void setLocale(String locale) {
         this.locale = locale;
+    }
+
+    public String getHiddenColumns() {
+        return hiddenColumns;
+    }
+
+    public void setHiddenColumns(String hiddenColumns) {
+        this.hiddenColumns = hiddenColumns;
     }
 }

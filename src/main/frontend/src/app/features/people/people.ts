@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FigPipe } from '../../core/locale';
+import { COLUMNS, UserColumns } from '../../core/columns';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
@@ -248,6 +249,20 @@ interface StatementView {
         />
         Show retired
       </label>
+      <fieldset>
+        <legend>Columns shown</legend>
+        @for (c of columnChoices; track c.id) {
+          <label>
+            <input
+              type="checkbox"
+              [attr.data-testid]="'column-' + c.id"
+              [checked]="columns.shown(c.id)"
+              (change)="columns.set(c.id, checked($event))"
+            />
+            {{ c.label }}
+          </label>
+        }
+      </fieldset>
       <label>
         Sort by
         <select data-testid="sort-by" [value]="sortKey()" (change)="sortKey.set(value($event))">
@@ -410,13 +425,13 @@ interface StatementView {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shown('terms')) {<th scope="col">Terms</th>}@if (columns.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columns.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th>@if (columns.shown('claimed')) {<th scope="col">Claimed</th>}@if (columns.shown('due-total')) {<th scope="col">Due</th>}
             <th scope="col">Settled total</th><th scope="col">Open total</th>
-            <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+            @if (columns.shown('overdue-count')) {<th scope="col">Overdue</th>}@if (columns.shown('overdue-total')) {<th scope="col">Overdue total</th>}
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
-            <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
+            @if (columns.shown('statement-count')) {<th scope="col">Statements</th>}@if (columns.shown('stated-total')) {<th scope="col">Last stated total</th>}@if (columns.shown('statement-date')) {<th scope="col">Last statement</th>}
+            @if (columns.shown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columns.shown('hold')) {<th scope="col">On hold</th>}<th scope="col">Active</th>
+            @if (columns.shown('patrons')) {<th scope="col">Patrons</th>}@if (columns.shown('backing')) {<th scope="col">Backing</th>}@if (columns.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Watched</th>
             @for (pd of periods.list(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
             }
@@ -437,32 +452,62 @@ interface StatementView {
               </td>
               <td data-testid="person-name">{{ p.name | fig }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) | fig }}</td>
-              <td data-testid="person-terms">{{ (p.terms ?? '') | fig }}</td>
-              <td data-testid="person-contact">{{ (p.contact ?? '') | fig }}</td>
+              @if (columns.shown('terms')) {
+                <td data-testid="person-terms">{{ (p.terms ?? '') | fig }}</td>
+              }
+              @if (columns.shown('contact')) {
+                <td data-testid="person-contact">{{ (p.contact ?? '') | fig }}</td>
+              }
               <td data-testid="person-tags">{{ (p.tags.join(', ')) | fig }}</td>
-              <td data-testid="person-aliases">{{ (p.aliases.join(', ')) | fig }}</td>
+              @if (columns.shown('aliases')) {
+                <td data-testid="person-aliases">{{ (p.aliases.join(', ')) | fig }}</td>
+              }
               <td data-testid="person-clashing">{{ (p.clashing ? 'yes' : 'no') | fig }}</td>
               <td data-testid="person-origin">{{ (p.originSheet ?? '') | fig }}</td>
               <td data-testid="person-cut-total">{{ (poolStore.cutTotals().get(p.id) ?? '0.00') | fig }}</td>
-              <td data-testid="person-claimed">{{ (claimedBy().get(p.id) ?? '0.00') | fig }}</td>
-              <td data-testid="person-due-total">{{ (dueBy().get(p.id) ?? 'n/a') | fig }}</td>
+              @if (columns.shown('claimed')) {
+                <td data-testid="person-claimed">{{ (claimedBy().get(p.id) ?? '0.00') | fig }}</td>
+              }
+              @if (columns.shown('due-total')) {
+                <td data-testid="person-due-total">{{ (dueBy().get(p.id) ?? 'n/a') | fig }}</td>
+              }
               <td data-testid="person-settled-total">{{ (splitBy().get(p.id)?.settled ?? '0.00') | fig }}</td>
               <td data-testid="person-open-total">{{ (splitBy().get(p.id)?.open ?? '0.00') | fig }}</td>
-              <td data-testid="person-overdue-count">{{ (overdueBy().get(p.id)?.length ?? 0) | fig }}</td>
-              <td data-testid="person-overdue-total">{{ (overdueTotalBy().get(p.id) ?? '0.00') | fig }}</td>
+              @if (columns.shown('overdue-count')) {
+                <td data-testid="person-overdue-count">{{ (overdueBy().get(p.id)?.length ?? 0) | fig }}</td>
+              }
+              @if (columns.shown('overdue-total')) {
+                <td data-testid="person-overdue-total">{{ (overdueTotalBy().get(p.id) ?? '0.00') | fig }}</td>
+              }
               <td data-testid="person-aged-0-30">{{ (agedBy().get(p.id)?.[0] ?? '0.00') | fig }}</td>
               <td data-testid="person-aged-31-60">{{ (agedBy().get(p.id)?.[1] ?? '0.00') | fig }}</td>
               <td data-testid="person-aged-61">{{ (agedBy().get(p.id)?.[2] ?? '0.00') | fig }}</td>
-              <td data-testid="person-statement-count">{{ (statementsBy().get(p.id)?.count ?? 0) | fig }}</td>
-              <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) | fig }}</td>
-              <td data-testid="person-statement-date">{{ (statementsBy().get(p.id)?.date ?? '') | fig }}</td>
-              <td data-testid="person-retired">{{ (p.retiredFrom !== null ? 'yes' : 'no') | fig }}</td>
+              @if (columns.shown('statement-count')) {
+                <td data-testid="person-statement-count">{{ (statementsBy().get(p.id)?.count ?? 0) | fig }}</td>
+              }
+              @if (columns.shown('stated-total')) {
+                <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) | fig }}</td>
+              }
+              @if (columns.shown('statement-date')) {
+                <td data-testid="person-statement-date">{{ (statementsBy().get(p.id)?.date ?? '') | fig }}</td>
+              }
+              @if (columns.shown('retired')) {
+                <td data-testid="person-retired">{{ (p.retiredFrom !== null ? 'yes' : 'no') | fig }}</td>
+              }
               <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | fig }}</td>
-              <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | fig }}</td>
+              @if (columns.shown('hold')) {
+                <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | fig }}</td>
+              }
               <td data-testid="person-active">{{ (activeIds().has(p.id) ? 'yes' : 'no') | fig }}</td>
-              <td data-testid="person-patrons">{{ (patronNamesBy().get(p.id) ?? '') | fig }}</td>
-              <td data-testid="person-backing">{{ (backingBy().get(p.id) ?? '0.00') | fig }}</td>
-              <td data-testid="person-excess">{{ (excessBy().get(p.id) ?? '0.00') | fig }}</td>
+              @if (columns.shown('patrons')) {
+                <td data-testid="person-patrons">{{ (patronNamesBy().get(p.id) ?? '') | fig }}</td>
+              }
+              @if (columns.shown('backing')) {
+                <td data-testid="person-backing">{{ (backingBy().get(p.id) ?? '0.00') | fig }}</td>
+              }
+              @if (columns.shown('excess')) {
+                <td data-testid="person-excess">{{ (excessBy().get(p.id) ?? '0.00') | fig }}</td>
+              }
               <td data-testid="person-watched">{{ (watched().has(p.id) ? 'yes' : 'no') | fig }}</td>
               @for (pd of periods.list(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
@@ -662,6 +707,9 @@ export class People {
   private readonly poolRoster = inject(PoolRoster);
   protected readonly poolStore = inject(PoolStore);
   private readonly planStore = inject(PlanStore);
+
+  protected readonly columns = inject(UserColumns);
+  protected readonly columnChoices = COLUMNS;
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);

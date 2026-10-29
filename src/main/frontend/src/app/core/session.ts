@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { AsOf } from './as-of';
+import { UserColumns } from './columns';
 import { UserLocale } from './locale';
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
@@ -10,6 +11,7 @@ export class Session {
   private readonly http = inject(HttpClient);
   private readonly asOf = inject(AsOf);
   private readonly userLocale = inject(UserLocale);
+  private readonly userColumns = inject(UserColumns);
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
@@ -28,6 +30,7 @@ export class Session {
   async signIn(name: string): Promise<void> {
     const u = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
     await this.userLocale.load();
+    await this.userColumns.load();
     this.user.set(u.name);
   }
 
