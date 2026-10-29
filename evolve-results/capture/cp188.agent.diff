@@ -1,0 +1,216 @@
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfService.java b/src/main/java/net/officefloor/hq/app/asof/AsOfService.java
+index 1aa3b90f..cfc81dcc 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/AsOfService.java
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfService.java
+@@ -134,7 +134,7 @@ public class AsOfService {
+      */
+     @Transactional(readOnly = true)
+     public DataSource storeAsOf(String sheetId, LocalDate day) {
+-        Map<String, String> lineage = lineage(sheetId);
++        Map<String, Links> lineage = lineage(sheetId);
+         List<Long> ids = new ArrayList<>();
+         for (String id : lineage.keySet()) {
+             // a parent keeps its own today: it stands as last stored while that was on or before the day; with none
+@@ -164,18 +164,32 @@ public class AsOfService {
+         }
+     }
+ 
++    /** A sheet's links as they are now: its parent's id and the id of the sheet it was cloned from (null for none). */
++    private record Links(String parentId, String clonedFrom) {
++    }
++
+     /**
+-     * The sheet's id, then its parent's, and so on as far as its rates can be taken from (see {@link RateChain}), each
+-     * with its parent's id as it is now (null for none).
++     * The sheet's id, then its parent's, and so on as far as its rates can be taken from, then the sheet it was
++     * cloned from and so on (see {@link RateChain}), each with its links as they are now.
+      */
+-    private Map<String, String> lineage(String sheetId) {
+-        Map<String, String> lineage = new LinkedHashMap<>();
+-        String at = sheetId;
+-        while (at != null && !lineage.containsKey(at) && lineage.size() <= RateChain.LEVELS_UP) {
+-            List<String> parent = jdbc.queryForList("SELECT parent_id FROM sheet WHERE id = ?", String.class, at);
+-            String next = parent.isEmpty() ? null : parent.get(0);
+-            lineage.put(at, next);
+-            at = next;
++    private Map<String, Links> lineage(String sheetId) {
++        Map<String, Links> lineage = new LinkedHashMap<>();
++        String from = sheetId;
++        while (from != null && !lineage.containsKey(from)) {
++            String at = from;
++            String source = null;
++            for (int up = 0; at != null && !lineage.containsKey(at) && up <= RateChain.LEVELS_UP; up++) {
++                List<Map<String, Object>> row = jdbc.queryForList(
++                        "SELECT parent_id, cloned_from FROM sheet WHERE id = ?", at);
++                Links links = row.isEmpty() ? new Links(null, null)
++                        : new Links((String) row.get(0).get("PARENT_ID"), (String) row.get(0).get("CLONED_FROM"));
++                if (up == 0) {
++                    source = links.clonedFrom();
++                }
++                lineage.put(at, links);
++                at = links.parentId();
++            }
++            from = source;
+         }
+         return lineage;
+     }
+@@ -184,7 +198,7 @@ public class AsOfService {
+      * Opens a store of its own with the schema and, for each sheet of the lineage, its state's rows (an empty sheet
+      * with none) and its parent as it is now; the day stands in for the first one's today.
+      */
+-    private Store open(Map<String, String> lineage, LocalDate day, List<SheetState> states) {
++    private Store open(Map<String, Links> lineage, LocalDate day, List<SheetState> states) {
+         String sheetId = lineage.keySet().iterator().next();
+         String url = "jdbc:h2:mem:asof-" + storeNames.incrementAndGet();
+         try {
+@@ -225,17 +239,20 @@ public class AsOfService {
+                 today.setString(2, sheetId);
+                 today.executeUpdate();
+             }
+-            for (Map.Entry<String, String> link : lineage.entrySet()) {
++            for (Map.Entry<String, Links> link : lineage.entrySet()) {
+                 try (PreparedStatement parent = holder.prepareStatement(
+-                        "UPDATE sheet SET parent_id = ? WHERE id = ?")) {
+-                    parent.setString(1, link.getValue());
+-                    parent.setString(2, link.getKey());
++                        "UPDATE sheet SET parent_id = ?, cloned_from = ? WHERE id = ?")) {
++                    parent.setString(1, link.getValue().parentId());
++                    parent.setString(2, link.getValue().clonedFrom());
++                    parent.setString(3, link.getKey());
+                     if (parent.executeUpdate() == 0) {
+                         try (PreparedStatement empty = holder.prepareStatement("INSERT INTO sheet"
+-                                + " (id, created_at, today, parent_id) VALUES (?, CURRENT_TIMESTAMP, ?, ?)")) {
++                                + " (id, created_at, today, parent_id, cloned_from)"
++                                + " VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)")) {
+                             empty.setString(1, link.getKey());
+                             empty.setObject(2, day);
+-                            empty.setString(3, link.getValue());
++                            empty.setString(3, link.getValue().parentId());
++                            empty.setString(4, link.getValue().clonedFrom());
+                             empty.executeUpdate();
+                         }
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChain.java b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+index 9d0e0285..9d713f03 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChain.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+@@ -16,7 +16,8 @@ import org.springframework.stereotype.Component;
+ 
+ /**
+  * The rates that apply on a sheet: a grade with no rate in force on a date on the sheet takes its parent sheet's rate
+- * for that date, then the parent's parent's, up to {@link #LEVELS_UP} levels up.
++ * for that date, then the parent's parent's, up to {@link #LEVELS_UP} levels up; with none there, a sheet that was
++ * cloned takes the rate of the sheet it was cloned from, found the same way, and so on.
+  */
+ @Component
+ public class RateChain {
+@@ -44,17 +45,26 @@ public class RateChain {
+         this.sheets = sheets;
+     }
+ 
+-    /** The sheet's id, then its parent's, and so on, up to {@link #LEVELS_UP} levels up. */
++    /**
++     * The sheet's id, then its parent's, and so on, up to {@link #LEVELS_UP} levels up; then, for a sheet that was
++     * cloned, the lineage of the sheet it was cloned from, and so on. Each sheet appears once.
++     */
+     public List<String> lineage(String sheetId) {
+-        List<String> ids = new ArrayList<>(List.of(sheetId));
+-        String at = sheetId;
+-        while (ids.size() <= LEVELS_UP) {
+-            String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+-            if (parent == null || ids.contains(parent)) {
+-                break;
++        List<String> ids = new ArrayList<>();
++        String from = sheetId;
++        while (from != null && !ids.contains(from)) {
++            ids.add(from);
++            Sheet cloned = sheets.findById(from).orElse(null);
++            String at = from;
++            for (int up = 0; up < LEVELS_UP; up++) {
++                String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
++                if (parent == null || ids.contains(parent)) {
++                    break;
++                }
++                ids.add(parent);
++                at = parent;
+             }
+-            ids.add(parent);
+-            at = parent;
++            from = cloned == null ? null : cloned.getClonedFrom();
+         }
+         return ids;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 432ce455..903fbe6f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -134,6 +134,13 @@ public class Sheet {
+     @Column(name = "parent_id")
+     private String parentId;
+ 
++    /**
++     * The id of the sheet this one was cloned from, whose rates (and its parents' and source's) apply to a grade with
++     * no rate in force on a date on this sheet nor on its parents; null for a sheet not cloned. Not dated.
++     */
++    @Column(name = "cloned_from")
++    private String clonedFrom;
++
+     /**
+      * The proof kinds: the kinds a claim above its proof threshold needs at least one proof of each before it can be
+      * settled or approved, comma separated. Null (blank) for none. Not dated.
+@@ -212,6 +219,7 @@ public class Sheet {
+         then.alertThreshold = alertThreshold;
+         then.fiscalStartMonth = fiscalStartMonth;
+         then.parentId = parentId;
++        then.clonedFrom = clonedFrom;
+         then.archived = archived;
+         then.lastSettleBatch = lastSettleBatch;
+         // a value recorded before changes were kept stands as it is
+@@ -437,6 +445,10 @@ public class Sheet {
+         this.parentId = parentId;
+     }
+ 
++    public String getClonedFrom() {
++        return clonedFrom;
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index b40f23ca..8ae64b27 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -50,7 +50,8 @@ public class SheetCloneService {
+     }
+ 
+     /**
+-     * A steward clones the sheet to the other id. The clone gets the sheet's today, settings, roles, rates (and their
++     * A steward clones the sheet to the other id. The clone records the sheet it was cloned from, whose rates apply
++     * to a grade with none in force on the clone nor on its parents (see {@code RateChain}). The clone gets the sheet's today, settings, roles, rates (and their
+      * history), holidays, void reasons, templates and claim tags; its people with their grades, terms, contacts,
+      * aliases, holds, retirements and patrons, in list order; its pools and their members; its crews and their members; its periods, all open; and
+      * its claims with status, frozen figures, dates, notes, tags, references, comments and logs, listed as they were.
+@@ -71,10 +72,10 @@ public class SheetCloneService {
+         claims.flush();
+         try {
+             jdbc.update("INSERT INTO sheet (id, created_at, today, policy_date, period_numbering_from, entry_date,"
+-                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds) SELECT ?,"
+-                    + " CURRENT_TIMESTAMP, today, policy_date, period_numbering_from, entry_date, grace_days, pot,"
+-                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds FROM sheet"
+-                    + " WHERE id = ?",
++                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds, cloned_from)"
++                    + " SELECT ?, CURRENT_TIMESTAMP, today, policy_date, period_numbering_from, entry_date, grace_days, pot,"
++                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds, id"
++                    + " FROM sheet WHERE id = ?",
+                     toSheetId, sheetId);
+         } catch (DataIntegrityViolationException e) {
+             // another user started it at the same moment
+diff --git a/src/main/resources/db/migration/V101__sheet_cloned_from.sql b/src/main/resources/db/migration/V101__sheet_cloned_from.sql
+new file mode 100644
+index 00000000..d1065d1e
+--- /dev/null
++++ b/src/main/resources/db/migration/V101__sheet_cloned_from.sql
+@@ -0,0 +1,2 @@
++-- The sheet a sheet was cloned from, whose rates apply to a grade with none in force on it nor on its parents.
++ALTER TABLE sheet ADD COLUMN cloned_from VARCHAR(100);
