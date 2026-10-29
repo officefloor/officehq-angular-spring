@@ -1,0 +1,320 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 96fd9c05..9a5efcd0 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -1,4 +1,5 @@
+-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
++import { LIVE } from '../../core/as-of';
+ import { Component, DOCUMENT, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+@@ -6,6 +7,7 @@ import { Session } from '../../core/session';
+ import { SettingsStore } from '../settings/settings';
+ import { CrewRoster, CrewView } from '../crews/crews';
+ import { equalShares } from '../rates/rates';
++import { PeriodStore } from '../periods/periods';
+ 
+ // A member is a person, or another pool (with a null personId); a pool member is never retired.
+ export interface PoolMemberView {
+@@ -165,6 +167,74 @@ function cuts(
+   return result;
+ }
+ 
++export type ShownPool = Omit<PoolView, 'members'> & { members: ShownMember[] };
++
++// The pools as of a day, for the store as it then stood: their crews' pools included, each member counted retired as
++// the people then were, the totals to match, and each member's cut of the pool's pot while the pool is balanced: the
++// pot for a pool that is a member of none, else its cut in the pool above. A member retired, or held on the day,
++// counts toward the total but has no cut; a member whose dates do not include the day is left out entirely.
++function shownPools(
++  pools: readonly PoolView[],
++  people: readonly RosterPerson[],
++  sheetPot: string | null,
++  today: string | null,
++): ShownPool[] {
++  const retired = new Map(people.map((p) => [p.id, p.retiredFrom !== null]));
++  const held = new Set(
++    people
++      .filter((p) => today !== null && p.holds.some((h) => h.from <= today && (h.to === null || today <= h.to)))
++      .map((p) => p.id),
++  );
++  const parent = parents(pools);
++  const counted = new Map(
++    pools.map((pool) => {
++      const members = pool.members.map((m) => ({
++        ...m,
++        key: m.personId !== null ? String(m.personId) : `pool-${m.name}`,
++        retired: m.personId !== null ? (retired.get(m.personId) ?? m.retired) : false,
++        out: !dated(m, today),
++        held: m.personId !== null && held.has(m.personId),
++      }));
++      const total = members.reduce((sum, m) => sum + (m.out ? 0 : hundredths(m.share)), 0);
++      return [pool.id, { pool, members, total, balanced: total === 10000 }] as const;
++    }),
++  );
++  // Each pool's cuts (in cents, in member order), or null for none; worked out top down.
++  const cutsOf = new Map<number, bigint[] | null>();
++  const poolCuts = (id: number): bigint[] | null => {
++    if (cutsOf.has(id)) return cutsOf.get(id)!;
++    const c = counted.get(id)!;
++    let pot: bigint | null = null;
++    const above = parent.get(id);
++    if (above === undefined) {
++      pot = sheetPot !== null ? cents(sheetPot) : null;
++    } else {
++      const i = counted.get(above)!.members.findIndex((m) => m.poolId === id);
++      pot = poolCuts(above)?.[i] ?? null;
++    }
++    const result = c.balanced && pot !== null ? cuts(pot, c.members) : null;
++    cutsOf.set(id, result);
++    return result;
++  };
++  return pools.map((pool) => {
++    const c = counted.get(pool.id)!;
++    const cut = poolCuts(pool.id);
++    const shownMembers: ShownMember[] = c.members.map((m, i) => ({ ...m, cut: cut && !m.out ? money(cut[i]) : '' }));
++    return { ...pool, members: shownMembers, totalShare: percent(c.total), balanced: c.balanced };
++  });
++}
++
++// The pools as they stood at the end of a period (on its to-date, the day), as the server reads them then: the
++// stored pools, the crews, the people and the pot (null: none).
++export interface PeriodPools {
++  period: string;
++  day: string;
++  pools: PoolView[];
++  crews: CrewView[];
++  people: RosterPerson[];
++  pot: string | null;
++}
++
+ // The active sheet's pools as last read from the store, and what they work out to: each member's cut, and each
+ // person's cut total.
+ @Injectable({ providedIn: 'root' })
+@@ -183,57 +253,35 @@ export class PoolStore {
+   // Every name a pool or a crew goes by: a pool cannot take a crew's name, nor a crew a pool's.
+   readonly names = computed(() => new Set(this.all().map((p) => p.name)));
+   // The pools with each member counted retired as the people list has them now, the totals to match, and each
+-  // member's cut of the pool's pot while the pool is balanced: the sheet's pot for a pool that is a member of none,
+-  // else its cut in the pool above. A member retired, or held on the sheet's today, counts toward the total but has no
+-  // cut; a member whose dates do not include the sheet's today is left out entirely.
+-  readonly shown = computed(() => {
+-    const retired = new Map(this.roster.people().map((p) => [p.id, p.retiredFrom !== null]));
++  // member's cut of the pool's pot while the pool is balanced (see shownPools).
++  readonly shown = computed(() =>
++    shownPools(this.all(), this.roster.people(), this.settings.pot(), this.session.sheetToday()),
++  );
++
++  // The pools as they stood at the end of each period whose to-date is on or before the sheet's today, as last read
++  // from the store.
++  readonly history = signal<readonly PeriodPools[]>([]);
++  // For each such period, by name, each member's cut as it stood at the end of it, by pool id then member key ('' for
++  // none). A period ending on the sheet's today stands as the sheet does now.
++  readonly cutHistory = computed(() => {
+     const today = this.session.sheetToday();
+-    const held = new Set(
+-      this.roster
+-        .people()
+-        .filter((p) => today !== null && p.holds.some((h) => h.from <= today && (h.to === null || today <= h.to)))
+-        .map((p) => p.id),
+-    );
+-    const pools = this.all();
+-    const parent = parents(pools);
+-    const counted = new Map(
+-      pools.map((pool) => {
+-        const members = pool.members.map((m) => ({
+-          ...m,
+-          key: m.personId !== null ? String(m.personId) : `pool-${m.name}`,
+-          retired: m.personId !== null ? (retired.get(m.personId) ?? m.retired) : false,
+-          out: !dated(m, today),
+-          held: m.personId !== null && held.has(m.personId),
+-        }));
+-        const total = members.reduce((sum, m) => sum + (m.out ? 0 : hundredths(m.share)), 0);
+-        return [pool.id, { pool, members, total, balanced: total === 10000 }] as const;
+-      }),
+-    );
+-    const sheetPot = this.settings.pot();
+-    // Each pool's cuts (in cents, in member order), or null for none; worked out top down.
+-    const cutsOf = new Map<number, bigint[] | null>();
+-    const poolCuts = (id: number): bigint[] | null => {
+-      if (cutsOf.has(id)) return cutsOf.get(id)!;
+-      const c = counted.get(id)!;
+-      let pot: bigint | null = null;
+-      const above = parent.get(id);
+-      if (above === undefined) {
+-        pot = sheetPot !== null ? cents(sheetPot) : null;
++    const result: { period: string; cuts: Map<number, Map<string, string>> }[] = [];
++    for (const h of this.history()) {
++      if (today !== null && h.day > today) continue;
++      let shown: readonly ShownPool[];
++      if (h.day === today) {
++        shown = this.shown();
+       } else {
+-        const i = counted.get(above)!.members.findIndex((m) => m.poolId === id);
+-        pot = poolCuts(above)?.[i] ?? null;
++        const names = new Map(h.people.map((p) => [p.id, p.name]));
++        const all = [...h.pools, ...h.crews.map((c) => crewPool(c, names))];
++        shown = shownPools(all, h.people, h.pot, h.day);
+       }
+-      const result = c.balanced && pot !== null ? cuts(pot, c.members) : null;
+-      cutsOf.set(id, result);
+-      return result;
+-    };
+-    return pools.map((pool) => {
+-      const c = counted.get(pool.id)!;
+-      const cut = poolCuts(pool.id);
+-      const shownMembers: ShownMember[] = c.members.map((m, i) => ({ ...m, cut: cut && !m.out ? money(cut[i]) : '' }));
+-      return { ...pool, members: shownMembers, totalShare: percent(c.total), balanced: c.balanced };
+-    });
++      result.push({
++        period: h.period,
++        cuts: new Map(shown.map((p) => [p.id, new Map(p.members.map((m) => [m.key, m.cut]))])),
++      });
++    }
++    return result;
+   });
+ 
+   // Each person's cut total (their cuts across every pool they are a member of, a pool showing no cuts adding
+@@ -302,6 +350,10 @@ export class PoolStore {
+                       @if (m.retired) { (retired) }
+                       @if (m.out) { (not in the pool today) }
+                       <span class="visually-hidden">cut</span> <span data-testid="pool-cut">{{ m.cut | fig }}</span>
++                      @for (h of cutHistory(); track h.period) {
++                        <span class="visually-hidden">cut at the end of {{ h.period }}</span>
++                        <span [attr.data-testid]="'pool-cut-' + h.period">{{ (h.cuts.get(p.id)?.get(m.key) ?? '') | fig }}</span>
++                      }
+                     </li>
+                   }
+                 </ul>
+@@ -374,6 +426,8 @@ export class Pools {
+   private readonly store = inject(PoolStore);
+   protected readonly pools = this.store.pools;
+   protected readonly shown = this.store.shown;
++  protected readonly cutHistory = this.store.cutHistory;
++  private readonly periods = inject(PeriodStore);
+ 
+   protected readonly name = signal('');
+   protected readonly error = signal<string | null>(null);
+@@ -401,6 +455,18 @@ export class Pools {
+         if (id) this.load(id).catch(() => this.error.set('Could not load the pools.'));
+       });
+     });
++    // Re-read the pools as they stood at the end of each period ended by the sheet's today, as the sheet is loaded,
++    // its today moves or its periods change.
++    effect(() => {
++      const id = this.session.sheetId();
++      this.session.loads();
++      this.session.sheetToday();
++      this.periods.list();
++      untracked(() => {
++        this.store.history.set([]);
++        if (id) this.loadHistory(id).catch(() => this.error.set('Could not load the pools.'));
++      });
++    });
+   }
+ 
+   private url(sheet: string): string {
+@@ -412,6 +478,17 @@ export class Pools {
+     if (this.session.sheetId() === sheet) this.pools.set(l);
+   }
+ 
++  // The latest history read asked for: an earlier one answering after it is dropped.
++  private historyReads = 0;
++
++  private async loadHistory(sheet: string): Promise<void> {
++    const read = ++this.historyReads;
++    const h = await firstValueFrom(
++      this.http.get<PeriodPools[]>(`${this.url(sheet)}/history`, { context: new HttpContext().set(LIVE, true) }),
++    );
++    if (this.session.sheetId() === sheet && read === this.historyReads) this.store.history.set(h);
++  }
++
+   /**
+    * Downloads the pools as a CSV file: one line per member, pools in the order added and members in the order added,
+    * a pool member as pool:<name>, the cut as shown (empty when none).
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolHistoryController.java b/src/main/java/net/officefloor/hq/app/pool/PoolHistoryController.java
+new file mode 100644
+index 00000000..7f5c812e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolHistoryController.java
+@@ -0,0 +1,79 @@
++package net.officefloor.hq.app.pool;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.asof.AsOfService;
++import net.officefloor.hq.app.crew.CrewController;
++import net.officefloor.hq.app.crew.CrewController.CrewView;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.person.PersonController.HoldView;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolController.PoolView;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/**
++ * The pools as they stood at the end of each period whose to-date is on or before the sheet's today: the sheet as of
++ * that day (see {@link AsOfService#storeAsOf}), with the day as its today. What the screen works out a member's cut
++ * from is given as it then stood: the pools, the crews, the people (their retirement and holds) and the pot.
++ */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/pools/history")
++public class PoolHistoryController {
++
++    /** A person as the pools then saw them. */
++    public record RosterView(Long id, String name, LocalDate retiredFrom, List<HoldView> holds) {
++    }
++
++    /** The pools as they stood at the end of the period, with the day standing in for the sheet's today. */
++    public record PeriodPools(String period, LocalDate day, List<PoolView> pools, List<CrewView> crews,
++            List<RosterView> people, String pot) {
++    }
++
++    private final AsOfService asOf;
++    private final SheetService sheets;
++    private final PeriodRepository periods;
++    private final PersonRepository people;
++    private final PoolController pools;
++    private final CrewController crews;
++
++    public PoolHistoryController(AsOfService asOf, SheetService sheets, PeriodRepository periods,
++            PersonRepository people, PoolController pools, CrewController crews) {
++        this.asOf = asOf;
++        this.sheets = sheets;
++        this.periods = periods;
++        this.people = people;
++        this.pools = pools;
++        this.crews = crews;
++    }
++
++    /** For each period whose to-date is on or before the sheet's today, by from-date, the pools as they then stood. */
++    @GetMapping
++    public List<PeriodPools> list(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
++        LocalDate today = sheets.load(sheetId).getToday();
++        List<Period> ended = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
++                .filter(p -> !p.getTo().isAfter(today)).toList();
++        return ended.stream().map(p -> asOf.readAsOf(sheetId, p.getTo(), () -> then(sheetId, p))).toList();
++    }
++
++    private PeriodPools then(String sheetId, Period period) {
++        Sheet sheet = sheets.load(sheetId);
++        List<RosterView> roster = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .map(p -> new RosterView(p.getId(), p.getName(), p.getRetiredFrom(),
++                        p.getHolds().stream().map(HoldView::of).toList()))
++                .toList();
++        return new PeriodPools(period.getName(), period.getTo(), pools.list(sheetId), crews.list(sheetId), roster,
++                sheet.getPot() == null ? null : sheet.getPot().setScale(2).toPlainString());
++    }
++}
