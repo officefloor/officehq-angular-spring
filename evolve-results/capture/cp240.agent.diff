@@ -1,0 +1,200 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 9a55eb9a..1674fdea 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1619,10 +1619,6 @@ export class Claims {
+       this.setRowError(c.id, 'That person already holds a share of this claim.');
+       return;
+     }
+-    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
+-      this.setRowError(c.id, CLOSED);
+-      return;
+-    }
+     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/share`;
+     try {
+       const shared = await firstValueFrom(this.http.post<Claim>(url, { personId: Number(to), share: pct }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 75e4084e..84333e4a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,9 +4,9 @@ import { FigPipe, UserLocale, formatFigure } from '../../core/locale';
+ import { COLUMNS, UserColumns } from '../../core/columns';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, pendingLate, plusDays, reviewLate } from '../claims/claims';
++import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, pendingLate, plusDays, reviewLate, roundsHalfUp } from '../claims/claims';
+ import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
+-import { DatedGrade, RateStore, atMost, capLess, difference, dueOn, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
++import { DatedGrade, RateStore, atMost, capLess, difference, dueOn, equalShares, excessOver, gradeOn, partOn, rateOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
+ import { VoidReasonStore } from '../void-reasons/void-reasons';
+ import { Header } from '../header/header';
+@@ -1122,22 +1122,30 @@ export class People {
+     return by;
+   });
+   protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
+-  // The parts of the shared claims counted live: for each holder, each claim they hold a share of and their part, its
+-  // figure times their share divided by 100, rounded half to even; and for each such claim what its own person gives
+-  // away, its holders' parts added up. A claim with no figure (n/a) has no parts.
++  // The parts of the shared claims counted live: for each holder, each claim they hold a share of and their part, the
++  // claim's amount times their share divided by 100 times the rate of the holder's own grade in force on the claim's
++  // date divided by 100, rounded like the claim (n/a for the holder, and 0.00 given away, when that grade has no rate);
++  // a settled or bound claim keeps its parts as frozen, its figure times the share divided by 100, rounded half to
++  // even. And for each such claim what its own person gives away, its holders' parts added up. A claim with no figure
++  // (n/a) has no parts.
+   private readonly shareParts = computed(() => {
+     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+     const rates = this.rates.byClaim();
+     const floor = this.settings.floor();
+     const late = this.settings.lateness();
+-    const held = new Map<number, { claim: Claim; part: string }[]>();
++    const held = new Map<number, { claim: Claim; part: string | null }[]>();
+     const given = new Map<number, string>();
+     for (const c of this.liveClaims()) {
+       if (c.shares.length === 0) continue;
+       const own = grades.get(c.personId) ?? [];
+       const due = dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
+       if (due === null) continue;
+-      const parts = c.shares.map((s) => dueOn(due, s.share) ?? '0.00');
++      const frozen = c.settledDue !== null || isBound(c);
++      const parts = c.shares.map((s) =>
++        frozen
++          ? (dueOn(due, s.share) ?? '0.00')
++          : partOn(c.amount, s.share, rateOn(rates(c).get(gradeOn(grades.get(s.personId) ?? [], c.date)) ?? [], c.date), roundsHalfUp(c, late)),
++      );
+       c.shares.forEach((s, i) => held.set(s.personId, [...(held.get(s.personId) ?? []), { claim: c, part: parts[i] }]));
+       given.set(c.id, sumSkippingNa(parts));
+     }
+@@ -1190,7 +1198,7 @@ export class People {
+       // their own claims less the parts given away, and the parts they hold of others'
+       const figures = [
+         ...(this.liveBy().get(id) ?? []).map((c) => ({ claim: c, figure: due(c) })),
+-        ...(held.get(id) ?? []).map((h) => ({ claim: h.claim, figure: h.part as string | null })),
++        ...(held.get(id) ?? []).map((h) => ({ claim: h.claim, figure: h.part })),
+       ];
+       const sum = (keep: (c: Claim) => boolean) => sumSkippingNa(figures.filter((f) => keep(f.claim)).map((f) => f.figure));
+       by.set(id, {
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 0fd87237..292153b1 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -74,6 +74,21 @@ export function dueOn(amount: string, pct: string | undefined, halfUp = false):
+   return formatCents(product < 0n ? -due : due);
+ }
+ 
++/**
++ * A holder's part of a shared claim: the amount times the share divided by 100, times the rate divided by 100 (all
++ * two-decimal strings), rounded half to even (or half up, when asked) to two decimals; null (n/a) when there is no
++ * rate.
++ */
++export function partOn(amount: string, share: string, pct: string | undefined, halfUp = false): string | null {
++  if (pct === undefined) return null;
++  const product = cents(amount) * cents(share) * cents(pct);
++  const size = product < 0n ? -product : product;
++  let part = size / 100000000n;
++  const rest = size % 100000000n;
++  if (rest > 50000000n || (rest === 50000000n && (halfUp || part % 2n === 1n))) part += 1n;
++  return formatCents(product < 0n ? -part : part);
++}
++
+ /** The two-decimal value, raised to the floor when it is below it. */
+ export function atLeast(value: string, floor: string): string {
+   return cents(value) < cents(floor) ? formatCents(cents(floor)) : value;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a9a5ce3d..f8a58724 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -567,9 +567,11 @@ public class ClaimService {
+ 
+     /**
+      * Shares the claim with another person of its sheet, who holds the share (two decimals, more than 0.00) of it:
+-     * their due-total counts the claim's due times the share divided by 100, rounded half to even, and its own
+-     * person's counts the rest. Refused for the claim's own person, a person already holding a share of it, shares
+-     * totalling more than 100.00, and a SETTLED, VOID or DELETED claim.
++     * their due-total counts their part, the claim's amount times the share divided by 100 times the rate of their
++     * own grade in force on the claim's date divided by 100, rounded like the claim (0.00 when their grade has no
++     * rate), and its own person's counts the claim's due less those parts. A settled or bound claim keeps its parts as
++     * frozen: its due times each share divided by 100, rounded half to even.
++     * Refused for the claim's own person, a person already holding a share of it, shares totalling more than 100.00, and a SETTLED, VOID or DELETED claim.
+      */
+     @Transactional
+     public Claim share(String by, String sheetId, Long id, Long personId, BigDecimal share) {
+@@ -577,7 +579,10 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                     "A share is more than 0.00, with up to two decimals.");
+         }
+-        Claim claim = lockedClaim(sheetId, id);
++        // a share leaves the claim itself as it is, so one due by a date in a closed period can still be shared
++        sheets.lock(sheetId);
++        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+         ClaimStatus status = claim.getStatus();
+         if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + status + " claim cannot be shared.");
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 068b5adb..6c9934e0 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -185,8 +185,12 @@ public class RollupService {
+             }
+         }
+         List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+-        // the parts of shared claims: what each holder's share of a counted claim's figure comes to, by holder, and
+-        // what the claim's own person gives away of it, by claim
++        // the parts of shared claims: what each holder's part of a counted claim comes to, by holder, and what the
++        // claim's own person gives away of it, by claim
++        Map<Long, Person> byId = new HashMap<>();
++        for (Person p : listed) {
++            byId.put(p.getId(), p);
++        }
+         Map<Long, List<Part>> partsBy = new HashMap<>();
+         Map<Long, BigDecimal> givenBy = new HashMap<>();
+         for (Person p : listed) {
+@@ -199,8 +203,11 @@ public class RollupService {
+                     continue;
+                 }
+                 for (ClaimShare share : c.getShares()) {
+-                    BigDecimal part = figure.multiply(share.getShare()).movePointLeft(2)
+-                            .setScale(2, RoundingMode.HALF_EVEN);
++                    BigDecimal part = part(c, figure, share, byId.get(share.getPersonId()), tiers, byTier, sheet);
++                    // a part at no rate is n/a for its holder and gives nothing away
++                    if (part == null) {
++                        continue;
++                    }
+                     partsBy.computeIfAbsent(share.getPersonId(), id -> new ArrayList<>()).add(new Part(c, part));
+                     givenBy.merge(c.getId(), part, BigDecimal::add);
+                 }
+@@ -511,10 +518,32 @@ public class RollupService {
+         return f != null && f.dueTotal() != null && f.dueTotal().compareTo(threshold) > 0;
+     }
+ 
+-    /** A holder's part of a shared claim: the claim, and its figure times the holder's share divided by 100. */
++    /** A holder's part of a shared claim: the claim, and what the holder's part of it comes to. */
+     private record Part(Claim claim, BigDecimal figure) {
+     }
+ 
++    /**
++     * A holder's part of a counted shared claim with the figure. A settled or bound claim keeps its parts as frozen: its
++     * figure times the share divided by 100, rounded half to even. Otherwise the claim's amount times the share divided
++     * by 100, times the rate the holder's own grade in force on the claim's date has (in the tier of its added mark)
++     * divided by 100, rounded like the claim; null (n/a) when that grade has no rate.
++     */
++    private static BigDecimal part(Claim c, BigDecimal figure, ClaimShare share, Person holder,
++            List<RateChain.Tier> tiers, Map<RateChain.Tier, Map<String, List<Rate>>> byTier, Sheet sheet) {
++        if (c.getSettledDue() != null || c.isBound()) {
++            return figure.multiply(share.getShare()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
++        }
++        Map<String, List<Rate>> claimRates = byTier.get(tiers.stream()
++                .filter(t -> t.upTo() == null || c.getAddedMark() <= t.upTo()).findFirst().orElseThrow());
++        String grade = holder == null ? null : holder.gradeOn(c.getDate());
++        Rate rate = grade == null ? null : Rate.inForce(claimRates.getOrDefault(grade, List.of()), c.getDate());
++        if (rate == null) {
++            return null;
++        }
++        return c.getAmount().multiply(share.getShare()).multiply(rate.getPct()).movePointLeft(4)
++                .setScale(2, sheet.roundingOn(c.getRoundsOn()));
++    }
++
+     /**
+      * The figure a counted claim of the person totals: a settled or bound claim's due as fixed or as shown when stated,
+      * else its live due at the rate its person's grade in force on its date has (in the tier of its added mark).
