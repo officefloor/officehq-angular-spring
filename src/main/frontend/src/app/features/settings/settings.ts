@@ -24,6 +24,8 @@ interface SettingsView {
   entryDate: string | null;
   // The days after its to-date an open period is left open once the sheet's today passes it; null when blank: off.
   graceDays: number | null;
+  // The escalation gap: reminding a claim reminded at least this many days before escalates it; null when blank: off.
+  escalateAfter: number | null;
   cap: string | null;
   // The pot shared among the members of each balanced pool by their shares, two decimals; null when blank: none.
   pot: string | null;
@@ -166,6 +168,8 @@ export class SettingsStore {
   readonly entryDate = signal<string | null>(null);
   /** The grace days as set; null when blank (off). */
   readonly graceDays = signal<number | null>(null);
+  /** The escalation gap in days as set; null when blank (off). */
+  readonly escalateAfter = signal<number | null>(null);
   /** The pot as set; null when blank (none). */
   readonly pot = signal<string | null>(null);
   /** The alert threshold as set; null when blank (off). */
@@ -196,6 +200,7 @@ export class SettingsStore {
     this.periodNumberingFrom.set(null);
     this.entryDate.set(null);
     this.graceDays.set(null);
+    this.escalateAfter.set(null);
     this.pot.set(null);
     this.alertThreshold.set(null);
     this.parent.set(null);
@@ -218,6 +223,7 @@ export class SettingsStore {
     this.periodNumberingFrom.set(s.periodNumberingFrom);
     this.entryDate.set(s.entryDate);
     this.graceDays.set(s.graceDays);
+    this.escalateAfter.set(s.escalateAfter ?? null);
     this.pot.set(s.pot ?? null);
     this.alertThreshold.set(s.alertThreshold ?? null);
     this.parent.set(s.parent ?? null);
@@ -310,6 +316,13 @@ export class SettingsStore {
   async setGraceDays(sheet: string, value: number | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/grace-days`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setEscalateAfter(sheet: string, value: number | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/escalate-after`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -514,6 +527,16 @@ export class SettingsStore {
           (keydown.delete)="graceDaysChanged = true; settingsError.set(null)"
           (keydown.backspace)="graceDaysChanged = true; settingsError.set(null)"
         />
+        <label for="setting-escalate-after">Escalate after (reminding a claim at least this many days after its last reminder escalates it; blank for off)</label>
+        <input
+          id="setting-escalate-after"
+          data-testid="setting-escalate-after"
+          inputmode="numeric"
+          [value]="escalateAfter()"
+          (input)="escalateAfter.set(value($event)); escalateAfterChanged = true; settingsError.set(null)"
+          (keydown.delete)="escalateAfterChanged = true; settingsError.set(null)"
+          (keydown.backspace)="escalateAfterChanged = true; settingsError.set(null)"
+        />
         <label for="setting-pot">Pot (shared among the members of each balanced pool by their shares; blank for none)</label>
         <input
           id="setting-pot"
@@ -710,6 +733,7 @@ export class SettingsStore {
       </p>
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ (store.entryDate() ?? '') | fig }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ (store.graceDays() ?? '') | fig }}</strong></p>
+      <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ (store.escalateAfter() ?? '') | fig }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ (store.pot() ?? '') | fig }}</strong></p>
       <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ (store.alertThreshold() ?? '') | fig }}</strong></p>
       <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() | fig }}</strong></p>
@@ -809,6 +833,7 @@ export class Settings {
   protected readonly periodNumberingFrom = signal('');
   protected readonly entryDate = signal('');
   protected readonly graceDays = signal('');
+  protected readonly escalateAfter = signal('');
   protected readonly pot = signal('');
   protected readonly alertThreshold = signal('');
   protected readonly fiscalStartMonth = signal('');
@@ -834,6 +859,7 @@ export class Settings {
   protected entryDateChanged = false;
   protected graceDaysChanged = false;
   protected potChanged = false;
+  protected escalateAfterChanged = false;
   protected alertThresholdChanged = false;
   protected fiscalStartMonthChanged = false;
   protected parentChanged = false;
@@ -1024,6 +1050,11 @@ export class Settings {
       this.settingsError.set('Enter grace days as a whole number of days, 0 or more, or leave it blank for off.');
       return;
     }
+    const escalateAfter = this.escalateAfter().trim();
+    if (this.escalateAfterChanged && escalateAfter && !DAYS.test(escalateAfter)) {
+      this.settingsError.set('Enter the escalation gap as a whole number of days, 0 or more, or leave it blank for off.');
+      return;
+    }
     const pot = this.pot().trim();
     if (this.potChanged && pot && !LIMIT.test(pot)) {
       this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
@@ -1150,6 +1181,10 @@ export class Settings {
       if (this.graceDaysChanged) {
         await this.store.setGraceDays(sheet, graceDays ? Number(graceDays) : null);
         this.graceDaysChanged = this.graceDays().trim() !== graceDays;
+      }
+      if (this.escalateAfterChanged) {
+        await this.store.setEscalateAfter(sheet, escalateAfter ? Number(escalateAfter) : null);
+        this.escalateAfterChanged = this.escalateAfter().trim() !== escalateAfter;
       }
       if (this.potChanged) {
         await this.store.setPot(sheet, pot || null);

@@ -307,6 +307,20 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Sets the sheet's escalation gap (null for blank: off): reminding a claim whose previous reminder was at least
+     * these many days before the sheet's today escalates it. Not dated.
+     */
+    @Transactional
+    public Sheet setEscalateAfter(String by, String sheetId, Integer days) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setEscalateAfter(days);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=escalate-after value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's pot (null for blank: none): shared among the members of each balanced pool by their shares.
      * Not dated.
      */

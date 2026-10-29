@@ -98,6 +98,13 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /**
+     * The escalation gap in days: reminding a claim whose previous reminder was at least this many days before the
+     * sheet's today escalates it. Null (blank) for off. Not dated.
+     */
+    @Column(name = "escalate_after")
+    private Integer escalateAfter;
+
     /** The pot shared among the members of each balanced pool by their shares. Null (blank) for none. Not dated. */
     @Column(name = "pot")
     private BigDecimal pot;
@@ -184,6 +191,7 @@ public class Sheet {
         then.periodNumberingFrom = periodNumberingFrom;
         then.entryDate = entryDate;
         then.graceDays = graceDays;
+        then.escalateAfter = escalateAfter;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -344,6 +352,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public Integer getEscalateAfter() {
+        return escalateAfter;
+    }
+
+    public void setEscalateAfter(Integer escalateAfter) {
+        this.escalateAfter = escalateAfter;
     }
 
     public BigDecimal getPot() {

@@ -71,9 +71,9 @@ public class SheetCloneService {
         claims.flush();
         try {
             jdbc.update("INSERT INTO sheet (id, created_at, today, policy_date, period_numbering_from, entry_date,"
-                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month) SELECT ?, CURRENT_TIMESTAMP, today,"
-                    + " policy_date, period_numbering_from, entry_date, grace_days, pot, alert_threshold, parent_id,"
-                    + " fiscal_start_month FROM sheet"
+                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after) SELECT ?,"
+                    + " CURRENT_TIMESTAMP, today, policy_date, period_numbering_from, entry_date, grace_days, pot,"
+                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after FROM sheet"
                     + " WHERE id = ?",
                     toSheetId, sheetId);
         } catch (DataIntegrityViolationException e) {
@@ -179,9 +179,10 @@ public class SheetCloneService {
                 Long copy = insert("INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status,"
                         + " settled_due, opened_by, edited_by, corrects, split_from, rounds_on, due_by, terms,"
                         + " deferred_until, deferred_on, reminded_on, late_entry, proofs, ref, tags, void_reason,"
-                        + " added_mark) SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,"
+                        + " added_mark, escalated) SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,"
                         + " edited_by, corrects, split_from, rounds_on, due_by, terms, deferred_until, deferred_on,"
-                        + " reminded_on, late_entry, proofs, ref, tags, void_reason, added_mark FROM claim WHERE id = ?", toSheetId,
+                        + " reminded_on, late_entry, proofs, ref, tags, void_reason, added_mark, escalated FROM claim"
+                        + " WHERE id = ?", toSheetId,
                         people.get(person), c.getId());
                 copies.put(c.getId(), copy);
                 jdbc.update("INSERT INTO claim_log (claim_id, status, by_user, on_date, due) SELECT ?, status,"

@@ -146,6 +146,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether the claim was ever escalated by a reminder; a claim is escalated once at most. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** Whether the claim was added while its period was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -223,6 +227,14 @@ public class Claim {
 
     public void setRemindedOn(LocalDate remindedOn) {
         this.remindedOn = remindedOn;
+    }
+
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    public void setEscalated(boolean escalated) {
+        this.escalated = escalated;
     }
 
     public LocalDate getDeferredUntil() {

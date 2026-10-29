@@ -423,7 +423,9 @@ public class ClaimService {
     /**
      * Writes a reminder for an OPEN or PENDING claim, which shows the sheet's today as its reminded date. Refused for
      * a claim in any other status and one already reminded on the sheet's today; a reminder changes none of the
-     * claim's figures, so one whose due-by falls in a closed period may still be reminded.
+     * claim's figures, so one whose due-by falls in a closed period may still be reminded. When the sheet has an
+     * escalation gap and the claim's previous reminder was at least that many days before the sheet's today, the
+     * claim is escalated: an ESCALATE line follows the REMIND line, once per claim ever.
      */
     @Transactional
     public Claim remind(String by, String sheetId, Long id) {
@@ -434,13 +436,25 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be reminded.");
         }
-        LocalDate today = sheets.load(sheetId).getToday();
+        Sheet sheet = sheets.load(sheetId);
+        LocalDate today = sheet.getToday();
         if (today != null && today.equals(claim.getRemindedOn())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim was already reminded today.");
         }
+        Integer gap = sheet.getEscalateAfter();
+        LocalDate previous = claim.getRemindedOn();
+        boolean escalate = gap != null && !claim.isEscalated() && previous != null && today != null
+                && !previous.plusDays(gap).isAfter(today);
         claim.setRemindedOn(today);
+        if (escalate) {
+            claim.setEscalated(true);
+        }
         Claim saved = claims.saveAndFlush(claim);
-        audit.recordOnCommit(record("REMIND", by, person(sheetId, saved.getPersonId()), saved));
+        Person person = person(sheetId, saved.getPersonId());
+        audit.recordOnCommit(record("REMIND", by, person, saved));
+        if (escalate) {
+            audit.recordOnCommit(record("ESCALATE", by, person, saved));
+        }
         return saved;
     }
 
