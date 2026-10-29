@@ -359,6 +359,7 @@ public class ClaimService {
             refuseFlaggedUnlessSteward(by, sheetId, person);
             refuseWithoutNote(sheetId, claim);
             refuseOverPeriodCap(sheetId, claim);
+            refuseOverMaxOpen(sheetId, claim);
             if (aboveReviewThreshold(sheetId, person, claim)) {
                 // it waits for a steward's review; like an OPEN claim it is numbered only once it is settled
                 next = ClaimStatus.REVIEW;
@@ -706,6 +707,22 @@ public class ClaimService {
         if (held >= period.getCap()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The person already has " + period.getCap()
                     + " open claims in period " + period.getName() + ".");
+        }
+    }
+
+    /** Refuses opening a claim while its person already has the sheet's maximum of OPEN or PENDING claims. */
+    private void refuseOverMaxOpen(String sheetId, Claim claim) {
+        Integer max = sheets.load(sheetId).getMaxOpen();
+        if (max == null) {
+            return;
+        }
+        long held = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()))
+                .filter(c -> c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                .count();
+        if (held >= max) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The person already has " + max + " open claims.");
         }
     }
 

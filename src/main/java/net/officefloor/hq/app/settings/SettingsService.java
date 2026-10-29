@@ -334,6 +334,20 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Sets the sheet's maximum of open claims per person (null for blank: none): opening a claim is refused while the
+     * person already has this many OPEN or PENDING claims. Not dated.
+     */
+    @Transactional
+    public Sheet setMaxOpen(String by, String sheetId, Integer max) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setMaxOpen(max);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=max-open value="
+                + (max == null ? "" : max.toString()));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's proof kinds (null for blank: none), each receipt or photo, comma separated: while set, a claim
      * whose due is above its proof threshold needs at least one proof of each before it can be settled or approved.
      * Refused for any other kind. Not dated.

@@ -28,6 +28,8 @@ interface SettingsView {
   escalateAfter: number | null;
   // The review SLA: a REVIEW claim whose review day plus this many days is before today is late; null when blank: none.
   reviewSla: number | null;
+  // The maximum of open claims per person: opening one is refused while they have this many OPEN or PENDING; null: none.
+  maxOpen: number | null;
   // The score thresholds: while both are set, a person at or above the high one is HIGH, at or above the mid one MID,
   // else LOW; null when blank: none.
   scoreMid: number | null;
@@ -187,6 +189,8 @@ export class SettingsStore {
   readonly escalateAfter = signal<number | null>(null);
   /** The review SLA in days as set; null when blank (none). */
   readonly reviewSla = signal<number | null>(null);
+  /** The maximum of open claims per person as set; null when blank (none). */
+  readonly maxOpen = signal<number | null>(null);
   /** The mid score threshold as set; null when blank (none). */
   readonly scoreMid = signal<number | null>(null);
   /** The high score threshold as set; null when blank (none). */
@@ -229,6 +233,7 @@ export class SettingsStore {
     this.graceDays.set(null);
     this.escalateAfter.set(null);
     this.reviewSla.set(null);
+    this.maxOpen.set(null);
     this.scoreMid.set(null);
     this.scoreHigh.set(null);
     this.scoreLog.set(null);
@@ -258,6 +263,7 @@ export class SettingsStore {
     this.graceDays.set(s.graceDays);
     this.escalateAfter.set(s.escalateAfter ?? null);
     this.reviewSla.set(s.reviewSla ?? null);
+    this.maxOpen.set(s.maxOpen ?? null);
     this.scoreMid.set(s.scoreMid ?? null);
     this.scoreHigh.set(s.scoreHigh ?? null);
     this.scoreLog.set(s.scoreLog ?? null);
@@ -397,6 +403,13 @@ export class SettingsStore {
   async setReviewSla(sheet: string, value: number | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/review-sla`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setMaxOpen(sheet: string, value: number | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/max-open`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -685,6 +698,16 @@ export class SettingsStore {
           (keydown.delete)="reviewSlaChanged = true; settingsError.set(null)"
           (keydown.backspace)="reviewSlaChanged = true; settingsError.set(null)"
         />
+        <label for="setting-max-open">Max open claims (opening a claim is refused while its person has this many OPEN or PENDING; blank for none)</label>
+        <input
+          id="setting-max-open"
+          data-testid="setting-max-open"
+          inputmode="numeric"
+          [value]="maxOpen()"
+          (input)="maxOpen.set(value($event)); maxOpenChanged = true; settingsError.set(null)"
+          (keydown.delete)="maxOpenChanged = true; settingsError.set(null)"
+          (keydown.backspace)="maxOpenChanged = true; settingsError.set(null)"
+        />
         <label for="setting-proof-kinds">Proof kinds (receipt, photo, comma separated: a claim above its proof threshold needs a proof of each; blank for none)</label>
         <input
           id="setting-proof-kinds"
@@ -910,6 +933,7 @@ export class SettingsStore {
       <p>Score high: <strong data-testid="setting-score-high-current">{{ (store.scoreHigh() ?? '') | fig }}</strong></p>
       <p>Score log: <strong data-testid="setting-score-log-current">{{ store.scoreLog() ?? '' }}</strong></p>
       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ (store.reviewSla() ?? '') | fig }}</strong></p>
+      <p>Max open claims: <strong data-testid="setting-max-open-current">{{ (store.maxOpen() ?? '') | fig }}</strong></p>
       <p>Proof kinds: <strong data-testid="setting-proof-kinds-current">{{ (store.proofKinds() ?? '') | fig }}</strong></p>
       <p>Default grade: <strong data-testid="setting-default-grade-current">{{ (store.defaultGrade() ?? '') | fig }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ (store.pot() ?? '') | fig }}</strong></p>
@@ -1014,6 +1038,7 @@ export class Settings {
   protected readonly graceDays = signal('');
   protected readonly escalateAfter = signal('');
   protected readonly reviewSla = signal('');
+  protected readonly maxOpen = signal('');
   protected readonly scoreMid = signal('');
   protected readonly scoreHigh = signal('');
   protected readonly scoreLog = signal('');
@@ -1047,6 +1072,7 @@ export class Settings {
   protected potChanged = false;
   protected escalateAfterChanged = false;
   protected reviewSlaChanged = false;
+  protected maxOpenChanged = false;
   protected scoreMidChanged = false;
   protected scoreHighChanged = false;
   protected scoreLogChanged = false;
@@ -1289,6 +1315,11 @@ export class Settings {
       this.settingsError.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
       return;
     }
+    const maxOpen = this.maxOpen().trim();
+    if (this.maxOpenChanged && maxOpen && !DAYS.test(maxOpen)) {
+      this.settingsError.set('Enter the max open claims as a whole number, 0 or more, or leave it blank for none.');
+      return;
+    }
     const proofKindsTyped = this.proofKinds().trim();
     const proofKinds = proofKindsTyped
       .split(',')
@@ -1455,6 +1486,10 @@ export class Settings {
       if (this.reviewSlaChanged) {
         await this.store.setReviewSla(sheet, reviewSla ? Number(reviewSla) : null);
         this.reviewSlaChanged = this.reviewSla().trim() !== reviewSla;
+      }
+      if (this.maxOpenChanged) {
+        await this.store.setMaxOpen(sheet, maxOpen ? Number(maxOpen) : null);
+        this.maxOpenChanged = this.maxOpen().trim() !== maxOpen;
       }
       if (this.proofKindsChanged) {
         await this.store.setProofKinds(sheet, proofKinds || null);

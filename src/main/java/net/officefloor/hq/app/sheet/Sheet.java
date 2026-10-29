@@ -112,6 +112,13 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /**
+     * The maximum of open claims per person: opening a claim is refused while the person already has this many OPEN
+     * or PENDING claims; null for none. Not dated.
+     */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     /** The score at or above which a person is MID, while the high one is set too. Null (blank) for none. Not dated. */
     @Column(name = "score_mid")
     private Integer scoreMid;
@@ -236,6 +243,7 @@ public class Sheet {
         then.graceDays = graceDays;
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
+        then.maxOpen = maxOpen;
         then.scoreMid = scoreMid;
         then.scoreHigh = scoreHigh;
         then.scoreLog = scoreLog;
@@ -456,6 +464,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getMaxOpen() {
+        return maxOpen;
+    }
+
+    public void setMaxOpen(Integer maxOpen) {
+        this.maxOpen = maxOpen;
     }
 
     /** The proof kinds as set, comma separated; null for none. */
