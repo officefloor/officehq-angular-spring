@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -15,6 +16,7 @@ import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.http.HttpStatus;
@@ -41,12 +43,14 @@ public class PersonMergeService {
     private final PlanRepository plans;
     private final SettingsService settings;
     private final RollupService rollup;
+    private final SheetService sheets;
+    private final PersonMergeRecords records;
     private final Audit audit;
 
     public PersonMergeService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, StatementRepository statements, PoolMemberRepository poolMembers, CrewService crews,
             PeriodRepository periods, PlanRepository plans, SettingsService settings, RollupService rollup,
-            Audit audit) {
+            SheetService sheets, PersonMergeRecords records, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -58,6 +62,8 @@ public class PersonMergeService {
         this.plans = plans;
         this.settings = settings;
         this.rollup = rollup;
+        this.sheets = sheets;
+        this.records = records;
         this.audit = audit;
     }
 
@@ -89,9 +95,74 @@ public class PersonMergeService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        // the merged person is kept as they stand, so the merge can be undone
+        long mergeId = records.keep(sheetId, from.getId(), into.getId(), by, sheets.load(sheetId).getToday());
+        List<String> had = into.getAliases();
         Person saved = absorb(by, sheetId, from, into);
+        records.keepGiven(mergeId, saved.getAliases().stream().filter(a -> !had.contains(a)).toList());
         rollup.recordChanges(by, sheetId, before);
         return saved;
+    }
+
+    /**
+     * The steward who made the last merge into the person undoes it on the sheet's today it was made: the merged
+     * person is back, at the end of the list, as they were before it (with their grades, holds, terms and own
+     * aliases, and their contact unless someone has it now), with the claims that came from them still the other's
+     * (their numbers and status as they are now); the aliases the merge gave the other leave them. Patron, pool,
+     * crew, plan, period and statement changes of the merge stay. Refused unless the user is a steward and the one who
+     * made the merge, on any later day, for a person whose last merge into them is undone or who has none, and when
+     * the merged person's name or an alias is someone else's now. The person brought back, as saved.
+     */
+    @Transactional
+    public Person undo(String by, String sheetId, Long intoId) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can undo a merge.");
+        }
+        Person into = people.findWithLockByIdAndSheetId(intoId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        PersonMergeRecords.Merge merge = records.lastInto(sheetId, intoId).filter(m -> !m.undone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "There is no merge to undo."));
+        if (!by.equals(merge.madeBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who made the merge can undo it.");
+        }
+        if (!Objects.equals(merge.madeOn(), sheets.load(sheetId).getToday())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A merge can only be undone on the day it was made.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+
+        // the aliases the merge gave the other leave them
+        into.removeAliases(records.given(merge.id()));
+        people.saveAndFlush(into);
+        String name = records.name(merge.id());
+        List<String> names = new ArrayList<>();
+        names.add(name);
+        names.addAll(records.aliases(merge.id()));
+        if (names.stream().anyMatch(n -> people.nameOrAliasInUse(sheetId, n))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The merged person's name or an alias is someone else's now.");
+        }
+        String contact = records.contact(merge.id());
+        if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
+            contact = null;
+        }
+        records.restore(merge.id(), people.nextPosition(sheetId), contact);
+
+        // the claims that came from them, still the other's, go back in the order they are listed
+        List<Claim> back = new ArrayList<>(claims.findAllById(records.claims(merge.id())).stream()
+                .filter(c -> c.getSheetId().equals(sheetId) && intoId.equals(c.getPersonId())).toList());
+        back.sort(Comparator.comparing(Claim::getListed, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(Claim::getId));
+        for (Claim c : back) {
+            c.setPersonId(merge.fromId());
+            claims.saveAndFlush(c);
+            claims.relist(c.getId());
+        }
+
+        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + by + " name=" + name + " from="
+                + into.getName());
+        rollup.recordChanges(by, sheetId, before);
+        return people.findByIdAndSheetId(merge.fromId(), sheetId).orElseThrow();
     }
 
     /**

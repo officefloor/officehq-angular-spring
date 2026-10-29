@@ -285,6 +285,19 @@ public class PersonController {
     }
 
     /**
+     * The steward who made the last merge into the person undoes it on the sheet's today it was made: the merged
+     * person is back at the end of the list with the claims that came from them and their own aliases. Refused on a
+     * later day, for anyone else, and for a person with no merge to undo. The person brought back.
+     */
+    @PostMapping("/{id}/merge-undo")
+    public PersonView mergeUndo(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id,
+            @SessionAttribute(SessionController.USER) String user) {
+        return view(sheetId, merges.undo(user, sheetId, id));
+    }
+
+    /**
      * A steward transfers the person, with their claims, to another sheet; they leave this one, and are merged there
      * into the person with their name or an alias. Refused for a retired person, this sheet's own id, and a contact
      * already on the other sheet.

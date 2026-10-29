@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -377,6 +378,11 @@ public class Person {
     /** Gives the person the alias, without surrounding spaces; the ones already given are kept. */
     public void addAlias(String alias) {
         aliases.add(new PersonAlias(sheetId, alias));
+    }
+
+    /** Takes the aliases from the person; the others are kept. */
+    public void removeAliases(Collection<String> removed) {
+        aliases.removeIf(a -> removed.contains(a.getAlias()));
     }
 
     /** Every hold put on the person, earliest from-date first. */

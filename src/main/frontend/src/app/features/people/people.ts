@@ -808,6 +808,9 @@ interface TreePerson {
                 <button type="button" data-testid="person-merge" (click)="merge(p)">
                   Merge<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-merge-undo" (click)="mergeUndo(p)">
+                  Undo last merge<span class="visually-hidden"> into {{ p.name }}</span>
+                </button>
                 <label [for]="'transfer-to-' + p.id">Transfer to sheet<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   type="text"
@@ -1808,6 +1811,32 @@ export class People {
       return;
     }
     // the merge moves claims, patrons and pool memberships: every view re-reads the sheet
+    if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
+  }
+
+  /**
+   * The steward who made the last merge into the person undoes it on the sheet's today it was made: the merged person
+   * is back at the end of the list with the claims that came from them and their own aliases. Refused on a later day,
+   * for anyone else, and for a person with no merge to undo.
+   */
+  protected async mergeUndo(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/merge-undo`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, {}));
+    } catch (err) {
+      this.rowErrors.update((e) => ({
+        ...e,
+        [p.id]:
+          err instanceof HttpErrorResponse && err.status === 403
+            ? 'Only the steward who made the merge can undo it.'
+            : 'Could not undo the last merge into this person.',
+      }));
+      return;
+    }
+    // the merged person comes back with their claims: every view re-reads the sheet
     if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
   }
 
