@@ -254,9 +254,12 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 /** A claim form's amount: a negative one is a correction. */
 const SIGNED_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
 
-/** The sum of the counted claims' amounts, with two decimals; added in whole cents so nothing drifts. */
+/**
+ * The sum of the counted claims' amounts, leaving out claims that correct another, with two decimals; added in whole
+ * cents so nothing drifts.
+ */
 export function claimedTotal(claims: readonly Claim[]): string {
-  const cents = claims.filter(counts).reduce((sum, c) => sum + Math.round(Number(c.amount) * 100), 0);
+  const cents = claims.filter(c => counts(c) && !c.corrects).reduce((sum, c) => sum + Math.round(Number(c.amount) * 100), 0);
   return (cents / 100).toFixed(2);
 }
 

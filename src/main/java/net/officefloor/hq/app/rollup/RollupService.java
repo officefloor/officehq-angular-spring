@@ -100,7 +100,10 @@ public class RollupService {
             grades.add(p.gradeOn(today));
             for (Claim c : counted) {
                 grades.add(p.gradeOn(c.getDate()));
-                claimed = claimed.add(c.getAmount());
+                // a claim correcting another counts toward due but not toward what is claimed
+                if (c.getCorrects() == null) {
+                    claimed = claimed.add(c.getAmount());
+                }
                 kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
                 // the claim's rate is the one its person's grade in force on its date has
                 BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
