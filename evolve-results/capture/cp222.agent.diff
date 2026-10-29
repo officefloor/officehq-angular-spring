@@ -1,0 +1,224 @@
+diff --git a/src/main/frontend/src/app/features/consolidated/consolidated.ts b/src/main/frontend/src/app/features/consolidated/consolidated.ts
+index a65ccd22..0ad5012a 100644
+--- a/src/main/frontend/src/app/features/consolidated/consolidated.ts
++++ b/src/main/frontend/src/app/features/consolidated/consolidated.ts
+@@ -15,7 +15,7 @@ export interface TreeMember {
+ }
+ 
+ // The figures of the sheet's descendants (the sheets naming it as parent, theirs, and so on), added up by the store.
+-interface DescendantFigures {
++export interface DescendantFigures {
+   peopleCount: number;
+   dueTotal: string;
+   overdueTotal: string;
+@@ -25,6 +25,8 @@ interface DescendantFigures {
+   statusCounts: Record<string, number>;
+   // Each person of the descendants, for the totals to be worked out again with the sheet's own people.
+   people: TreeMember[];
++  // The count of overdue claims that count live.
++  overdueCount: number;
+ }
+ 
+ // The people over the tree, each once: those whose names or aliases match, ignoring case, are one.
+@@ -43,13 +45,14 @@ function distinctPeople(members: readonly TreeMember[]): number {
+   return new Set(members.map((_, i) => root(i))).size;
+ }
+ 
+-const NONE: DescendantFigures = {
++export const NONE: DescendantFigures = {
+   peopleCount: 0,
+   dueTotal: '0.00',
+   overdueTotal: '0.00',
+   gradeDueTotals: {},
+   statusCounts: {},
+   people: [],
++  overdueCount: 0,
+ };
+ 
+ // The figures over the sheet and all its descendants: the sheet's own, as it shows them, plus each descendant's. While
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 03c4905f..2649bf75 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -1,10 +1,12 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpContext } from '@angular/common/http';
+ import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+ import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
++import { AsOf, LIVE } from '../../core/as-of';
+ import { Session } from '../../core/session';
++import { DescendantFigures, NONE } from '../consolidated/consolidated';
+ 
+-// The steward's dashboard: over the sheet, the number of PENDING claims, of REVIEW claims and of overdue claims that
++// The steward's dashboard: over the sheet and all its descendants, the number of PENDING claims, of REVIEW claims and of overdue claims that
+ // count. Blank unless the signed-in user acts as a steward on the sheet; while the sheet is shown as of a date, the
+ // counts and the role are as they stood then.
+ @Component({
+@@ -19,7 +21,7 @@ import { Session } from '../../core/session';
+         <dt>In review</dt>
+         <dd data-testid="dash-review-count">{{ steward() ? (reviewCount() | fig) : '' }}</dd>
+         <dt>Overdue</dt>
+-        <dd data-testid="dash-overdue-count">{{ steward() ? (overdueCount() | fig) : '' }}</dd>
++        <dd data-testid="dash-overdue-count">{{ steward() ? (treeOverdueCount() | fig) : '' }}</dd>
+       </dl>
+     </section>
+   `,
+@@ -27,6 +29,7 @@ import { Session } from '../../core/session';
+ export class Dashboard {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
++  private readonly asOf = inject(AsOf);
+ 
+   // The status of every claim on the sheet, and the number of overdue claims counted live.
+   readonly statuses = input<readonly string[]>([]);
+@@ -35,9 +38,17 @@ export class Dashboard {
+   // The role the signed-in user acts in on the sheet, as the store answers it; null until read.
+   private readonly role = signal<string | null>(null);
+ 
++  // The descendants' figures added up by the store; and, while the sheet is shown as of a date, the whole tree's as
++  // they stood then (the sheet's own included).
++  private readonly descendants = signal<DescendantFigures>(NONE);
++  private readonly asOfFigures = signal<DescendantFigures | null>(null);
++
+   protected readonly steward = computed(() => this.role() === 'steward');
+-  protected readonly pendingCount = computed(() => this.statuses().filter((s) => s === 'PENDING').length);
+-  protected readonly reviewCount = computed(() => this.statuses().filter((s) => s === 'REVIEW').length);
++  protected readonly pendingCount = computed(() => this.countOf('PENDING'));
++  protected readonly reviewCount = computed(() => this.countOf('REVIEW'));
++  protected readonly treeOverdueCount = computed(
++    () => this.asOfFigures()?.overdueCount ?? this.overdueCount() + (this.descendants().overdueCount ?? 0),
++  );
+ 
+   constructor() {
+     // Re-read the user's role from the store each time a sheet is loaded (or shown as of another date).
+@@ -50,6 +61,51 @@ export class Dashboard {
+         if (id) void this.load(id);
+       });
+     });
++    // Re-read the descendants' figures from the store each time a sheet is loaded.
++    effect(() => {
++      const id = this.session.sheetId();
++      const asOf = this.asOf.date();
++      this.session.loads();
++      untracked(() => {
++        this.descendants.set(NONE);
++        this.asOfFigures.set(null);
++        if (id && asOf) void this.loadTreeAsOf(id, asOf);
++        else if (id) void this.loadDescendants(id);
++      });
++    });
++  }
++
++  // The count of claims in the status over the tree.
++  private countOf(status: string): number {
++    const asOf = this.asOfFigures();
++    if (asOf) return asOf.statusCounts?.[status] ?? 0;
++    return this.statuses().filter((s) => s === status).length + (this.descendants().statusCounts?.[status] ?? 0);
++  }
++
++  private async loadDescendants(id: string): Promise<void> {
++    try {
++      const figures = await firstValueFrom(
++        this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(id)}/descendants/figures`),
++      );
++      if (this.session.sheetId() === id) this.descendants.set(figures);
++    } catch {
++      // with none read, the sheet's own counts stand alone
++    }
++  }
++
++  // Read without the as-of header: the store opens each sheet of the tree as of the date itself.
++  private async loadTreeAsOf(id: string, asOf: string): Promise<void> {
++    try {
++      const figures = await firstValueFrom(
++        this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(id)}/descendants/consolidated`, {
++          params: { asOf },
++          context: new HttpContext().set(LIVE, true),
++        }),
++      );
++      if (this.session.sheetId() === id && this.asOf.date() === asOf) this.asOfFigures.set(figures);
++    } catch {
++      // with none read, the counts shown as of the date stand
++    }
+   }
+ 
+   private async load(id: string): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index ad156628..15fdc742 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -24,17 +24,19 @@ public class RollupController {
+     /**
+      * The descendants' figures added up: the number of people (each once), the due-totals and overdue-totals trimmed
+      * once over all of them, per grade the due-totals of its people (two decimals), per status the count of claims, and
+-     * each person with their names and figures, for the screen to work the totals out again with the sheet's own.
++     * each person with their names and figures, for the screen to work the totals out again with the sheet's own; and
++     * the count of overdue claims that count live.
+      */
+     public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal,
+-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> people) {
++            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> people,
++            int overdueCount) {
+         static ConsolidatedView of(RollupService.Consolidated c) {
+             Map<String, String> grades = new TreeMap<>();
+             c.gradeDueTotals().forEach((g, d) -> grades.put(g, d.toPlainString()));
+             Map<String, Integer> statuses = new TreeMap<>();
+             c.statusCounts().forEach((s, n) -> statuses.put(s.name(), n));
+             return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString(),
+-                    grades, statuses, c.members().stream().map(MemberView::of).toList());
++                    grades, statuses, c.members().stream().map(MemberView::of).toList(), c.overdueCount());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 232d6ea1..9b545c5d 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -75,14 +75,15 @@ public class RollupService {
+     /**
+      * Figures added up over sheets: their people (each person once, those whose names or aliases match being one),
+      * the people's due-totals and overdue-totals trimmed once over all of them, per grade the due-totals of the people
+-     * on it today (retired people left out, n/a skipped), and per status the count of claims in it; with every
++     * on it today (retired people left out, n/a skipped), per status the count of claims in it, and the count of
++     * overdue claims that count live; with every
+      * sheet's people as members, for the totals to be worked out again with more of them.
+      */
+     public record Consolidated(List<Member> members, Map<String, BigDecimal> gradeDueTotals,
+-            Map<ClaimStatus, Integer> statusCounts) {
++            Map<ClaimStatus, Integer> statusCounts, int overdueCount) {
+ 
+         static Consolidated empty() {
+-            return new Consolidated(List.of(), new TreeMap<>(), new EnumMap<>(ClaimStatus.class));
++            return new Consolidated(List.of(), new TreeMap<>(), new EnumMap<>(ClaimStatus.class), 0);
+         }
+ 
+         Consolidated plus(Consolidated o) {
+@@ -93,7 +94,7 @@ public class RollupService {
+             Map<ClaimStatus, Integer> statuses = new EnumMap<>(ClaimStatus.class);
+             statuses.putAll(statusCounts);
+             o.statusCounts.forEach((s, n) -> statuses.merge(s, n, Integer::sum));
+-            return new Consolidated(all, grades, statuses);
++            return new Consolidated(all, grades, statuses, overdueCount + o.overdueCount);
+         }
+ 
+         /** The people over the tree, each once: those whose names or aliases match, ignoring case, are one. */
+@@ -320,15 +321,17 @@ public class RollupService {
+             statuses.merge(c.getStatus(), 1, Integer::sum);
+         }
+         List<Member> members = new ArrayList<>();
++        int overdueCount = 0;
+         for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             Figures f = s.people().get(p.getId());
+             if (f != null) {
++                overdueCount += f.overdueCount();
+                 List<String> names = new ArrayList<>(List.of(p.getName()));
+                 names.addAll(p.getAliases());
+                 members.add(new Member(names, f.dueTotal(), f.overdueTotal()));
+             }
+         }
+-        return new Consolidated(members, grades, statuses);
++        return new Consolidated(members, grades, statuses, overdueCount);
+     }
+ 
+     /**
