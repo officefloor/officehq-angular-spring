@@ -251,11 +251,16 @@ public class ClaimController {
         return new BulkVoidView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
     }
 
+    /** The date a claim is settled as of; none settles it as it stands now. */
+    public record SettleForm(LocalDate on) {
+    }
+
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
-        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
+            @PathVariable Long id, @RequestBody(required = false) SettleForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.settle(user, sheetId, id, form == null ? null : form.on()));
     }
 
     @PostMapping("/claims/{id}/resettle")

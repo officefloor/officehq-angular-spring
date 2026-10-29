@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.asof.AsOfService;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -50,11 +51,13 @@ public class ClaimService {
     private final WatchService watches;
     private final HolidayService holidays;
     private final VoidReasonService voidReasons;
+    private final AsOfService asOf;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimTagRepository tags, PersonRepository people, RateChain rates,
             PeriodRepository periods, SheetService sheets, RollupService rollup, SettingsService settings,
-            WatchService watches, HolidayService holidays, VoidReasonService voidReasons, Audit audit) {
+            WatchService watches, HolidayService holidays, VoidReasonService voidReasons, AsOfService asOf,
+            Audit audit) {
         this.claims = claims;
         this.tags = tags;
         this.people = people;
@@ -66,6 +69,7 @@ public class ClaimService {
         this.watches = watches;
         this.holidays = holidays;
         this.voidReasons = voidReasons;
+        this.asOf = asOf;
         this.audit = audit;
     }
 
@@ -254,7 +258,17 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
-        return changeStatus(by, sheetId, id, next, null, false);
+        return changeStatus(by, sheetId, id, next, null, false, null);
+    }
+
+    /**
+     * Settles the claim as of a date (none: as the settle button does): its due is frozen at the due it had at the
+     * end of that day, as the sheet as of that day shows it (see {@link AsOfService#storeAsOf}), and the settle record
+     * ends with the date. Refused for a date after the sheet's today, and for a claim the sheet did not hold then.
+     */
+    @Transactional
+    public Claim settle(String by, String sheetId, Long id, LocalDate on) {
+        return changeStatus(by, sheetId, id, ClaimStatus.SETTLED, null, false, on);
     }
 
     /**
@@ -263,14 +277,15 @@ public class ClaimService {
      */
     @Transactional
     public Claim voidClaim(String by, String sheetId, Long id, String reason) {
-        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason, false);
+        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason, false, null);
     }
 
     /**
      * Moves the claim to its next status. A part being settled was judged by the four-eyes rules and the proof rule
      * on the claim it was split off, so they are not judged on it again.
      */
-    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason, boolean part) {
+    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason, boolean part,
+            LocalDate on) {
         Claim claim = lockedClaim(sheetId, id);
         switch (next) {
             case OPEN -> settings.refuseUnlessMay(sheetId, by, "open");
@@ -335,7 +350,8 @@ public class ClaimService {
             // the due is fixed at the due a statement bound it to (late charge and floor included), else at the rate
             // the person's grade has in force on the claim's date, with the late charge it has gained by today, and
             // at least the floor in force on its date; with none it stays live
-            BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
+            BigDecimal fixed = on != null ? dueAsOf(sheetId, id, on)
+                    : claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
                     : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
             if (!part) {
                 refuseWithoutProof(sheetId, claim, fixed);
@@ -345,7 +361,8 @@ public class ClaimService {
                 event = "CLAIM_PENDING";
             } else {
                 claim.setSettledDue(fixed);
-                tail = " due=" + (fixed == null ? "n/a" : fixed.toPlainString());
+                tail = " due=" + (fixed == null ? "n/a" : fixed.toPlainString())
+                        + (on == null ? "" : " on=" + on);
             }
         }
         claim.setStatus(next);
@@ -357,6 +374,28 @@ public class ClaimService {
         }
         rollup.recordChanges(by, sheetId, before);
         return saved;
+    }
+
+    /**
+     * The due the claim showed at the end of the day, as the sheet as of that day works it out. Refused for a day after
+     * the sheet's today, and for a claim the sheet did not hold then.
+     */
+    private BigDecimal dueAsOf(String sheetId, Long id, LocalDate on) {
+        LocalDate today = sheets.load(sheetId).getToday();
+        if (today != null && on.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim cannot be settled as of " + on + ", after the sheet's today " + today + ".");
+        }
+        record Then(boolean held, BigDecimal due) {
+        }
+        Then then = asOf.readAsOf(sheetId, on, () -> claims.findByIdAndSheetId(id, sheetId)
+                .flatMap(c -> people.findByIdAndSheetId(c.getPersonId(), sheetId)
+                        .map(p -> new Then(true, due(sheetId, p, c))))
+                .orElse(new Then(false, null)));
+        if (!then.held()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The claim did not exist on " + on + ".");
+        }
+        return then.due();
     }
 
     /**
@@ -937,7 +976,7 @@ public class ClaimService {
                 : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
         refuseWithoutProof(sheetId, claim, fixed);
         Split split = split(by, sheetId, id, amount);
-        Claim settled = changeStatus(by, sheetId, split.split().getId(), ClaimStatus.SETTLED, null, true);
+        Claim settled = changeStatus(by, sheetId, split.split().getId(), ClaimStatus.SETTLED, null, true, null);
         return new PartSettle(split.original(), settled);
     }
 

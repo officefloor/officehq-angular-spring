@@ -497,6 +497,14 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-review" (click)="act(c, 'review')">
                 Review<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+              <input
+                [id]="'claim-settle-date-' + c.id"
+                type="date"
+                data-testid="claim-settle-date"
+                [value]="settleDates()[c.id] ?? ''"
+                (input)="setSettleDate(c.id, value($event))"
+              />
               <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">
                 Settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
@@ -693,6 +701,8 @@ export class Claims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   // The reason typed to reject each pending claim, by claim id.
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  // The date typed to settle each claim as of, by claim id; blank settles it as it stands now.
+  protected readonly settleDates = signal<Record<number, string>>({});
   // The void reason chosen for each claim, by claim id.
   protected readonly voidReasonChoices = signal<Record<number, string>>({});
   // The proof kind chosen for each claim's next proof, by claim id; none chosen (a receipt) when missing.
@@ -910,6 +920,11 @@ export class Claims {
     this.error.set(null);
   }
 
+  protected setSettleDate(id: number, date: string): void {
+    this.settleDates.update((d) => ({ ...d, [id]: date }));
+    this.clearRowError(id);
+  }
+
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((r) => ({ ...r, [id]: reason }));
     this.clearRowError(id);
@@ -957,6 +972,16 @@ export class Claims {
       this.setRowError(c.id, 'Enter a reason to reject this claim.');
       return;
     }
+    const settleOn = (this.settleDates()[c.id] ?? '').trim();
+    const today = this.session.sheetToday();
+    if (
+      action === 'settle' &&
+      settleOn !== '' &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(settleOn) || (today !== null && settleOn > today))
+    ) {
+      this.setRowError(c.id, `Enter a date on or before ${today ?? 'today'} to settle this claim as of.`);
+      return;
+    }
     const voidReason = this.voidReasonChoices()[c.id] ?? '';
     const listed = this.voidReasons.list();
     if (action === 'void' && listed.length > 0 && !listed.some((r) => r.reason === voidReason)) {
@@ -964,8 +989,16 @@ export class Claims {
       return;
     }
     try {
-      const body = action === 'reject' ? { reason } : action === 'void' ? { reason: voidReason || null } : null;
+      const body =
+        action === 'reject'
+          ? { reason }
+          : action === 'void'
+            ? { reason: voidReason || null }
+            : action === 'settle'
+              ? { on: settleOn || null }
+              : null;
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, body)));
+      if (action === 'settle') this.settleDates.update(({ [c.id]: _, ...rest }) => rest);
       if (action === 'reject') this.rejectReasons.update(({ [c.id]: _, ...rest }) => rest);
       if (action === 'void') this.voidReasonChoices.update(({ [c.id]: _, ...rest }) => rest);
     } catch (e) {
@@ -979,6 +1012,8 @@ export class Claims {
           ? 'A deleted claim can only be restored on the day it was deleted.'
           : action === 'restore'
           ? `A ${c.status} claim cannot be restored; only a deleted one can.`
+          : action === 'settle' && settleOn !== '' && e instanceof HttpErrorResponse && e.status === 422
+          ? `This claim did not exist on ${settleOn}, so it cannot be settled as of then.`
           : action === 'settle' && deferred(c, this.session.sheetToday())
           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
           : action === 'void' && e instanceof HttpErrorResponse && e.status === 422
