@@ -135,6 +135,13 @@ public class Sheet {
     private String parentId;
 
     /**
+     * The id of the sheet this one was cloned from, whose rates (and its parents' and source's) apply to a grade with
+     * no rate in force on a date on this sheet nor on its parents; null for a sheet not cloned. Not dated.
+     */
+    @Column(name = "cloned_from")
+    private String clonedFrom;
+
+    /**
      * The proof kinds: the kinds a claim above its proof threshold needs at least one proof of each before it can be
      * settled or approved, comma separated. Null (blank) for none. Not dated.
      */
@@ -212,6 +219,7 @@ public class Sheet {
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
+        then.clonedFrom = clonedFrom;
         then.archived = archived;
         then.lastSettleBatch = lastSettleBatch;
         // a value recorded before changes were kept stands as it is
@@ -435,6 +443,10 @@ public class Sheet {
 
     public void setParentId(String parentId) {
         this.parentId = parentId;
+    }
+
+    public String getClonedFrom() {
+        return clonedFrom;
     }
 
     public boolean isArchived() {

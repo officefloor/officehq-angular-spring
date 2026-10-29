@@ -50,7 +50,8 @@ public class SheetCloneService {
     }
 
     /**
-     * A steward clones the sheet to the other id. The clone gets the sheet's today, settings, roles, rates (and their
+     * A steward clones the sheet to the other id. The clone records the sheet it was cloned from, whose rates apply
+     * to a grade with none in force on the clone nor on its parents (see {@code RateChain}). The clone gets the sheet's today, settings, roles, rates (and their
      * history), holidays, void reasons, templates and claim tags; its people with their grades, terms, contacts,
      * aliases, holds, retirements and patrons, in list order; its pools and their members; its crews and their members; its periods, all open; and
      * its claims with status, frozen figures, dates, notes, tags, references, comments and logs, listed as they were.
@@ -71,10 +72,10 @@ public class SheetCloneService {
         claims.flush();
         try {
             jdbc.update("INSERT INTO sheet (id, created_at, today, policy_date, period_numbering_from, entry_date,"
-                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds) SELECT ?,"
-                    + " CURRENT_TIMESTAMP, today, policy_date, period_numbering_from, entry_date, grace_days, pot,"
-                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds FROM sheet"
-                    + " WHERE id = ?",
+                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds, cloned_from)"
+                    + " SELECT ?, CURRENT_TIMESTAMP, today, policy_date, period_numbering_from, entry_date, grace_days, pot,"
+                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds, id"
+                    + " FROM sheet WHERE id = ?",
                     toSheetId, sheetId);
         } catch (DataIntegrityViolationException e) {
             // another user started it at the same moment

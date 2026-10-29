@@ -134,7 +134,7 @@ public class AsOfService {
      */
     @Transactional(readOnly = true)
     public DataSource storeAsOf(String sheetId, LocalDate day) {
-        Map<String, String> lineage = lineage(sheetId);
+        Map<String, Links> lineage = lineage(sheetId);
         List<Long> ids = new ArrayList<>();
         for (String id : lineage.keySet()) {
             // a parent keeps its own today: it stands as last stored while that was on or before the day; with none
@@ -164,18 +164,32 @@ public class AsOfService {
         }
     }
 
+    /** A sheet's links as they are now: its parent's id and the id of the sheet it was cloned from (null for none). */
+    private record Links(String parentId, String clonedFrom) {
+    }
+
     /**
-     * The sheet's id, then its parent's, and so on as far as its rates can be taken from (see {@link RateChain}), each
-     * with its parent's id as it is now (null for none).
+     * The sheet's id, then its parent's, and so on as far as its rates can be taken from, then the sheet it was
+     * cloned from and so on (see {@link RateChain}), each with its links as they are now.
      */
-    private Map<String, String> lineage(String sheetId) {
-        Map<String, String> lineage = new LinkedHashMap<>();
-        String at = sheetId;
-        while (at != null && !lineage.containsKey(at) && lineage.size() <= RateChain.LEVELS_UP) {
-            List<String> parent = jdbc.queryForList("SELECT parent_id FROM sheet WHERE id = ?", String.class, at);
-            String next = parent.isEmpty() ? null : parent.get(0);
-            lineage.put(at, next);
-            at = next;
+    private Map<String, Links> lineage(String sheetId) {
+        Map<String, Links> lineage = new LinkedHashMap<>();
+        String from = sheetId;
+        while (from != null && !lineage.containsKey(from)) {
+            String at = from;
+            String source = null;
+            for (int up = 0; at != null && !lineage.containsKey(at) && up <= RateChain.LEVELS_UP; up++) {
+                List<Map<String, Object>> row = jdbc.queryForList(
+                        "SELECT parent_id, cloned_from FROM sheet WHERE id = ?", at);
+                Links links = row.isEmpty() ? new Links(null, null)
+                        : new Links((String) row.get(0).get("PARENT_ID"), (String) row.get(0).get("CLONED_FROM"));
+                if (up == 0) {
+                    source = links.clonedFrom();
+                }
+                lineage.put(at, links);
+                at = links.parentId();
+            }
+            from = source;
         }
         return lineage;
     }
@@ -184,7 +198,7 @@ public class AsOfService {
      * Opens a store of its own with the schema and, for each sheet of the lineage, its state's rows (an empty sheet
      * with none) and its parent as it is now; the day stands in for the first one's today.
      */
-    private Store open(Map<String, String> lineage, LocalDate day, List<SheetState> states) {
+    private Store open(Map<String, Links> lineage, LocalDate day, List<SheetState> states) {
         String sheetId = lineage.keySet().iterator().next();
         String url = "jdbc:h2:mem:asof-" + storeNames.incrementAndGet();
         try {
@@ -225,17 +239,20 @@ public class AsOfService {
                 today.setString(2, sheetId);
                 today.executeUpdate();
             }
-            for (Map.Entry<String, String> link : lineage.entrySet()) {
+            for (Map.Entry<String, Links> link : lineage.entrySet()) {
                 try (PreparedStatement parent = holder.prepareStatement(
-                        "UPDATE sheet SET parent_id = ? WHERE id = ?")) {
-                    parent.setString(1, link.getValue());
-                    parent.setString(2, link.getKey());
+                        "UPDATE sheet SET parent_id = ?, cloned_from = ? WHERE id = ?")) {
+                    parent.setString(1, link.getValue().parentId());
+                    parent.setString(2, link.getValue().clonedFrom());
+                    parent.setString(3, link.getKey());
                     if (parent.executeUpdate() == 0) {
                         try (PreparedStatement empty = holder.prepareStatement("INSERT INTO sheet"
-                                + " (id, created_at, today, parent_id) VALUES (?, CURRENT_TIMESTAMP, ?, ?)")) {
+                                + " (id, created_at, today, parent_id, cloned_from)"
+                                + " VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)")) {
                             empty.setString(1, link.getKey());
                             empty.setObject(2, day);
-                            empty.setString(3, link.getValue());
+                            empty.setString(3, link.getValue().parentId());
+                            empty.setString(4, link.getValue().clonedFrom());
                             empty.executeUpdate();
                         }
                     }

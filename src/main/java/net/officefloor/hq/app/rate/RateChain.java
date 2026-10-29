@@ -16,7 +16,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * The rates that apply on a sheet: a grade with no rate in force on a date on the sheet takes its parent sheet's rate
- * for that date, then the parent's parent's, up to {@link #LEVELS_UP} levels up.
+ * for that date, then the parent's parent's, up to {@link #LEVELS_UP} levels up; with none there, a sheet that was
+ * cloned takes the rate of the sheet it was cloned from, found the same way, and so on.
  */
 @Component
 public class RateChain {
@@ -44,17 +45,26 @@ public class RateChain {
         this.sheets = sheets;
     }
 
-    /** The sheet's id, then its parent's, and so on, up to {@link #LEVELS_UP} levels up. */
+    /**
+     * The sheet's id, then its parent's, and so on, up to {@link #LEVELS_UP} levels up; then, for a sheet that was
+     * cloned, the lineage of the sheet it was cloned from, and so on. Each sheet appears once.
+     */
     public List<String> lineage(String sheetId) {
-        List<String> ids = new ArrayList<>(List.of(sheetId));
-        String at = sheetId;
-        while (ids.size() <= LEVELS_UP) {
-            String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
-            if (parent == null || ids.contains(parent)) {
-                break;
+        List<String> ids = new ArrayList<>();
+        String from = sheetId;
+        while (from != null && !ids.contains(from)) {
+            ids.add(from);
+            Sheet cloned = sheets.findById(from).orElse(null);
+            String at = from;
+            for (int up = 0; up < LEVELS_UP; up++) {
+                String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+                if (parent == null || ids.contains(parent)) {
+                    break;
+                }
+                ids.add(parent);
+                at = parent;
             }
-            ids.add(parent);
-            at = parent;
+            from = cloned == null ? null : cloned.getClonedFrom();
         }
         return ids;
     }
