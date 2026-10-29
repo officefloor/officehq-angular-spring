@@ -1,0 +1,576 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index dc891a46..9ffe7984 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -3,8 +3,9 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
+ import { provideRouter } from '@angular/router';
+ import { routes } from './app.routes';
+ import { asOfInterceptor } from './core/as-of';
++import { previewInterceptor } from './core/preview';
+ 
+-// The app's wiring: the router and the HTTP client, which sends the screen's as-of date.
++// The app's wiring: the router and the HTTP client, which sends the screen's as-of and preview dates.
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor]))],
++  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor, previewInterceptor]))],
+ };
+diff --git a/src/main/frontend/src/app/core/preview.ts b/src/main/frontend/src/app/core/preview.ts
+new file mode 100644
+index 00000000..aa4185b5
+--- /dev/null
++++ b/src/main/frontend/src/app/core/preview.ts
+@@ -0,0 +1,16 @@
++import { HttpInterceptorFn } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++
++// The date this user's screen previews the sheet on (yyyy-mm-dd), or null for none. It belongs to the screen: other
++// users are unaffected.
++@Injectable({ providedIn: 'root' })
++export class Preview {
++  readonly date = signal<string | null>(null);
++}
++
++// Sends the preview date with every request, so the server answers each read as if the sheet's today were that date;
++// a change ignores it and uses the sheet's real today.
++export const previewInterceptor: HttpInterceptorFn = (req, next) => {
++  const date = inject(Preview).date();
++  return next(date ? req.clone({ setHeaders: { 'X-Preview': date } }) : req);
++};
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 63462ee3..db7aa7ec 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -1,7 +1,8 @@
+ import { HttpClient } from '@angular/common/http';
+-import { ApplicationRef, Injectable, inject, signal } from '@angular/core';
++import { ApplicationRef, Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { AsOf } from './as-of';
++import { Preview } from './preview';
+ import { UserColumns } from './columns';
+ import { UserLocale } from './locale';
+ 
+@@ -11,13 +12,19 @@ export class Session {
+   private readonly http = inject(HttpClient);
+   private readonly appRef = inject(ApplicationRef);
+   private readonly asOf = inject(AsOf);
++  private readonly preview = inject(Preview);
+   private readonly userLocale = inject(UserLocale);
+   private readonly userColumns = inject(UserColumns);
+ 
+   readonly user = signal<string | null>(null);
+   readonly sheetId = signal<string | null>(null);
+-  // The active sheet's today (yyyy-mm-dd): every date decision and default date uses it.
+-  readonly sheetToday = signal<string | null>(null);
++  // The active sheet's real today (yyyy-mm-dd): every change, and every default date, uses it.
++  readonly realToday = signal<string | null>(null);
++  // The date the screen previews the sheet on, or null: while set, every figure is shown as if it were the sheet's
++  // today, over the sheet's current records; changes still use the real today.
++  readonly sheetPreview = this.preview.date.asReadonly();
++  // The today every figure on the screen is shown by: the preview date while set, else the sheet's real today.
++  readonly sheetToday = computed(() => this.preview.date() ?? this.realToday());
+   // Whether the active sheet is archived: it stays visible and every change on it is refused.
+   readonly sheetArchived = signal(false);
+   // The number of the active sheet's last bulk settle batch, or null when there has been none.
+@@ -40,7 +47,7 @@ export class Session {
+       this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}`, null),
+     );
+     this.sheetId.set(s.id);
+-    this.sheetToday.set(s.today);
++    this.realToday.set(s.today);
+     this.sheetArchived.set(s.archived);
+     this.sheetLastBatch.set(s.lastBatch);
+     this.loads.update((n) => n + 1);
+@@ -53,6 +60,13 @@ export class Session {
+     if (id) await this.loadSheet(id);
+   }
+ 
++  // Previews the sheet on the date (null: none), re-read from the store.
++  async setPreview(date: string | null): Promise<void> {
++    this.preview.date.set(date);
++    const id = this.sheetId();
++    if (id) await this.loadSheet(id);
++  }
++
+   // Resolves once the screen has re-read everything it asked the store for (after a sheet load or a new as-of date,
+   // say), so what is taken from it then shows the sheet as it is loaded.
+   async settled(): Promise<void> {
+@@ -69,7 +83,7 @@ export class Session {
+     const s = await firstValueFrom(
+       this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/today`, { today }),
+     );
+-    this.sheetToday.set(s.today);
++    this.realToday.set(s.today);
+   }
+ 
+   // Clones the active sheet to another id, never used before.
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index b3dc69cb..59a5cca0 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -799,7 +799,7 @@ export class Claims {
+     // A today change releases every claim, so an open editor is closed with it.
+     let today: string | null | undefined;
+     effect(() => {
+-      const now = this.session.sheetToday();
++      const now = this.session.realToday();
+       if (today !== undefined && now !== today) untracked(() => this.reset());
+       today = now;
+     });
+@@ -1024,7 +1024,7 @@ export class Claims {
+       return;
+     }
+     const settleOn = (this.settleDates()[c.id] ?? '').trim();
+-    const today = this.session.sheetToday();
++    const today = this.session.realToday();
+     if (
+       action === 'settle' &&
+       settleOn !== '' &&
+@@ -1065,7 +1065,7 @@ export class Claims {
+           ? `A ${c.status} claim cannot be restored; only a deleted one can.`
+           : action === 'settle' && settleOn !== '' && e instanceof HttpErrorResponse && e.status === 422
+           ? `This claim did not exist on ${settleOn}, so it cannot be settled as of then.`
+-          : action === 'settle' && deferred(c, this.session.sheetToday())
++          : action === 'settle' && deferred(c, this.session.realToday())
+           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
+           : action === 'void' && e instanceof HttpErrorResponse && e.status === 422
+           ? 'Choose a reason from the list to void this claim.'
+@@ -1136,7 +1136,7 @@ export class Claims {
+       this.setRowError(c.id, `A ${c.status} claim cannot be reminded; only an OPEN or PENDING one can.`);
+       return;
+     }
+-    const today = this.session.sheetToday();
++    const today = this.session.realToday();
+     if (today !== null && c.remindedOn === today) {
+       this.setRowError(c.id, `This claim was already reminded on ${today}.`);
+       return;
+@@ -1299,7 +1299,7 @@ export class Claims {
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+     const until = (this.deferDates()[c.id] ?? '').trim();
+-    const today = this.session.sheetToday();
++    const today = this.session.realToday();
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || (today !== null && until <= today)) {
+       this.setRowError(c.id, `Enter a date after ${today ?? 'today'} to defer this claim until.`);
+       return;
+@@ -1405,7 +1405,7 @@ export class Claims {
+       this.setRowError(c.id, `Enter an amount more than 0.00 and less than ${c.amount} to split off this claim.`);
+       return;
+     }
+-    if (c.status !== 'OPEN' || deferred(c, this.session.sheetToday())) {
++    if (c.status !== 'OPEN' || deferred(c, this.session.realToday())) {
+       this.setRowError(c.id, `Only an OPEN claim that is not deferred can be split.`);
+       return;
+     }
+@@ -1446,7 +1446,7 @@ export class Claims {
+       this.setRowError(c.id, `Enter an amount more than 0.00 and less than ${c.amount} to settle off this claim.`);
+       return;
+     }
+-    if (c.status !== 'OPEN' || deferred(c, this.session.sheetToday())) {
++    if (c.status !== 'OPEN' || deferred(c, this.session.realToday())) {
+       this.setRowError(c.id, `Only an OPEN claim that is not deferred can be part-settled.`);
+       return;
+     }
+@@ -1677,7 +1677,7 @@ export class Claims {
+     }
+     const retiredFrom = this.retiredFrom();
+     // a new claim with no date is dated on the sheet's entry date, when set, as the store dates it
+-    const on = date || ((was ? null : this.settings.entryDate()) ?? this.session.sheetToday() ?? '');
++    const on = date || ((was ? null : this.settings.entryDate()) ?? this.session.realToday() ?? '');
+     if (retiredFrom !== null && on > retiredFrom) {
+       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
+       return;
+diff --git a/src/main/frontend/src/app/features/delegation/delegation.ts b/src/main/frontend/src/app/features/delegation/delegation.ts
+index 94e64a23..c8be1b8f 100644
+--- a/src/main/frontend/src/app/features/delegation/delegation.ts
++++ b/src/main/frontend/src/app/features/delegation/delegation.ts
+@@ -112,7 +112,7 @@ export class Delegation {
+       this.error.set('Enter a user name.');
+       return;
+     }
+-    const today = this.session.sheetToday();
++    const today = this.session.realToday();
+     const start = from ?? today;
+     const end = to ?? today;
+     if (start && end && end < start) {
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 814cd20d..df4d7e01 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -56,7 +56,7 @@ import { PlanStore } from '../plans/plans';
+ 
+       @if (session.sheetId(); as id) {
+         <p>Sheet: <strong data-testid="sheet-current-id">{{ id | fig }}</strong></p>
+-        <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() | fig }}</strong></p>
++        <p>Today: <strong data-testid="sheet-today">{{ session.realToday() | fig }}</strong></p>
+         <p>Archived: <strong data-testid="sheet-archived">{{ (session.sheetArchived() ? 'yes' : 'no') | fig }}</strong></p>
+         <p>Parent sheet: <strong data-testid="sheet-parent">{{ (settings.parent() ?? '') | fig }}</strong></p>
+ 
+@@ -101,6 +101,22 @@ import { PlanStore } from '../plans/plans';
+             <p role="alert" data-testid="asof-error">{{ err | fig }}</p>
+           }
+         </form>
++        <p>Preview: <strong data-testid="sheet-preview">{{ (session.sheetPreview() ?? '') | fig }}</strong></p>
++        <form (submit)="setPreview($event)" aria-label="Preview the sheet on a date">
++          <label for="preview-date">Preview on</label>
++          <input
++            id="preview-date"
++            type="date"
++            data-testid="preview-date"
++            [value]="previewInput()"
++            (input)="previewInput.set(value($event)); previewError.set(null)"
++          />
++          <button type="submit" data-testid="preview-set">Set preview</button>
++          <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
++          @if (previewError(); as err) {
++            <p role="alert" data-testid="preview-error">{{ err | fig }}</p>
++          }
++        </form>
+         @if (todayError(); as err) {
+           <p role="alert" data-testid="sheet-error">{{ err | fig }}</p>
+         }
+@@ -161,6 +177,10 @@ export class Home {
+   // The as-of entry's own error: a date that is not one, or a sheet that could not be shown as of it.
+   protected readonly asOfError = signal<string | null>(null);
+ 
++  protected readonly previewInput = signal('');
++  // The preview entry's own error: a date that is not one, or a sheet that could not be previewed on it.
++  protected readonly previewError = signal<string | null>(null);
++
+   protected value(e: Event): string {
+     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+@@ -249,6 +269,30 @@ export class Home {
+     }
+   }
+ 
++  protected async setPreview(e: Event): Promise<void> {
++    e.preventDefault();
++    this.previewError.set(null);
++    const date = this.previewInput().trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.previewError.set('Enter a date as yyyy-mm-dd.');
++      return;
++    }
++    try {
++      await this.session.setPreview(date);
++    } catch {
++      this.previewError.set('Could not preview the sheet on that date.');
++    }
++  }
++
++  protected async clearPreview(): Promise<void> {
++    this.previewError.set(null);
++    try {
++      await this.session.setPreview(null);
++    } catch {
++      this.previewError.set('Could not show the sheet without a preview.');
++    }
++  }
++
+   protected async cloneSheet(e: Event): Promise<void> {
+     e.preventDefault();
+     this.todayError.set(null);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5575dd81..b4f6be91 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1886,7 +1886,7 @@ export class People {
+       refuse('Enter hold dates as yyyy-mm-dd.');
+       return;
+     }
+-    if (to && to < (from || this.session.sheetToday() || '')) {
++    if (to && to < (from || this.session.realToday() || '')) {
+       refuse('A hold cannot end before it starts.');
+       return;
+     }
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 838c9b63..c1d33cab 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -602,7 +602,7 @@ export class Periods {
+     this.genError.set(null);
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+-    const from = this.genFrom().trim() || (this.session.sheetToday() ?? '');
++    const from = this.genFrom().trim() || (this.session.realToday() ?? '');
+     const to = this.genTo().trim();
+     if (!DATE.test(from) || !DATE.test(to)) {
+       this.genError.set('Enter a from and a to date as yyyy-mm-dd.');
+@@ -774,7 +774,7 @@ export class Periods {
+       this.error.set('Enter a name.');
+       return;
+     }
+-    const from = this.from().trim() || (this.session.sheetToday() ?? '');
++    const from = this.from().trim() || (this.session.realToday() ?? '');
+     const to = this.to().trim();
+     if (!DATE.test(from) || !DATE.test(to)) {
+       this.error.set('Enter a from and a to date as yyyy-mm-dd.');
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index ea21adeb..1f985ce8 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -305,7 +305,7 @@ export class PersonPlans {
+       return;
+     }
+     // a blank start takes the sheet's today
+-    const start = this.start() || this.session.sheetToday() || '';
++    const start = this.start() || this.session.realToday() || '';
+     const end = this.end();
+     if (!start || !end) {
+       this.error.set('Enter a start date and an end date.');
+diff --git a/src/main/java/net/officefloor/hq/app/WebConfig.java b/src/main/java/net/officefloor/hq/app/WebConfig.java
+index c9939ace..a1823acb 100644
+--- a/src/main/java/net/officefloor/hq/app/WebConfig.java
++++ b/src/main/java/net/officefloor/hq/app/WebConfig.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app;
+ 
+ import net.officefloor.hq.app.asof.AsOfGuard;
++import net.officefloor.hq.app.preview.PreviewGuard;
+ import net.officefloor.hq.app.settings.ViewerGuard;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+@@ -8,22 +9,26 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ 
+ /**
+  * Guards the API: a screen showing a sheet as of a date is answered as of it and refused every change; a viewer, or
+- * anyone on an archived sheet, is refused every change.
++ * anyone on an archived sheet, is refused every change; a screen previewing a sheet on a date reads it as if that
++ * were its today.
+  */
+ @Configuration
+ public class WebConfig implements WebMvcConfigurer {
+ 
+     private final AsOfGuard asOfGuard;
+     private final ViewerGuard viewerGuard;
++    private final PreviewGuard previewGuard;
+ 
+-    public WebConfig(AsOfGuard asOfGuard, ViewerGuard viewerGuard) {
++    public WebConfig(AsOfGuard asOfGuard, ViewerGuard viewerGuard, PreviewGuard previewGuard) {
+         this.asOfGuard = asOfGuard;
+         this.viewerGuard = viewerGuard;
++        this.previewGuard = previewGuard;
+     }
+ 
+     @Override
+     public void addInterceptors(InterceptorRegistry registry) {
+         registry.addInterceptor(asOfGuard).addPathPatterns("/api/**");
+         registry.addInterceptor(viewerGuard).addPathPatterns("/api/**");
++        registry.addInterceptor(previewGuard).addPathPatterns("/api/**");
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/preview/PreviewContext.java b/src/main/java/net/officefloor/hq/app/preview/PreviewContext.java
+new file mode 100644
+index 00000000..be21df3e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/preview/PreviewContext.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app.preview;
++
++import java.time.LocalDate;
++
++/**
++ * The preview date the request in hand reads its sheet by: while a screen previews a sheet, what it reads is answered
++ * as if the sheet's today were that date (see {@link PreviewGuard}); otherwise none.
++ */
++public final class PreviewContext {
++
++    private record Preview(String sheetId, LocalDate day) {
++    }
++
++    private static final ThreadLocal<Preview> PREVIEW = new ThreadLocal<>();
++
++    private PreviewContext() {
++    }
++
++    static void enter(String sheetId, LocalDate day) {
++        PREVIEW.set(new Preview(sheetId, day));
++    }
++
++    static void leave() {
++        PREVIEW.remove();
++    }
++
++    /** The today the request reads the sheet by: the preview date for the previewed sheet, else its own today. */
++    public static LocalDate todayOf(String sheetId, LocalDate today) {
++        Preview p = PREVIEW.get();
++        return p != null && p.sheetId().equals(sheetId) ? p.day() : today;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/preview/PreviewGuard.java b/src/main/java/net/officefloor/hq/app/preview/PreviewGuard.java
+new file mode 100644
+index 00000000..08143a8f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/preview/PreviewGuard.java
+@@ -0,0 +1,45 @@
++package net.officefloor.hq.app.preview;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import net.officefloor.hq.app.settings.ViewerGuard;
++import org.springframework.http.HttpMethod;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Component;
++import org.springframework.web.server.ResponseStatusException;
++import org.springframework.web.servlet.HandlerInterceptor;
++
++/**
++ * A screen previewing a sheet on a date sends that date with each request ({@link #HEADER}). A read (a GET) is
++ * answered over the sheet's current records as if its today were the date; every change ignores it and uses the
++ * sheet's real today, so nothing is written by the preview.
++ */
++@Component
++public class PreviewGuard implements HandlerInterceptor {
++
++    /** The request header carrying the date the screen previews the sheet on (yyyy-mm-dd). */
++    public static final String HEADER = "X-Preview";
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        String header = request.getHeader(HEADER);
++        String sheetId = ViewerGuard.sheetId(request);
++        if (header == null || header.isBlank() || sheetId == null || !HttpMethod.GET.matches(request.getMethod())) {
++            return true;
++        }
++        try {
++            PreviewContext.enter(sheetId, LocalDate.parse(header.trim()));
++        } catch (DateTimeParseException e) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The preview date is not a date.");
++        }
++        return true;
++    }
++
++    @Override
++    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler,
++            Exception ex) {
++        PreviewContext.leave();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index f8128bc3..29c6d54c 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -47,10 +47,11 @@ public class RollupService {
+     /**
+      * One person's figures; a null due-total is n/a. The overdue-total sums their overdue claims' dues. The
+      * settled-total sums the figures of their counted settled claims that correct nothing, and the overdue count is how many of their counted
+-     * claims are overdue (whether or not they have a figure).
++     * claims are overdue (whether or not they have a figure). The held-total sums the parts they hold of others'
++     * shared claims (null when they hold none), which their due-total counts.
+      */
+     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+-            BigDecimal settledTotal, int overdueCount) {
++            BigDecimal settledTotal, int overdueCount, BigDecimal heldTotal) {
+ 
+         /**
+          * The person's score: their settled-total divided by 100, minus 5 for each of their overdue claims, rounded
+@@ -252,9 +253,11 @@ public class RollupService {
+                 }
+             }
+             // the parts the person holds of others' claims count as figures of theirs
++            BigDecimal held = partsBy.containsKey(p.getId()) ? ZERO : null;
+             for (Part part : partsBy.getOrDefault(p.getId(), List.of())) {
+                 kept = true;
+                 due = due.add(part.figure());
++                held = held.add(part.figure());
+                 if (part.claim().getStatus() == ClaimStatus.SETTLED && part.claim().getCorrects() == null) {
+                     settled = settled.add(part.figure());
+                 }
+@@ -269,7 +272,7 @@ public class RollupService {
+             if (sheet != null) {
+                 due = sheet.capped(due, cutTotals.get(p.getId()));
+             }
+-            figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount));
++            figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount, held));
+             claimedTotal = claimedTotal.add(claimed);
+             overdues.add(overdue);
+             if (due != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 9b974378..885528b5 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -20,6 +20,7 @@ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
++import net.officefloor.hq.app.preview.PreviewContext;
+ 
+ /** A sheet, chosen by its id. Everything else in the app is kept per sheet. */
+ @Entity
+@@ -213,8 +214,9 @@ public class Sheet {
+         return lastSettleBatch;
+     }
+ 
++    /** The sheet's today; a read previewing the sheet on a date takes that date instead (see {@link PreviewContext}). */
+     public LocalDate getToday() {
+-        return today;
++        return PreviewContext.todayOf(id, today);
+     }
+ 
+     public void setToday(LocalDate today) {
+@@ -289,7 +291,7 @@ public class Sheet {
+ 
+     /** The most a clerk may settle a claim for, in force on the sheet's today; null means no limit. */
+     public BigDecimal getClerkLimit() {
+-        return inForce(CLERK_LIMIT, today).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
++        return inForce(CLERK_LIMIT, getToday()).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+     }
+ 
+     /**
+@@ -298,7 +300,7 @@ public class Sheet {
+      */
+     public BigDecimal clerkLimitFor(String grade) {
+         if (grade != null) {
+-            String own = inForce(CLERK_LIMIT + "-" + grade, today).map(DatedSetting::getValue).orElse(null);
++            String own = inForce(CLERK_LIMIT + "-" + grade, getToday()).map(DatedSetting::getValue).orElse(null);
+             if (own != null) {
+                 return new BigDecimal(own);
+             }
+@@ -347,7 +349,7 @@ public class Sheet {
+ 
+     /** The most a person's due-total can be, in force on the sheet's today; null means no cap. */
+     public BigDecimal getCap() {
+-        return inForce(CAP, today).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
++        return inForce(CAP, getToday()).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+     }
+ 
+     /**
+@@ -606,7 +608,7 @@ public class Sheet {
+         if (mode.isPresent()) {
+             return HALF_UP.equals(mode.get()) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+         }
+-        LocalDate policy = policyDate != null ? policyDate : today;
++        LocalDate policy = policyDate != null ? policyDate : getToday();
+         return policy != null && roundsOn.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 2f1a80a0..08e4173e 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -89,7 +89,8 @@ public class StatementService {
+ 
+     /**
+      * Takes a statement for the person: records their due-total now (late charges included) and binds each of their claims that counts to
+-     * the due it shows now, late charge included (one already bound keeps its bound due); a claim that does not count (as an open one dated within a hold, or a deferred one) is freed (live again).
++     * the due it shows now, late charge included (one already bound keeps its bound due), and counts the parts they
++     * hold of others' shared claims; a claim that does not count (as an open one dated within a hold, or a deferred one) is freed (live again).
+      */
+     @Transactional
+     public Summary take(String by, String sheetId, Long personId) {
+@@ -121,6 +122,12 @@ public class StatementService {
+                 total = total.add(due);
+             }
+         }
++        // the parts the person holds of others' shared claims count, as on screen
++        RollupService.Figures figures = before.people().get(personId);
++        if (figures != null && figures.heldTotal() != null) {
++            kept = true;
++            total = total.add(figures.heldTotal());
++        }
+         claims.flush();
+         // as on screen: with no rate in force today for any of those grades and no claim with a figure, the due-total
+         // is n/a
