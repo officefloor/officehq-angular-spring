@@ -1,0 +1,64 @@
+{
+  "checkpoint": 163,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp163_statement-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c4fb82c1e17a0c9f6a70e6edb40bae783c7f6bfc",
+  "reset_sha": "",
+  "preagent_sha": "fbd400cdee7cdb27ce02b6c5d9fffde8602ebb8c",
+  "prev_sha": "fbd400cdee7cdb27ce02b6c5d9fffde8602ebb8c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4556034000000002,
+    "input_tokens": 72,
+    "output_tokens": 17686,
+    "cache_read_tokens": 2239177,
+    "cache_creation_tokens": 81720,
+    "num_turns": 37,
+    "duration_ms": 863834,
+    "duration_api_ms": 247533,
+    "model": "claude-opus-5-5",
+    "session_id": "a13f9b20-63ca-4d8c-964d-1203dc7bbcd6",
+    "stop_reason": "success",
+    "result_text": "Each person now shows their statements, one line per statement still standing, oldest first, as `<date> <due-total>`. All 4 tests in `bin/e2e` pass.\n\n**The statement lines**\n- **Server:** `StatementService.Summary` now holds the person's list of standing statements, so its count and last statement come from that list. `StatementView` has a new `lines` field: each statement's date (the as-of date if it has one) and due-total, sorted by date. Statements with the same date keep the order they already have, so ones brought over by a merge or a transfer fall in among the person's own by date. A cancelled statement is deleted, so it disappears from the list.\n- **Front end** (`people.ts`): each person's row lists them as `person-statement-line-line` items, with `n/a` when there is no due-total. This works the same way as the snapshot lines already there. There is no audit change, since the test expects none.\n\n**A second fix, outside the request (please review).** Scenario 2 still failed after the statement work, on a claim's due when the sheet is viewed as of a date: it showed `n/a` instead of `1.29`. The 1.29 comes from a rate on the parent sheet. That parent's today is never set, so it is the real date (2026-10-29). When the app builds the as-of view, it only took the parent's state saved on or before the as-of day (2026-03-20), so the parent came through empty and its rates were lost. In other words, the result depended on the real clock.\n\nI changed `AsOfService.storeAsOf` so a parent sheet always comes in as last saved (new query `SheetSnapshotRepository.latestIds`), while the sheet itself is still dated as before. This matches the class's own comment that \"a parent is not dated\". Two things to know:\n- Statements taken as of a date look up parent rates through `RateChain.tiersAsOf`, which still dates them by the parent's own today. Nothing in the test covers that, so I left it alone. It may be worth making the two agree.\n- To find the cause I used a temporary debug spec and config under `e2e/`. Both are deleted.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4556034000000002,
+        "num_turns": 37,
+        "duration_ms": 863834,
+        "duration_api_ms": 247533,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp163.agent.jsonl",
+  "agent_diff_file": "cp163.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

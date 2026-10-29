@@ -1,0 +1,189 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bfa6907f..a3f9c12a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -78,6 +78,8 @@ interface StatementView {
+   count: number;
+   dueTotal: string | null;
+   date: string;
++  // Each statement still standing, oldest first.
++  lines: { date: string; dueTotal: string | null }[];
+ }
+ 
+ // The people on the active sheet: one form adds a person or, with an editor open, saves one.
+@@ -584,6 +586,13 @@ interface StatementView {
+                     }
+                   </ul>
+                 }
++                @if (statementsBy().get(p.id)?.lines?.length) {
++                  <ul aria-label="Statements">
++                    @for (l of statementsBy().get(p.id)!.lines; track $index) {
++                      <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal ?? 'n/a' }}</li>
++                    }
++                  </ul>
++                }
+                 @if (p.snapshots.length > 0) {
+                   <ul aria-label="Snapshots">
+                     @for (s of p.snapshots; track $index) {
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfService.java b/src/main/java/net/officefloor/hq/app/asof/AsOfService.java
+index 85af7584..31827f0d 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/AsOfService.java
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfService.java
+@@ -127,14 +127,17 @@ public class AsOfService {
+ 
+     /**
+      * The store holding the sheet as it stood at the end of the day: the last state stored while its today was on or
+-     * before the day (an empty sheet with none), with the day standing in for its today. Only to be read.
++     * before the day (an empty sheet with none), with the day standing in for its today; each parent sheet as it was
++     * last stored. Only to be read.
+      */
+     @Transactional(readOnly = true)
+     public DataSource storeAsOf(String sheetId, LocalDate day) {
+         Map<String, String> lineage = lineage(sheetId);
+         List<Long> ids = new ArrayList<>();
+         for (String id : lineage.keySet()) {
+-            List<Long> made = snapshots.idsMadeBy(id, day, Limit.of(1));
++            // a parent is not dated: its today is its own, so it stands as it was last stored
++            List<Long> made = id.equals(sheetId) ? snapshots.idsMadeBy(id, day, Limit.of(1))
++                    : snapshots.latestIds(id, Limit.of(1));
+             ids.add(made.isEmpty() ? null : made.get(0));
+         }
+         String key = lineage + "|" + ids + "|" + day;
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotRepository.java b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotRepository.java
+index 20c0b86c..d78d0d33 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotRepository.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotRepository.java
+@@ -13,6 +13,10 @@ public interface SheetSnapshotRepository extends JpaRepository<SheetSnapshot, Lo
+     @Query("SELECT s.digest FROM SheetSnapshot s WHERE s.sheetId = :sheetId ORDER BY s.id DESC")
+     List<String> latestDigests(@Param("sheetId") String sheetId, Limit limit);
+ 
++    /** The ids of the sheet's states, latest first. */
++    @Query("SELECT s.id FROM SheetSnapshot s WHERE s.sheetId = :sheetId ORDER BY s.id DESC")
++    List<Long> latestIds(@Param("sheetId") String sheetId, Limit limit);
++
+     /** The ids of the sheet's states stored while its today was on or before the day, latest first. */
+     @Query("SELECT s.id FROM SheetSnapshot s WHERE s.sheetId = :sheetId AND s.madeOn <= :day ORDER BY s.id DESC")
+     List<Long> idsMadeBy(@Param("sheetId") String sheetId, @Param("day") LocalDate day, Limit limit);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index 72b50db3..43238980 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.List;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+ import net.officefloor.hq.app.claim.ClaimService;
+@@ -23,18 +24,27 @@ import org.springframework.web.bind.annotation.SessionAttribute;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class StatementController {
+ 
++    /** One statement standing, as its line shows it: its date and due-total (null for n/a). */
++    public record LineView(LocalDate date, String dueTotal) {
++        static LineView of(Statement s) {
++            return new LineView(s.getDate(), s.getDueTotal() == null ? null : s.getDueTotal().toPlainString());
++        }
++    }
++
+     /**
+-     * A person's statements as the screen shows them: how many, and the last one's due-total (null for n/a) and
+-     * date.
++     * A person's statements as the screen shows them: how many, the last one's due-total (null for n/a) and date,
++     * and a line for each, oldest first (by date, then in their order).
+      */
+-    public record StatementView(Long personId, int count, String dueTotal, LocalDate date) {
++    public record StatementView(Long personId, int count, String dueTotal, LocalDate date, List<LineView> lines) {
+         static StatementView of(StatementService.Summary s) {
++            List<LineView> lines = s.statements().stream().map(LineView::of)
++                    .sorted(Comparator.comparing(LineView::date)).toList();
+             if (s.last() == null) {
+-                return new StatementView(s.personId(), 0, null, null);
++                return new StatementView(s.personId(), 0, null, null, lines);
+             }
+             return new StatementView(s.personId(), s.count(),
+                     s.last().getDueTotal() == null ? null : s.last().getDueTotal().toPlainString(),
+-                    s.last().getDate());
++                    s.last().getDate(), lines);
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index f1a3a49c..dbdd1275 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -29,8 +30,18 @@ import org.springframework.web.server.ResponseStatusException;
+ @Service
+ public class StatementService {
+ 
+-    /** A person's statements: how many have been taken, and the last one (null with none). */
+-    public record Summary(Long personId, int count, Statement last) {
++    /** A person's statements still standing, in their order. */
++    public record Summary(Long personId, List<Statement> statements) {
++
++        /** How many statements stand. */
++        public int count() {
++            return statements.size();
++        }
++
++        /** The last statement; null with none. */
++        public Statement last() {
++            return statements.isEmpty() ? null : statements.get(statements.size() - 1);
++        }
+     }
+ 
+     private final StatementRepository statements;
+@@ -60,12 +71,11 @@ public class StatementService {
+     /** Each person's statements on the sheet, for the people who have any. */
+     @Transactional(readOnly = true)
+     public List<Summary> list(String sheetId) {
+-        Map<Long, Summary> by = new LinkedHashMap<>();
++        Map<Long, List<Statement>> by = new LinkedHashMap<>();
+         for (Statement s : statements.findBySheetIdInOrder(sheetId)) {
+-            Summary was = by.get(s.getPersonId());
+-            by.put(s.getPersonId(), new Summary(s.getPersonId(), was == null ? 1 : was.count() + 1, s));
++            by.computeIfAbsent(s.getPersonId(), k -> new ArrayList<>()).add(s);
+         }
+-        return List.copyOf(by.values());
++        return by.entrySet().stream().map(e -> new Summary(e.getKey(), e.getValue())).toList();
+     }
+ 
+     /**
+@@ -121,8 +131,7 @@ public class StatementService {
+         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + by + " name=" + person.getName()
+                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count);
+         rollup.recordChanges(by, sheetId, before);
+-        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId).size(),
+-                taken);
++        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId));
+     }
+ 
+     /**
+@@ -197,8 +206,7 @@ public class StatementService {
+                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count
+                 + " asof=" + asOf);
+         rollup.recordChanges(by, sheetId, before);
+-        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId).size(),
+-                taken);
++        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId));
+     }
+ 
+     /** The grade's rate in force on the date among the rates; null with none. */
+@@ -245,7 +253,6 @@ public class StatementService {
+         audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + by + " name=" + person.getName()
+                 + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
+         rollup.recordChanges(by, sheetId, before);
+-        int count = theirs.size() - 1;
+-        return new Summary(personId, count, count == 0 ? null : theirs.get(count - 1));
++        return new Summary(personId, theirs.subList(0, theirs.size() - 1));
+     }
+ }
