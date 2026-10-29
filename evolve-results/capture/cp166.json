@@ -1,0 +1,64 @@
+{
+  "checkpoint": 166,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp166_crews",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has crews: a name (unique, not blank) and a lead chosen from the people, from a form\n(CREW_ADDED name=<name> lead=<person>); members added from the crew's row (CREW_MEMBER_ADDED\ncrew=<crew> name=<person>; the lead, or a person already in the crew, is refused with an error on\nthe crew). Show for each crew its lead and its due-total: the lead's and the members' due-totals\nadded up, n/a skipped.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has crews: a name (unique, not blank) and a lead chosen from the people, from a form\n(CREW_ADDED name=<name> lead=<person>); members added from the crew's row (CREW_MEMBER_ADDED\ncrew=<crew> name=<person>; the lead, or a person already in the crew, is refused with an error on\nthe crew). Show for each crew its lead and its due-total: the lead's and the members' due-totals\nadded up, n/a skipped.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2de120b114f9bcb052350717742148b79a0bdc98",
+  "reset_sha": "",
+  "preagent_sha": "68f245de20e7d30cec7e7aafccb770ce0a870921",
+  "prev_sha": "68f245de20e7d30cec7e7aafccb770ce0a870921",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5541174000000002,
+    "input_tokens": 58,
+    "output_tokens": 19994,
+    "cache_read_tokens": 1841827,
+    "cache_creation_tokens": 98205,
+    "num_turns": 31,
+    "duration_ms": 455255,
+    "duration_api_ms": 170431,
+    "model": "claude-opus-5-5",
+    "session_id": "88383564-6cbe-4b22-adc5-5f64cd84480d",
+    "stop_reason": "success",
+    "result_text": "I've added crews to the sheet, and all 4 Playwright tests now pass in `bin/e2e`.\n\n**What it does**\n- **Adding a crew:** a form takes a name and a lead picked from the sheet's people. A blank name, a name already used by a crew, or no lead is refused and the form shows `crew-form-error`. Otherwise it writes `CREW_ADDED \u2026 name=<name> lead=<person>` to the audit file.\n- **Adding members:** each crew's row has a person picker and an add button. Picking the crew's lead, or someone already in the crew, is refused and the row shows `crew-error`. Otherwise it writes `CREW_MEMBER_ADDED \u2026 crew=<crew> name=<person>`.\n- **What each row shows:** the lead (`crew-lead`), the members (`crew-member-line`), and the due-total (`crew-due-total`). The due-total adds up the lead's and members' due-totals as the people list shows them, skipping n/a. It updates as those figures change, including holds and the sheet's cap.\n- **Checks on both sides:** the rules are checked in the browser and again on the server. A refused action writes nothing to the store or the audit file.\n\n**How it's built**\n- **Server:** a new migration, `V89__crew.sql`, adds two tables (`crew`, `crew_member`). There is a new `crew` package with the entities, a service and a REST controller at `/api/sheets/{id}/crews`, built the same way as pools.\n- **Front end:** a new `features/crews/crews.ts` component sits on the home screen after Pools. The people list now passes its people and due-totals to it.\n\n**Beyond the request:** without these, merging, transferring or cloning would fail or lose crews, because crews point at people. None of the tests cover them:\n- **Merge:** the merged person's crews and memberships pass to the person they're merged into. A membership is dropped if that person already has it or leads the crew.\n- **Transfer:** when someone moves to another sheet, their memberships are dropped, and so is any crew they lead, along with its members. That deletes crew data, so tell me if you'd rather it worked differently (for example, refusing the transfer).\n- **Clone:** cloning a sheet copies its crews and their members.\n\nNothing here is committed; there's no git repository in this folder.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5541174000000002,
+        "num_turns": 31,
+        "duration_ms": 455255,
+        "duration_api_ms": 170431,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp166.agent.jsonl",
+  "agent_diff_file": "cp166.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
