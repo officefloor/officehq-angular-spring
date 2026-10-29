@@ -1,0 +1,64 @@
+{
+  "checkpoint": 234,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp234_tree-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "553a527b8d6f566ea5e3147a75b4e5d512b199b8",
+  "reset_sha": "",
+  "preagent_sha": "fc83e3b484271ed96b0b5ad486824112b43ac919",
+  "prev_sha": "fc83e3b484271ed96b0b5ad486824112b43ac919",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7057522,
+    "input_tokens": 40,
+    "output_tokens": 7438,
+    "cache_read_tokens": 803121,
+    "cache_creation_tokens": 49526,
+    "num_turns": 20,
+    "duration_ms": 376907,
+    "duration_api_ms": 98523,
+    "model": "claude-opus-5-5",
+    "session_id": "0138fa28-0d76-4f97-b32e-6fd1ee5d2bdf",
+    "stop_reason": "success",
+    "result_text": "The new **Export tree people (CSV)** button (`data-testid=\"export-tree\"`) is in, and `bin/e2e` passes: all 4 tests, the new \"tree export\" test and the 3 existing scenarios. After that run I only moved a comment, and the front end still builds without errors.\n\n**What it does:** it downloads `tree.csv`. The header is `sheet,name,grade,due-total`, then this sheet's people in list order, then the people of every other sheet in the tree, ordered by sheet id. \"The whole tree\" means the topmost parent of the current sheet plus everything below it. So exporting from a child sheet also lists its parent and that parent's other children.\n\n**Server:**\n- In `RollupService.java`, a new `treePeople(sheetId)` finds the top of the tree by following parents (it stops if the parents loop back on themselves). It then gathers every sheet below that top, drops the current sheet and sorts the rest by id. For each person it returns the sheet, name, grade today and due-total, using the same calculation as the consolidated figures. A due-total that can't be worked out comes back as `null` and is written as `n/a`.\n- A new `TreeController.java` serves this at `GET /api/sheets/{sheetId}/tree/people`.\n\n**Front end (`people.ts`):** the button sits next to the other export buttons. Its `exportTree()` writes this sheet's rows the same way the existing people export does, then adds the other sheets' rows from the server.\n\nTwo choices the request didn't spell out:\n- **This sheet's rows** use the figures on screen; **the other sheets' rows** use what is stored now. If you're viewing the sheet as of a past date, the file mixes that date's figures for this sheet with current figures for the others.\n- **Retired people are included**, as the existing people export does.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7057522,
+        "num_turns": 20,
+        "duration_ms": 376907,
+        "duration_api_ms": 98523,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp234.agent.jsonl",
+  "agent_diff_file": "cp234.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

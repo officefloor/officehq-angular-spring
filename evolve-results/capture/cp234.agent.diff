@@ -1,0 +1,146 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 833fd7b0..4173eef4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -89,6 +89,14 @@ interface StatementView {
+   lines: { date: string; dueTotal: string | null }[];
+ }
+ 
++// One person of another sheet of the tree, as the store holds them: due-total null for n/a.
++interface TreePerson {
++  sheet: string;
++  name: string;
++  grade: string | null;
++  dueTotal: string | null;
++}
++
+ // The people on the active sheet: one form adds a person or, with an editor open, saves one.
+ @Component({
+   selector: 'app-people',
+@@ -298,6 +306,7 @@ interface StatementView {
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
++      <button type="button" data-testid="export-tree" (click)="exportTree()">Export tree people (CSV)</button>
+ 
+       <fieldset>
+         <legend>Compare snapshots</legend>
+@@ -2071,6 +2080,28 @@ export class People {
+     this.downloadCsv('people.csv', lines);
+   }
+ 
++  /**
++   * Downloads the people of the sheet's whole tree as a CSV file: this sheet's people first, in list order, as the
++   * screen shows them, then the other sheets' people, sheets by id, as the store holds them.
++   */
++  protected async exportTree(): Promise<void> {
++    await this.session.settled();
++    const id = this.session.sheetId();
++    if (!id) return;
++    const due = this.dueBy();
++    const lines = [['sheet', 'name', 'grade', 'due-total']];
++    for (const p of this.people()) {
++      lines.push([id, p.name, this.gradeToday(p), due.get(p.id) ?? 'n/a']);
++    }
++    const others = await firstValueFrom(
++      this.http.get<TreePerson[]>(`/api/sheets/${encodeURIComponent(id)}/tree/people`),
++    );
++    for (const o of others) {
++      lines.push([o.sheet, o.name, o.grade ?? '', o.dueTotal ?? 'n/a']);
++    }
++    this.downloadCsv('tree.csv', lines);
++  }
++
+   /**
+    * Downloads every claim as a CSV file: people in list order, retired ones included, each person's claims
+    * oldest first, with the figures as the claims list shows them.
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 29c6d54c..068b5adb 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -363,6 +363,41 @@ public class RollupService {
+         return ids;
+     }
+ 
++    /** One person of a sheet of the tree as the tree export lists them: the sheet, name, grade today and due-total. */
++    public record TreePerson(String sheet, String name, String grade, BigDecimal dueTotal) {
++    }
++
++    /**
++     * The people of the other sheets of the sheet's whole tree (its topmost ancestor and every descendant of that, the
++     * sheet itself left out), sheets by id and each sheet's people in list order, as the store holds them now.
++     */
++    @Transactional(readOnly = true)
++    public List<TreePerson> treePeople(String sheetId) {
++        String root = sheetId;
++        Set<String> seen = new HashSet<>(Set.of(root));
++        for (String up = parentOf(root); up != null && seen.add(up); up = parentOf(up)) {
++            root = up;
++        }
++        List<String> tree = new ArrayList<>(List.of(root));
++        tree.addAll(descendantIds(root));
++        tree.remove(sheetId);
++        Collections.sort(tree);
++        List<TreePerson> rows = new ArrayList<>();
++        for (String id : tree) {
++            Snapshot s = snapshot(id);
++            LocalDate today = sheets.findById(id).map(Sheet::getToday).orElse(null);
++            for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
++                Figures f = s.people().get(p.getId());
++                rows.add(new TreePerson(id, p.getName(), p.gradeOn(today), f == null ? null : f.dueTotal()));
++            }
++        }
++        return rows;
++    }
++
++    private String parentOf(String sheetId) {
++        return sheets.findById(sheetId).map(Sheet::getParentId).orElse(null);
++    }
++
+     /**
+      * The consolidated figures as of the day: the sheet and each of its descendants (as linked now), each as it stood at
+      * the end of the day with the day as its today (see {@link AsOfService#storeAsOf}), added up.
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeController.java b/src/main/java/net/officefloor/hq/app/rollup/TreeController.java
+new file mode 100644
+index 00000000..b407ad2c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeController.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The people of the other sheets of a sheet's whole tree, which the screen adds after its own for the tree export. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/tree")
++public class TreeController {
++
++    /** One person of another sheet of the tree: the sheet, name, grade today and due-total (null for n/a). */
++    public record TreePersonView(String sheet, String name, String grade, String dueTotal) {
++        static TreePersonView of(RollupService.TreePerson p) {
++            return new TreePersonView(p.sheet(), p.name(), p.grade(),
++                    p.dueTotal() == null ? null : p.dueTotal().toPlainString());
++        }
++    }
++
++    private final RollupService service;
++
++    public TreeController(RollupService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/people")
++    public List<TreePersonView> people(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
++        return service.treePeople(sheetId).stream().map(TreePersonView::of).toList();
++    }
++}
