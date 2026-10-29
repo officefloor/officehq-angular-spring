@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index b7928bc0..9a55eb9a 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -172,17 +172,21 @@ export function keepsFigure(c: Claim): boolean {
+   return c.settledDue !== null || (isBound(c) && c.statedDue !== null);
+ }
+ 
+-/** Whether the claim was deferred until a date after the sheet's today, whatever its status: as the row shows it. */
++/**
++ * Whether the claim was deferred until a date after the sheet's today, whatever its status, and no statement binds
++ * it (the deferral waits for the binding to end): as the row shows it.
++ */
+ export function deferredUntilAfter(c: Claim, today: string | null): boolean {
+-  return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++  return !isBound(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+ }
+ 
+ /**
+- * Whether a claim is deferred: OPEN and deferred until a date after the sheet's today. Until today reaches that
+- * date it counts in no total, is not overdue and cannot be settled; from then on it is an OPEN claim like any other.
++ * Whether a claim is deferred: deferred until a date after the sheet's today, bound by no statement, and counting
++ * (OPEN, or settled while a statement bound it). Until today reaches that date it counts in no total, is not
++ * overdue and cannot be settled; from then on it is a claim like any other.
+  */
+ export function deferred(c: Claim, today: string | null): boolean {
+-  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++  return counts(c) && deferredUntilAfter(c, today);
+ }
+ 
+ /** Whether a claim's late charge is waived on the date: waived on or before it, so it bears no late charge. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 913e5827..13331cbf 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -318,21 +318,23 @@ public class Claim {
+     }
+ 
+     /**
+-     * Whether the claim was deferred at the end of the day: OPEN then, deferred while the sheet's today was on or
++     * Whether the claim was deferred at the end of the day, binding aside: counting then, deferred while the sheet's today was on or
+      * before the day, until a date after it.
+      */
+     public boolean isDeferredAsOf(LocalDate day) {
+-        return statusAtEndOf(day) == ClaimStatus.OPEN && deferredUntil != null
++        ClaimStatus then = statusAtEndOf(day);
++        return then != null && then.counts() && deferredUntil != null
+                 && (deferredOn == null || !deferredOn.isAfter(day)) && day.isBefore(deferredUntil);
+     }
+ 
+     /**
+-     * Whether the claim is deferred on the date: OPEN and deferred until a date after it. A deferred claim counts in
+-     * no total, is not overdue, cannot be settled and is left unbound by a statement; from its date on it is an OPEN
+-     * claim like any other.
++     * Whether the claim is deferred on the date: deferred until a date after it and bound by no statement, and OPEN
++     * (or, when settled while a statement bound it, still counting). A deferred claim counts in no total, is not
++     * overdue, cannot be settled and is left unbound by a statement; from its date on it is a claim like any other.
++     * While a statement binds it the deferral waits: it takes effect once the binding ends.
+      */
+     public boolean isDeferredOn(LocalDate today) {
+-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
++        return status.counts() && !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+     }
+ 
+     public boolean isLateEntry() {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 08e4173e..88143655 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -177,7 +177,7 @@ public class StatementService {
+         for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
+             ClaimStatus status = c.statusAtEndOf(asOf);
+             boolean bound = bindingCounts && c.isStated();
+-            boolean counts = status != null && status.counts() && !c.isDeferredAsOf(asOf)
++            boolean counts = status != null && status.counts() && !(c.isDeferredAsOf(asOf) && !bound)
+                     && !(status.isOpen() && !bound && person.isRetiredOn(asOf));
+             if (!counts) {
+                 c.unbind();
