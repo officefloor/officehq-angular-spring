@@ -1,0 +1,147 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 6dfb1866..7d2a69c7 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -25,7 +25,7 @@ export interface CrewView {
+ // the crews list holds them now.
+ @Injectable({ providedIn: 'root' })
+ export class CrewRoster {
+-  readonly people = signal<readonly { id: number; name: string }[]>([]);
++  readonly people = signal<readonly { id: number; name: string; label: string }[]>([]);
+   readonly dueBy = signal<ReadonlyMap<number, string | null>>(new Map());
+   readonly crews = signal<readonly CrewView[]>([]);
+ }
+@@ -119,10 +119,11 @@ export class Crews {
+   // Each crew with its lead's and members' names as the people list has them now, and its due-total.
+   protected readonly shown = computed(() => {
+     const names = new Map(this.roster.people().map((p) => [p.id, p.name]));
++    const labels = new Map(this.roster.people().map((p) => [p.id, p.label]));
+     const due = this.roster.dueBy();
+     return this.crews().map((c) => ({
+       ...c,
+-      leadName: (c.leadId === null ? undefined : names.get(c.leadId)) ?? c.leadName,
++      leadName: (c.leadId === null ? undefined : labels.get(c.leadId)) ?? c.leadName,
+       members: c.members.map((m) => ({ ...m, name: names.get(m.personId) ?? m.name })),
+       dueTotal: crewDueTotal(c, due),
+     }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 880ec7ab..f3d88d25 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -492,7 +492,7 @@ interface StatementView {
+                   (change)="selectPerson(p.id, checked($event))"
+                 />
+               </td>
+-              <td data-testid="person-name">{{ p.name | fig }}</td>
++              <td data-testid="person-name">{{ nameWithGrade(p) | fig }}</td>
+               <td data-testid="person-grade">{{ gradeToday(p) | fig }}</td>
+               @if (columns.shown('terms')) {
+                 <td data-testid="person-terms">{{ (p.terms ?? '') | fig }}</td>
+@@ -1163,14 +1163,14 @@ export class People {
+   // Each person's patrons as "<name> <share>", sorted by name and comma separated; a person with none is not in
+   // the map.
+   protected readonly patronNamesBy = computed(() => {
+-    const names = new Map(this.people().map((p) => [p.id, p.name]));
++    const byId = new Map(this.people().map((p) => [p.id, p]));
+     const by = new Map<number, string>();
+     for (const [id, list] of this.patronSharesBy()) {
+       const named = list
+-        .filter((r) => names.has(r.patronId))
+-        .map((r) => ({ name: names.get(r.patronId)!, share: r.share }))
++        .filter((r) => byId.has(r.patronId))
++        .map((r) => ({ name: byId.get(r.patronId)!.name, label: this.nameWithGrade(byId.get(r.patronId)!), share: r.share }))
+         .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+-      by.set(id, named.map((r) => `${r.name} ${r.share}`).join(', '));
++      by.set(id, named.map((r) => `${r.label} ${r.share}`).join(', '));
+     }
+     return by;
+   });
+@@ -1282,7 +1282,7 @@ export class People {
+     });
+     // The crews offer these people, and add up their due-totals as the list shows them.
+     effect(() => {
+-      const list = this.people().map((p) => ({ id: p.id, name: p.name }));
++      const list = this.people().map((p) => ({ id: p.id, name: p.name, label: this.nameWithGrade(p) }));
+       const due = this.dueBy();
+       untracked(() => {
+         this.crewRoster.people.set(list);
+@@ -1878,6 +1878,11 @@ export class People {
+     return gradeOn(p.grades, this.session.sheetToday());
+   }
+ 
++  /** The person's name as the screen shows it: with the grade in force on the sheet's today. */
++  protected nameWithGrade(p: Person): string {
++    return `${p.name} (${this.gradeToday(p)})`;
++  }
++
+   protected edit(p: Person): void {
+     this.clearRowErrors(p.id);
+     this.editingId.set(p.id);
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+index 0b17b421..4da5e2ec 100644
+--- a/src/main/frontend/src/app/features/tree-search/tree-search.ts
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -9,6 +9,7 @@ import { Session } from '../../core/session';
+ interface Found {
+   sheetId: string;
+   name: string;
++  grade: string | null;
+   dueTotal: string;
+ }
+ 
+@@ -37,7 +38,7 @@ interface Found {
+       <p>Found: <strong data-testid="search-count">{{ (count() ?? '') | fig }}</strong></p>
+       <ol aria-label="Found people">
+         @for (f of found(); track $index) {
+-          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} {{ f.dueTotal }}</li>
++          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} ({{ f.grade ?? '' }}) {{ f.dueTotal }}</li>
+         }
+       </ol>
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 6af1f9db..77592d9b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -383,10 +383,10 @@ public class PersonController {
+     }
+ 
+     /** The ids of the people on the sheet the signed-in user watches, in the order they started watching. */
+-    /** A person found by a tree search: their sheet, name and due-total (two decimals, or n/a). */
+-    public record FoundView(String sheetId, String name, String dueTotal) {
++    /** A person found by a tree search: their sheet, name, grade in force today and due-total (two decimals, or n/a). */
++    public record FoundView(String sheetId, String name, String grade, String dueTotal) {
+         static FoundView of(PersonService.Found f) {
+-            return new FoundView(f.sheetId(), f.name(), f.dueTotal() == null ? "n/a" : f.dueTotal().toPlainString());
++            return new FoundView(f.sheetId(), f.name(), f.grade(), f.dueTotal() == null ? "n/a" : f.dueTotal().toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 27ec972c..5353dcc2 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -493,8 +493,8 @@ public class PersonService {
+         return clashing;
+     }
+ 
+-    /** A person found by a tree search: their sheet, their name and their due-total (null: n/a). */
+-    public record Found(String sheetId, String name, BigDecimal dueTotal) {
++    /** A person found by a tree search: their sheet, name, grade on that sheet's today and due-total (null: n/a). */
++    public record Found(String sheetId, String name, String grade, BigDecimal dueTotal) {
+     }
+ 
+     /**
+@@ -509,11 +509,12 @@ public class PersonService {
+         List<Found> found = new ArrayList<>();
+         for (String id : sheetIds) {
+             Map<Long, RollupService.Figures> figures = rollup.snapshot(id).people();
++            LocalDate today = today(id);
+             for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                 if (p.getName().toLowerCase(Locale.ROOT).contains(wanted)
+                         || p.getAliases().stream().anyMatch(a -> a.toLowerCase(Locale.ROOT).contains(wanted))) {
+                     RollupService.Figures f = figures.get(p.getId());
+-                    found.add(new Found(id, p.getName(), f == null ? null : f.dueTotal()));
++                    found.add(new Found(id, p.getName(), p.gradeOn(today), f == null ? null : f.dueTotal()));
+                 }
+             }
+         }
