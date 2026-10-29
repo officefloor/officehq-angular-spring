@@ -120,6 +120,13 @@ public class Sheet {
     @Column(name = "score_high")
     private Integer scoreHigh;
 
+    /**
+     * Whether changing the sheet's today writes a SCORE line per person with their score on the day being left. False
+     * (blank) for off. Not dated.
+     */
+    @Column(name = "score_log", nullable = false)
+    private boolean scoreLog;
+
     /** The pot shared among the members of each balanced pool by their shares. Null (blank) for none. Not dated. */
     @Column(name = "pot")
     private BigDecimal pot;
@@ -231,6 +238,7 @@ public class Sheet {
         then.reviewSla = reviewSla;
         then.scoreMid = scoreMid;
         then.scoreHigh = scoreHigh;
+        then.scoreLog = scoreLog;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
         then.pot = pot;
@@ -432,6 +440,14 @@ public class Sheet {
 
     public void setScoreHigh(Integer scoreHigh) {
         this.scoreHigh = scoreHigh;
+    }
+
+    public boolean isScoreLog() {
+        return scoreLog;
+    }
+
+    public void setScoreLog(boolean scoreLog) {
+        this.scoreLog = scoreLog;
     }
 
     public Integer getReviewSla() {

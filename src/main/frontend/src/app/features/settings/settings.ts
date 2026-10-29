@@ -32,6 +32,8 @@ interface SettingsView {
   // else LOW; null when blank: none.
   scoreMid: number | null;
   scoreHigh: number | null;
+  // The score log switch: while on, changing the sheet's today writes a SCORE line per person; null when blank: off.
+  scoreLog: string | null;
   // The proof kinds (receipt, photo) a claim above its proof threshold needs one proof of each of, comma separated;
   // null when blank: none.
   proofKinds: string | null;
@@ -189,6 +191,8 @@ export class SettingsStore {
   readonly scoreMid = signal<number | null>(null);
   /** The high score threshold as set; null when blank (none). */
   readonly scoreHigh = signal<number | null>(null);
+  /** The score log switch as set: 'on', or null when blank (off). */
+  readonly scoreLog = signal<string | null>(null);
   /** The proof kinds as set, comma separated; null when blank (none). */
   readonly proofKinds = signal<string | null>(null);
   /** The default grade as set; null when blank (A). */
@@ -227,6 +231,7 @@ export class SettingsStore {
     this.reviewSla.set(null);
     this.scoreMid.set(null);
     this.scoreHigh.set(null);
+    this.scoreLog.set(null);
     this.proofKinds.set(null);
     this.defaultGrade.set(null);
     this.pot.set(null);
@@ -255,6 +260,7 @@ export class SettingsStore {
     this.reviewSla.set(s.reviewSla ?? null);
     this.scoreMid.set(s.scoreMid ?? null);
     this.scoreHigh.set(s.scoreHigh ?? null);
+    this.scoreLog.set(s.scoreLog ?? null);
     this.proofKinds.set(s.proofKinds ?? null);
     this.defaultGrade.set(s.defaultGrade ?? null);
     this.pot.set(s.pot ?? null);
@@ -377,6 +383,13 @@ export class SettingsStore {
   async setScoreHigh(sheet: string, value: number | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/score-high`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setScoreLog(sheet: string, value: string | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/score-log`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -653,6 +666,15 @@ export class SettingsStore {
           (keydown.delete)="scoreHighChanged = true; settingsError.set(null)"
           (keydown.backspace)="scoreHighChanged = true; settingsError.set(null)"
         />
+        <label for="setting-score-log">Score log (on: changing the sheet's today logs each person's score on the day left; blank for off)</label>
+        <input
+          id="setting-score-log"
+          data-testid="setting-score-log"
+          [value]="scoreLog()"
+          (input)="scoreLog.set(value($event)); scoreLogChanged = true; settingsError.set(null)"
+          (keydown.delete)="scoreLogChanged = true; settingsError.set(null)"
+          (keydown.backspace)="scoreLogChanged = true; settingsError.set(null)"
+        />
         <label for="setting-review-sla">Review SLA (a REVIEW claim this many days past the day it went to review is late; blank for none)</label>
         <input
           id="setting-review-sla"
@@ -886,6 +908,7 @@ export class SettingsStore {
       <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ (store.escalateAfter() ?? '') | fig }}</strong></p>
       <p>Score mid: <strong data-testid="setting-score-mid-current">{{ (store.scoreMid() ?? '') | fig }}</strong></p>
       <p>Score high: <strong data-testid="setting-score-high-current">{{ (store.scoreHigh() ?? '') | fig }}</strong></p>
+      <p>Score log: <strong data-testid="setting-score-log-current">{{ store.scoreLog() ?? '' }}</strong></p>
       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ (store.reviewSla() ?? '') | fig }}</strong></p>
       <p>Proof kinds: <strong data-testid="setting-proof-kinds-current">{{ (store.proofKinds() ?? '') | fig }}</strong></p>
       <p>Default grade: <strong data-testid="setting-default-grade-current">{{ (store.defaultGrade() ?? '') | fig }}</strong></p>
@@ -993,6 +1016,7 @@ export class Settings {
   protected readonly reviewSla = signal('');
   protected readonly scoreMid = signal('');
   protected readonly scoreHigh = signal('');
+  protected readonly scoreLog = signal('');
   protected readonly proofKinds = signal('');
   protected readonly defaultGrade = signal('');
   protected readonly pot = signal('');
@@ -1025,6 +1049,7 @@ export class Settings {
   protected reviewSlaChanged = false;
   protected scoreMidChanged = false;
   protected scoreHighChanged = false;
+  protected scoreLogChanged = false;
   protected proofKindsChanged = false;
   protected defaultGradeChanged = false;
   protected alertThresholdChanged = false;
@@ -1254,6 +1279,11 @@ export class Settings {
       this.settingsError.set('Enter the high score as a whole number, or leave it blank for none.');
       return;
     }
+    const scoreLog = this.scoreLog().trim();
+    if (this.scoreLogChanged && scoreLog && scoreLog !== 'on') {
+      this.settingsError.set('Enter the score log as on, or leave it blank for off.');
+      return;
+    }
     const reviewSla = this.reviewSla().trim();
     if (this.reviewSlaChanged && reviewSla && !DAYS.test(reviewSla)) {
       this.settingsError.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
@@ -1417,6 +1447,10 @@ export class Settings {
       if (this.scoreHighChanged) {
         await this.store.setScoreHigh(sheet, scoreHigh ? Number(scoreHigh) : null);
         this.scoreHighChanged = this.scoreHigh().trim() !== scoreHigh;
+      }
+      if (this.scoreLogChanged) {
+        await this.store.setScoreLog(sheet, scoreLog || null);
+        this.scoreLogChanged = this.scoreLog().trim() !== scoreLog;
       }
       if (this.reviewSlaChanged) {
         await this.store.setReviewSla(sheet, reviewSla ? Number(reviewSla) : null);

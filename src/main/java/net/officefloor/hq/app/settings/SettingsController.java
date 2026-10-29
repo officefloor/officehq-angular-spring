@@ -39,14 +39,14 @@ public class SettingsController {
      * cap in force on the sheet's today (the clerk limit carries two decimals, or is null for none, the floor carries
      * two decimals, the terms are whole days, the late percent carries two decimals, and the cap carries two decimals,
      * or is null for none); the policy date, null when blank (the sheet's today), and the period numbering from, null
-     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); the mid and high score thresholds, null when blank (none); and every value recorded for the dated settings, from which the screen works out the one in
+     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); the mid and high score thresholds, null when blank (none); the score log switch, "on" or null when blank (off); and every value recorded for the dated settings, from which the screen works out the one in
      * force on any date; and the permission matrix as set, by action (an action not listed keeps the standing rule).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, LocalDate entryDate, Integer graceDays, String cap, List<DatedSettingView> dated, Map<String, String> permissions,
             String pot, String alertThreshold, String parent, int fiscalStartMonth,
             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
-            Integer scoreMid, Integer scoreHigh) {
+            Integer scoreMid, Integer scoreHigh, String scoreLog) {
         static SettingsView of(Sheet sheet) {
             LocalDate today = sheet.getToday();
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -60,7 +60,7 @@ public class SettingsController {
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getParentId(), sheet.getFiscalStartMonth(), sheet.getEscalateAfter(),
                     sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade(),
-                    sheet.getScoreMid(), sheet.getScoreHigh());
+                    sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog() ? "on" : null);
         }
     }
 
@@ -188,6 +188,10 @@ public class SettingsController {
 
     /** A score threshold as the form submits it: a whole number, or null for blank (none). */
     public record ScoreThresholdForm(@Min(-999999999) @Max(999999999) Integer value) {
+    }
+
+    /** The score log switch as the form submits it: "on", or blank or null for off. */
+    public record ScoreLogForm(@Pattern(regexp = "on|") String value) {
     }
 
     /** The escalation gap as the form submits it: a whole number of days, 0 or more, or null for blank (off). */
@@ -388,6 +392,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody ScoreThresholdForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setScoreHigh(user, sheetId, form.value()));
+    }
+
+    @PutMapping("/settings/score-log")
+    public SettingsView setScoreLog(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody ScoreLogForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setScoreLog(user, sheetId, "on".equals(form.value())));
     }
 
     @PutMapping("/settings/pot")

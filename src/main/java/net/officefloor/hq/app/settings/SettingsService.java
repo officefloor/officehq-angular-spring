@@ -411,6 +411,20 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Turns the sheet's score log on or off: while on, changing the sheet's today writes a SCORE line per person with
+     * their score on the day being left. Not dated.
+     */
+    @Transactional
+    public Sheet setScoreLog(String by, String sheetId, boolean on) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setScoreLog(on);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-log value="
+                + (on ? "on" : ""));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's high score threshold (null for blank: none): while the mid one is set too, a person whose score
      * is at or above it is HIGH. Not dated.
      */

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayDeque;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -40,8 +41,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RollupService {
 
-    /** One person's figures; a null due-total is n/a. The overdue-total sums their overdue claims' dues. */
-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /**
+     * One person's figures; a null due-total is n/a. The overdue-total sums their overdue claims' dues. The
+     * settled-total sums their counted settled claims' figures, and the overdue count is how many of their counted
+     * claims are overdue (whether or not they have a figure).
+     */
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+            BigDecimal settledTotal, int overdueCount) {
+
+        /**
+         * The person's score: their settled-total divided by 100, minus 5 for each of their overdue claims, rounded
+         * half to even to a whole number.
+         */
+        public BigDecimal score() {
+            return settledTotal.subtract(BigDecimal.valueOf(500L * overdueCount))
+                    .divide(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_EVEN);
+        }
     }
 
     /** The figures of every person on a sheet, by person id in list order, and the sheet's totals. */
@@ -177,6 +192,8 @@ public class RollupService {
                     .map(Claim::getAmount).reduce(ZERO, BigDecimal::add);
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
+            BigDecimal settled = ZERO;
+            int overdueCount = 0;
             boolean kept = false;
             // the grades whose rate today decides n/a: the one in force today and each counted claim's
             Set<String> grades = new HashSet<>();
@@ -192,11 +209,18 @@ public class RollupService {
                 if (c.getSettledDue() == null && !c.isBound()) {
                     figure = ClaimService.liveDue(figure, c, p, sheet, c.getStatus().isOpen());
                 }
+                boolean late = isOverdue(c, p, sheet, today);
+                if (late) {
+                    overdueCount++;
+                }
                 if (figure != null) {
                     kept = true;
                     due = due.add(figure);
-                    if (isOverdue(c, p, sheet, today)) {
+                    if (late) {
                         overdue = overdue.add(figure);
+                    }
+                    if (c.getStatus() == ClaimStatus.SETTLED) {
+                        settled = settled.add(figure);
                     }
                 }
             }
@@ -210,7 +234,7 @@ public class RollupService {
             if (sheet != null) {
                 due = sheet.capped(due);
             }
-            figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue));
+            figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount));
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
             if (due != null) {
@@ -322,6 +346,14 @@ public class RollupService {
             }
             audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + by + " name=" + f.name() + " due-total="
                     + text(f.dueTotal()));
+        }
+    }
+
+    /** Records, once the change commits, a SCORE line per person (in list order) with their score in the given snapshot. */
+    public void recordScores(String by, String sheetId, Snapshot snapshot) {
+        for (Figures f : snapshot.people().values()) {
+            audit.recordOnCommit("SCORE sheet=" + sheetId + " by=" + by + " name=" + f.name() + " score="
+                    + f.score().toPlainString());
         }
     }
 

@@ -33,12 +33,16 @@ public class SheetService {
     /**
      * Change the sheet's today; every date decision on the sheet follows it. It has no audit line of its own, only
      * the figures it moves, after a SNAPSHOT line per person with their due-total on the day being left. What follows
-     * a today change (the periods it closes) runs before those are rolled up.
+     * a today change (the periods it closes) runs before those are rolled up. While the sheet's score log is on, a
+     * SCORE line per person with their score on the day being left comes before the SNAPSHOT lines.
      */
     @Transactional
     public Sheet setToday(String by, String id, LocalDate today) {
         Sheet sheet = load(id);
         RollupService.Snapshot before = rollup.snapshot(id);
+        if (sheet.isScoreLog()) {
+            rollup.recordScores(by, id, before);
+        }
         rollup.recordSnapshot(by, id, before, sheet.getToday());
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
