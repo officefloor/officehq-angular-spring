@@ -1,0 +1,64 @@
+{
+  "checkpoint": 157,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp157_user-locale",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "95cdad3005d1e49a04d21760c4097a8d4ee38e59",
+  "reset_sha": "",
+  "preagent_sha": "7e27cafc5def2081d87fdf93844bdd565be0a309",
+  "prev_sha": "7e27cafc5def2081d87fdf93844bdd565be0a309",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3647308,
+    "input_tokens": 6,
+    "output_tokens": 720,
+    "cache_read_tokens": 173298,
+    "cache_creation_tokens": 1004,
+    "num_turns": 2,
+    "duration_ms": 9342,
+    "duration_api_ms": 189269,
+    "model": "claude-opus-5-5",
+    "session_id": "f6b6f4fd-88c3-4431-808d-72905e68a5b9",
+    "stop_reason": "success",
+    "result_text": "Each user now has a locale, and under `de` the screen shows figures as `1.234,56`. All 4 tests in `bin/e2e` pass.\n\n**Saving the locale:** a new table (`V85__user_pref.sql`) holds one locale per user, the same on every sheet, and a user who never chose one gets `en`. Saving goes through `GET`/`PUT /api/me/locale` in the new `user/` package, and only `en` or `de` is accepted. It writes no audit line. The locale is loaded when the user signs in.\n\n**The select:** the home screen has a select (`user-locale`), a save button (`user-locale-save`), the current value (`user-locale-current`) and an error element (`user-locale-error`).\n\n**How figures are shown:** I added a `fig` pipe in `core/locale.ts` and applied it to every single-value cell that carries a `data-testid`. It only reformats text that is a whole number with two decimals, so dates, counts, names and `n/a` show as before. Lines that mix text with figures, such as the claim log, snapshot and search lines, keep the dot, because their whole text isn't a number. Inputs are still typed with a dot, and exports and audit lines are unchanged.\n\n**A bug I fixed outside the locale change:** scenario 2 failed because a viewer pressing \"Generate plan claims\" got an error. The test expects the action to go through with 0 made, which is how the bulk actions already treat viewers. I marked the generate endpoint `@ViewerPasses` and made `PlanService.generate` return nothing for a read-only user. This changes how plan generation behaves for viewers, not just locales.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3647308,
+        "num_turns": 2,
+        "duration_ms": 9342,
+        "duration_api_ms": 189269,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp157.agent.jsonl",
+  "agent_diff_file": "cp157.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

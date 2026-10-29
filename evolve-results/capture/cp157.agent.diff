@@ -1,0 +1,1559 @@
+diff --git a/src/main/frontend/src/app/core/locale.ts b/src/main/frontend/src/app/core/locale.ts
+new file mode 100644
+index 00000000..18a53479
+--- /dev/null
++++ b/src/main/frontend/src/app/core/locale.ts
+@@ -0,0 +1,45 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, Pipe, PipeTransform, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++export const LOCALES = ['en', 'de'] as const;
++
++// The signed-in user's locale, saved per user: how the screen shows them figures. Entries are typed, and exports
++// and audit lines are written, the same under every locale.
++@Injectable({ providedIn: 'root' })
++export class UserLocale {
++  private readonly http = inject(HttpClient);
++
++  readonly locale = signal<string>('en');
++
++  async load(): Promise<void> {
++    const v = await firstValueFrom(this.http.get<{ locale: string }>('/api/me/locale'));
++    this.locale.set(v.locale);
++  }
++
++  async save(locale: string): Promise<void> {
++    const v = await firstValueFrom(this.http.put<{ locale: string }>('/api/me/locale', { locale }));
++    this.locale.set(v.locale);
++  }
++}
++
++const FIGURE = /^(-?)(\d+)\.(\d{2})$/;
++
++// Shows a figure (a number with two decimals) in the user's locale; under de as 1.234,56. Anything else is shown as it is.
++export function formatFigure(value: unknown, locale: string): string {
++  const text = value === null || value === undefined ? '' : String(value);
++  if (locale !== 'de') return text;
++  const m = FIGURE.exec(text.trim());
++  if (!m) return text;
++  return m[1] + m[2].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + m[3];
++}
++
++// Impure so it follows the locale signal it reads.
++@Pipe({ name: 'fig', pure: false })
++export class FigPipe implements PipeTransform {
++  private readonly userLocale = inject(UserLocale);
++
++  transform(value: unknown): string {
++    return formatFigure(value, this.userLocale.locale());
++  }
++}
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 6b726549..a678b02b 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -2,12 +2,14 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { AsOf } from './as-of';
++import { UserLocale } from './locale';
+ 
+ // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
+ @Injectable({ providedIn: 'root' })
+ export class Session {
+   private readonly http = inject(HttpClient);
+   private readonly asOf = inject(AsOf);
++  private readonly userLocale = inject(UserLocale);
+ 
+   readonly user = signal<string | null>(null);
+   readonly sheetId = signal<string | null>(null);
+@@ -25,6 +27,7 @@ export class Session {
+ 
+   async signIn(name: string): Promise<void> {
+     const u = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
++    await this.userLocale.load();
+     this.user.set(u.name);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/audit-viewer/audit-viewer.ts b/src/main/frontend/src/app/features/audit-viewer/audit-viewer.ts
+index 1c9f8a2d..6383678e 100644
+--- a/src/main/frontend/src/app/features/audit-viewer/audit-viewer.ts
++++ b/src/main/frontend/src/app/features/audit-viewer/audit-viewer.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -8,6 +9,7 @@ import { Session } from '../../core/session';
+ // those on the sheet's descendants (sheets by id, each newest first), then, for a person transferred to this sheet, the lines about them from the sheet they came from.
+ @Component({
+   selector: 'app-audit-viewer',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Audit">
+       <h2>Audit</h2>
+@@ -21,13 +23,13 @@ import { Session } from '../../core/session';
+         />
+         <button type="submit" data-testid="audit-show">Show audit</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="audit-error">{{ err }}</p>
++          <p role="alert" data-testid="audit-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+       <ol aria-label="Audit lines">
+         @for (line of lines(); track $index) {
+-          <li data-testid="audit-line">{{ line }}</li>
++          <li data-testid="audit-line">{{ line | fig }}</li>
+         }
+       </ol>
+     </section>
+diff --git a/src/main/frontend/src/app/features/claim-templates/claim-templates.ts b/src/main/frontend/src/app/features/claim-templates/claim-templates.ts
+index 96cdd6f0..b9774b59 100644
+--- a/src/main/frontend/src/app/features/claim-templates/claim-templates.ts
++++ b/src/main/frontend/src/app/features/claim-templates/claim-templates.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, Injectable, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -42,6 +43,7 @@ export class ClaimTemplateStore {
+ // name again replaces that template.
+ @Component({
+   selector: 'app-claim-templates',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Claim templates">
+       <h2>Claim templates</h2>
+@@ -70,7 +72,7 @@ export class ClaimTemplateStore {
+         />
+         <button type="submit" data-testid="template-form-submit">Save template</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="template-form-error">{{ err }}</p>
++          <p role="alert" data-testid="template-form-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -82,9 +84,9 @@ export class ClaimTemplateStore {
+         <tbody>
+           @for (t of store.list(); track t.id) {
+             <tr [attr.data-testid]="'template-row-' + t.name">
+-              <td data-testid="template-name">{{ t.name }}</td>
+-              <td data-testid="template-amount">{{ t.amount }}</td>
+-              <td data-testid="template-note">{{ t.note }}</td>
++              <td data-testid="template-name">{{ t.name | fig }}</td>
++              <td data-testid="template-amount">{{ t.amount | fig }}</td>
++              <td data-testid="template-note">{{ t.note | fig }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 78339a3e..30f35e5f 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { PeriodStore, PeriodView, inClosedPeriod, periodOn } from '../periods/periods';
+@@ -282,6 +283,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
+ // One person's claims, newest first: one form adds a claim or, with a claim's editor open, saves it.
+ @Component({
+   selector: 'app-claims',
++  imports: [FigPipe],
+   template: `
+     <form (submit)="submit($event)" [attr.aria-label]="(editingId() === null ? 'Add claim for ' : 'Edit claim for ') + personName()">
+       <label [for]="'claim-amount-' + personId()">Amount</label>
+@@ -333,7 +335,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
+         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
+       </button>
+       @if (error(); as err) {
+-        <p role="alert" data-testid="claim-form-error">{{ err }}</p>
++        <p role="alert" data-testid="claim-form-error">{{ err | fig }}</p>
+       }
+     </form>
+     <div role="group" [attr.aria-label]="'Add a claim from a template for ' + personName()">
+@@ -373,27 +375,27 @@ export function claimedTotal(claims: readonly Claim[]): string {
+                 (change)="selectedChange.emit({ id: c.id, checked: checked($event) })"
+               />
+             </td>
+-            <td data-testid="claim-number">{{ c.number ?? '' }}</td>
+-            <td data-testid="claim-amount">{{ c.amount }}</td>
+-            <td data-testid="claim-date">{{ c.date }}</td>
+-            <td data-testid="claim-note">{{ c.note }}</td>
+-            <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
+-            <td data-testid="claim-tags">{{ c.tags.join(', ') }}</td>
+-            <td data-testid="claim-due">{{ dueOf(c, ratesOf(c), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a' }}</td>
+-            <td data-testid="claim-due-by">{{ c.dueBy }}</td>
+-            <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no' }}</td>
+-            <td data-testid="claim-deferred">{{ deferredUntilAfter(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
+-            <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
+-            <td data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</td>
+-            <td data-testid="claim-status">{{ c.status }}</td>
+-            <td data-testid="claim-batch">{{ c.batch ?? '' }}</td>
+-            <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+-            <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
+-            <td data-testid="claim-period">{{ periodName(c) }}</td>
+-            <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</td>
+-            <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
+-            <td data-testid="claim-proofs">{{ c.proofs }}</td>
+-            <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
++            <td data-testid="claim-number">{{ (c.number ?? '') | fig }}</td>
++            <td data-testid="claim-amount">{{ c.amount | fig }}</td>
++            <td data-testid="claim-date">{{ c.date | fig }}</td>
++            <td data-testid="claim-note">{{ c.note | fig }}</td>
++            <td data-testid="claim-ref">{{ (c.ref ?? '') | fig }}</td>
++            <td data-testid="claim-tags">{{ (c.tags.join(', ')) | fig }}</td>
++            <td data-testid="claim-due">{{ (dueOf(c, ratesOf(c), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a') | fig }}</td>
++            <td data-testid="claim-due-by">{{ c.dueBy | fig }}</td>
++            <td data-testid="claim-overdue">{{ (overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no') | fig }}</td>
++            <td data-testid="claim-deferred">{{ (deferredUntilAfter(c, session.sheetToday()) ? 'yes' : 'no') | fig }}</td>
++            <td data-testid="claim-deferred-until">{{ (c.deferredUntil ?? '') | fig }}</td>
++            <td data-testid="claim-reminded">{{ (c.remindedOn ?? '') | fig }}</td>
++            <td data-testid="claim-status">{{ c.status | fig }}</td>
++            <td data-testid="claim-batch">{{ (c.batch ?? '') | fig }}</td>
++            <td data-testid="claim-opened-by">{{ (c.openedBy ?? '') | fig }}</td>
++            <td data-testid="claim-stated">{{ (c.stated ? 'yes' : 'no') | fig }}</td>
++            <td data-testid="claim-period">{{ periodName(c) | fig }}</td>
++            <td data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | fig }}</td>
++            <td data-testid="claim-corrects">{{ (c.corrects ?? '') | fig }}</td>
++            <td data-testid="claim-proofs">{{ c.proofs | fig }}</td>
++            <td data-testid="claim-split-from">{{ (c.splitFrom ?? '') | fig }}</td>
+             <td>
+               <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+                 @for (l of c.log; track $index) {
+@@ -572,7 +574,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
+                 <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+               }
+               @if (rowErrors()[c.id]; as err) {
+-                <p role="alert" data-testid="claim-error">{{ err }}</p>
++                <p role="alert" data-testid="claim-error">{{ err | fig }}</p>
+               }
+             </td>
+           </tr>
+diff --git a/src/main/frontend/src/app/features/consolidated/consolidated.ts b/src/main/frontend/src/app/features/consolidated/consolidated.ts
+index 5a81e316..a9914484 100644
+--- a/src/main/frontend/src/app/features/consolidated/consolidated.ts
++++ b/src/main/frontend/src/app/features/consolidated/consolidated.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpContext } from '@angular/common/http';
+ import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { AsOf, LIVE } from '../../core/as-of';
+ import { Session } from '../../core/session';
+@@ -16,16 +17,17 @@ interface DescendantFigures {
+ // the sheet is shown as of a date they stay as the sheet and its descendants stand now, read from the store.
+ @Component({
+   selector: 'app-consolidated',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Consolidated figures">
+       <h2>Consolidated (this sheet and its descendants)</h2>
+       <dl>
+         <dt>People</dt>
+-        <dd data-testid="consolidated-people-count">{{ peopleCount() }}</dd>
++        <dd data-testid="consolidated-people-count">{{ peopleCount() | fig }}</dd>
+         <dt>Due</dt>
+-        <dd data-testid="consolidated-due-total">{{ dueTotal() }}</dd>
++        <dd data-testid="consolidated-due-total">{{ dueTotal() | fig }}</dd>
+         <dt>Overdue</dt>
+-        <dd data-testid="consolidated-overdue-total">{{ overdueTotal() }}</dd>
++        <dd data-testid="consolidated-overdue-total">{{ overdueTotal() | fig }}</dd>
+       </dl>
+     </section>
+   `,
+diff --git a/src/main/frontend/src/app/features/delegation/delegation.ts b/src/main/frontend/src/app/features/delegation/delegation.ts
+index 8064c372..94e64a23 100644
+--- a/src/main/frontend/src/app/features/delegation/delegation.ts
++++ b/src/main/frontend/src/app/features/delegation/delegation.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -15,6 +16,7 @@ interface DelegationView {
+ // to-date, inclusive (each blank for the sheet's today); while the sheet's today is inside, the user acts as a steward.
+ @Component({
+   selector: 'app-delegation',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Delegations">
+       <h2>Delegations</h2>
+@@ -44,17 +46,17 @@ interface DelegationView {
+         />
+         <button type="submit" data-testid="delegate-submit">Delegate</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="delegate-error">{{ err }}</p>
++          <p role="alert" data-testid="delegate-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+       <ul aria-label="Delegations made">
+         @for (d of delegations(); track d.id) {
+           <li data-testid="delegate-line">
+-            <span data-testid="delegate-line-user">{{ d.user }}</span> acts for
+-            <span data-testid="delegate-line-by">{{ d.by }}</span> from
+-            <span data-testid="delegate-line-from">{{ d.from }}</span> to
+-            <span data-testid="delegate-line-to">{{ d.to }}</span>
++            <span data-testid="delegate-line-user">{{ d.user | fig }}</span> acts for
++            <span data-testid="delegate-line-by">{{ d.by | fig }}</span> from
++            <span data-testid="delegate-line-from">{{ d.from | fig }}</span> to
++            <span data-testid="delegate-line-to">{{ d.to | fig }}</span>
+           </li>
+         }
+       </ul>
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 0292dbc0..53c7ebbc 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -1,27 +1,29 @@
+ import { Component, computed, input } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { STATUSES } from '../summary/summary';
+ 
+ // The sheet's counters, shown at all times: each repeats a figure shown elsewhere — the status counts those of the
+ // summary, the two totals the sheet's totals, and the signed-in user's own figures those of their person's row.
+ @Component({
+   selector: 'app-header',
++  imports: [FigPipe],
+   template: `
+     <header aria-label="Sheet counters">
+       <dl>
+         <dt>People</dt>
+-        <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
++        <dd data-testid="header-people-count">{{ peopleCount() | fig }}</dd>
+         @for (s of byStatus(); track s.status) {
+           <dt>{{ s.status }}</dt>
+-          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
++          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count | fig }}</dd>
+         }
+         <dt>Due</dt>
+-        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++        <dd data-testid="header-due-total">{{ dueTotal() | fig }}</dd>
+         <dt>Overdue</dt>
+-        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++        <dd data-testid="header-overdue-total">{{ overdueTotal() | fig }}</dd>
+         <dt>My due</dt>
+-        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++        <dd data-testid="my-due-total">{{ myDueTotal() | fig }}</dd>
+         <dt>My overdue</dt>
+-        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
++        <dd data-testid="my-overdue-total">{{ myOverdueTotal() | fig }}</dd>
+       </dl>
+     </header>
+   `,
+diff --git a/src/main/frontend/src/app/features/holidays/holidays.ts b/src/main/frontend/src/app/features/holidays/holidays.ts
+index 714c48e4..ce1295cb 100644
+--- a/src/main/frontend/src/app/features/holidays/holidays.ts
++++ b/src/main/frontend/src/app/features/holidays/holidays.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -12,6 +13,7 @@ interface HolidayView {
+ // weekends and the holidays on the sheet then. A date already on the list is refused.
+ @Component({
+   selector: 'app-holidays',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Holidays">
+       <h2>Holidays</h2>
+@@ -26,13 +28,13 @@ interface HolidayView {
+         />
+         <button type="submit" data-testid="holiday-add">Add holiday</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="holiday-error">{{ err }}</p>
++          <p role="alert" data-testid="holiday-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+       <ul aria-label="Holidays on the sheet">
+         @for (h of holidays(); track h.id) {
+-          <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date }}</li>
++          <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date | fig }}</li>
+         }
+       </ul>
+     </section>
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 884d17ff..6628e96e 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,5 +1,7 @@
+ import { Component, inject, signal } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { Session } from '../../core/session';
++import { LOCALES, UserLocale } from '../../core/locale';
+ import { People } from '../people/people';
+ import { Rates } from '../rates/rates';
+ import { Settings, SettingsStore } from '../settings/settings';
+@@ -15,10 +17,24 @@ import { PlanStore } from '../plans/plans';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, TreeSearch, AuditViewer],
++  imports: [FigPipe, People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, TreeSearch, AuditViewer],
+   template: `
+     @if (session.user(); as user) {
+-      <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
++      <p>Signed in as <strong data-testid="current-user">{{ user | fig }}</strong></p>
++
++      <form (submit)="saveLocale($event)" aria-label="Your locale">
++        <label for="user-locale">Locale</label>
++        <select id="user-locale" data-testid="user-locale" (change)="localeInput.set(value($event)); localeError.set(null)">
++          @for (l of locales; track l) {
++            <option [value]="l" [selected]="l === (localeInput() ?? userLocale.locale())">{{ l }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="user-locale-save">Save locale</button>
++        <span>Current: <strong data-testid="user-locale-current">{{ userLocale.locale() }}</strong></span>
++        @if (localeError(); as err) {
++          <p role="alert" data-testid="user-locale-error">{{ err }}</p>
++        }
++      </form>
+ 
+       <form (submit)="load($event)" aria-label="Load sheet">
+         <label for="sheet-id">Sheet id</label>
+@@ -30,15 +46,15 @@ import { PlanStore } from '../plans/plans';
+         />
+         <button type="submit" data-testid="sheet-load">Load</button>
+         @if (sheetError(); as err) {
+-          <p role="alert" data-testid="sheet-load-error">{{ err }}</p>
++          <p role="alert" data-testid="sheet-load-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+       @if (session.sheetId(); as id) {
+-        <p>Sheet: <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+-        <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
+-        <p>Archived: <strong data-testid="sheet-archived">{{ session.sheetArchived() ? 'yes' : 'no' }}</strong></p>
+-        <p>Parent sheet: <strong data-testid="sheet-parent">{{ settings.parent() ?? '' }}</strong></p>
++        <p>Sheet: <strong data-testid="sheet-current-id">{{ id | fig }}</strong></p>
++        <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() | fig }}</strong></p>
++        <p>Archived: <strong data-testid="sheet-archived">{{ (session.sheetArchived() ? 'yes' : 'no') | fig }}</strong></p>
++        <p>Parent sheet: <strong data-testid="sheet-parent">{{ (settings.parent() ?? '') | fig }}</strong></p>
+ 
+         <form (submit)="saveToday($event)" aria-label="Change today">
+           <label for="sheet-today">New today</label>
+@@ -63,9 +79,9 @@ import { PlanStore } from '../plans/plans';
+           />
+           <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+         </form>
+-        <p>Cloned to: <strong data-testid="sheet-cloned-to">{{ clonedTo() ?? '' }}</strong></p>
++        <p>Cloned to: <strong data-testid="sheet-cloned-to">{{ (clonedTo() ?? '') | fig }}</strong></p>
+ 
+-        <p>As of: <strong data-testid="sheet-asof">{{ session.sheetAsOf() ?? '' }}</strong></p>
++        <p>As of: <strong data-testid="sheet-asof">{{ (session.sheetAsOf() ?? '') | fig }}</strong></p>
+         <form (submit)="setAsOf($event)" aria-label="Show the sheet as of a date">
+           <label for="asof-date">Show as of</label>
+           <input
+@@ -78,11 +94,11 @@ import { PlanStore } from '../plans/plans';
+           <button type="submit" data-testid="asof-set">Set as of</button>
+           <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+           @if (asOfError(); as err) {
+-            <p role="alert" data-testid="asof-error">{{ err }}</p>
++            <p role="alert" data-testid="asof-error">{{ err | fig }}</p>
+           }
+         </form>
+         @if (todayError(); as err) {
+-          <p role="alert" data-testid="sheet-error">{{ err }}</p>
++          <p role="alert" data-testid="sheet-error">{{ err | fig }}</p>
+         }
+ 
+         <app-rates />
+@@ -107,7 +123,7 @@ import { PlanStore } from '../plans/plans';
+         />
+         <button type="submit" data-testid="signin-submit">Sign in</button>
+         @if (signinError(); as err) {
+-          <p role="alert" data-testid="signin-error">{{ err }}</p>
++          <p role="alert" data-testid="signin-error">{{ err | fig }}</p>
+         }
+       </form>
+     }
+@@ -117,6 +133,11 @@ export class Home {
+   protected readonly session = inject(Session);
+   protected readonly settings = inject(SettingsStore);
+   private readonly plans = inject(PlanStore);
++  protected readonly userLocale = inject(UserLocale);
++  protected readonly locales = LOCALES;
++  // The locale chosen in the select, not yet saved; null while it shows the saved one.
++  protected readonly localeInput = signal<string | null>(null);
++  protected readonly localeError = signal<string | null>(null);
+   protected readonly nameInput = signal('');
+   protected readonly sheetInput = signal('');
+   protected readonly signinError = signal<string | null>(null);
+@@ -133,7 +154,7 @@ export class Home {
+   protected readonly asOfError = signal<string | null>(null);
+ 
+   protected value(e: Event): string {
+-    return (e.target as HTMLInputElement).value;
++    return (e.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+ 
+   protected async signIn(e: Event): Promise<void> {
+@@ -151,6 +172,17 @@ export class Home {
+     }
+   }
+ 
++  protected async saveLocale(e: Event): Promise<void> {
++    e.preventDefault();
++    this.localeError.set(null);
++    try {
++      await this.userLocale.save(this.localeInput() ?? this.userLocale.locale());
++      this.localeInput.set(null);
++    } catch {
++      this.localeError.set('Could not save the locale.');
++    }
++  }
++
+   protected async load(e: Event): Promise<void> {
+     e.preventDefault();
+     this.sheetError.set(null);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5ee48b9b..3034b47f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
+@@ -81,7 +82,7 @@ interface StatementView {
+ // The people on the active sheet: one form adds a person or, with an editor open, saves one.
+ @Component({
+   selector: 'app-people',
+-  imports: [Claims, Consolidated, Header, Periods, PersonPlans, Summary],
++  imports: [FigPipe, Claims, Consolidated, Header, Periods, PersonPlans, Summary],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -163,7 +164,7 @@ interface StatementView {
+           <button type="button" data-testid="person-form-cancel" (click)="reset()">Cancel</button>
+         }
+         @if (error(); as err) {
+-          <p role="alert" data-testid="person-form-error">{{ err }}</p>
++          <p role="alert" data-testid="person-form-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -185,7 +186,7 @@ interface StatementView {
+         />
+         <button type="submit" data-testid="quick-submit">Quick add</button>
+         @if (quickError(); as err) {
+-          <p role="alert" data-testid="quick-error">{{ err }}</p>
++          <p role="alert" data-testid="quick-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -201,12 +202,12 @@ interface StatementView {
+         <button type="submit" data-testid="import-submit">Import people</button>
+         @if (importAdded() !== null) {
+           <p role="status">
+-            Added: <strong data-testid="import-added">{{ importAdded() }}</strong>, updated:
+-            <strong data-testid="import-updated">{{ importUpdated() }}</strong>
++            Added: <strong data-testid="import-added">{{ importAdded() | fig }}</strong>, updated:
++            <strong data-testid="import-updated">{{ importUpdated() | fig }}</strong>
+           </p>
+         }
+         @if (importError(); as err) {
+-          <p role="alert" data-testid="import-error">{{ err }}</p>
++          <p role="alert" data-testid="import-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -221,20 +222,20 @@ interface StatementView {
+         ></textarea>
+         <button type="submit" data-testid="paste-submit">Open pasted claims</button>
+         @if (pasteAdded() !== null) {
+-          <p role="status">Went through: <strong data-testid="paste-added">{{ pasteAdded() }}</strong></p>
++          <p role="status">Went through: <strong data-testid="paste-added">{{ pasteAdded() | fig }}</strong></p>
+         }
+         @if (pasteError(); as err) {
+-          <p role="alert" data-testid="paste-error">{{ err }}</p>
++          <p role="alert" data-testid="paste-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+       <div role="group" aria-label="Generate the plans' claims">
+         <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+         @if (plansGenerated() !== null) {
+-          <p role="status">Made: <strong data-testid="plan-generated-count">{{ plansGenerated() }}</strong></p>
++          <p role="status">Made: <strong data-testid="plan-generated-count">{{ plansGenerated() | fig }}</strong></p>
+         }
+         @if (planGenerateError(); as err) {
+-          <p role="alert" data-testid="plan-generate-error">{{ err }}</p>
++          <p role="alert" data-testid="plan-generate-error">{{ err | fig }}</p>
+         }
+       </div>
+ 
+@@ -259,13 +260,13 @@ interface StatementView {
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+ 
+-      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+-      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+-      <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueClaims().length }}</strong></p>
+-      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+-      <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+-      <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+-      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ poolStore.cutTotal() }}</strong></p>
++      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | fig }}</strong></p>
++      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | fig }}</strong></p>
++      <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueClaims().length | fig }}</strong></p>
++      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() | fig }}</strong></p>
++      <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | fig }}</strong></p>
++      <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() | fig }}</strong></p>
++      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ poolStore.cutTotal() | fig }}</strong></p>
+       @if (tagDueTotals().length > 0) {
+         <table>
+           <caption>Due by tag</caption>
+@@ -276,7 +277,7 @@ interface StatementView {
+             @for (t of tagDueTotals(); track t.tag) {
+               <tr>
+                 <th scope="row">{{ t.tag }}</th>
+-                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
++                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal | fig }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -292,7 +293,7 @@ interface StatementView {
+             @for (m of monthDueTotals(); track m.month) {
+               <tr>
+                 <th scope="row">{{ m.month }}</th>
+-                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal | fig }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -303,23 +304,23 @@ interface StatementView {
+         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+         @if (bulkOpened(); as result) {
+           <p role="status">
+-            Opened: <strong data-testid="bulk-opened">{{ result.opened }}</strong>
+-            Refused: <strong data-testid="bulk-refused">{{ result.refused }}</strong>
++            Opened: <strong data-testid="bulk-opened">{{ result.opened | fig }}</strong>
++            Refused: <strong data-testid="bulk-refused">{{ result.refused | fig }}</strong>
+           </p>
+         }
+         @if (bulkError(); as err) {
+-          <p role="alert" data-testid="bulk-open-error">{{ err }}</p>
++          <p role="alert" data-testid="bulk-open-error">{{ err | fig }}</p>
+         }
+         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+-        <span>Last batch: <strong data-testid="bulk-settle-batch">{{ session.sheetLastBatch() ?? '' }}</strong></span>
++        <span>Last batch: <strong data-testid="bulk-settle-batch">{{ (session.sheetLastBatch() ?? '') | fig }}</strong></span>
+         @if (bulkSettled(); as result) {
+           <p role="status">
+-            Settled: <strong data-testid="bulk-settled">{{ result.settled }}</strong>
+-            Refused: <strong data-testid="bulk-settle-refused">{{ result.refused }}</strong>
++            Settled: <strong data-testid="bulk-settled">{{ result.settled | fig }}</strong>
++            Refused: <strong data-testid="bulk-settle-refused">{{ result.refused | fig }}</strong>
+           </p>
+         }
+         @if (bulkSettleError(); as err) {
+-          <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
++          <p role="alert" data-testid="bulk-settle-error">{{ err | fig }}</p>
+         }
+         <label for="bulk-reassign-to">Move selected claims to</label>
+         <select
+@@ -335,12 +336,12 @@ interface StatementView {
+         <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()">Move selected claims</button>
+         @if (bulkReassigned(); as result) {
+           <p role="status">
+-            Moved: <strong data-testid="bulk-reassigned">{{ result.reassigned }}</strong>
+-            Refused: <strong data-testid="bulk-reassign-refused">{{ result.refused }}</strong>
++            Moved: <strong data-testid="bulk-reassigned">{{ result.reassigned | fig }}</strong>
++            Refused: <strong data-testid="bulk-reassign-refused">{{ result.refused | fig }}</strong>
+           </p>
+         }
+         @if (bulkReassignError(); as err) {
+-          <p role="alert" data-testid="bulk-reassign-error">{{ err }}</p>
++          <p role="alert" data-testid="bulk-reassign-error">{{ err | fig }}</p>
+         }
+         <label for="bulk-redate-date">Re-date selected claims to</label>
+         <input
+@@ -353,12 +354,12 @@ interface StatementView {
+         <button type="button" data-testid="bulk-redate" (click)="bulkRedate()">Re-date selected claims</button>
+         @if (bulkRedated(); as result) {
+           <p role="status">
+-            Re-dated: <strong data-testid="bulk-redated">{{ result.redated }}</strong>
+-            Refused: <strong data-testid="bulk-redate-refused">{{ result.refused }}</strong>
++            Re-dated: <strong data-testid="bulk-redated">{{ result.redated | fig }}</strong>
++            Refused: <strong data-testid="bulk-redate-refused">{{ result.refused | fig }}</strong>
+           </p>
+         }
+         @if (bulkRedateError(); as err) {
+-          <p role="alert" data-testid="bulk-redate-error">{{ err }}</p>
++          <p role="alert" data-testid="bulk-redate-error">{{ err | fig }}</p>
+         }
+       </div>
+ 
+@@ -384,10 +385,10 @@ interface StatementView {
+         />
+         <button type="button" data-testid="bulk-grade-apply" (click)="applyBulkGrade()">Grade selected people</button>
+         @if (bulkGraded() !== null) {
+-          <p role="status">Changed: <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></p>
++          <p role="status">Changed: <strong data-testid="bulk-graded">{{ bulkGraded() | fig }}</strong></p>
+         }
+         @if (bulkGradeError(); as err) {
+-          <p role="alert" data-testid="person-error">{{ err }}</p>
++          <p role="alert" data-testid="person-error">{{ err | fig }}</p>
+         }
+         <label for="bulk-retire-date">Retire selected people from</label>
+         <input
+@@ -399,10 +400,10 @@ interface StatementView {
+         />
+         <button type="button" data-testid="bulk-retire" (click)="applyBulkRetire()">Retire selected people</button>
+         @if (bulkRetired() !== null) {
+-          <p role="status">Retired: <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></p>
++          <p role="status">Retired: <strong data-testid="bulk-retired">{{ bulkRetired() | fig }}</strong></p>
+         }
+         @if (bulkRetireError(); as err) {
+-          <p role="alert" data-testid="person-error">{{ err }}</p>
++          <p role="alert" data-testid="person-error">{{ err | fig }}</p>
+         }
+       </div>
+ 
+@@ -434,38 +435,38 @@ interface StatementView {
+                   (change)="selectPerson(p.id, checked($event))"
+                 />
+               </td>
+-              <td data-testid="person-name">{{ p.name }}</td>
+-              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+-              <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
+-              <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+-              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+-              <td data-testid="person-origin">{{ p.originSheet ?? '' }}</td>
+-              <td data-testid="person-cut-total">{{ poolStore.cutTotals().get(p.id) ?? '0.00' }}</td>
+-              <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
+-              <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
+-              <td data-testid="person-settled-total">{{ splitBy().get(p.id)?.settled ?? '0.00' }}</td>
+-              <td data-testid="person-open-total">{{ splitBy().get(p.id)?.open ?? '0.00' }}</td>
+-              <td data-testid="person-overdue-count">{{ overdueBy().get(p.id)?.length ?? 0 }}</td>
+-              <td data-testid="person-overdue-total">{{ overdueTotalBy().get(p.id) ?? '0.00' }}</td>
+-              <td data-testid="person-aged-0-30">{{ agedBy().get(p.id)?.[0] ?? '0.00' }}</td>
+-              <td data-testid="person-aged-31-60">{{ agedBy().get(p.id)?.[1] ?? '0.00' }}</td>
+-              <td data-testid="person-aged-61">{{ agedBy().get(p.id)?.[2] ?? '0.00' }}</td>
+-              <td data-testid="person-statement-count">{{ statementsBy().get(p.id)?.count ?? 0 }}</td>
+-              <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) }}</td>
+-              <td data-testid="person-statement-date">{{ statementsBy().get(p.id)?.date ?? '' }}</td>
+-              <td data-testid="person-retired">{{ p.retiredFrom !== null ? 'yes' : 'no' }}</td>
+-              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+-              <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
+-              <td data-testid="person-patrons">{{ patronNamesBy().get(p.id) ?? '' }}</td>
+-              <td data-testid="person-backing">{{ backingBy().get(p.id) ?? '0.00' }}</td>
+-              <td data-testid="person-excess">{{ excessBy().get(p.id) ?? '0.00' }}</td>
+-              <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
++              <td data-testid="person-name">{{ p.name | fig }}</td>
++              <td data-testid="person-grade">{{ gradeToday(p) | fig }}</td>
++              <td data-testid="person-terms">{{ (p.terms ?? '') | fig }}</td>
++              <td data-testid="person-contact">{{ (p.contact ?? '') | fig }}</td>
++              <td data-testid="person-tags">{{ (p.tags.join(', ')) | fig }}</td>
++              <td data-testid="person-aliases">{{ (p.aliases.join(', ')) | fig }}</td>
++              <td data-testid="person-clashing">{{ (p.clashing ? 'yes' : 'no') | fig }}</td>
++              <td data-testid="person-origin">{{ (p.originSheet ?? '') | fig }}</td>
++              <td data-testid="person-cut-total">{{ (poolStore.cutTotals().get(p.id) ?? '0.00') | fig }}</td>
++              <td data-testid="person-claimed">{{ (claimedBy().get(p.id) ?? '0.00') | fig }}</td>
++              <td data-testid="person-due-total">{{ (dueBy().get(p.id) ?? 'n/a') | fig }}</td>
++              <td data-testid="person-settled-total">{{ (splitBy().get(p.id)?.settled ?? '0.00') | fig }}</td>
++              <td data-testid="person-open-total">{{ (splitBy().get(p.id)?.open ?? '0.00') | fig }}</td>
++              <td data-testid="person-overdue-count">{{ (overdueBy().get(p.id)?.length ?? 0) | fig }}</td>
++              <td data-testid="person-overdue-total">{{ (overdueTotalBy().get(p.id) ?? '0.00') | fig }}</td>
++              <td data-testid="person-aged-0-30">{{ (agedBy().get(p.id)?.[0] ?? '0.00') | fig }}</td>
++              <td data-testid="person-aged-31-60">{{ (agedBy().get(p.id)?.[1] ?? '0.00') | fig }}</td>
++              <td data-testid="person-aged-61">{{ (agedBy().get(p.id)?.[2] ?? '0.00') | fig }}</td>
++              <td data-testid="person-statement-count">{{ (statementsBy().get(p.id)?.count ?? 0) | fig }}</td>
++              <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) | fig }}</td>
++              <td data-testid="person-statement-date">{{ (statementsBy().get(p.id)?.date ?? '') | fig }}</td>
++              <td data-testid="person-retired">{{ (p.retiredFrom !== null ? 'yes' : 'no') | fig }}</td>
++              <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | fig }}</td>
++              <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | fig }}</td>
++              <td data-testid="person-active">{{ (activeIds().has(p.id) ? 'yes' : 'no') | fig }}</td>
++              <td data-testid="person-patrons">{{ (patronNamesBy().get(p.id) ?? '') | fig }}</td>
++              <td data-testid="person-backing">{{ (backingBy().get(p.id) ?? '0.00') | fig }}</td>
++              <td data-testid="person-excess">{{ (excessBy().get(p.id) ?? '0.00') | fig }}</td>
++              <td data-testid="person-watched">{{ (watched().has(p.id) ? 'yes' : 'no') | fig }}</td>
+               @for (pd of periods.list(); track pd.id) {
+                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
+-                  {{ periodDueBy().get(p.id)?.get(pd.id) ?? '0.00' }}
++                  {{ (periodDueBy().get(p.id)?.get(pd.id) ?? '0.00') | fig }}
+                 </td>
+               }
+               <td>
+@@ -579,7 +580,7 @@ interface StatementView {
+                   Add alias<span class="visually-hidden"> for {{ p.name }}</span>
+                 </button>
+                 @if (rowErrors()[p.id]; as err) {
+-                  <p role="alert" data-testid="person-error">{{ err }}</p>
++                  <p role="alert" data-testid="person-error">{{ err | fig }}</p>
+                 }
+                 <label [for]="'patron-' + p.id">Patron<span class="visually-hidden"> for {{ p.name }}</span></label>
+                 <select
+@@ -598,7 +599,7 @@ interface StatementView {
+                   Add patron<span class="visually-hidden"> for {{ p.name }}</span>
+                 </button>
+                 @if (patronErrors()[p.id]; as err) {
+-                  <p role="alert" data-testid="person-patron-error">{{ err }}</p>
++                  <p role="alert" data-testid="person-patron-error">{{ err | fig }}</p>
+                 }
+                 <label [for]="'merge-into-' + p.id">Merge into<span class="visually-hidden"> for {{ p.name }}</span></label>
+                 <select
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 3ddb6542..fbf5d40c 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, Injectable, computed, inject, input, signal } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { ClaimLogLine, ClaimStatus, statusAtEndOf } from '../claims/claims';
+@@ -196,6 +197,7 @@ export class PeriodStore {
+ // The sheet's periods, each with its due-total, and the form that adds one.
+ @Component({
+   selector: 'app-periods',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Periods">
+       <h2>Periods</h2>
+@@ -233,7 +235,7 @@ export class PeriodStore {
+         />
+         <button type="submit" data-testid="period-form-submit">Add period</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="period-form-error">{{ err }}</p>
++          <p role="alert" data-testid="period-form-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -256,10 +258,10 @@ export class PeriodStore {
+         />
+         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+         @if (generated() !== null) {
+-          <p role="status">Made: <strong data-testid="period-generated">{{ generated() }}</strong></p>
++          <p role="status">Made: <strong data-testid="period-generated">{{ generated() | fig }}</strong></p>
+         }
+         @if (genError(); as err) {
+-          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
++          <p role="alert" data-testid="period-generate-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -283,13 +285,13 @@ export class PeriodStore {
+         <tbody>
+           @for (p of store.list(); track p.id) {
+             <tr [attr.data-testid]="'period-row-' + p.name">
+-              <th scope="row" data-testid="period-name">{{ p.name }}</th>
+-              <td data-testid="period-from">{{ p.from }}</td>
+-              <td data-testid="period-to">{{ p.to }}</td>
+-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+-              <td data-testid="period-due-total">{{ dueBy().get(p.id) }}</td>
+-              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+-              <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
++              <th scope="row" data-testid="period-name">{{ p.name | fig }}</th>
++              <td data-testid="period-from">{{ p.from | fig }}</td>
++              <td data-testid="period-to">{{ p.to | fig }}</td>
++              <td data-testid="period-cap">{{ (p.cap ?? '') | fig }}</td>
++              <td data-testid="period-due-total">{{ dueBy().get(p.id) | fig }}</td>
++              <td data-testid="period-closed">{{ (p.closed ? 'yes' : p.softClosed ? 'soft' : 'no') | fig }}</td>
++              <td data-testid="period-fy">{{ fiscalYear(p) | fig }}</td>
+               <td>
+                 <button type="button" data-testid="period-close" (click)="close(p)">
+                   Close<span class="visually-hidden"> period {{ p.name }}</span>
+@@ -301,7 +303,7 @@ export class PeriodStore {
+                   Reopen<span class="visually-hidden"> period {{ p.name }}</span>
+                 </button>
+                 @if (rowErrors()[p.id]; as err) {
+-                  <p role="alert" data-testid="period-error">{{ err }}</p>
++                  <p role="alert" data-testid="period-error">{{ err | fig }}</p>
+                 }
+               </td>
+             </tr>
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 9a874cd7..73f7b1c0 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, Injectable, computed, inject, input, signal } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Claim } from '../claims/claims';
+@@ -56,6 +57,7 @@ export class PlanStore {
+ // day, a day outside 1 to 31, or an end before the start is refused.
+ @Component({
+   selector: 'app-person-plans',
++  imports: [FigPipe],
+   template: `
+     <table>
+       <caption class="visually-hidden">Plans of {{ personName() }}</caption>
+@@ -69,13 +71,13 @@ export class PlanStore {
+       <tbody>
+         @for (pl of plans(); track pl.id) {
+           <tr [attr.data-testid]="'plan-row-' + pl.id">
+-            <td data-testid="plan-figure">{{ pl.amount }}</td>
+-            <td data-testid="plan-start">{{ pl.start }}</td>
+-            <td data-testid="plan-every">{{ pl.every ?? '' }}</td>
+-            <td data-testid="plan-day">{{ pl.day ?? '' }}</td>
+-            <td data-testid="plan-end">{{ pl.end }}</td>
+-            <td data-testid="plan-generated">{{ pl.generated }}</td>
+-            <td data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</td>
++            <td data-testid="plan-figure">{{ pl.amount | fig }}</td>
++            <td data-testid="plan-start">{{ pl.start | fig }}</td>
++            <td data-testid="plan-every">{{ (pl.every ?? '') | fig }}</td>
++            <td data-testid="plan-day">{{ (pl.day ?? '') | fig }}</td>
++            <td data-testid="plan-end">{{ pl.end | fig }}</td>
++            <td data-testid="plan-generated">{{ pl.generated | fig }}</td>
++            <td data-testid="plan-next-dates">{{ (pl.nextDates.join(', ')) | fig }}</td>
+           </tr>
+         }
+       </tbody>
+@@ -125,7 +127,7 @@ export class PlanStore {
+         Add plan<span class="visually-hidden"> for {{ personName() }}</span>
+       </button>
+       @if (error(); as err) {
+-        <p role="alert" data-testid="plan-error">{{ err }}</p>
++        <p role="alert" data-testid="plan-error">{{ err | fig }}</p>
+       }
+     </form>
+   `,
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 190d8e53..ab1ecebc 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, DOCUMENT, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { SettingsStore } from '../settings/settings';
+@@ -223,6 +224,7 @@ export class PoolStore {
+ // pot is the pot of each pool that is a member of none.
+ @Component({
+   selector: 'app-pools',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Pools">
+       <h2>Pools</h2>
+@@ -236,7 +238,7 @@ export class PoolStore {
+         />
+         <button type="submit" data-testid="pool-form-submit">Add pool</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="pool-form-error">{{ err }}</p>
++          <p role="alert" data-testid="pool-form-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -254,17 +256,17 @@ export class PoolStore {
+                 <ul [attr.aria-label]="'Members of ' + p.name">
+                   @for (m of p.members; track m.key) {
+                     <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
+-                      {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>%
++                      {{ m.name }}: <span data-testid="pool-share">{{ m.share | fig }}</span>%
+                       @if (m.from || m.to) { ({{ m.from ?? '…' }} to {{ m.to ?? '…' }}) }
+                       @if (m.retired) { (retired) }
+                       @if (m.out) { (not in the pool today) }
+-                      <span class="visually-hidden">cut</span> <span data-testid="pool-cut">{{ m.cut }}</span>
++                      <span class="visually-hidden">cut</span> <span data-testid="pool-cut">{{ m.cut | fig }}</span>
+                     </li>
+                   }
+                 </ul>
+               </td>
+-              <td data-testid="pool-total-share">{{ p.totalShare }}</td>
+-              <td data-testid="pool-balanced">{{ p.balanced ? 'yes' : 'no' }}</td>
++              <td data-testid="pool-total-share">{{ p.totalShare | fig }}</td>
++              <td data-testid="pool-balanced">{{ (p.balanced ? 'yes' : 'no') | fig }}</td>
+               <td>
+                 <form (submit)="addMember($event, p)" [attr.aria-label]="'Add a member to ' + p.name">
+                   <label [for]="'pool-member-select-' + p.id">Member<span class="visually-hidden"> for {{ p.name }}</span></label>
+@@ -307,7 +309,7 @@ export class PoolStore {
+                   />
+                   <button type="submit" data-testid="pool-member-add">Add member<span class="visually-hidden"> to {{ p.name }}</span></button>
+                   @if (rowErrors()[p.id]; as err) {
+-                    <p role="alert" data-testid="pool-error">{{ err }}</p>
++                    <p role="alert" data-testid="pool-error">{{ err | fig }}</p>
+                   }
+                 </form>
+               </td>
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 3e19b409..c7c7b5e7 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, Injectable, computed, effect, inject, signal } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -270,6 +271,7 @@ export class RateStore {
+ // The rate in force for each grade on the sheet's today, every rate set, and the form that sets one.
+ @Component({
+   selector: 'app-rates',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Rates">
+       <h2>Rates</h2>
+@@ -311,7 +313,7 @@ export class RateStore {
+         />
+         <button type="submit" data-testid="rate-form-submit">Set rate</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="rate-form-error">{{ err }}</p>
++          <p role="alert" data-testid="rate-form-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -326,10 +328,10 @@ export class RateStore {
+         ></textarea>
+         <button type="submit" data-testid="import-rates-submit">Import rates</button>
+         @if (importSet() !== null) {
+-          <p role="status">Set: <strong data-testid="import-rates-set">{{ importSet() }}</strong></p>
++          <p role="status">Set: <strong data-testid="import-rates-set">{{ importSet() | fig }}</strong></p>
+         }
+         @if (importError(); as err) {
+-          <p role="alert" data-testid="import-rates-error">{{ err }}</p>
++          <p role="alert" data-testid="import-rates-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -356,12 +358,12 @@ export class RateStore {
+         <button type="submit" data-testid="rate-preview">Preview</button>
+         @if (previewResult(); as r) {
+           <p>
+-            Claims changed: <span data-testid="rate-preview-count">{{ r.count }}</span>;
+-            difference: <span data-testid="rate-preview-diff">{{ r.diff }}</span>
++            Claims changed: <span data-testid="rate-preview-count">{{ r.count | fig }}</span>;
++            difference: <span data-testid="rate-preview-diff">{{ r.diff | fig }}</span>
+           </p>
+         }
+         @if (previewError(); as err) {
+-          <p role="alert" data-testid="rate-preview-error">{{ err }}</p>
++          <p role="alert" data-testid="rate-preview-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -374,7 +376,7 @@ export class RateStore {
+           @for (g of grades; track g) {
+             <tr>
+               <th scope="row">{{ g }}</th>
+-              <td [attr.data-testid]="'rate-current-' + g">{{ store.current().get(g) ?? 'n/a' }}</td>
++              <td [attr.data-testid]="'rate-current-' + g">{{ (store.current().get(g) ?? 'n/a') | fig }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -389,10 +391,10 @@ export class RateStore {
+           @for (r of store.list(); track r.grade + '-' + (r.from ?? 'start')) {
+             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+               <th scope="row">{{ r.grade }}</th>
+-              <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
+-              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
+-              <td data-testid="rate-pct">{{ r.pct }}</td>
+-              <td data-testid="rate-version">{{ r.version }}</td>
++              <td data-testid="rate-from">{{ (r.from ?? 'the start') | fig }}</td>
++              <td data-testid="rate-to">{{ (r.to ?? '') | fig }}</td>
++              <td data-testid="rate-pct">{{ r.pct | fig }}</td>
++              <td data-testid="rate-version">{{ r.version | fig }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 004f41a1..35e24e70 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { GRADES, RateStore } from '../rates/rates';
+@@ -347,6 +348,7 @@ export class SettingsStore {
+ // from, the grace days, and the role each user name has.
+ @Component({
+   selector: 'app-settings',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Settings">
+       <h2>Settings</h2>
+@@ -682,60 +684,60 @@ export class SettingsStore {
+         </fieldset>
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (settingsError(); as err) {
+-          <p role="alert" data-testid="settings-error">{{ err }}</p>
++          <p role="alert" data-testid="settings-error">{{ err | fig }}</p>
+         }
+       </form>
+-      <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ store.clerkLimit() ?? '' }}</strong></p>
+-      <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floorToday() }}</strong></p>
+-      <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.termsToday() }}</strong> days</p>
++      <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ (store.clerkLimit() ?? '') | fig }}</strong></p>
++      <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floorToday() | fig }}</strong></p>
++      <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.termsToday() | fig }}</strong> days</p>
+       @for (g of grades; track g) {
+         <p>
+           Terms in force for grade {{ g }}:
+-          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ store.termsFor(g, session.sheetToday()) }}</strong> days
++          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ (store.termsFor(g, session.sheetToday())) | fig }}</strong> days
+         </p>
+       }
+       @for (g of grades; track g) {
+         <p>
+           Grace days in force for grade {{ g }}:
+-          <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ store.graceShown(g, session.sheetToday()) }}</strong>
++          <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ (store.graceShown(g, session.sheetToday())) | fig }}</strong>
+         </p>
+       }
+-      <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePctToday() }}</strong></p>
+-      <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ store.policyDate() ?? '' }}</strong></p>
++      <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePctToday() | fig }}</strong></p>
++      <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ (store.policyDate() ?? '') | fig }}</strong></p>
+       <p>
+         Period numbering from:
+-        <strong data-testid="setting-period-numbering-from-current">{{ store.periodNumberingFrom() ?? '' }}</strong>
++        <strong data-testid="setting-period-numbering-from-current">{{ (store.periodNumberingFrom() ?? '') | fig }}</strong>
+       </p>
+-      <p>Entry date: <strong data-testid="setting-entry-date-current">{{ store.entryDate() ?? '' }}</strong></p>
+-      <p>Grace days: <strong data-testid="setting-grace-days-current">{{ store.graceDays() ?? '' }}</strong></p>
+-      <p>Pot: <strong data-testid="setting-pot-current">{{ store.pot() ?? '' }}</strong></p>
+-      <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ store.alertThreshold() ?? '' }}</strong></p>
+-      <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong></p>
+-      <p>Parent sheet: <strong data-testid="setting-parent-current">{{ store.parent() ?? '' }}</strong></p>
+-      <p>Cap in force: <strong data-testid="setting-cap-current">{{ store.cap() ?? '' }}</strong></p>
++      <p>Entry date: <strong data-testid="setting-entry-date-current">{{ (store.entryDate() ?? '') | fig }}</strong></p>
++      <p>Grace days: <strong data-testid="setting-grace-days-current">{{ (store.graceDays() ?? '') | fig }}</strong></p>
++      <p>Pot: <strong data-testid="setting-pot-current">{{ (store.pot() ?? '') | fig }}</strong></p>
++      <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ (store.alertThreshold() ?? '') | fig }}</strong></p>
++      <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() | fig }}</strong></p>
++      <p>Parent sheet: <strong data-testid="setting-parent-current">{{ (store.parent() ?? '') | fig }}</strong></p>
++      <p>Cap in force: <strong data-testid="setting-cap-current">{{ (store.cap() ?? '') | fig }}</strong></p>
+       <p>
+         Proof threshold in force:
+-        <strong data-testid="setting-proof-threshold-current">{{ store.proofThreshold() ?? '' }}</strong>
++        <strong data-testid="setting-proof-threshold-current">{{ (store.proofThreshold() ?? '') | fig }}</strong>
+       </p>
+       @for (g of grades; track g) {
+         <p>
+           Proof threshold in force for grade {{ g }}:
+-          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ store.proofThresholdShown(g, session.sheetToday()) }}</strong>
++          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (store.proofThresholdShown(g, session.sheetToday())) | fig }}</strong>
+         </p>
+       }
+       <p>
+         Note threshold in force:
+-        <strong data-testid="setting-note-threshold-current">{{ store.noteThreshold() ?? '' }}</strong>
++        <strong data-testid="setting-note-threshold-current">{{ (store.noteThreshold() ?? '') | fig }}</strong>
+       </p>
+       <p>
+         Review threshold in force:
+-        <strong data-testid="setting-review-threshold-current">{{ store.reviewThreshold() ?? '' }}</strong>
++        <strong data-testid="setting-review-threshold-current">{{ (store.reviewThreshold() ?? '') | fig }}</strong>
+       </p>
+-      <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ store.roundingToday() ?? '' }}</strong></p>
++      <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ (store.roundingToday() ?? '') | fig }}</strong></p>
+       @for (p of permissionActions; track p.action) {
+         <p>
+           Roles that may {{ p.action }}:
+-          <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ store.permissions()[p.action] ?? '' }}</strong>
++          <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ (store.permissions()[p.action] ?? '') | fig }}</strong>
+           @if (store.permissions()[p.action] === undefined) {
+             (standing rule: {{ p.standing }})
+           }
+@@ -765,7 +767,7 @@ export class SettingsStore {
+         </datalist>
+         <button type="submit" data-testid="role-form-submit">Set role</button>
+         @if (roleError(); as err) {
+-          <p role="alert" data-testid="role-form-error">{{ err }}</p>
++          <p role="alert" data-testid="role-form-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+@@ -777,8 +779,8 @@ export class SettingsStore {
+         <tbody>
+           @for (r of store.roles(); track r.user) {
+             <tr [attr.data-testid]="'role-row-' + r.user">
+-              <th scope="row" data-testid="role-user">{{ r.user }}</th>
+-              <td data-testid="role-value">{{ r.role }}</td>
++              <th scope="row" data-testid="role-user">{{ r.user | fig }}</th>
++              <td data-testid="role-value">{{ r.role | fig }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index e9ea6558..ea72a5c6 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,4 +1,5 @@
+ import { Component, computed, inject, input } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { DatedFigure, PeriodStore, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
+ import { GRADES, difference, sumSkippingNa } from '../rates/rates';
+ import { VoidReasonStore } from '../void-reasons/void-reasons';
+@@ -20,6 +21,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
+ // The sheet's figures at a glance, each worked out the same way as the list shows it.
+ @Component({
+   selector: 'app-summary',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Summary">
+       <h2>Summary</h2>
+@@ -32,9 +34,9 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
+           @for (g of byGrade(); track g.grade) {
+             <tr>
+               <th scope="row">{{ g.grade }}</th>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count | fig }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | fig }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active | fig }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -48,8 +50,8 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
+           @for (p of byPeriod(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal | fig }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change | fig }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -63,7 +65,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
+           @for (s of byStatus(); track s.status) {
+             <tr>
+               <th scope="row">{{ s.status }}</th>
+-              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
++              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count | fig }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -77,7 +79,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
+           @for (r of byVoidReason(); track r.reason) {
+             <tr>
+               <th scope="row">{{ r.reason }}</th>
+-              <td [attr.data-testid]="'summary-void-' + r.reason + '-count'">{{ r.count }}</td>
++              <td [attr.data-testid]="'summary-void-' + r.reason + '-count'">{{ r.count | fig }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -94,12 +96,12 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
+           @for (p of classicByPeriod(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal | fig }}</td>
+             </tr>
+           }
+         </tbody>
+       </table>
+-      <p>Due in total, not trimmed: <strong data-testid="classic-due-total">{{ classicDueTotal() }}</strong></p>
++      <p>Due in total, not trimmed: <strong data-testid="classic-due-total">{{ classicDueTotal() | fig }}</strong></p>
+     </section>
+   `,
+ })
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+index eedbf57b..0b17b421 100644
+--- a/src/main/frontend/src/app/features/tree-search/tree-search.ts
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpContext } from '@angular/common/http';
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { LIVE } from '../../core/as-of';
+ import { Session } from '../../core/session';
+@@ -16,6 +17,7 @@ interface Found {
+ // by sheet id.
+ @Component({
+   selector: 'app-tree-search',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Tree search">
+       <h2>Search the tree</h2>
+@@ -29,10 +31,10 @@ interface Found {
+         />
+         <button type="submit" data-testid="search">Search</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="search-error">{{ err }}</p>
++          <p role="alert" data-testid="search-error">{{ err | fig }}</p>
+         }
+       </form>
+-      <p>Found: <strong data-testid="search-count">{{ count() ?? '' }}</strong></p>
++      <p>Found: <strong data-testid="search-count">{{ (count() ?? '') | fig }}</strong></p>
+       <ol aria-label="Found people">
+         @for (f of found(); track $index) {
+           <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} {{ f.dueTotal }}</li>
+diff --git a/src/main/frontend/src/app/features/void-reasons/void-reasons.ts b/src/main/frontend/src/app/features/void-reasons/void-reasons.ts
+index 07b1acf4..32d1d1d8 100644
+--- a/src/main/frontend/src/app/features/void-reasons/void-reasons.ts
++++ b/src/main/frontend/src/app/features/void-reasons/void-reasons.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, Injectable, effect, inject, signal, untracked } from '@angular/core';
++import { FigPipe } from '../../core/locale';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -37,6 +38,7 @@ export class VoidReasonStore {
+ // The active sheet's list of void reasons. A blank reason, or one already on the list, is refused.
+ @Component({
+   selector: 'app-void-reasons',
++  imports: [FigPipe],
+   template: `
+     <section aria-label="Void reasons">
+       <h2>Void reasons</h2>
+@@ -50,13 +52,13 @@ export class VoidReasonStore {
+         />
+         <button type="submit" data-testid="void-reason-add">Add void reason</button>
+         @if (error(); as err) {
+-          <p role="alert" data-testid="void-reason-error">{{ err }}</p>
++          <p role="alert" data-testid="void-reason-error">{{ err | fig }}</p>
+         }
+       </form>
+ 
+       <ul aria-label="Void reasons on the sheet">
+         @for (r of store.list(); track r.id) {
+-          <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ r.reason }}</li>
++          <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ r.reason | fig }}</li>
+         }
+       </ul>
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index d0dc3117..7384cbc4 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -10,6 +10,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+ import net.officefloor.hq.app.session.SessionController;
++import net.officefloor.hq.app.settings.ViewerPasses;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -72,6 +73,7 @@ public class PlanController {
+     }
+ 
+     /** Makes the plans' claims up to the sheet's today. */
++    @ViewerPasses
+     @PostMapping("/plans/generate")
+     public GeneratedView generate(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index fe8cc9bc..790e4975 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -28,13 +29,15 @@ public class PlanService {
+ 
+     private final PlanRepository plans;
+     private final PersonRepository people;
++    private final SettingsService settings;
+     private final ClaimService claims;
+     private final SheetService sheets;
+     private final Audit audit;
+     private final TransactionTemplate tx;
+ 
+     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
+-            Audit audit, PlatformTransactionManager transactions) {
++            SettingsService settings, Audit audit, PlatformTransactionManager transactions) {
++        this.settings = settings;
+         this.plans = plans;
+         this.people = people;
+         this.claims = claims;
+@@ -92,9 +95,12 @@ public class PlanService {
+ 
+     /**
+      * Makes the plans' claims. Each claim is made in a change of its own, so one the claim form refuses changes
+-     * nothing and the others still go through.
++     * nothing and the others still go through. A user who may change nothing on the sheet makes none.
+      */
+     public Generated generate(String by, String sheetId) {
++        if (settings.isReadOnly(sheetId, by)) {
++            return new Generated(List.of(), list(sheetId));
++        }
+         LocalDate today = sheets.load(sheetId).getToday();
+         List<Claim> made = new ArrayList<>();
+         for (Plan plan : tx.execute(s -> plans.findBySheetIdOrderByIdAsc(sheetId))) {
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPref.java b/src/main/java/net/officefloor/hq/app/user/UserPref.java
+new file mode 100644
+index 00000000..4406cf53
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserPref.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A user's own preferences, kept across sheets. */
++@Entity
++@Table(name = "user_pref")
++public class UserPref {
++
++    @Id
++    @Column(name = "user_name")
++    private String userName;
++
++    @Column(name = "locale", nullable = false)
++    private String locale;
++
++    protected UserPref() {
++    }
++
++    public UserPref(String userName, String locale) {
++        this.userName = userName;
++        this.locale = locale;
++    }
++
++    public String getUserName() {
++        return userName;
++    }
++
++    public String getLocale() {
++        return locale;
++    }
++
++    public void setLocale(String locale) {
++        this.locale = locale;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefController.java b/src/main/java/net/officefloor/hq/app/user/UserPrefController.java
+new file mode 100644
+index 00000000..c90486fe
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefController.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import net.officefloor.hq.app.session.SessionController;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.bind.annotation.SessionAttribute;
++
++/** The signed-in user's own locale. */
++@RestController
++public class UserPrefController {
++
++    public record LocaleForm(@NotBlank String locale) {
++    }
++
++    public record LocaleView(String locale) {
++    }
++
++    private final UserPrefService prefs;
++
++    public UserPrefController(UserPrefService prefs) {
++        this.prefs = prefs;
++    }
++
++    @GetMapping("/api/me/locale")
++    public LocaleView locale(@SessionAttribute(SessionController.USER) String user) {
++        return new LocaleView(prefs.locale(user));
++    }
++
++    @PutMapping("/api/me/locale")
++    public LocaleView setLocale(@Valid @RequestBody LocaleForm form,
++            @SessionAttribute(SessionController.USER) String user) {
++        return new LocaleView(prefs.setLocale(user, form.locale()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefRepository.java b/src/main/java/net/officefloor/hq/app/user/UserPrefRepository.java
+new file mode 100644
+index 00000000..523c6d43
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.user;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UserPrefRepository extends JpaRepository<UserPref, String> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefService.java b/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
+new file mode 100644
+index 00000000..98116333
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.user;
++
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** Each user's locale: how the screen shows them figures. Not audited. */
++@Service
++public class UserPrefService {
++
++    /** The locales a user may choose; the first is everyone's until they choose another. */
++    public static final List<String> LOCALES = List.of("en", "de");
++
++    private final UserPrefRepository prefs;
++
++    public UserPrefService(UserPrefRepository prefs) {
++        this.prefs = prefs;
++    }
++
++    @Transactional(readOnly = true)
++    public String locale(String user) {
++        return prefs.findById(user).map(UserPref::getLocale).orElse(LOCALES.get(0));
++    }
++
++    @Transactional
++    public String setLocale(String user, String locale) {
++        if (!LOCALES.contains(locale)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such locale.");
++        }
++        UserPref pref = prefs.findById(user).orElseGet(() -> new UserPref(user, locale));
++        pref.setLocale(locale);
++        prefs.save(pref);
++        return locale;
++    }
++}
+diff --git a/src/main/resources/db/migration/V85__user_pref.sql b/src/main/resources/db/migration/V85__user_pref.sql
+new file mode 100644
+index 00000000..ffd319f4
+--- /dev/null
++++ b/src/main/resources/db/migration/V85__user_pref.sql
+@@ -0,0 +1,5 @@
++-- Each user's own preferences, kept across sheets: the locale the screen shows them figures in (en unless chosen).
++CREATE TABLE user_pref (
++    user_name VARCHAR(100) PRIMARY KEY,
++    locale VARCHAR(10) DEFAULT 'en' NOT NULL
++);
