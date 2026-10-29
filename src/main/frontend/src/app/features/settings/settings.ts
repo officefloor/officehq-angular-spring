@@ -28,6 +28,10 @@ interface SettingsView {
   escalateAfter: number | null;
   // The review SLA: a REVIEW claim whose review day plus this many days is before today is late; null when blank: none.
   reviewSla: number | null;
+  // The score thresholds: while both are set, a person at or above the high one is HIGH, at or above the mid one MID,
+  // else LOW; null when blank: none.
+  scoreMid: number | null;
+  scoreHigh: number | null;
   // The proof kinds (receipt, photo) a claim above its proof threshold needs one proof of each of, comma separated;
   // null when blank: none.
   proofKinds: string | null;
@@ -93,6 +97,8 @@ export const DEFAULT_FLOOR = '1.00';
 export const DEFAULT_TERMS = 14;
 
 const DAYS = /^\d{1,5}$/;
+// A score threshold: a whole number, which may be below zero.
+const SCORE = /^-?\d{1,9}$/;
 
 /** The late percent a sheet starts with: in force before any is recorded. */
 export const DEFAULT_LATE_PCT = '0.00';
@@ -179,6 +185,10 @@ export class SettingsStore {
   readonly escalateAfter = signal<number | null>(null);
   /** The review SLA in days as set; null when blank (none). */
   readonly reviewSla = signal<number | null>(null);
+  /** The mid score threshold as set; null when blank (none). */
+  readonly scoreMid = signal<number | null>(null);
+  /** The high score threshold as set; null when blank (none). */
+  readonly scoreHigh = signal<number | null>(null);
   /** The proof kinds as set, comma separated; null when blank (none). */
   readonly proofKinds = signal<string | null>(null);
   /** The default grade as set; null when blank (A). */
@@ -215,6 +225,8 @@ export class SettingsStore {
     this.graceDays.set(null);
     this.escalateAfter.set(null);
     this.reviewSla.set(null);
+    this.scoreMid.set(null);
+    this.scoreHigh.set(null);
     this.proofKinds.set(null);
     this.defaultGrade.set(null);
     this.pot.set(null);
@@ -241,6 +253,8 @@ export class SettingsStore {
     this.graceDays.set(s.graceDays);
     this.escalateAfter.set(s.escalateAfter ?? null);
     this.reviewSla.set(s.reviewSla ?? null);
+    this.scoreMid.set(s.scoreMid ?? null);
+    this.scoreHigh.set(s.scoreHigh ?? null);
     this.proofKinds.set(s.proofKinds ?? null);
     this.defaultGrade.set(s.defaultGrade ?? null);
     this.pot.set(s.pot ?? null);
@@ -349,6 +363,20 @@ export class SettingsStore {
   async setEscalateAfter(sheet: string, value: number | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/escalate-after`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setScoreMid(sheet: string, value: number | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/score-mid`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setScoreHigh(sheet: string, value: number | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/score-high`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -605,6 +633,26 @@ export class SettingsStore {
           (keydown.delete)="escalateAfterChanged = true; settingsError.set(null)"
           (keydown.backspace)="escalateAfterChanged = true; settingsError.set(null)"
         />
+        <label for="setting-score-mid">Score mid (a person scoring at least this is MID while the high one is set too; blank for none)</label>
+        <input
+          id="setting-score-mid"
+          data-testid="setting-score-mid"
+          inputmode="numeric"
+          [value]="scoreMid()"
+          (input)="scoreMid.set(value($event)); scoreMidChanged = true; settingsError.set(null)"
+          (keydown.delete)="scoreMidChanged = true; settingsError.set(null)"
+          (keydown.backspace)="scoreMidChanged = true; settingsError.set(null)"
+        />
+        <label for="setting-score-high">Score high (a person scoring at least this is HIGH while the mid one is set too; blank for none)</label>
+        <input
+          id="setting-score-high"
+          data-testid="setting-score-high"
+          inputmode="numeric"
+          [value]="scoreHigh()"
+          (input)="scoreHigh.set(value($event)); scoreHighChanged = true; settingsError.set(null)"
+          (keydown.delete)="scoreHighChanged = true; settingsError.set(null)"
+          (keydown.backspace)="scoreHighChanged = true; settingsError.set(null)"
+        />
         <label for="setting-review-sla">Review SLA (a REVIEW claim this many days past the day it went to review is late; blank for none)</label>
         <input
           id="setting-review-sla"
@@ -836,6 +884,8 @@ export class SettingsStore {
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ (store.entryDate() ?? '') | fig }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ (store.graceDays() ?? '') | fig }}</strong></p>
       <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ (store.escalateAfter() ?? '') | fig }}</strong></p>
+      <p>Score mid: <strong data-testid="setting-score-mid-current">{{ (store.scoreMid() ?? '') | fig }}</strong></p>
+      <p>Score high: <strong data-testid="setting-score-high-current">{{ (store.scoreHigh() ?? '') | fig }}</strong></p>
       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ (store.reviewSla() ?? '') | fig }}</strong></p>
       <p>Proof kinds: <strong data-testid="setting-proof-kinds-current">{{ (store.proofKinds() ?? '') | fig }}</strong></p>
       <p>Default grade: <strong data-testid="setting-default-grade-current">{{ (store.defaultGrade() ?? '') | fig }}</strong></p>
@@ -941,6 +991,8 @@ export class Settings {
   protected readonly graceDays = signal('');
   protected readonly escalateAfter = signal('');
   protected readonly reviewSla = signal('');
+  protected readonly scoreMid = signal('');
+  protected readonly scoreHigh = signal('');
   protected readonly proofKinds = signal('');
   protected readonly defaultGrade = signal('');
   protected readonly pot = signal('');
@@ -971,6 +1023,8 @@ export class Settings {
   protected potChanged = false;
   protected escalateAfterChanged = false;
   protected reviewSlaChanged = false;
+  protected scoreMidChanged = false;
+  protected scoreHighChanged = false;
   protected proofKindsChanged = false;
   protected defaultGradeChanged = false;
   protected alertThresholdChanged = false;
@@ -1190,6 +1244,16 @@ export class Settings {
       this.settingsError.set('Enter the escalation gap as a whole number of days, 0 or more, or leave it blank for off.');
       return;
     }
+    const scoreMid = this.scoreMid().trim();
+    if (this.scoreMidChanged && scoreMid && !SCORE.test(scoreMid)) {
+      this.settingsError.set('Enter the mid score as a whole number, or leave it blank for none.');
+      return;
+    }
+    const scoreHigh = this.scoreHigh().trim();
+    if (this.scoreHighChanged && scoreHigh && !SCORE.test(scoreHigh)) {
+      this.settingsError.set('Enter the high score as a whole number, or leave it blank for none.');
+      return;
+    }
     const reviewSla = this.reviewSla().trim();
     if (this.reviewSlaChanged && reviewSla && !DAYS.test(reviewSla)) {
       this.settingsError.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
@@ -1345,6 +1409,14 @@ export class Settings {
       if (this.escalateAfterChanged) {
         await this.store.setEscalateAfter(sheet, escalateAfter ? Number(escalateAfter) : null);
         this.escalateAfterChanged = this.escalateAfter().trim() !== escalateAfter;
+      }
+      if (this.scoreMidChanged) {
+        await this.store.setScoreMid(sheet, scoreMid ? Number(scoreMid) : null);
+        this.scoreMidChanged = this.scoreMid().trim() !== scoreMid;
+      }
+      if (this.scoreHighChanged) {
+        await this.store.setScoreHigh(sheet, scoreHigh ? Number(scoreHigh) : null);
+        this.scoreHighChanged = this.scoreHigh().trim() !== scoreHigh;
       }
       if (this.reviewSlaChanged) {
         await this.store.setReviewSla(sheet, reviewSla ? Number(reviewSla) : null);

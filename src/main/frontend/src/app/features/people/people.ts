@@ -490,7 +490,7 @@ interface StatementView {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shown('terms')) {<th scope="col">Terms</th>}@if (columns.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columns.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th>@if (columns.shown('claimed')) {<th scope="col">Claimed</th>}@if (columns.shown('due-total')) {<th scope="col">Due</th>}
-            <th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Score</th>
+            <th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Score</th><th scope="col">Band</th>
             @if (columns.shown('overdue-count')) {<th scope="col">Overdue</th>}@if (columns.shown('overdue-total')) {<th scope="col">Overdue total</th>}
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
             @if (columns.shown('statement-count')) {<th scope="col">Statements</th>}@if (columns.shown('stated-total')) {<th scope="col">Last stated total</th>}@if (columns.shown('statement-date')) {<th scope="col">Last statement</th>}
@@ -539,6 +539,7 @@ interface StatementView {
               <td data-testid="person-settled-total">{{ (splitBy().get(p.id)?.settled ?? '0.00') | fig }}</td>
               <td data-testid="person-open-total">{{ (splitBy().get(p.id)?.open ?? '0.00') | fig }}</td>
               <td data-testid="person-score">{{ (scoreBy().get(p.id) ?? '0') | fig }}</td>
+              <td data-testid="person-band">{{ bandBy().get(p.id) ?? '' }}</td>
               @if (columns.shown('overdue-count')) {
                 <td data-testid="person-overdue-count">{{ (overdueBy().get(p.id)?.length ?? 0) | fig }}</td>
               }
@@ -1123,6 +1124,19 @@ export class People {
     const overdue = this.overdueBy();
     const by = new Map<number, string>();
     for (const p of this.people()) by.set(p.id, scoreOf(split.get(p.id)?.settled ?? '0.00', overdue.get(p.id)?.length ?? 0));
+    return by;
+  });
+  // Each person's band while both score thresholds are set: HIGH at or above the high one, MID at or above the mid
+  // one, else LOW; none while either is blank.
+  protected readonly bandBy = computed(() => {
+    const mid = this.settings.scoreMid();
+    const high = this.settings.scoreHigh();
+    const by = new Map<number, string>();
+    if (mid === null || high === null) return by;
+    for (const [id, score] of this.scoreBy()) {
+      const n = Number(score);
+      by.set(id, n >= high ? 'HIGH' : n >= mid ? 'MID' : 'LOW');
+    }
     return by;
   });
   // The sheet's settled-total and open-total: everyone's figure added up, not trimmed.

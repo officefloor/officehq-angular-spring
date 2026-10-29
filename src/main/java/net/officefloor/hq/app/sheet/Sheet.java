@@ -112,6 +112,14 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The score at or above which a person is MID, while the high one is set too. Null (blank) for none. Not dated. */
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    /** The score at or above which a person is HIGH, while the mid one is set too. Null (blank) for none. Not dated. */
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** The pot shared among the members of each balanced pool by their shares. Null (blank) for none. Not dated. */
     @Column(name = "pot")
     private BigDecimal pot;
@@ -221,6 +229,8 @@ public class Sheet {
         then.graceDays = graceDays;
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
+        then.scoreMid = scoreMid;
+        then.scoreHigh = scoreHigh;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
         then.pot = pot;
@@ -406,6 +416,22 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    public Integer getScoreMid() {
+        return scoreMid;
+    }
+
+    public void setScoreMid(Integer scoreMid) {
+        this.scoreMid = scoreMid;
+    }
+
+    public Integer getScoreHigh() {
+        return scoreHigh;
+    }
+
+    public void setScoreHigh(Integer scoreHigh) {
+        this.scoreHigh = scoreHigh;
     }
 
     public Integer getReviewSla() {

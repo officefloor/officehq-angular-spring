@@ -397,6 +397,34 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Sets the sheet's mid score threshold (null for blank: none): while the high one is set too, a person whose score
+     * is at or above it is MID. Not dated.
+     */
+    @Transactional
+    public Sheet setScoreMid(String by, String sheetId, Integer score) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setScoreMid(score);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-mid value="
+                + (score == null ? "" : score.toString()));
+        return saved;
+    }
+
+    /**
+     * Sets the sheet's high score threshold (null for blank: none): while the mid one is set too, a person whose score
+     * is at or above it is HIGH. Not dated.
+     */
+    @Transactional
+    public Sheet setScoreHigh(String by, String sheetId, Integer score) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setScoreHigh(score);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-high value="
+                + (score == null ? "" : score.toString()));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's pot (null for blank: none): shared among the members of each balanced pool by their shares.
      * Not dated.
      */
