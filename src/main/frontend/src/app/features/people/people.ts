@@ -5,7 +5,7 @@ import { COLUMNS, UserColumns } from '../../core/columns';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
-import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodDueTotals } from '../periods/periods';
+import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { Header } from '../header/header';
@@ -434,6 +434,7 @@ interface StatementView {
             @if (columns.shown('patrons')) {<th scope="col">Patrons</th>}@if (columns.shown('backing')) {<th scope="col">Backing</th>}@if (columns.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Watched</th>
             @for (pd of periods.list(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
+              <th scope="col">Carried into {{ pd.name }}</th>
             }
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Plans</th><th scope="col">Claims</th>
           </tr>
@@ -512,6 +513,9 @@ interface StatementView {
               @for (pd of periods.list(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
                   {{ (periodDueBy().get(p.id)?.get(pd.id) ?? '0.00') | fig }}
+                </td>
+                <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">
+                  {{ (periodCarriedBy().get(p.id)?.get(pd.id) ?? '0.00') | fig }}
                 </td>
               }
               <td>
@@ -1004,6 +1008,13 @@ export class People {
     const periods = this.periods.list();
     const figures = this.countedFigures();
     return new Map(this.people().map((p) => [p.id, personPeriodDueTotals(periods, p.id, figures)]));
+  });
+  // Each person's carried figure for each period, by person id then period id: their counted claims belonging to an
+  // earlier period that were still open or pending at its end.
+  protected readonly periodCarriedBy = computed(() => {
+    const periods = this.periods.list();
+    const figures = this.countedFigures();
+    return new Map(this.people().map((p) => [p.id, personPeriodCarried(periods, p.id, figures)]));
   });
   // The people who are active: with an open or pending counted claim dated within the 30 days up to today.
   protected readonly activeIds = computed(() => {

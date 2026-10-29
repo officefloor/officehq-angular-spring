@@ -102,6 +102,30 @@ export function personPeriodDueTotals(
   );
 }
 
+/**
+ * The person's carried figure for each period, by period id: the figures now of their claims belonging to a period that
+ * ends before this one starts and still open or pending at the end of this one's last day, skipping n/a.
+ */
+export function personPeriodCarried(
+  periods: readonly PeriodView[],
+  personId: number,
+  figures: readonly DatedFigure[],
+): Map<number, string> {
+  const by = new Map<number, (string | null)[]>();
+  for (const p of periods) by.set(p.id, []);
+  for (const f of figures) {
+    if (f.personId !== personId) continue;
+    const own = periodOn(periods, f.dueBy);
+    if (!own) continue;
+    for (const p of periods) {
+      if (own.to >= p.from) continue;
+      const status = statusAtEndOf(f, p.to);
+      if (status === 'OPEN' || status === 'PENDING') by.get(p.id)?.push(f.figure);
+    }
+  }
+  return new Map(periods.map((p) => [p.id, sumSkippingNa(by.get(p.id) ?? [])]));
+}
+
 /** Each period's due-total, by period id: the sum of the people's due-totals for it. */
 export function periodDueTotals(
   periods: readonly PeriodView[],
