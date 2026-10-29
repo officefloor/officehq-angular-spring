@@ -1,0 +1,64 @@
+{
+  "checkpoint": 202,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp202_snapshot-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Two snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTwo snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ee94f124df9c6fc8a310e3cd633513f5d8a2729c",
+  "reset_sha": "",
+  "preagent_sha": "8b122798cf8415d5bde2468c01cc79a8aed0b49d",
+  "prev_sha": "8b122798cf8415d5bde2468c01cc79a8aed0b49d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7225900000000001,
+    "input_tokens": 54,
+    "output_tokens": 9148,
+    "cache_read_tokens": 1020510,
+    "cache_creation_tokens": 41914,
+    "num_turns": 27,
+    "duration_ms": 490099,
+    "duration_api_ms": 100333,
+    "model": "claude-opus-5-5",
+    "session_id": "6c28bdb8-250d-4e42-a80b-3340544d69bb",
+    "stop_reason": "success",
+    "result_text": "I added the snapshot comparison to the people screen, and all 4 tests in `bin/e2e` pass.\n\n**How it works:** the app already saved each person's due-total in a snapshot whenever the sheet's today changes, so no new data or audit records were needed.\n\n- **Server** (`PersonController.java`): a new read-only endpoint, `GET /api/sheets/{sheetId}/people/snapshots`, returns each person's snapshot lines as the store holds them now.\n- **Screen** (`people.ts`): a \"Compare snapshots\" box with `snapshot-from`, `snapshot-to`, a `snapshot-compare` button, and one `snapshot-line` per person in list order. Pressing the button clears the old lines, re-reads the snapshots from the server, then shows `<name> <then> <now>`:\n  - A figure is empty when no snapshot exists for that date.\n  - When the to-date is blank, `now` is the person's current due-total.\n  - Each line is trimmed, so a person with no figures shows just their name.\n\nThe re-read on each press is needed because the people list isn't refreshed when today changes. My first version used the list already on screen, and Ben came out as just \"Ben\" because his new snapshot hadn't been loaded.\n\n**Choices the request didn't settle:**\n- If more than one snapshot exists for a date, the latest one is used.\n- A snapshot saved without a due-total, or a current due-total that isn't available, shows `n/a`, as the existing snapshot list does.\n- Figures follow the user's locale, like the other figures on screen.\n- If only `then` is empty, the line keeps both separating spaces (`Ada  2.00`), so `now` stays in its position. The test doesn't cover this case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7225900000000001,
+        "num_turns": 27,
+        "duration_ms": 490099,
+        "duration_api_ms": 100333,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp202.agent.jsonl",
+  "agent_diff_file": "cp202.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
