@@ -129,15 +129,20 @@ public class AsOfService {
     /**
      * The store holding the sheet as it stood at the end of the day: the last state stored while its today was on or
      * before the day (an empty sheet with none), with the day standing in for its today; each parent sheet as it was
-     * last stored while its own today was on or before the day (an empty sheet with none). Only to be read.
+     * last stored while its own today was on or before the day, else as it was when the sheet's own state was stored
+     * (an empty sheet with neither). Only to be read.
      */
     @Transactional(readOnly = true)
     public DataSource storeAsOf(String sheetId, LocalDate day) {
         Map<String, String> lineage = lineage(sheetId);
         List<Long> ids = new ArrayList<>();
         for (String id : lineage.keySet()) {
-            // a parent keeps its own today: it stands as last stored while that was on or before the day
+            // a parent keeps its own today: it stands as last stored while that was on or before the day; with none
+            // so stored, it stands as it was when the sheet's own state was stored
             List<Long> made = snapshots.idsMadeBy(id, day, Limit.of(1));
+            if (made.isEmpty() && !ids.isEmpty() && ids.get(0) != null) {
+                made = snapshots.idsStoredBy(id, ids.get(0), Limit.of(1));
+            }
             ids.add(made.isEmpty() ? null : made.get(0));
         }
         String key = lineage + "|" + ids + "|" + day;

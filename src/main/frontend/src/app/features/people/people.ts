@@ -10,6 +10,7 @@ import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn
 import { SettingsStore } from '../settings/settings';
 import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
+import { Dashboard } from '../dashboard/dashboard';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { PoolRoster, PoolStore } from '../pools/pools';
 import { CrewRoster, crewDueTotal } from '../crews/crews';
@@ -86,7 +87,7 @@ interface StatementView {
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
-  imports: [FigPipe, Claims, Consolidated, Header, Periods, PersonPlans, Summary],
+  imports: [FigPipe, Claims, Consolidated, Dashboard, Header, Periods, PersonPlans, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -97,6 +98,7 @@ interface StatementView {
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDueTotal()"
     />
+    <app-dashboard [statuses]="claimStatuses()" [overdueCount]="overdueClaims().length" />
     <app-consolidated
       [ownPeopleCount]="people().length"
       [ownDueTotal]="dueTotal()"

@@ -33,12 +33,12 @@ public class StatementController {
 
     /**
      * A person's statements as the screen shows them: how many, the last one's due-total (null for n/a) and date,
-     * and a line for each, oldest first (by date, then in their order).
+     * and a line for each, oldest first (by the day it was taken, then in their order).
      */
     public record StatementView(Long personId, int count, String dueTotal, LocalDate date, List<LineView> lines) {
         static StatementView of(StatementService.Summary s) {
-            List<LineView> lines = s.statements().stream().map(LineView::of)
-                    .sorted(Comparator.comparing(LineView::date)).toList();
+            List<LineView> lines = s.statements().stream().sorted(Comparator.comparing(Statement::getTakenOn))
+                    .map(LineView::of).toList();
             if (s.last() == null) {
                 return new StatementView(s.personId(), 0, null, null, lines);
             }

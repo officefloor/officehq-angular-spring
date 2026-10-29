@@ -20,4 +20,8 @@ public interface SheetSnapshotRepository extends JpaRepository<SheetSnapshot, Lo
     /** The ids of the sheet's states stored while its today was on or before the day, latest first. */
     @Query("SELECT s.id FROM SheetSnapshot s WHERE s.sheetId = :sheetId AND s.madeOn <= :day ORDER BY s.id DESC")
     List<Long> idsMadeBy(@Param("sheetId") String sheetId, @Param("day") LocalDate day, Limit limit);
+
+    /** The ids of the sheet's states stored up to the given state (of any sheet), latest first. */
+    @Query("SELECT s.id FROM SheetSnapshot s WHERE s.sheetId = :sheetId AND s.id <= :upTo ORDER BY s.id DESC")
+    List<Long> idsStoredBy(@Param("sheetId") String sheetId, @Param("upTo") Long upTo, Limit limit);
 }

@@ -422,6 +422,14 @@ public class SettingsController {
         return service.roles(sheetId).stream().map(RoleView::of).toList();
     }
 
+    /** The role the signed-in user acts in on the sheet (a steward's delegation to them included). */
+    @GetMapping("/my-role")
+    public RoleView myRole(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @SessionAttribute(SessionController.USER) String user) {
+        return new RoleView(user, service.roleOf(sheetId, user));
+    }
+
     @PutMapping("/roles/{name}")
     public RoleView setRole(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
