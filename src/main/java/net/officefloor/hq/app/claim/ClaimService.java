@@ -285,6 +285,7 @@ public class ClaimService {
         }
         if (next == ClaimStatus.OPEN) {
             refuseWithoutNote(sheetId, claim);
+            refuseOverPeriodCap(sheetId, claim);
             number(sheetId, claim);
             claim.setOpenedBy(by);
         }
@@ -507,6 +508,28 @@ public class ClaimService {
      * Refuses opening the claim when its note is empty and its due is above the note threshold in force on its date;
      * an n/a due is within any threshold.
      */
+    /**
+     * Refuses opening a claim whose due-by falls in a period with a cap when its person already has that many OPEN or
+     * PENDING claims due by a date in it. The sheet stays locked until the transaction ends, so two opens are counted
+     * in turn.
+     */
+    private void refuseOverPeriodCap(String sheetId, Claim claim) {
+        Period period = periods.findFirstBySheetIdAndFromLessThanEqualAndToGreaterThanEqual(sheetId,
+                claim.getDueBy(), claim.getDueBy()).orElse(null);
+        if (period == null || period.getCap() == null) {
+            return;
+        }
+        long held = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()))
+                .filter(c -> c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                .filter(c -> period.contains(c.getDueBy()))
+                .count();
+        if (held >= period.getCap()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The person already has " + period.getCap()
+                    + " open claims in period " + period.getName() + ".");
+        }
+    }
+
     private void refuseWithoutNote(String sheetId, Claim claim) {
         BigDecimal threshold = sheets.load(sheetId).noteThresholdOn(claim.getDate());
         if (threshold == null || (claim.getNote() != null && !claim.getNote().isBlank())) {

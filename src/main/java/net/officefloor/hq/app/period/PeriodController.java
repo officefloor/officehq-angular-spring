@@ -30,19 +30,22 @@ public class PeriodController {
      * A period as the screen shows it; a closed or soft-closed one carries the due-total fixed when it was closed, and each person's
      * then, by person id.
      */
-    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
-            String closedTotal, Map<Long, String> closedPersonTotals) {
+    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, Integer cap, boolean closed,
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period p) {
             Map<Long, String> personTotals = new TreeMap<>();
             p.getClosedPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
-            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(), p.isSoftClosed(),
+            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.getCap(), p.isClosed(), p.isSoftClosed(),
                     p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), personTotals);
         }
     }
 
-    /** A period as the form submits it: a name and its from and to dates, inclusive. */
+    /**
+     * A period as the form submits it: a name, its from and to dates, inclusive, and the most OPEN or PENDING claims a
+     * person may have in it (null for no cap).
+     */
     public record PeriodForm(@NotBlank @Size(max = 100) String name,
-            @NotNull LocalDate from, @NotNull LocalDate to) {
+            @NotNull LocalDate from, @NotNull LocalDate to, @Min(1) @Max(1000000) Integer cap) {
     }
 
     /** The months to generate periods for: those of the from-date through the to-date. */
@@ -70,7 +73,7 @@ public class PeriodController {
     public PeriodView add(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PeriodForm form, @SessionAttribute(SessionController.USER) String user) {
-        return PeriodView.of(service.add(user, sheetId, form.name(), form.from(), form.to()));
+        return PeriodView.of(service.add(user, sheetId, form.name(), form.from(), form.to(), form.cap()));
     }
 
     /** Generates monthly periods; answers the ones made, by month. */

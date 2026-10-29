@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { PeriodStore, inClosedPeriod, periodOn } from '../periods/periods';
+import { PeriodStore, PeriodView, inClosedPeriod, periodOn } from '../periods/periods';
 import { DatedGrade, RateStore, RateView, atLeast, dueOn, gradeOn, rateOn, sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
@@ -826,6 +826,19 @@ export class Claims {
     this.clearRowError(id);
   }
 
+  /**
+   * The period the claim belongs to when it has a cap the person's OPEN or PENDING claims in it already reach;
+   * undefined otherwise.
+   */
+  private periodAtCap(c: Claim): PeriodView | undefined {
+    const p = periodOn(this.periods.list(), c.dueBy);
+    if (!p || p.cap === null) return undefined;
+    const held = this.claims().filter(
+      (o) => o.id !== c.id && (o.status === 'OPEN' || o.status === 'PENDING') && p.from <= o.dueBy && o.dueBy <= p.to,
+    ).length;
+    return held >= p.cap ? p : undefined;
+  }
+
   protected async act(c: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(c.id);
     const sheet = this.session.sheetId();
@@ -833,6 +846,11 @@ export class Claims {
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
     if (inClosedPeriod(this.periods.list(), c.dueBy)) {
       this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const capped = action === 'open' && c.status === 'DRAFT' ? this.periodAtCap(c) : undefined;
+    if (capped) {
+      this.setRowError(c.id, `${this.personName()} already has ${capped.cap} open claims in period ${capped.name}.`);
       return;
     }
     const reason = (this.rejectReasons()[c.id] ?? '').trim();
@@ -885,7 +903,9 @@ export class Claims {
                 : ((action === 'settle' && c.status === 'OPEN') || (action === 'approve' && c.status === 'PENDING')) &&
                     c.proofs === 0
                   ? 'This claim\'s due is above the proof threshold, so it needs a proof first.'
-                  : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
+                  : action === 'open' && c.status === 'DRAFT' && e instanceof HttpErrorResponse && e.status === 409
+                    ? 'This claim cannot be opened: its person may be at the open-claim cap of its period, or it needs a note first.'
+                    : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
       this.setRowError(c.id, err);
     }
   }

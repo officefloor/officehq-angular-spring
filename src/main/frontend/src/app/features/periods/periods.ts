@@ -12,6 +12,8 @@ export interface PeriodView {
   // Both inclusive (yyyy-mm-dd).
   from: string;
   to: string;
+  // The most OPEN or PENDING claims a person may have in it (those due by a date in it); null for no cap.
+  cap: number | null;
   // A closed period keeps the due-total fixed when it was closed; no claim due by a date in it can change.
   closed: boolean;
   // A soft-closed period keeps its due-total fixed the same way, but claims due by a date in it can still change.
@@ -113,9 +115,9 @@ export class PeriodStore {
     if (this.session.sheetId() === sheet) this.list.set(list);
   }
 
-  async add(sheet: string, name: string, from: string, to: string): Promise<void> {
+  async add(sheet: string, name: string, from: string, to: string, cap: number | null): Promise<void> {
     const p = await firstValueFrom(
-      this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { name, from, to }),
+      this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { name, from, to, cap }),
     );
     this.put(sheet, p);
   }
@@ -196,6 +198,14 @@ export class PeriodStore {
           [value]="to()"
           (input)="to.set(value($event)); error.set(null)"
         />
+        <label for="period-cap">Open claims per person (blank for no cap)</label>
+        <input
+          id="period-cap"
+          data-testid="period-form-cap"
+          inputmode="numeric"
+          [value]="cap()"
+          (input)="cap.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as err) {
           <p role="alert" data-testid="period-form-error">{{ err }}</p>
@@ -242,7 +252,7 @@ export class PeriodStore {
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Cap</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
@@ -251,6 +261,7 @@ export class PeriodStore {
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td data-testid="period-due-total">{{ dueBy().get(p.id) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
@@ -286,6 +297,7 @@ export class Periods {
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
+  protected readonly cap = signal('');
   protected readonly error = signal<string | null>(null);
   // Each period's refused action, by period id.
   protected readonly rowErrors = signal<Record<number, string>>({});
@@ -453,6 +465,12 @@ export class Periods {
       this.error.set('A period cannot end before it starts.');
       return;
     }
+    const capText = this.cap().trim();
+    if (capText && (!/^\d+$/.test(capText) || Number(capText) < 1 || Number(capText) > 1000000)) {
+      this.error.set('Enter the cap as a whole number of at least 1, or leave it blank for none.');
+      return;
+    }
+    const cap = capText ? Number(capText) : null;
     if (this.store.list().some((p) => p.name === name)) {
       this.error.set('That period name is already in use on this sheet.');
       return;
@@ -463,10 +481,11 @@ export class Periods {
     }
     this.submitting = true;
     try {
-      await this.store.add(sheet, name, from, to);
+      await this.store.add(sheet, name, from, to, cap);
       this.name.set('');
       this.from.set('');
       this.to.set('');
+      this.cap.set('');
     } catch (err) {
       this.error.set(
         err instanceof HttpErrorResponse && err.status === 409

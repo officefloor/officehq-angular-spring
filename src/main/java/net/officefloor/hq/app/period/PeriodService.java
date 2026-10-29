@@ -57,10 +57,10 @@ public class PeriodService {
 
     /**
      * Adds a period; refused when its to-date is before its from-date, its name is in use on the sheet or its dates
-     * overlap another period's.
+     * overlap another period's. A cap, when given, is the most OPEN or PENDING claims a person may have in it.
      */
     @Transactional
-    public Period add(String by, String sheetId, String name, LocalDate from, LocalDate to) {
+    public Period add(String by, String sheetId, String name, LocalDate from, LocalDate to, Integer cap) {
         // the sheet stays locked until the transaction ends, so two periods added at once are checked in turn
         sheets.lock(sheetId);
         String trimmed = name.strip();
@@ -75,12 +75,13 @@ public class PeriodService {
         }
         Period added;
         try {
-            added = periods.saveAndFlush(new Period(sheetId, trimmed, from, to));
+            added = periods.saveAndFlush(new Period(sheetId, trimmed, from, to, cap));
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + by + " period=" + added.getName()
-                + " from=" + added.getFrom() + " to=" + added.getTo());
+                + " from=" + added.getFrom() + " to=" + added.getTo()
+                + (added.getCap() != null ? " cap=" + added.getCap() : ""));
         return added;
     }
 
