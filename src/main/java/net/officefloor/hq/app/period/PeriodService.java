@@ -228,8 +228,8 @@ public class PeriodService {
 
     /**
      * Each person's carried figure for the period now: the figures of their claims belonging to a period of the sheet
-     * that ends before this one starts and still open or pending at the end of its last day, skipping n/a; 0.00 for a
-     * person with none.
+     * that ends before this one starts and still open or pending at the end of its last day, skipping n/a, plus their
+     * opening balance for it; 0.00 for a person with none.
      */
     private Map<Long, BigDecimal> personCarried(String sheetId, Period period, LocalDate today) {
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
@@ -238,7 +238,7 @@ public class PeriodService {
                 .filter(p -> p.getTo().isBefore(period.getFrom())).toList();
         Map<Long, BigDecimal> carried = new HashMap<>();
         for (Long personId : byId.keySet()) {
-            carried.put(personId, BigDecimal.ZERO.setScale(2));
+            carried.put(personId, period.getPersonOpenings().getOrDefault(personId, BigDecimal.ZERO).setScale(2));
         }
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
@@ -253,6 +253,71 @@ public class PeriodService {
             }
         }
         return carried;
+    }
+
+    /** A pasted line of opening balances read: the person, the period and the amount. */
+    private record OpeningLine(Person person, Period period, BigDecimal amount) {
+    }
+
+    /**
+     * Reads every pasted line of name,period,amount first (a person on the sheet by name or alias, a period on the sheet
+     * by name, an amount of two decimals at most, 0.00 or more), then adds each line's amount to the person's opening
+     * balance for the period, in order. One change: any line refused refuses them all, and nothing is stored or audited.
+     * Answers how many lines went through.
+     */
+    @Transactional
+    public int importOpenings(String by, String sheetId, String text) {
+        sheets.lock(sheetId);
+        Map<String, Period> byName = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .collect(Collectors.toMap(Period::getName, Function.identity()));
+        List<OpeningLine> lines = new ArrayList<>();
+        int n = 0;
+        for (String raw : text.split("\\r?\\n")) {
+            n++;
+            if (raw.isBlank()) {
+                continue;
+            }
+            String[] f = raw.split(",", -1);
+            if (f.length != 3) {
+                throw refused("Line " + n + " is not name,period,amount.");
+            }
+            String name = f[0].strip();
+            Person person = name.isEmpty() ? null : people.findBySheetIdAndNameOrAlias(sheetId, name).orElse(null);
+            if (person == null) {
+                throw refused("Line " + n + " names no one on the sheet.");
+            }
+            Period period = byName.get(f[1].strip());
+            if (period == null) {
+                throw refused("Line " + n + " names no period on the sheet.");
+            }
+            BigDecimal amount;
+            try {
+                amount = new BigDecimal(f[2].strip());
+            } catch (NumberFormatException e) {
+                throw refused("Line " + n + " has no amount.");
+            }
+            if (amount.scale() > 2 || amount.precision() - amount.scale() > 12) {
+                throw refused("Line " + n + " has an amount with more than two decimals.");
+            }
+            if (amount.signum() < 0) {
+                throw refused("Line " + n + " has an amount below 0.00.");
+            }
+            lines.add(new OpeningLine(person, period, amount.setScale(2)));
+        }
+        if (lines.isEmpty()) {
+            throw refused("Paste at least one line of name,period,amount.");
+        }
+        for (OpeningLine l : lines) {
+            l.period().addOpening(l.person().getId(), l.amount());
+            audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + by + " name=" + l.person().getName()
+                    + " period=" + l.period().getName() + " amount=" + l.amount().toPlainString());
+        }
+        periods.saveAllAndFlush(lines.stream().map(OpeningLine::period).distinct().toList());
+        return lines.size();
+    }
+
+    private static ResponseStatusException refused(String reason) {
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, reason);
     }
 
     /**

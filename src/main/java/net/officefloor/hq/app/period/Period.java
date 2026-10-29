@@ -65,6 +65,12 @@ public class Period {
     @Column(name = "carried", nullable = false)
     private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "amount", nullable = false)
+    private Map<Long, BigDecimal> personOpenings = new HashMap<>();
+
     protected Period() {
     }
 
@@ -128,8 +134,18 @@ public class Period {
         return Map.copyOf(closedPersonCarried);
     }
 
+    /** Each person's opening balance for the period, by person id; a person with none has no entry. */
+    public Map<Long, BigDecimal> getPersonOpenings() {
+        return Map.copyOf(personOpenings);
+    }
+
+    /** Adds the amount to the person's opening balance for the period. */
+    public void addOpening(Long personId, BigDecimal amount) {
+        personOpenings.merge(personId, amount, BigDecimal::add);
+    }
+
     /**
-     * Folds the due-total and carried figure fixed for one person into another's (a person with none fixed takes them as theirs): the
+     * Folds the due-total and carried figure fixed for one person, and their opening balance, into another's (a person with none fixed takes them as theirs): the
      * merged person leaves the period, their figure kept under the person they were merged into.
      */
     public void mergePersonTotal(Long from, Long into) {
@@ -140,6 +156,10 @@ public class Period {
         BigDecimal carried = closedPersonCarried.remove(from);
         if (carried != null) {
             closedPersonCarried.merge(into, carried, BigDecimal::add);
+        }
+        BigDecimal opening = personOpenings.remove(from);
+        if (opening != null) {
+            personOpenings.merge(into, opening, BigDecimal::add);
         }
     }
 

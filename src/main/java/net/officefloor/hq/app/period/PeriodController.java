@@ -28,18 +28,21 @@ public class PeriodController {
 
     /**
      * A period as the screen shows it; a closed or soft-closed one carries the due-total fixed when it was closed, and each person's
-     * due-total and carried figure then, by person id.
+     * due-total and carried figure then, by person id; and each person's opening balance for it, by person id.
      */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, Integer cap, boolean closed,
             boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals,
-            Map<Long, String> closedPersonCarried) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings) {
         static PeriodView of(Period p) {
             Map<Long, String> personTotals = new TreeMap<>();
             p.getClosedPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
             Map<Long, String> personCarried = new TreeMap<>();
             p.getClosedPersonCarried().forEach((person, carried) -> personCarried.put(person, carried.toPlainString()));
+            Map<Long, String> openings = new TreeMap<>();
+            p.getPersonOpenings().forEach((person, amount) -> openings.put(person, amount.toPlainString()));
             return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.getCap(), p.isClosed(), p.isSoftClosed(),
-                    p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), personTotals, personCarried);
+                    p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), personTotals, personCarried,
+                    openings);
         }
     }
 
@@ -59,6 +62,14 @@ public class PeriodController {
     public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** The opening balances paste box: lines of name,period,amount. */
+    public record OpeningsForm(@NotNull @Size(max = 100_000) String text) {
+    }
+
+    /** How many pasted lines of opening balances went through. */
+    public record OpeningsDone(int count) {
+    }
+
     private final PeriodService service;
 
     public PeriodController(PeriodService service) {
@@ -70,6 +81,14 @@ public class PeriodController {
     public List<PeriodView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
         return service.list(sheetId).stream().map(PeriodView::of).toList();
+    }
+
+    /** Adds each pasted line's amount to the person's opening balance for the period, all lines or none. */
+    @PostMapping("/openings")
+    public OpeningsDone importOpenings(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody OpeningsForm form, @SessionAttribute(SessionController.USER) String user) {
+        return new OpeningsDone(service.importOpenings(user, sheetId, form.text()));
     }
 
     @PostMapping

@@ -3,7 +3,7 @@ import { Component, Injectable, computed, inject, input, signal } from '@angular
 import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { ClaimLogLine, ClaimStatus, statusAtEndOf } from '../claims/claims';
+import { AMOUNT, ClaimLogLine, ClaimStatus, statusAtEndOf } from '../claims/claims';
 import { sumSkippingNa } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 
@@ -24,6 +24,8 @@ export interface PeriodView {
   closedPersonTotals: Record<string, string>;
   // Each person's carried figure fixed when it was closed or soft-closed, by person id; empty while it is open.
   closedPersonCarried: Record<string, string>;
+  // Each person's opening balance for it, added to their carried figure, by person id; a person with none has no entry.
+  personOpenings: Record<string, string>;
 }
 
 /**
@@ -107,7 +109,8 @@ export function personPeriodDueTotals(
 /**
  * The person's carried figure for each period, by period id: a closed or soft-closed one's figure fixed for them when it
  * was closed (0.00 for a person added since), else the figures now of their claims belonging to a period that ends
- * before this one starts and still open or pending at the end of this one's last day, skipping n/a.
+ * before this one starts and still open or pending at the end of this one's last day, skipping n/a, plus their opening
+ * balance for it.
  */
 export function personPeriodCarried(
   periods: readonly PeriodView[],
@@ -115,7 +118,7 @@ export function personPeriodCarried(
   figures: readonly DatedFigure[],
 ): Map<number, string> {
   const by = new Map<number, (string | null)[]>();
-  for (const p of periods) by.set(p.id, []);
+  for (const p of periods) by.set(p.id, [p.personOpenings[personId] ?? '0.00']);
   for (const f of figures) {
     if (f.personId !== personId) continue;
     const own = periodOn(periods, f.dueBy);
@@ -219,6 +222,15 @@ export class PeriodStore {
     this.put(sheet, p);
   }
 
+  /** Add each pasted line of name,period,amount to the opening balances, all or none; answers how many went through. */
+  async importOpenings(sheet: string, text: string): Promise<number> {
+    const done = await firstValueFrom(
+      this.http.post<{ count: number }>(`/api/sheets/${encodeURIComponent(sheet)}/periods/openings`, { text }),
+    );
+    await this.load(sheet);
+    return done.count;
+  }
+
   private put(sheet: string, p: PeriodView): void {
     if (this.session.sheetId() === sheet) {
       this.list.update((l) => [...l.filter((x) => x.id !== p.id), p].sort((a, b) => a.from.localeCompare(b.from)));
@@ -309,6 +321,23 @@ export class PeriodStore {
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
 
+      <form (submit)="importOpenings($event)" aria-label="Paste opening balances">
+        <label for="opening-import">Opening balances, one per line as name,period,amount</label>
+        <textarea
+          id="opening-import"
+          data-testid="opening-import"
+          [value]="openingText()"
+          (input)="openingText.set(value($event)); openingError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="opening-import-submit">Paste opening balances</button>
+        @if (openingsDone() !== null) {
+          <p role="status">Lines through: <strong data-testid="opening-import-done">{{ openingsDone() | fig }}</strong></p>
+        }
+        @if (openingError(); as err) {
+          <p role="alert" data-testid="opening-error">{{ err | fig }}</p>
+        }
+      </form>
+
       <table>
         <thead>
           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Cap</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th>
@@ -367,6 +396,12 @@ export class Periods {
   // How many periods the last generate made; null while one runs or before any.
   protected readonly generated = signal<number | null>(null);
   private generating = false;
+  // The opening balances paste box, its refusal, and how many lines the last paste put through (null while one runs or
+  // before any).
+  protected readonly openingText = signal('');
+  protected readonly openingError = signal<string | null>(null);
+  protected readonly openingsDone = signal<number | null>(null);
+  private importingOpenings = false;
   // A submit in flight: a second submit before it answers is ignored, so it stores one period.
   private submitting = false;
 
@@ -475,6 +510,40 @@ export class Periods {
       this.genError.set('Could not generate those periods.');
     } finally {
       this.generating = false;
+    }
+  }
+
+  /** Adds each pasted line's amount to the person's opening balance for the period, all or none; shows how many went through. */
+  protected async importOpenings(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.importingOpenings) return;
+    this.openingsDone.set(null);
+    this.openingError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.openingText();
+    const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
+    if (lines.length === 0) {
+      this.openingError.set('Paste at least one line of name,period,amount.');
+      return;
+    }
+    for (const line of lines) {
+      const f = line.split(',');
+      if (f.length !== 3 || !this.store.list().some((p) => p.name === f[1].trim()) || !AMOUNT.test(f[2].trim())) {
+        this.openingError.set(`"${line.trim()}" is not a name, a period on the sheet and an amount of 0.00 or more.`);
+        return;
+      }
+    }
+    this.importingOpenings = true;
+    try {
+      const done = await this.store.importOpenings(sheet, text);
+      if (this.session.sheetId() !== sheet) return;
+      this.openingsDone.set(done);
+      this.openingText.set('');
+    } catch {
+      this.openingError.set('Could not paste those opening balances: check every line names someone on the sheet.');
+    } finally {
+      this.importingOpenings = false;
     }
   }
 
