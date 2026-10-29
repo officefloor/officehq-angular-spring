@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 71498bc7..63462ee3 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Injectable, inject, signal } from '@angular/core';
++import { ApplicationRef, Injectable, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { AsOf } from './as-of';
+ import { UserColumns } from './columns';
+@@ -9,6 +9,7 @@ import { UserLocale } from './locale';
+ @Injectable({ providedIn: 'root' })
+ export class Session {
+   private readonly http = inject(HttpClient);
++  private readonly appRef = inject(ApplicationRef);
+   private readonly asOf = inject(AsOf);
+   private readonly userLocale = inject(UserLocale);
+   private readonly userColumns = inject(UserColumns);
+@@ -52,6 +53,16 @@ export class Session {
+     if (id) await this.loadSheet(id);
+   }
+ 
++  // Resolves once the screen has re-read everything it asked the store for (after a sheet load or a new as-of date,
++  // say), so what is taken from it then shows the sheet as it is loaded.
++  async settled(): Promise<void> {
++    do {
++      await this.appRef.whenStable();
++      // a request answered may lead a view to ask for more
++      await new Promise((resolve) => setTimeout(resolve));
++    } while (!(await firstValueFrom(this.appRef.isStable)));
++  }
++
+   async setToday(today: string): Promise<void> {
+     const id = this.sheetId();
+     if (!id) return;
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 30f35e5f..fb84cacd 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1319,7 +1319,8 @@ export class Claims {
+       return;
+     }
+     const retiredFrom = this.retiredFrom();
+-    const on = date || (this.session.sheetToday() ?? '');
++    // a new claim with no date is dated on the sheet's entry date, when set, as the store dates it
++    const on = date || ((was ? null : this.settings.entryDate()) ?? this.session.sheetToday() ?? '');
+     if (retiredFrom !== null && on > retiredFrom) {
+       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
+       return;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c006975f..bfa6907f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1628,7 +1628,8 @@ export class People {
+ 
+   /** The grade in force for the person on the sheet's today. */
+   /** Downloads every person, retired ones included, in list order as a CSV file. */
+-  protected exportCsv(): void {
++  protected async exportCsv(): Promise<void> {
++    await this.session.settled();
+     const due = this.dueBy();
+     const lines = [['name', 'grade', 'retired-from', 'due-total']];
+     for (const p of this.people()) {
+@@ -1641,7 +1642,8 @@ export class People {
+    * Downloads every claim as a CSV file: people in list order, retired ones included, each person's claims
+    * oldest first, with the figures as the claims list shows them.
+    */
+-  protected exportClaims(): void {
++  protected async exportClaims(): Promise<void> {
++    await this.session.settled();
+     const rates = this.rates.byClaim();
+     const floor = this.settings.floor();
+     const late = this.settings.lateness();
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index ab1ecebc..6aafd06d 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -371,7 +371,8 @@ export class Pools {
+    * Downloads the pools as a CSV file: one line per member, pools in the order added and members in the order added,
+    * a pool member as pool:<name>, the cut as shown (empty when none).
+    */
+-  protected exportPools(): void {
++  protected async exportPools(): Promise<void> {
++    await this.session.settled();
+     const lines = [['pool', 'member', 'share', 'cut']];
+     for (const p of this.shown())
+       for (const m of p.members) lines.push([p.name, m.poolId !== null ? `pool:${m.name}` : m.name, m.share, m.cut]);

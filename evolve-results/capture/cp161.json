@@ -1,0 +1,64 @@
+{
+  "checkpoint": 161,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp161_as-of-exports",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people, claims and pools exports taken while an as-of date is set use the as-of figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people, claims and pools exports taken while an as-of date is set use the as-of figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "64e47fdc404759236b2a1b1be8a0ef8b14573fc6",
+  "reset_sha": "",
+  "preagent_sha": "8be5582126b8a1123e089dd3052691f94aef11a0",
+  "prev_sha": "8be5582126b8a1123e089dd3052691f94aef11a0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2040094,
+    "input_tokens": 76,
+    "output_tokens": 13741,
+    "cache_read_tokens": 2045587,
+    "cache_creation_tokens": 64971,
+    "num_turns": 38,
+    "duration_ms": 739040,
+    "duration_api_ms": 158319,
+    "model": "claude-opus-5-5",
+    "session_id": "6d2902d8-ec9c-4580-93ad-871fe7432e39",
+    "stop_reason": "success",
+    "result_text": "When an as-of date is set, the people, claims and pools exports now give the as-of figures. All 4 tests in `bin/e2e` pass.\n\n**Why the exports were wrong:** the three exports are built in the browser from the data on screen. Setting an as-of date shows the new date straight away, but the people, claims and pools data are re-read from the server a moment later. The test clicked \"Export\" in that gap, so the file still had the current figures. For example, Ada's due came out as 2.00 instead of 1.00, and Ben still showed as retired.\n\n**The fix:**\n- `core/session.ts` has a new `settled()` method. It waits until the screen has no requests still loading and no screen update pending, and checks again in case one answer starts another load.\n- The three exports wait for `settled()` before building the file: `exportCsv` and `exportClaims` in `features/people/people.ts`, and `exportPools` in `features/pools/pools.ts`. The same wait also covers an export pressed right after loading a sheet or clearing the as-of date.\n\n**A second fix scenario 3 needed:** this test was also failing, before it reached any export, because of an older bug. For a new claim with no date, the server uses the sheet's entry date if one is set. The browser's \"person is retired\" check used the sheet's today instead, so it refused a claim the server would have accepted. I changed the browser check in `features/claims/claims.ts` to use the same date as the server for new claims. This is outside the export change itself.\n\nThere are no server or database changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2040094,
+        "num_turns": 38,
+        "duration_ms": 739040,
+        "duration_api_ms": 158319,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp161.agent.jsonl",
+  "agent_diff_file": "cp161.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
