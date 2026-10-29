@@ -1,0 +1,63 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fce21db4..f268cd65 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1100,30 +1100,31 @@ export class People {
+   });
+   // Each person's settled-total and open-total: the figures of their counted settled claims (frozen, corrections
+   // included) and of their counted open and pending claims, each skipping n/a. Together they make the due-total
+-  // before the cap.
++  // before the cap. The scored figure is the settled one leaving out corrections.
+   protected readonly splitBy = computed(() => {
+     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+     const rates = this.rates.byClaim();
+     const floor = this.settings.floor();
+     const late = this.settings.lateness();
+-    const by = new Map<number, { settled: string; open: string }>();
++    const by = new Map<number, { settled: string; open: string; scored: string }>();
+     for (const [id, list] of this.liveBy()) {
+       const own = grades.get(id) ?? [];
+       const due = (c: Claim) => dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
+       by.set(id, {
+         settled: sumSkippingNa(list.filter((c) => c.status === 'SETTLED').map(due)),
+         open: sumSkippingNa(list.filter(isOpen).map(due)),
++        scored: sumSkippingNa(list.filter((c) => c.status === 'SETTLED' && !c.corrects).map(due)),
+       });
+     }
+     return by;
+   });
+-  // Each person's score: their settled-total divided by 100, minus 5 for each of their overdue claims that count,
++  // Each person's score: their settled-total leaving out corrections divided by 100, minus 5 for each of their overdue claims that count,
+   // rounded half to even to a whole number.
+   protected readonly scoreBy = computed(() => {
+     const split = this.splitBy();
+     const overdue = this.overdueBy();
+     const by = new Map<number, string>();
+-    for (const p of this.people()) by.set(p.id, scoreOf(split.get(p.id)?.settled ?? '0.00', overdue.get(p.id)?.length ?? 0));
++    for (const p of this.people()) by.set(p.id, scoreOf(split.get(p.id)?.scored ?? '0.00', overdue.get(p.id)?.length ?? 0));
+     return by;
+   });
+   // Each person's band while both score thresholds are set: HIGH at or above the high one, MID at or above the mid
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 21fa07f3..8f5ba56b 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -43,7 +43,7 @@ public class RollupService {
+ 
+     /**
+      * One person's figures; a null due-total is n/a. The overdue-total sums their overdue claims' dues. The
+-     * settled-total sums their counted settled claims' figures, and the overdue count is how many of their counted
++     * settled-total sums the figures of their counted settled claims that correct nothing, and the overdue count is how many of their counted
+      * claims are overdue (whether or not they have a figure).
+      */
+     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+@@ -219,7 +219,8 @@ public class RollupService {
+                     if (late) {
+                         overdue = overdue.add(figure);
+                     }
+-                    if (c.getStatus() == ClaimStatus.SETTLED) {
++                    // a correction's figure counts toward no score
++                    if (c.getStatus() == ClaimStatus.SETTLED && c.getCorrects() == null) {
+                         settled = settled.add(figure);
+                     }
+                 }
