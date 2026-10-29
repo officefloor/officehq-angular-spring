@@ -258,6 +258,24 @@ public class RollupService {
         return sum;
     }
 
+    /** Whether the store holds the sheet. */
+    @Transactional(readOnly = true)
+    public boolean sheetExists(String sheetId) {
+        return sheets.findById(sheetId).isPresent();
+    }
+
+    /**
+     * Per grade, the due-totals of the people on it today on the sheet as the store holds it now (retired people left
+     * out, n/a skipped); empty for a sheet that does not exist.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> gradeDueTotals(String sheetId) {
+        if (sheets.findById(sheetId).isEmpty()) {
+            return new TreeMap<>();
+        }
+        return sheetFigures(sheetId).gradeDueTotals();
+    }
+
     /** One sheet's figures as {@link Consolidated} adds them up, as the store holds them (or as of a date, inside one). */
     private Consolidated sheetFigures(String sheetId) {
         Snapshot s = snapshot(sheetId);
