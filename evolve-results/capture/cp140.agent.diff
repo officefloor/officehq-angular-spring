@@ -1,0 +1,38 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index ba41c785..190d8e53 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -100,9 +100,9 @@ function money(c: bigint): string {
+ /**
+  * Each member's cut of the pot (in cents), in member order: the pot times their share over the shares of the members
+  * with a cut added up, rounded half to even to the cent; a retired member, one held on the sheet's today, and one
+- * whose dates do not include it, has none (0). The remainder left by the rounding goes to the member with a cut with the
+- * largest share (the earliest added on a tie), so the cuts total exactly the pot; with no member left with a cut, each
+- * is 0, except that a pool whose every member is retired has no cuts at all (null).
++ * whose dates do not include it, has none (0). The remainder left by the rounding goes to the member with the smallest
++ * non-zero cut (the latest added on a tie), or, with no non-zero cut, to the last member with a share, so the cuts
++ * total exactly the pot; with no member left with a cut, each is 0, except that a pool whose every member is retired has no cuts at all (null).
+  */
+ function cuts(
+   pot: bigint,
+@@ -119,11 +119,16 @@ function cuts(
+     if (r > of || (r === of && q % 2n === 1n)) q += 1n;
+     return q;
+   });
+-  let largest = 0;
+-  shares.forEach((h, i) => {
+-    if (h > shares[largest]) largest = i;
++  let to = -1;
++  result.forEach((c, i) => {
++    if (c !== 0n && (to < 0 || c <= result[to])) to = i;
+   });
+-  result[largest] += pot - result.reduce((sum, c) => sum + c, 0n);
++  if (to < 0) {
++    shares.forEach((h, i) => {
++      if (h > 0n) to = i;
++    });
++  }
++  result[to] += pot - result.reduce((sum, c) => sum + c, 0n);
+   return result;
+ }
+ 
