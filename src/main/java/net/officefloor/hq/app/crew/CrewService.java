@@ -126,17 +126,18 @@ public class CrewService {
         members.flush();
     }
 
-    /** A person leaving the sheet: their memberships are dropped, and so are the crews they lead, with their members. */
+    /** A person leaving the sheet: their memberships are dropped, and the crews they lead stay, with no lead. */
     @Transactional
     public void left(String sheetId, Long personId) {
-        List<Crew> led = crews.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(c -> personId.equals(c.getLeadId())).toList();
         members.deleteAll(members.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(m -> personId.equals(m.getPersonId())
-                        || led.stream().anyMatch(c -> c.getId().equals(m.getCrewId())))
-                .toList());
+                .filter(m -> personId.equals(m.getPersonId())).toList());
         members.flush();
-        crews.deleteAll(led);
+        for (Crew c : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (personId.equals(c.getLeadId())) {
+                c.setLeadId(null);
+                crews.save(c);
+            }
+        }
         crews.flush();
     }
 

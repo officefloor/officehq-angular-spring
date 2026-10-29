@@ -68,7 +68,7 @@ public class PersonTransferService {
      * listed newest first as they were; each claim that had a number takes the other sheet's next, in the order the
      * claims were opened (by the sheet's today when each was opened, then the order they were added). Figures a
      * statement bound are kept, their statements go with them, and references are not carried. Their patron links, pool
-     * memberships, crew memberships, the crews they lead and watches are dropped, and they leave this sheet. Refused unless the user is a steward, for a
+     * memberships, crew memberships and watches are dropped, the crews they lead stay with no lead, and they leave this sheet. Refused unless the user is a steward, for a
      * retired person, for this sheet's own id, for an archived sheet, and when their contact is already a contact on
      * the other sheet. When their name or an alias is already a name or alias of someone on the other sheet (compared
      * as names are), they arrive and are merged into that person exactly as a merge does (their contact then dropped

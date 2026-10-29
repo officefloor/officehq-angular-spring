@@ -22,7 +22,7 @@ public class Crew {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "lead_id", nullable = false)
+    @Column(name = "lead_id")
     private Long leadId;
 
     protected Crew() {

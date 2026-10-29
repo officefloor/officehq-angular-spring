@@ -47,7 +47,7 @@ export interface PoolView {
  */
 function crewPool(crew: CrewView, names: ReadonlyMap<number, string>): PoolView {
   const people = [
-    { personId: crew.leadId, name: crew.leadName },
+    ...(crew.leadId === null ? [] : [{ personId: crew.leadId, name: crew.leadName }]),
     ...crew.members.map((m) => ({ personId: m.personId, name: m.name })),
   ];
   const shares = equalShares(people.length);

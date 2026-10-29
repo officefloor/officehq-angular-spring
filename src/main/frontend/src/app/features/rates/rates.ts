@@ -202,6 +202,21 @@ export class RateStore {
     }
     return by as ReadonlyMap<string, string>;
   });
+  // For each month of the sheet's today's calendar year (as yyyy-mm), each grade's rate in force on its first day;
+  // a grade with none is not in that month's map. Empty with no today.
+  readonly calendar = computed(() => {
+    const year = this.session.sheetToday()?.slice(0, 4);
+    if (!year) return [] as { month: string; rates: ReadonlyMap<string, string> }[];
+    return Array.from({ length: 12 }, (_, i) => {
+      const month = `${year}-${String(i + 1).padStart(2, '0')}`;
+      const by = new Map<string, string>();
+      for (const [g, list] of this.rates()) {
+        const pct = rateOn(list, `${month}-01`);
+        if (pct !== undefined) by.set(g, pct);
+      }
+      return { month, rates: by as ReadonlyMap<string, string> };
+    });
+  });
 
   /** Re-read the sheet's rates from the store. */
   async load(sheet: string): Promise<void> {
@@ -377,6 +392,28 @@ export class RateStore {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ (store.current().get(g) ?? 'n/a') | fig }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <table>
+        <caption>Rate calendar: in force on the first of each month</caption>
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            @for (m of store.calendar(); track m.month) {
+              <th scope="col">{{ m.month }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (g of grades; track g) {
+            <tr>
+              <th scope="row">{{ g }}</th>
+              @for (m of store.calendar(); track m.month) {
+                <td [attr.data-testid]="'rate-month-' + g + '-' + m.month">{{ (m.rates.get(g) ?? 'n/a') | fig }}</td>
+              }
             </tr>
           }
         </tbody>

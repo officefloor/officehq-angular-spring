@@ -14,7 +14,8 @@ export interface CrewMemberView {
 export interface CrewView {
   id: number;
   name: string;
-  leadId: number;
+  // null once the lead has left the sheet; the crew stays, with no lead (its name blank).
+  leadId: number | null;
   leadName: string;
   members: CrewMemberView[];
 }
@@ -31,7 +32,8 @@ export class CrewRoster {
 
 /** A crew's due-total: its lead's and members' due-totals added up, n/a skipped. */
 export function crewDueTotal(crew: CrewView, dueBy: ReadonlyMap<number, string | null>): string {
-  return sumSkippingNa([crew.leadId, ...crew.members.map((m) => m.personId)].map((id) => dueBy.get(id) ?? null));
+  const ids = [...(crew.leadId === null ? [] : [crew.leadId]), ...crew.members.map((m) => m.personId)];
+  return sumSkippingNa(ids.map((id) => dueBy.get(id) ?? null));
 }
 
 // The active sheet's crews: each with its lead and members, and its due-total: the lead's and the members' due-totals
@@ -120,7 +122,7 @@ export class Crews {
     const due = this.roster.dueBy();
     return this.crews().map((c) => ({
       ...c,
-      leadName: names.get(c.leadId) ?? c.leadName,
+      leadName: (c.leadId === null ? undefined : names.get(c.leadId)) ?? c.leadName,
       members: c.members.map((m) => ({ ...m, name: names.get(m.personId) ?? m.name })),
       dueTotal: crewDueTotal(c, due),
     }));
