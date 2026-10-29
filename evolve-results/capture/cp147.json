@@ -1,0 +1,64 @@
+{
+  "checkpoint": 147,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp147_snapshot-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their snapshot lines: one per SNAPSHOT written for them, oldest first, as\n<the day being left> <due-total>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their snapshot lines: one per SNAPSHOT written for them, oldest first, as\n<the day being left> <due-total>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e6e7ec9d829ba51edcecadc0e1716bda6e03e79c",
+  "reset_sha": "",
+  "preagent_sha": "8a184f7ad22320f35fe62a06785b9ad9fee1aed1",
+  "prev_sha": "8a184f7ad22320f35fe62a06785b9ad9fee1aed1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1775303999999998,
+    "input_tokens": 60,
+    "output_tokens": 15352,
+    "cache_read_tokens": 1599892,
+    "cache_creation_tokens": 68784,
+    "num_turns": 30,
+    "duration_ms": 428947,
+    "duration_api_ms": 215614,
+    "model": "claude-opus-5-5",
+    "session_id": "8961a9eb-df2b-4556-9cd8-c289307c9e86",
+    "stop_reason": "success",
+    "result_text": "Each person now shows their snapshot lines, oldest first, as `<the day being left> <due-total>` (for example `2026-03-10 1.00`, or `2026-03-12 n/a` for someone with no rate). `bin/e2e` passes all 4 tests in the spec.\n\n**How it works**\n- **Storage:** a new `person_snapshot` table (`V81__person_snapshot.sql`) holds one row per line, with the person, the day and the due-total. The table has a `PersonSnapshot` entity and repository.\n- **Writing:** when today changes, `RollupService.recordSnapshot` saves a line for each person in the same loop that writes their `SNAPSHOT` audit record. The audit output is unchanged.\n- **Reading:** every person returned by the server now includes a `snapshots` list. The people screen shows each line as a `person-snapshot-line` item under the person.\n\n**Decisions you may want to revisit**\n- **Transfers:** a transferred person keeps their lines on the new sheet. If they are merged into someone there, their lines are deleted along with them.\n- **Merges and deletions:** deleting a person (which a merge does) deletes their lines too.\n- **Cloned sheets:** cloning a sheet doesn't copy the lines, because they are a record of the original sheet's past days.\n- **Viewing the sheet as of a date:** the new table is picked up automatically, so that view only shows lines written by that date.\n\nThe tests don't check any of these four.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1775303999999998,
+        "num_turns": 30,
+        "duration_ms": 428947,
+        "duration_api_ms": 215614,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp147.agent.jsonl",
+  "agent_diff_file": "cp147.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
