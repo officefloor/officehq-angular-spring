@@ -126,6 +126,11 @@ public class Plan {
         return dates;
     }
 
+    /** The first plan dates after the day and on or before the end, at most so many of them. */
+    public List<LocalDate> nextDates(LocalDate after, int count) {
+        return datesUpTo(end).stream().filter(on -> on.isAfter(after)).limit(count).toList();
+    }
+
     public LocalDate getEnd() {
         return end;
     }

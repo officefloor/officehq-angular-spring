@@ -15,6 +15,8 @@ export interface PlanView {
   end: string;
   // How many claims the plan has made so far.
   generated: number;
+  // The first five plan dates after the sheet's today and on or before the end.
+  nextDates: string[];
 }
 
 // The plans of the active sheet, in the order they were added.
@@ -61,6 +63,7 @@ export class PlanStore {
         <tr>
           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
           <th scope="col">Day of month</th><th scope="col">End</th><th scope="col">Claims made</th>
+          <th scope="col">Next dates</th>
         </tr>
       </thead>
       <tbody>
@@ -72,6 +75,7 @@ export class PlanStore {
             <td data-testid="plan-day">{{ pl.day ?? '' }}</td>
             <td data-testid="plan-end">{{ pl.end }}</td>
             <td data-testid="plan-generated">{{ pl.generated }}</td>
+            <td data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</td>
           </tr>
         }
       </tbody>

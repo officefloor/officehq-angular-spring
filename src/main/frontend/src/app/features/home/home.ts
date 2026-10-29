@@ -9,6 +9,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
 import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { Pools } from '../pools/pools';
 import { AuditViewer } from '../audit-viewer/audit-viewer';
+import { PlanStore } from '../plans/plans';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
@@ -113,6 +114,7 @@ import { AuditViewer } from '../audit-viewer/audit-viewer';
 export class Home {
   protected readonly session = inject(Session);
   protected readonly settings = inject(SettingsStore);
+  private readonly plans = inject(PlanStore);
   protected readonly nameInput = signal('');
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal<string | null>(null);
@@ -174,7 +176,11 @@ export class Home {
       await this.session.setToday(today);
     } catch {
       this.todayError.set('Could not change the date.');
+      return;
     }
+    // the plans' next dates follow the sheet's today
+    const sheet = this.session.sheetId();
+    if (sheet) await this.plans.load(sheet).catch(() => undefined);
   }
 
   protected async setAsOf(e: Event): Promise<void> {
