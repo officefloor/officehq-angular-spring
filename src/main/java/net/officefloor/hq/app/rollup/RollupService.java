@@ -363,6 +363,41 @@ public class RollupService {
         return ids;
     }
 
+    /** One person of a sheet of the tree as the tree export lists them: the sheet, name, grade today and due-total. */
+    public record TreePerson(String sheet, String name, String grade, BigDecimal dueTotal) {
+    }
+
+    /**
+     * The people of the other sheets of the sheet's whole tree (its topmost ancestor and every descendant of that, the
+     * sheet itself left out), sheets by id and each sheet's people in list order, as the store holds them now.
+     */
+    @Transactional(readOnly = true)
+    public List<TreePerson> treePeople(String sheetId) {
+        String root = sheetId;
+        Set<String> seen = new HashSet<>(Set.of(root));
+        for (String up = parentOf(root); up != null && seen.add(up); up = parentOf(up)) {
+            root = up;
+        }
+        List<String> tree = new ArrayList<>(List.of(root));
+        tree.addAll(descendantIds(root));
+        tree.remove(sheetId);
+        Collections.sort(tree);
+        List<TreePerson> rows = new ArrayList<>();
+        for (String id : tree) {
+            Snapshot s = snapshot(id);
+            LocalDate today = sheets.findById(id).map(Sheet::getToday).orElse(null);
+            for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                Figures f = s.people().get(p.getId());
+                rows.add(new TreePerson(id, p.getName(), p.gradeOn(today), f == null ? null : f.dueTotal()));
+            }
+        }
+        return rows;
+    }
+
+    private String parentOf(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getParentId).orElse(null);
+    }
+
     /**
      * The consolidated figures as of the day: the sheet and each of its descendants (as linked now), each as it stood at
      * the end of the day with the day as its today (see {@link AsOfService#storeAsOf}), added up.

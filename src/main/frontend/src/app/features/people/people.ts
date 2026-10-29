@@ -89,6 +89,14 @@ interface StatementView {
   lines: { date: string; dueTotal: string | null }[];
 }
 
+// One person of another sheet of the tree, as the store holds them: due-total null for n/a.
+interface TreePerson {
+  sheet: string;
+  name: string;
+  grade: string | null;
+  dueTotal: string | null;
+}
+
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
@@ -298,6 +306,7 @@ interface StatementView {
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
+      <button type="button" data-testid="export-tree" (click)="exportTree()">Export tree people (CSV)</button>
 
       <fieldset>
         <legend>Compare snapshots</legend>
@@ -2069,6 +2078,28 @@ export class People {
       lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', due.get(p.id) ?? 'n/a']);
     }
     this.downloadCsv('people.csv', lines);
+  }
+
+  /**
+   * Downloads the people of the sheet's whole tree as a CSV file: this sheet's people first, in list order, as the
+   * screen shows them, then the other sheets' people, sheets by id, as the store holds them.
+   */
+  protected async exportTree(): Promise<void> {
+    await this.session.settled();
+    const id = this.session.sheetId();
+    if (!id) return;
+    const due = this.dueBy();
+    const lines = [['sheet', 'name', 'grade', 'due-total']];
+    for (const p of this.people()) {
+      lines.push([id, p.name, this.gradeToday(p), due.get(p.id) ?? 'n/a']);
+    }
+    const others = await firstValueFrom(
+      this.http.get<TreePerson[]>(`/api/sheets/${encodeURIComponent(id)}/tree/people`),
+    );
+    for (const o of others) {
+      lines.push([o.sheet, o.name, o.grade ?? '', o.dueTotal ?? 'n/a']);
+    }
+    this.downloadCsv('tree.csv', lines);
   }
 
   /**
