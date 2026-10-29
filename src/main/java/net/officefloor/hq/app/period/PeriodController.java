@@ -63,6 +63,10 @@ public class PeriodController {
     public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** The fiscal year to roll over: FY<year>, into FY<year + 1>. */
+    public record RolloverForm(@NotNull @Min(1) @Max(9997) Integer year) {
+    }
+
     /** The calendar year to generate quarterly periods for. */
     public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
     }
@@ -117,6 +121,14 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody GenerateFiscalYearForm form, @SessionAttribute(SessionController.USER) String user) {
         return service.generateFiscalYear(user, sheetId, form.year()).stream().map(PeriodView::of).toList();
+    }
+
+    /** Rolls the fiscal year over into the next; answers the periods made, by month. */
+    @PostMapping("/rollover")
+    public List<PeriodView> rollover(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody RolloverForm form, @SessionAttribute(SessionController.USER) String user) {
+        return service.rollover(user, sheetId, form.year()).stream().map(PeriodView::of).toList();
     }
 
     /** Generates the calendar year's quarterly periods; answers the ones made, by quarter. */

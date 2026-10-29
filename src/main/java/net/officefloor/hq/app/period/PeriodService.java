@@ -151,6 +151,61 @@ public class PeriodService {
     }
 
     /**
+     * Rolls the fiscal year FY<year> over: generates FY<year + 1>'s twelve monthly periods exactly as
+     * {@link #generateFiscalYear} does, then adds each person's open figure at the end of FY<year>'s last period (the
+     * figures of their claims that count, belonging to a period of FY<year>, still open or pending at the end of its last
+     * day, skipping n/a) to their opening balance for FY<year + 1>'s first period. Refused unless the user is a steward,
+     * and when FY<year> has no periods. Answers the periods made.
+     */
+    @Transactional
+    public List<Period> rollover(String by, String sheetId, int year) {
+        Sheet sheet = sheets.lock(sheetId);
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can roll the year over.");
+        }
+        LocalDate today = sheet.getToday();
+        List<Period> old = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> sheet.fiscalYearOf(p.getFrom()) == year).toList();
+        if (old.isEmpty()) {
+            throw refused("FY" + year + " has no periods.");
+        }
+        LocalDate end = old.stream().map(Period::getTo).max(LocalDate::compareTo).orElseThrow();
+        // the open figures are read before the new year's periods exist, so none of its claims belong to them
+        List<Person> everyone = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        Map<Long, Person> byId = everyone.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, BigDecimal> open = new HashMap<>();
+        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(c.getPersonId());
+            if (person == null || c.getDueBy() == null || old.stream().noneMatch(p -> p.contains(c.getDueBy()))
+                    || !person.countsAtEndOf(c, end, today) || !c.statusAtEndOf(end).isOpen()) {
+                continue;
+            }
+            BigDecimal figure = claimService.due(sheetId, person, c);
+            if (figure != null) {
+                open.merge(person.getId(), figure, BigDecimal::add);
+            }
+        }
+        List<Period> made = generateFiscalYear(by, sheetId, year + 1);
+        LocalDate first = YearMonth.of(year + 1, sheet.getFiscalStartMonth()).atDay(1);
+        Period opening = periods.findBySheetIdOrderByFromAsc(sheetId).stream().filter(p -> p.contains(first))
+                .findFirst().orElse(null);
+        if (opening != null) {
+            for (Person person : everyone) {
+                BigDecimal amount = open.getOrDefault(person.getId(), BigDecimal.ZERO).setScale(2);
+                if (amount.signum() <= 0) {
+                    continue;
+                }
+                opening.addOpening(person.getId(), amount);
+                audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + by + " name=" + person.getName()
+                        + " period=" + opening.getName() + " amount=" + amount.toPlainString());
+            }
+            periods.saveAndFlush(opening);
+        }
+        audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + by + " fy=FY" + year + " periods=" + made.size());
+        return made;
+    }
+
+    /**
      * Closes the period, fixing each person's due-total for it now (the figures of their claims due by a date in it that
      * counted at the end of its last day, skipping n/a) and its own, the sum of those.
      * Refused unless the user's role may close, and when it is already closed.

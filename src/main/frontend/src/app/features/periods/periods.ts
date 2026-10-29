@@ -203,6 +203,18 @@ export class PeriodStore {
     return made.length;
   }
 
+  /**
+   * Roll FY<year> over: generate FY<year + 1>'s periods and carry each person's open figure into its first period's
+   * opening balances; answers how many periods were made.
+   */
+  async rollover(sheet: string, year: number): Promise<number> {
+    const made = await firstValueFrom(
+      this.http.post<PeriodView[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/rollover`, { year }),
+    );
+    await this.load(sheet);
+    return made.length;
+  }
+
   /** Generate the calendar year's four quarterly periods, <yyyy>-Q1 to <yyyy>-Q4; answers how many were made. */
   async generateQuarters(sheet: string, year: number): Promise<number> {
     const made = await firstValueFrom(
@@ -355,6 +367,24 @@ export class PeriodStore {
         <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
       </form>
 
+      <form (submit)="rollover($event)" aria-label="Roll a fiscal year over">
+        <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
+        <input
+          id="rollover-year"
+          data-testid="rollover-year"
+          inputmode="numeric"
+          [value]="rolloverYear()"
+          (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
+        />
+        <button type="submit" data-testid="rollover">Roll year over</button>
+        @if (rolloverMade() !== null) {
+          <p role="status">Periods made: <strong data-testid="rollover-made">{{ rolloverMade() | fig }}</strong></p>
+        }
+        @if (rolloverError(); as err) {
+          <p role="alert" data-testid="rollover-error">{{ err | fig }}</p>
+        }
+      </form>
+
       <form (submit)="importOpenings($event)" aria-label="Paste opening balances">
         <label for="opening-import">Opening balances, one per line as name,period,amount</label>
         <textarea
@@ -444,6 +474,11 @@ export class Periods {
   protected readonly openingError = signal<string | null>(null);
   protected readonly openingsDone = signal<number | null>(null);
   private importingOpenings = false;
+  // The rollover form, its refusal, and how many periods the last rollover made (null while one runs or before any).
+  protected readonly rolloverYear = signal('');
+  protected readonly rolloverError = signal<string | null>(null);
+  protected readonly rolloverMade = signal<number | null>(null);
+  private rollingOver = false;
   // A submit in flight: a second submit before it answers is ignored, so it stores one period.
   private submitting = false;
 
@@ -613,6 +648,37 @@ export class Periods {
       this.openingError.set('Could not paste those opening balances: check every line names someone on the sheet.');
     } finally {
       this.importingOpenings = false;
+    }
+  }
+
+  /** Rolls the fiscal year over into the next; a steward only. Shows how many periods were made. */
+  protected async rollover(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.rollingOver) return;
+    this.rolloverMade.set(null);
+    this.rolloverError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const year = this.rolloverYear().trim();
+    if (!/^\d{4}$/.test(year) || year === '0000' || Number(year) > 9997) {
+      this.rolloverError.set('Enter a fiscal year as yyyy.');
+      return;
+    }
+    this.rollingOver = true;
+    try {
+      const made = await this.store.rollover(sheet, Number(year));
+      if (this.session.sheetId() !== sheet) return;
+      this.rolloverMade.set(made);
+    } catch (err) {
+      this.rolloverError.set(
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward may roll the year over.'
+          : err instanceof HttpErrorResponse && err.status === 422
+            ? `FY${year} has no periods to roll over.`
+            : 'Could not roll that year over.',
+      );
+    } finally {
+      this.rollingOver = false;
     }
   }
 
