@@ -9,6 +9,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.plan.PlanRepository;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
@@ -33,6 +34,7 @@ public class PersonTransferService {
     private final ClaimService claimService;
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final PlanRepository plans;
     private final SheetService sheets;
     private final SettingsService settings;
@@ -42,7 +44,7 @@ public class PersonTransferService {
 
     public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, ClaimService claimService, StatementRepository statements,
-            PoolMemberRepository poolMembers, PlanRepository plans, SheetService sheets, SettingsService settings, RollupService rollup,
+            PoolMemberRepository poolMembers, CrewService crews, PlanRepository plans, SheetService sheets, SettingsService settings, RollupService rollup,
             PersonMergeService mergeService, Audit audit) {
         this.people = people;
         this.patrons = patrons;
@@ -51,6 +53,7 @@ public class PersonTransferService {
         this.claimService = claimService;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.plans = plans;
         this.sheets = sheets;
         this.settings = settings;
@@ -65,7 +68,7 @@ public class PersonTransferService {
      * listed newest first as they were; each claim that had a number takes the other sheet's next, in the order the
      * claims were opened (by the sheet's today when each was opened, then the order they were added). Figures a
      * statement bound are kept, their statements go with them, and references are not carried. Their patron links, pool
-     * memberships and watches are dropped, and they leave this sheet. Refused unless the user is a steward, for a
+     * memberships, crew memberships, the crews they lead and watches are dropped, and they leave this sheet. Refused unless the user is a steward, for a
      * retired person, for this sheet's own id, for an archived sheet, and when their contact is already a contact on
      * the other sheet. When their name or an alias is already a name or alias of someone on the other sheet (compared
      * as names are), they arrive and are merged into that person exactly as a merge does (their contact then dropped
@@ -124,6 +127,7 @@ public class PersonTransferService {
         List<PoolMember> memberships = poolMembers.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(m -> id.equals(m.getPersonId())).toList();
         poolMembers.deleteAll(memberships);
+        crews.left(sheetId, id);
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(id));
         // their statements go with them, in their order
         for (Statement s : statements.findBySheetIdAndPersonIdInOrder(sheetId, id)) {

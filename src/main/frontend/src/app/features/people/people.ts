@@ -12,6 +12,7 @@ import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { PoolRoster, PoolStore } from '../pools/pools';
+import { CrewRoster } from '../crews/crews';
 import { PersonPlans, PlanStore } from '../plans/plans';
 
 interface Person {
@@ -718,6 +719,7 @@ export class People {
   private readonly settings = inject(SettingsStore);
   protected readonly periods = inject(PeriodStore);
   private readonly poolRoster = inject(PoolRoster);
+  private readonly crewRoster = inject(CrewRoster);
   protected readonly poolStore = inject(PoolStore);
   private readonly planStore = inject(PlanStore);
 
@@ -1169,6 +1171,15 @@ export class People {
     effect(() => {
       const list = this.people().map((p) => ({ id: p.id, name: p.name, retiredFrom: p.retiredFrom, holds: p.holds }));
       untracked(() => this.poolRoster.people.set(list));
+    });
+    // The crews offer these people, and add up their due-totals as the list shows them.
+    effect(() => {
+      const list = this.people().map((p) => ({ id: p.id, name: p.name }));
+      const due = this.dueBy();
+      untracked(() => {
+        this.crewRoster.people.set(list);
+        this.crewRoster.dueBy.set(due);
+      });
     });
     // Re-read the people from the store each time a sheet is loaded.
     effect(() => {

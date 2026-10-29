@@ -52,7 +52,7 @@ public class SheetCloneService {
     /**
      * A steward clones the sheet to the other id. The clone gets the sheet's today, settings, roles, rates (and their
      * history), holidays, void reasons, templates and claim tags; its people with their grades, terms, contacts,
-     * aliases, holds, retirements and patrons, in list order; its pools and their members; its periods, all open; and
+     * aliases, holds, retirements and patrons, in list order; its pools and their members; its crews and their members; its periods, all open; and
      * its claims with status, frozen figures, dates, notes, tags, references, comments and logs, listed as they were.
      * Each claim that had a number takes the clone's next, in the order the claims were opened (by the sheet's today
      * when each was opened, then the order they were added to the clone: by person in list order, then as they were
@@ -83,6 +83,7 @@ public class SheetCloneService {
         copySettings(sheetId, toSheetId);
         Map<Long, Long> people = copyPeople(sheetId, toSheetId);
         copyPools(sheetId, toSheetId, people);
+        copyCrews(sheetId, toSheetId, people);
         jdbc.update("INSERT INTO period (sheet_id, name, from_date, to_date) SELECT ?, name, from_date, to_date"
                 + " FROM period WHERE sheet_id = ? ORDER BY id", toSheetId, sheetId);
         copyClaims(sheetId, toSheetId, people);
@@ -160,6 +161,22 @@ public class SheetCloneService {
                     + " to_date) VALUES (?, ?, ?, ?, ?, ?, ?)", toSheetId, pools.get(id(m.get("POOL_ID"))),
                     people.get(id(m.get("PERSON_ID"))), pools.get(id(m.get("MEMBER_POOL_ID"))), m.get("SHARE"),
                     m.get("FROM_DATE"), m.get("TO_DATE"));
+        }
+    }
+
+    /** The sheet's crews, their leads and their members. */
+    private void copyCrews(String sheetId, String toSheetId, Map<Long, Long> people) {
+        Map<Long, Long> crews = new HashMap<>();
+        for (Map<String, Object> c : jdbc.queryForList("SELECT id, lead_id FROM crew WHERE sheet_id = ? ORDER BY id",
+                sheetId)) {
+            Long id = id(c.get("ID"));
+            crews.put(id, insert("INSERT INTO crew (sheet_id, name, lead_id) SELECT ?, name, ? FROM crew WHERE id = ?",
+                    toSheetId, people.get(id(c.get("LEAD_ID"))), id));
+        }
+        for (Map<String, Object> m : jdbc.queryForList("SELECT crew_id, person_id FROM crew_member WHERE sheet_id = ?"
+                + " ORDER BY id", sheetId)) {
+            jdbc.update("INSERT INTO crew_member (sheet_id, crew_id, person_id) VALUES (?, ?, ?)", toSheetId,
+                    crews.get(id(m.get("CREW_ID"))), people.get(id(m.get("PERSON_ID"))));
         }
     }
 

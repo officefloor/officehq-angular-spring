@@ -10,6 +10,7 @@ import { Holidays } from '../holidays/holidays';
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { Pools } from '../pools/pools';
+import { Crews } from '../crews/crews';
 import { AuditViewer } from '../audit-viewer/audit-viewer';
 import { TreeSearch } from '../tree-search/tree-search';
 import { PlanStore } from '../plans/plans';
@@ -17,7 +18,7 @@ import { PlanStore } from '../plans/plans';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [FigPipe, People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, TreeSearch, AuditViewer],
+  imports: [FigPipe, People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, Crews, TreeSearch, AuditViewer],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user | fig }}</strong></p>
@@ -109,6 +110,7 @@ import { PlanStore } from '../plans/plans';
         <app-claim-templates />
         <app-people />
         <app-pools />
+        <app-crews />
         <app-tree-search />
         <app-audit-viewer />
       }
