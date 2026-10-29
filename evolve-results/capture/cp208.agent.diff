@@ -1,0 +1,106 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 0dce9a68..371dfc9f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -69,9 +69,10 @@ public class Claim {
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+     /**
+-     * The number given when the claim is opened: the next in the fiscal year of its due-by across the sheet's tree
++     * The number given when the claim is settled (or approved): the next in the fiscal year of its due-by across the sheet's tree
+      * (FY2026-1, FY2026-2, ...; plain 1, 2, ... given before), or while the sheet numbers by period its period's next
+-     * (P1-1, X-1 for no period); kept when it is voided, never reused; null for a claim never opened.
++     * (P1-1, X-1 for no period); kept when it is voided, never reused; null for a claim never settled (claims
++     * numbered when they were opened, as they once were, keep their numbers).
+      */
+     @Column(name = "claim_number")
+     private String number;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b930d324..450a083c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -360,10 +360,8 @@ public class ClaimService {
+             refuseWithoutNote(sheetId, claim);
+             refuseOverPeriodCap(sheetId, claim);
+             if (aboveReviewThreshold(sheetId, person, claim)) {
+-                // it waits for a steward's review, and is numbered once it is reviewed
++                // it waits for a steward's review; like an OPEN claim it is numbered only once it is settled
+                 next = ClaimStatus.REVIEW;
+-            } else {
+-                number(sheetId, claim);
+             }
+             claim.setOpenedBy(by);
+         }
+@@ -389,6 +387,7 @@ public class ClaimService {
+                 event = "CLAIM_PENDING";
+             } else {
+                 claim.setSettledDue(fixed);
++                numberOnSettle(sheetId, claim);
+                 tail = " due=" + (fixed == null ? "n/a" : fixed.toPlainString())
+                         + (on == null ? "" : " on=" + on);
+             }
+@@ -736,7 +735,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * A steward reviews a claim in REVIEW: it is OPEN, numbered now, and keeps the user who opened it. Refused unless
++     * A steward reviews a claim in REVIEW: it is OPEN, still unnumbered until it is settled, and keeps the user who opened it. Refused unless
+      * it is in REVIEW, unless the user is a steward, and in a closed period.
+      */
+     @Transactional
+@@ -751,7 +750,6 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Person person = person(sheetId, claim.getPersonId());
+         audit.recordOnCommit(record("CLAIM_REVIEWED", by, person, claim));
+-        number(sheetId, claim);
+         claim.setStatus(ClaimStatus.OPEN);
+         logStatus(by, sheetId, person, claim);
+         Claim saved = claims.saveAndFlush(claim);
+@@ -780,6 +778,7 @@ public class ClaimService {
+         BigDecimal fixed = due(sheetId, person, claim);
+         refuseWithoutProof(sheetId, claim, fixed);
+         claim.setSettledDue(fixed);
++        numberOnSettle(sheetId, claim);
+         claim.setStatus(ClaimStatus.SETTLED);
+         logStatus(by, sheetId, person, claim);
+         Claim saved = claims.saveAndFlush(claim);
+@@ -972,11 +971,11 @@ public class ClaimService {
+         // a split is judged by the original alone: the part is a late entry when the original is
+         part.setLateEntry(claim.isLateEntry());
+         part.setStatus(ClaimStatus.OPEN);
+-        number(sheetId, part);
+         part.setOpenedBy(by);
+         logStatus(by, sheetId, person, part);
+         Claim added = claims.saveAndFlush(part);
+-        audit.recordOnCommit(record("CLAIM_SPLIT", by, person, original) + " into=" + added.getNumber());
++        audit.recordOnCommit(record("CLAIM_SPLIT", by, person, original) + " into="
++                + (added.getNumber() == null ? "" : added.getNumber()));
+         audit.recordOnCommit(record("CLAIM_OPENED", by, person, added));
+         rollup.recordChanges(by, sheetId, before);
+         return new Split(original, added);
+@@ -1063,7 +1062,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Gives the claim being opened its number: while the sheet's period numbering from is set and its today is on or
++     * Gives the claim being settled its number: while the sheet's period numbering from is set and its today is on or
+      * after it, the next in the sequence of the period the claim's due-by falls in (X for none), else FY<year>-n, the
+      * next in the fiscal year the due-by falls in, counted across the sheet's tree.
+      * The sheet is locked, so two claims opened at once never get the same one.
+@@ -1080,6 +1079,16 @@ public class ClaimService {
+         claim.numberIn(sequence, last == null ? 1 : last + 1);
+     }
+ 
++    /**
++     * Gives the claim being settled (or approved) its number, by the sheet's numbering and the claim's due-by as they
++     * are now; a claim numbered before claims were numbered at settlement keeps the number it has.
++     */
++    private void numberOnSettle(String sheetId, Claim claim) {
++        if (claim.getNumber() == null) {
++            number(sheetId, claim);
++        }
++    }
++
+     /**
+      * Takes in a claim moved to the sheet from another: one that had a number there gets the sheet's next, as one
+      * being opened would, and its tags are kept as used on the sheet.
