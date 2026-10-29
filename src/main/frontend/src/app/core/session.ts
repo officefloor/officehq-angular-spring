@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { ApplicationRef, Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { AsOf } from './as-of';
 import { UserColumns } from './columns';
@@ -9,6 +9,7 @@ import { UserLocale } from './locale';
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
+  private readonly appRef = inject(ApplicationRef);
   private readonly asOf = inject(AsOf);
   private readonly userLocale = inject(UserLocale);
   private readonly userColumns = inject(UserColumns);
@@ -50,6 +51,16 @@ export class Session {
     this.asOf.date.set(date);
     const id = this.sheetId();
     if (id) await this.loadSheet(id);
+  }
+
+  // Resolves once the screen has re-read everything it asked the store for (after a sheet load or a new as-of date,
+  // say), so what is taken from it then shows the sheet as it is loaded.
+  async settled(): Promise<void> {
+    do {
+      await this.appRef.whenStable();
+      // a request answered may lead a view to ask for more
+      await new Promise((resolve) => setTimeout(resolve));
+    } while (!(await firstValueFrom(this.appRef.isStable)));
   }
 
   async setToday(today: string): Promise<void> {

@@ -1319,7 +1319,8 @@ export class Claims {
       return;
     }
     const retiredFrom = this.retiredFrom();
-    const on = date || (this.session.sheetToday() ?? '');
+    // a new claim with no date is dated on the sheet's entry date, when set, as the store dates it
+    const on = date || ((was ? null : this.settings.entryDate()) ?? this.session.sheetToday() ?? '');
     if (retiredFrom !== null && on > retiredFrom) {
       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
       return;

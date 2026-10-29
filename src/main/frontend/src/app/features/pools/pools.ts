@@ -371,7 +371,8 @@ export class Pools {
    * Downloads the pools as a CSV file: one line per member, pools in the order added and members in the order added,
    * a pool member as pool:<name>, the cut as shown (empty when none).
    */
-  protected exportPools(): void {
+  protected async exportPools(): Promise<void> {
+    await this.session.settled();
     const lines = [['pool', 'member', 'share', 'cut']];
     for (const p of this.shown())
       for (const m of p.members) lines.push([p.name, m.poolId !== null ? `pool:${m.name}` : m.name, m.share, m.cut]);

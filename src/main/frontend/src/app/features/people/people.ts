@@ -1628,7 +1628,8 @@ export class People {
 
   /** The grade in force for the person on the sheet's today. */
   /** Downloads every person, retired ones included, in list order as a CSV file. */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    await this.session.settled();
     const due = this.dueBy();
     const lines = [['name', 'grade', 'retired-from', 'due-total']];
     for (const p of this.people()) {
@@ -1641,7 +1642,8 @@ export class People {
    * Downloads every claim as a CSV file: people in list order, retired ones included, each person's claims
    * oldest first, with the figures as the claims list shows them.
    */
-  protected exportClaims(): void {
+  protected async exportClaims(): Promise<void> {
+    await this.session.settled();
     const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
