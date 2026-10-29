@@ -206,6 +206,23 @@ public class ClaimController {
         return new BulkReassignView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
     }
 
+    /** The claims a bulk re-date is to re-date, by id, and their new date. */
+    public record BulkRedateForm(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @NotNull LocalDate date) {
+    }
+
+    /** The claims a bulk re-date re-dated, in the order it took them, and how many it refused. */
+    public record BulkRedateView(List<ClaimView> redated, int refused) {
+    }
+
+    @PostMapping("/claims/bulk-redate")
+    @ViewerPasses
+    public BulkRedateView bulkRedate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody BulkRedateForm form, @SessionAttribute(SessionController.USER) String user) {
+        ClaimBulkService.Result result = bulk.redate(user, sheetId, form.ids(), form.date());
+        return new BulkRedateView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
+    }
+
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

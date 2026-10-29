@@ -2,6 +2,7 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -102,6 +103,15 @@ public class ClaimBulkService {
      */
     public Result reassign(String by, String sheetId, Set<Long> ids, Long toPersonId) {
         return each(by, sheetId, ids, id -> claims.reassign(by, sheetId, id, toPersonId, true));
+    }
+
+    /**
+     * Re-dates each of the claims that can be re-dated to the date, in list order, by the rules of re-dating one claim.
+     * Each is re-dated in its own transaction: one that is refused, or is not a claim of the sheet, is left as it is and
+     * counted as refused.
+     */
+    public Result redate(String by, String sheetId, Set<Long> ids, LocalDate date) {
+        return each(by, sheetId, ids, id -> claims.redate(by, sheetId, id, date));
     }
 
     /**
