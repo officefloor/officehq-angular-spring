@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 99ca63b4..ba41c785 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
++import { Component, DOCUMENT, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { SettingsStore } from '../settings/settings';
+@@ -235,6 +235,8 @@ export class PoolStore {
+         }
+       </form>
+ 
++      <button type="button" data-testid="export-pools" (click)="exportPools()">Export pools (CSV)</button>
++
+       <table aria-label="Pools on the sheet">
+         <thead>
+           <tr><th scope="col">Pool</th><th scope="col">Members</th><th scope="col">Total share</th><th scope="col">Balanced</th><th scope="col">Add member</th></tr>
+@@ -314,6 +316,7 @@ export class PoolStore {
+ export class Pools {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
++  private readonly document = inject(DOCUMENT);
+   protected readonly roster = inject(PoolRoster);
+ 
+   private readonly store = inject(PoolStore);
+@@ -357,6 +360,23 @@ export class Pools {
+     if (this.session.sheetId() === sheet) this.pools.set(l);
+   }
+ 
++  /**
++   * Downloads the pools as a CSV file: one line per member, pools in the order added and members in the order added,
++   * a pool member as pool:<name>, the cut as shown (empty when none).
++   */
++  protected exportPools(): void {
++    const lines = [['pool', 'member', 'share', 'cut']];
++    for (const p of this.shown())
++      for (const m of p.members) lines.push([p.name, m.poolId !== null ? `pool:${m.name}` : m.name, m.share, m.cut]);
++    const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
++    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
++    const link = this.document.createElement('a');
++    link.href = url;
++    link.download = 'pools.csv';
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   protected value(e: Event): string {
+     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+@@ -499,3 +519,7 @@ export class Pools {
+     }
+   }
+ }
++
++function csvField(v: string): string {
++  return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
++}

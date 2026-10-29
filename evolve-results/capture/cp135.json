@@ -1,0 +1,64 @@
+{
+  "checkpoint": 135,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp135_export-pools",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the pools as a CSV file: a header line pool,member,share,cut then one line per\nmember, pools in the order added and members in the order added, a pool member as pool:<name>, the\ncut as shown (empty when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the pools as a CSV file: a header line pool,member,share,cut then one line per\nmember, pools in the order added and members in the order added, a pool member as pool:<name>, the\ncut as shown (empty when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "501a9b4aec70937d3940f2071cf8658291cd8c9d",
+  "reset_sha": "",
+  "preagent_sha": "e48a5b2dd0a4ac5be24a2be09051b7ae0812a8c4",
+  "prev_sha": "e48a5b2dd0a4ac5be24a2be09051b7ae0812a8c4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4504517999999999,
+    "input_tokens": 28,
+    "output_tokens": 3653,
+    "cache_read_tokens": 422519,
+    "cache_creation_tokens": 36597,
+    "num_turns": 14,
+    "duration_ms": 201587,
+    "duration_api_ms": 65452,
+    "model": "claude-opus-5-5",
+    "session_id": "c7fdfc9c-e4b6-4da4-afb0-1eeceb7dc463",
+    "stop_reason": "success",
+    "result_text": "I added an \"Export pools (CSV)\" button (`data-testid=\"export-pools\"`) to the Pools section, and `bin/e2e` passes all 4 tests.\n\nThe change is front-end only, in `src/main/frontend/src/app/features/pools/pools.ts`, and needed no server or database changes:\n\n- **What the file contains:** the CSV is built from the pools exactly as the screen shows them, so the order and the cuts match what's on screen. The header is `pool,member,share,cut`, followed by one line per member. Pools and their members are in the order they were added.\n- **Pool members** are written as `pool:<name>`.\n- **Cuts** are written as shown, and left empty when a member has none.\n- **Quoting:** values containing a comma, quote or line break are quoted, so `Lee, Jo` comes out as `\"Lee, Jo\"`.\n\nThe download code mirrors the existing people/claims export in `people.ts`. I added a local copy of its small CSV quoting helper rather than sharing one between the two files.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4504517999999999,
+        "num_turns": 14,
+        "duration_ms": 201587,
+        "duration_api_ms": 65452,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp135.agent.jsonl",
+  "agent_diff_file": "cp135.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
