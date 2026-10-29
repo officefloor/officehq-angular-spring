@@ -1,6 +1,11 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -49,12 +54,48 @@ public class SheetService {
         return sheets.findWithLockById(id).orElseThrow();
     }
 
-    /** Takes the sheet's next claim number; two callers at once never get the same one. */
+    /**
+     * Takes the sheet's next claim number: the one after the last given on any sheet of its tree, which share one
+     * number sequence. The tree's root is locked, so two callers on the tree at once never get the same one.
+     */
     @Transactional
     public long nextClaimNumber(String id) {
         load(id);
-        sheets.incrementClaimNumber(id);
-        return sheets.lastClaimNumber(id);
+        Set<String> tree = tree(id);
+        sheets.findWithLockById(root(id)).orElseThrow();
+        long next = sheets.lastClaimNumberOf(tree) + 1;
+        sheets.setClaimNumber(id, next);
+        return next;
+    }
+
+    /** The top of the sheet's tree: its parent, their parent and so on, as far as the sheets exist. */
+    private String root(String id) {
+        Set<String> seen = new HashSet<>();
+        String at = id;
+        while (seen.add(at)) {
+            String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+            if (parent == null || !sheets.existsById(parent)) {
+                break;
+            }
+            at = parent;
+        }
+        return at;
+    }
+
+    /** Every sheet of the sheet's tree, the sheet itself among them: its root and all the sheets below it. */
+    private Set<String> tree(String id) {
+        String root = root(id);
+        Set<String> tree = new LinkedHashSet<>(List.of(root));
+        ArrayDeque<String> toVisit = new ArrayDeque<>(List.of(root));
+        while (!toVisit.isEmpty()) {
+            for (Sheet child : sheets.findByParentIdOrderByIdAsc(toVisit.poll())) {
+                if (tree.add(child.getId())) {
+                    toVisit.add(child.getId());
+                }
+            }
+        }
+        tree.add(id);
+        return tree;
     }
 
     /** Takes the sheet's next settle batch number; two callers at once never get the same one. */
