@@ -1,0 +1,64 @@
+{
+  "checkpoint": 201,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp201_consolidated-grades",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d244d5d497af0066c9f49438da31db0fadb940ba",
+  "reset_sha": "",
+  "preagent_sha": "b65f64f124ba039a0be5450d6b8516028a08a95e",
+  "prev_sha": "b65f64f124ba039a0be5450d6b8516028a08a95e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8323489999999999,
+    "input_tokens": 34,
+    "output_tokens": 9300,
+    "cache_read_tokens": 775785,
+    "cache_creation_tokens": 61382,
+    "num_turns": 18,
+    "duration_ms": 293102,
+    "duration_api_ms": 89894,
+    "model": "claude-opus-5-5",
+    "session_id": "82a43dfa-6207-4267-bc39-ed074099da72",
+    "stop_reason": "success",
+    "result_text": "The consolidated figures now show, for grades A, B and C, the due-totals of each grade's people added up over the sheet and all its descendants, with retired people left out. They also show, for each status, how many claims are in it across the tree. `bin/e2e` passes all 4 tests in the spec.\n\n**How it's worked out**\n- **Grades:** a person counts under the grade they hold on their own sheet's today. A person whose due-total is n/a is skipped. These per-grade sums are not trimmed the way a sheet's main due-total is, where the highest and lowest are dropped. That matches how the existing per-sheet Summary works out its grades.\n- **Statuses:** every claim on every sheet in the tree counts. The screen shows DRAFT, OPEN, PENDING, SETTLED, VOID and REVIEW. DELETED claims are counted on the server but not shown, as in the existing Summary.\n- **Combining:** the current sheet's own figures still come from what the screen already holds, and the server adds the descendants' figures to them, as the existing people and due totals already do. When the sheet is shown as of a date, the server works out the whole tree as of that day, new figures included.\n\n**What changed**\n- **Server** (`RollupService.java`, `RollupController.java`): the consolidated result gained a per-grade due-total map and a per-status claim count map, filled in for each sheet and added up over the tree. The two consolidated endpoints return them as `gradeDueTotals` and `statusCounts`.\n- **Front end** (`consolidated.ts`): two new tables carry the test ids `consolidated-grade-<G>-due-total` and `consolidated-status-<S>-count`. `people.ts` now passes the sheet's own people and claim statuses into that component.\n\nNo stored data or schema changes were needed, and no audit records were added or changed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8323489999999999,
+        "num_turns": 18,
+        "duration_ms": 293102,
+        "duration_api_ms": 89894,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp201.agent.jsonl",
+  "agent_diff_file": "cp201.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
