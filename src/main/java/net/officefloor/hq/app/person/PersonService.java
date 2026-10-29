@@ -493,8 +493,8 @@ public class PersonService {
         return clashing;
     }
 
-    /** A person found by a tree search: their sheet, their name and their due-total (null: n/a). */
-    public record Found(String sheetId, String name, BigDecimal dueTotal) {
+    /** A person found by a tree search: their sheet, name, grade on that sheet's today and due-total (null: n/a). */
+    public record Found(String sheetId, String name, String grade, BigDecimal dueTotal) {
     }
 
     /**
@@ -509,11 +509,12 @@ public class PersonService {
         List<Found> found = new ArrayList<>();
         for (String id : sheetIds) {
             Map<Long, RollupService.Figures> figures = rollup.snapshot(id).people();
+            LocalDate today = today(id);
             for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
                 if (p.getName().toLowerCase(Locale.ROOT).contains(wanted)
                         || p.getAliases().stream().anyMatch(a -> a.toLowerCase(Locale.ROOT).contains(wanted))) {
                     RollupService.Figures f = figures.get(p.getId());
-                    found.add(new Found(id, p.getName(), f == null ? null : f.dueTotal()));
+                    found.add(new Found(id, p.getName(), p.gradeOn(today), f == null ? null : f.dueTotal()));
                 }
             }
         }

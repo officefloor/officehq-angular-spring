@@ -25,7 +25,7 @@ export interface CrewView {
 // the crews list holds them now.
 @Injectable({ providedIn: 'root' })
 export class CrewRoster {
-  readonly people = signal<readonly { id: number; name: string }[]>([]);
+  readonly people = signal<readonly { id: number; name: string; label: string }[]>([]);
   readonly dueBy = signal<ReadonlyMap<number, string | null>>(new Map());
   readonly crews = signal<readonly CrewView[]>([]);
 }
@@ -119,10 +119,11 @@ export class Crews {
   // Each crew with its lead's and members' names as the people list has them now, and its due-total.
   protected readonly shown = computed(() => {
     const names = new Map(this.roster.people().map((p) => [p.id, p.name]));
+    const labels = new Map(this.roster.people().map((p) => [p.id, p.label]));
     const due = this.roster.dueBy();
     return this.crews().map((c) => ({
       ...c,
-      leadName: (c.leadId === null ? undefined : names.get(c.leadId)) ?? c.leadName,
+      leadName: (c.leadId === null ? undefined : labels.get(c.leadId)) ?? c.leadName,
       members: c.members.map((m) => ({ ...m, name: names.get(m.personId) ?? m.name })),
       dueTotal: crewDueTotal(c, due),
     }));

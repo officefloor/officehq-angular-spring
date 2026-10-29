@@ -492,7 +492,7 @@ interface StatementView {
                   (change)="selectPerson(p.id, checked($event))"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name | fig }}</td>
+              <td data-testid="person-name">{{ nameWithGrade(p) | fig }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) | fig }}</td>
               @if (columns.shown('terms')) {
                 <td data-testid="person-terms">{{ (p.terms ?? '') | fig }}</td>
@@ -1163,14 +1163,14 @@ export class People {
   // Each person's patrons as "<name> <share>", sorted by name and comma separated; a person with none is not in
   // the map.
   protected readonly patronNamesBy = computed(() => {
-    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
     const by = new Map<number, string>();
     for (const [id, list] of this.patronSharesBy()) {
       const named = list
-        .filter((r) => names.has(r.patronId))
-        .map((r) => ({ name: names.get(r.patronId)!, share: r.share }))
+        .filter((r) => byId.has(r.patronId))
+        .map((r) => ({ name: byId.get(r.patronId)!.name, label: this.nameWithGrade(byId.get(r.patronId)!), share: r.share }))
         .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      by.set(id, named.map((r) => `${r.name} ${r.share}`).join(', '));
+      by.set(id, named.map((r) => `${r.label} ${r.share}`).join(', '));
     }
     return by;
   });
@@ -1282,7 +1282,7 @@ export class People {
     });
     // The crews offer these people, and add up their due-totals as the list shows them.
     effect(() => {
-      const list = this.people().map((p) => ({ id: p.id, name: p.name }));
+      const list = this.people().map((p) => ({ id: p.id, name: p.name, label: this.nameWithGrade(p) }));
       const due = this.dueBy();
       untracked(() => {
         this.crewRoster.people.set(list);
@@ -1876,6 +1876,11 @@ export class People {
 
   protected gradeToday(p: Person): string {
     return gradeOn(p.grades, this.session.sheetToday());
+  }
+
+  /** The person's name as the screen shows it: with the grade in force on the sheet's today. */
+  protected nameWithGrade(p: Person): string {
+    return `${p.name} (${this.gradeToday(p)})`;
   }
 
   protected edit(p: Person): void {

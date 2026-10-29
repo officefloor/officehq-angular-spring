@@ -383,10 +383,10 @@ public class PersonController {
     }
 
     /** The ids of the people on the sheet the signed-in user watches, in the order they started watching. */
-    /** A person found by a tree search: their sheet, name and due-total (two decimals, or n/a). */
-    public record FoundView(String sheetId, String name, String dueTotal) {
+    /** A person found by a tree search: their sheet, name, grade in force today and due-total (two decimals, or n/a). */
+    public record FoundView(String sheetId, String name, String grade, String dueTotal) {
         static FoundView of(PersonService.Found f) {
-            return new FoundView(f.sheetId(), f.name(), f.dueTotal() == null ? "n/a" : f.dueTotal().toPlainString());
+            return new FoundView(f.sheetId(), f.name(), f.grade(), f.dueTotal() == null ? "n/a" : f.dueTotal().toPlainString());
         }
     }
 

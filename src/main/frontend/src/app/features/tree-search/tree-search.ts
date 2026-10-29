@@ -9,6 +9,7 @@ import { Session } from '../../core/session';
 interface Found {
   sheetId: string;
   name: string;
+  grade: string | null;
   dueTotal: string;
 }
 
@@ -37,7 +38,7 @@ interface Found {
       <p>Found: <strong data-testid="search-count">{{ (count() ?? '') | fig }}</strong></p>
       <ol aria-label="Found people">
         @for (f of found(); track $index) {
-          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} {{ f.dueTotal }}</li>
+          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} ({{ f.grade ?? '' }}) {{ f.dueTotal }}</li>
         }
       </ol>
     </section>
