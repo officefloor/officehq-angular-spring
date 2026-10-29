@@ -1,0 +1,438 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4436672b..75e4084e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -808,6 +808,9 @@ interface TreePerson {
+                 <button type="button" data-testid="person-merge" (click)="merge(p)">
+                   Merge<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="person-merge-undo" (click)="mergeUndo(p)">
++                  Undo last merge<span class="visually-hidden"> into {{ p.name }}</span>
++                </button>
+                 <label [for]="'transfer-to-' + p.id">Transfer to sheet<span class="visually-hidden"> for {{ p.name }}</span></label>
+                 <input
+                   type="text"
+@@ -1811,6 +1814,32 @@ export class People {
+     if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
+   }
+ 
++  /**
++   * The steward who made the last merge into the person undoes it on the sheet's today it was made: the merged person
++   * is back at the end of the list with the claims that came from them and their own aliases. Refused on a later day,
++   * for anyone else, and for a person with no merge to undo.
++   */
++  protected async mergeUndo(p: Person): Promise<void> {
++    this.clearRowErrors(p.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/merge-undo`;
++    try {
++      await firstValueFrom(this.http.post<Person>(url, {}));
++    } catch (err) {
++      this.rowErrors.update((e) => ({
++        ...e,
++        [p.id]:
++          err instanceof HttpErrorResponse && err.status === 403
++            ? 'Only the steward who made the merge can undo it.'
++            : 'Could not undo the last merge into this person.',
++      }));
++      return;
++    }
++    // the merged person comes back with their claims: every view re-reads the sheet
++    if (this.session.sheetId() === sheet) await this.session.loadSheet(sheet);
++  }
++
+   protected setTransferTarget(id: number, sheetId: string): void {
+     this.transferTargets.update((t) => ({ ...t, [id]: sheetId }));
+     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 9a45e078..9e1deb41 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Collection;
+ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Locale;
+@@ -379,6 +380,11 @@ public class Person {
+         aliases.add(new PersonAlias(sheetId, alias));
+     }
+ 
++    /** Takes the aliases from the person; the others are kept. */
++    public void removeAliases(Collection<String> removed) {
++        aliases.removeIf(a -> removed.contains(a.getAlias()));
++    }
++
+     /** Every hold put on the person, earliest from-date first. */
+     public List<DatedHold> getHolds() {
+         return holds.stream().sorted(Comparator.comparing(DatedHold::getFrom)).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index b954714e..29e8c543 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -284,6 +284,19 @@ public class PersonController {
+         return view(sheetId, merges.merge(user, sheetId, id, form.intoId()));
+     }
+ 
++    /**
++     * The steward who made the last merge into the person undoes it on the sheet's today it was made: the merged
++     * person is back at the end of the list with the claims that came from them and their own aliases. Refused on a
++     * later day, for anyone else, and for a person with no merge to undo. The person brought back.
++     */
++    @PostMapping("/{id}/merge-undo")
++    public PersonView mergeUndo(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable Long id,
++            @SessionAttribute(SessionController.USER) String user) {
++        return view(sheetId, merges.undo(user, sheetId, id));
++    }
++
+     /**
+      * A steward transfers the person, with their claims, to another sheet; they leave this one, and are merged there
+      * into the person with their name or an alias. Refused for a retired person, this sheet's own id, and a contact
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeRecords.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeRecords.java
+new file mode 100644
+index 00000000..2824ec6b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeRecords.java
+@@ -0,0 +1,135 @@
++package net.officefloor.hq.app.person;
++
++import java.sql.PreparedStatement;
++import java.sql.Statement;
++import java.time.LocalDate;
++import java.util.Collection;
++import java.util.List;
++import java.util.Optional;
++import javax.sql.DataSource;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.jdbc.support.GeneratedKeyHolder;
++import org.springframework.jdbc.support.KeyHolder;
++import org.springframework.stereotype.Component;
++
++/**
++ * The merges made on each sheet, each keeping the merged person as they stood before it, so the merge can be undone:
++ * the person brought back with the same id, their grades, holds, terms, past retirements and own aliases.
++ */
++@Component
++public class PersonMergeRecords {
++
++    private static final String PERSON_COLUMNS = "id, sheet_id, name, version, retired_from, terms, added_on,"
++            + " retired_on, contact, origin_sheet, tags, arrived_on, arrived_by, flag_reason, flag_until, approver";
++
++    /** A merge made: of the person into the other, by the user while the sheet's today was the date. */
++    public record Merge(long id, Long fromId, Long intoId, String madeBy, LocalDate madeOn, boolean undone) {
++    }
++
++    private final JdbcTemplate jdbc;
++
++    public PersonMergeRecords(DataSource dataSource) {
++        this.jdbc = new JdbcTemplate(dataSource);
++    }
++
++    /**
++     * Keeps the person, as the store holds them now, and the claims of theirs, for a merge into the other being made
++     * by the user while the sheet's today is the date. The id of the merge.
++     */
++    long keep(String sheetId, Long fromId, Long intoId, String by, LocalDate madeOn) {
++        KeyHolder key = new GeneratedKeyHolder();
++        jdbc.update(c -> {
++            PreparedStatement s = c.prepareStatement("INSERT INTO person_merge (sheet_id, from_id, into_id, made_by,"
++                    + " made_on) VALUES (?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
++            s.setString(1, sheetId);
++            s.setLong(2, fromId);
++            s.setLong(3, intoId);
++            s.setString(4, by);
++            s.setObject(5, madeOn);
++            return s;
++        }, key);
++        long id = ((Number) key.getKeys().get("ID")).longValue();
++        jdbc.update("INSERT INTO person_merged (merge_id, " + PERSON_COLUMNS + ") SELECT ?, " + PERSON_COLUMNS
++                + " FROM person WHERE id = ?", id, fromId);
++        jdbc.update("INSERT INTO person_merged_grade (merge_id, grade, from_date, made_on)"
++                + " SELECT ?, grade, from_date, made_on FROM person_grade WHERE person_id = ?", id, fromId);
++        jdbc.update("INSERT INTO person_merged_hold (merge_id, from_date, to_date, made_on)"
++                + " SELECT ?, from_date, to_date, made_on FROM person_hold WHERE person_id = ?", id, fromId);
++        jdbc.update("INSERT INTO person_merged_terms (merge_id, from_date, terms, made_on)"
++                + " SELECT ?, from_date, terms, made_on FROM person_terms WHERE person_id = ?", id, fromId);
++        jdbc.update("INSERT INTO person_merged_retirement (merge_id, from_date, to_date, retired_on, made_on)"
++                + " SELECT ?, from_date, to_date, retired_on, made_on FROM person_retirement WHERE person_id = ?",
++                id, fromId);
++        jdbc.update("INSERT INTO person_merged_alias (merge_id, alias)"
++                + " SELECT ?, alias FROM person_alias WHERE person_id = ?", id, fromId);
++        jdbc.update("INSERT INTO person_merge_claim (merge_id, claim_id)"
++                + " SELECT ?, id FROM claim WHERE sheet_id = ? AND person_id = ?", id, sheetId, fromId);
++        return id;
++    }
++
++    /** Keeps the aliases the merge gave the person merged into. */
++    void keepGiven(long mergeId, Collection<String> aliases) {
++        for (String a : aliases) {
++            jdbc.update("INSERT INTO person_merge_given_alias (merge_id, alias) VALUES (?, ?)", mergeId, a);
++        }
++    }
++
++    /** The last merge into the person on the sheet, undone or not; empty when none was made. */
++    Optional<Merge> lastInto(String sheetId, Long intoId) {
++        return jdbc.query("SELECT id, from_id, into_id, made_by, made_on, undone FROM person_merge"
++                + " WHERE sheet_id = ? AND into_id = ? ORDER BY id DESC LIMIT 1",
++                (r, n) -> new Merge(r.getLong(1), r.getLong(2), r.getLong(3), r.getString(4),
++                        r.getObject(5, LocalDate.class), r.getBoolean(6)), sheetId, intoId).stream().findFirst();
++    }
++
++    /** The merged person's name, as kept. */
++    String name(long mergeId) {
++        return jdbc.queryForObject("SELECT name FROM person_merged WHERE merge_id = ?", String.class, mergeId);
++    }
++
++    /** The merged person's contact, as kept; null for none. */
++    String contact(long mergeId) {
++        return jdbc.queryForObject("SELECT contact FROM person_merged WHERE merge_id = ?", String.class, mergeId);
++    }
++
++    /** The merged person's own aliases, as kept. */
++    List<String> aliases(long mergeId) {
++        return jdbc.queryForList("SELECT alias FROM person_merged_alias WHERE merge_id = ?", String.class, mergeId);
++    }
++
++    /** The aliases the merge gave the person merged into. */
++    List<String> given(long mergeId) {
++        return jdbc.queryForList("SELECT alias FROM person_merge_given_alias WHERE merge_id = ?", String.class,
++                mergeId);
++    }
++
++    /** The ids of the claims that came from the merged person. */
++    List<Long> claims(long mergeId) {
++        return jdbc.queryForList("SELECT claim_id FROM person_merge_claim WHERE merge_id = ?", Long.class, mergeId);
++    }
++
++    /**
++     * Brings the merged person back to the store as kept, at the position in the list, with the contact (null for
++     * none), and marks the merge undone.
++     */
++    void restore(long mergeId, long position, String contact) {
++        jdbc.update("INSERT INTO person (" + PERSON_COLUMNS + ", list_position) SELECT "
++                + PERSON_COLUMNS.replace("contact", "?") + ", ? FROM person_merged WHERE merge_id = ?", contact,
++                position, mergeId);
++        Long id = jdbc.queryForObject("SELECT id FROM person_merged WHERE merge_id = ?", Long.class, mergeId);
++        String sheetId = jdbc.queryForObject("SELECT sheet_id FROM person_merged WHERE merge_id = ?", String.class,
++                mergeId);
++        jdbc.update("INSERT INTO person_grade (person_id, grade, from_date, made_on)"
++                + " SELECT ?, grade, from_date, made_on FROM person_merged_grade WHERE merge_id = ?", id, mergeId);
++        jdbc.update("INSERT INTO person_hold (person_id, from_date, to_date, made_on)"
++                + " SELECT ?, from_date, to_date, made_on FROM person_merged_hold WHERE merge_id = ?", id, mergeId);
++        jdbc.update("INSERT INTO person_terms (person_id, from_date, terms, made_on)"
++                + " SELECT ?, from_date, terms, made_on FROM person_merged_terms WHERE merge_id = ?", id, mergeId);
++        jdbc.update("INSERT INTO person_retirement (person_id, from_date, to_date, retired_on, made_on)"
++                + " SELECT ?, from_date, to_date, retired_on, made_on FROM person_merged_retirement WHERE merge_id = ?",
++                id, mergeId);
++        jdbc.update("INSERT INTO person_alias (person_id, sheet_id, alias)"
++                + " SELECT ?, ?, alias FROM person_merged_alias WHERE merge_id = ?", id, sheetId, mergeId);
++        jdbc.update("UPDATE person_merge SET undone = TRUE WHERE id = ?", mergeId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index 7400d40f..c9e6473b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.List;
++import java.util.Objects;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+@@ -15,6 +16,7 @@ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.settings.SettingsService;
++import net.officefloor.hq.app.sheet.SheetService;
+ import net.officefloor.hq.app.statement.Statement;
+ import net.officefloor.hq.app.statement.StatementRepository;
+ import org.springframework.http.HttpStatus;
+@@ -41,12 +43,14 @@ public class PersonMergeService {
+     private final PlanRepository plans;
+     private final SettingsService settings;
+     private final RollupService rollup;
++    private final SheetService sheets;
++    private final PersonMergeRecords records;
+     private final Audit audit;
+ 
+     public PersonMergeService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
+             ClaimRepository claims, StatementRepository statements, PoolMemberRepository poolMembers, CrewService crews,
+             PeriodRepository periods, PlanRepository plans, SettingsService settings, RollupService rollup,
+-            Audit audit) {
++            SheetService sheets, PersonMergeRecords records, Audit audit) {
+         this.people = people;
+         this.patrons = patrons;
+         this.watches = watches;
+@@ -58,6 +62,8 @@ public class PersonMergeService {
+         this.plans = plans;
+         this.settings = settings;
+         this.rollup = rollup;
++        this.sheets = sheets;
++        this.records = records;
+         this.audit = audit;
+     }
+ 
+@@ -89,11 +95,76 @@ public class PersonMergeService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
+         }
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
++        // the merged person is kept as they stand, so the merge can be undone
++        long mergeId = records.keep(sheetId, from.getId(), into.getId(), by, sheets.load(sheetId).getToday());
++        List<String> had = into.getAliases();
+         Person saved = absorb(by, sheetId, from, into);
++        records.keepGiven(mergeId, saved.getAliases().stream().filter(a -> !had.contains(a)).toList());
+         rollup.recordChanges(by, sheetId, before);
+         return saved;
+     }
+ 
++    /**
++     * The steward who made the last merge into the person undoes it on the sheet's today it was made: the merged
++     * person is back, at the end of the list, as they were before it (with their grades, holds, terms and own
++     * aliases, and their contact unless someone has it now), with the claims that came from them still the other's
++     * (their numbers and status as they are now); the aliases the merge gave the other leave them. Patron, pool,
++     * crew, plan, period and statement changes of the merge stay. Refused unless the user is a steward and the one who
++     * made the merge, on any later day, for a person whose last merge into them is undone or who has none, and when
++     * the merged person's name or an alias is someone else's now. The person brought back, as saved.
++     */
++    @Transactional
++    public Person undo(String by, String sheetId, Long intoId) {
++        if (!settings.isSteward(sheetId, by)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can undo a merge.");
++        }
++        Person into = people.findWithLockByIdAndSheetId(intoId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
++        PersonMergeRecords.Merge merge = records.lastInto(sheetId, intoId).filter(m -> !m.undone())
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "There is no merge to undo."));
++        if (!by.equals(merge.madeBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who made the merge can undo it.");
++        }
++        if (!Objects.equals(merge.madeOn(), sheets.load(sheetId).getToday())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A merge can only be undone on the day it was made.");
++        }
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++
++        // the aliases the merge gave the other leave them
++        into.removeAliases(records.given(merge.id()));
++        people.saveAndFlush(into);
++        String name = records.name(merge.id());
++        List<String> names = new ArrayList<>();
++        names.add(name);
++        names.addAll(records.aliases(merge.id()));
++        if (names.stream().anyMatch(n -> people.nameOrAliasInUse(sheetId, n))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "The merged person's name or an alias is someone else's now.");
++        }
++        String contact = records.contact(merge.id());
++        if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
++            contact = null;
++        }
++        records.restore(merge.id(), people.nextPosition(sheetId), contact);
++
++        // the claims that came from them, still the other's, go back in the order they are listed
++        List<Claim> back = new ArrayList<>(claims.findAllById(records.claims(merge.id())).stream()
++                .filter(c -> c.getSheetId().equals(sheetId) && intoId.equals(c.getPersonId())).toList());
++        back.sort(Comparator.comparing(Claim::getListed, Comparator.nullsFirst(Comparator.naturalOrder()))
++                .thenComparing(Claim::getId));
++        for (Claim c : back) {
++            c.setPersonId(merge.fromId());
++            claims.saveAndFlush(c);
++            claims.relist(c.getId());
++        }
++
++        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + by + " name=" + name + " from="
++                + into.getName());
++        rollup.recordChanges(by, sheetId, before);
++        return people.findByIdAndSheetId(merge.fromId(), sheetId).orElseThrow();
++    }
++
+     /**
+      * Merges the one person into the other, both of the sheet and locked, exactly as a merge does, recording it; the
+      * caller checks the merge may be made and records the changes to the figures.
+diff --git a/src/main/resources/db/migration/V120__person_merge.sql b/src/main/resources/db/migration/V120__person_merge.sql
+new file mode 100644
+index 00000000..57b53f3b
+--- /dev/null
++++ b/src/main/resources/db/migration/V120__person_merge.sql
+@@ -0,0 +1,74 @@
++-- Every merge of one person into another on a sheet, made by the user while the sheet's today was made_on; undone once
++-- the merge has been undone. The merged person is kept as they stood (with their grades, holds, terms, past
++-- retirements and own aliases) so an undo can bring them back, with the claims that came from them and the aliases the
++-- merge gave the other.
++CREATE TABLE person_merge (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL,
++    from_id   BIGINT       NOT NULL,
++    into_id   BIGINT       NOT NULL,
++    made_by   VARCHAR(100) NOT NULL,
++    made_on   DATE,
++    undone    BOOLEAN      NOT NULL DEFAULT FALSE
++);
++CREATE INDEX person_merge_into ON person_merge (sheet_id, into_id, id);
++
++CREATE TABLE person_merged (
++    merge_id      BIGINT       NOT NULL REFERENCES person_merge (id),
++    id            BIGINT       NOT NULL,
++    sheet_id      VARCHAR(100) NOT NULL,
++    name          VARCHAR(200) NOT NULL,
++    version       BIGINT       NOT NULL,
++    retired_from  DATE,
++    terms         INT,
++    added_on      DATE,
++    retired_on    DATE,
++    contact       VARCHAR(200),
++    origin_sheet  VARCHAR(100),
++    tags          VARCHAR(1000),
++    arrived_on    DATE,
++    arrived_by    VARCHAR(100),
++    flag_reason   VARCHAR(200),
++    flag_until    DATE,
++    approver      VARCHAR(100)
++);
++CREATE TABLE person_merged_grade (
++    merge_id  BIGINT     NOT NULL REFERENCES person_merge (id),
++    grade     VARCHAR(3) NOT NULL,
++    from_date DATE,
++    made_on   DATE
++);
++CREATE TABLE person_merged_hold (
++    merge_id  BIGINT NOT NULL REFERENCES person_merge (id),
++    from_date DATE   NOT NULL,
++    to_date   DATE,
++    made_on   DATE
++);
++CREATE TABLE person_merged_terms (
++    merge_id  BIGINT NOT NULL REFERENCES person_merge (id),
++    from_date DATE   NOT NULL,
++    terms     INT,
++    made_on   DATE
++);
++CREATE TABLE person_merged_retirement (
++    merge_id   BIGINT NOT NULL REFERENCES person_merge (id),
++    from_date  DATE   NOT NULL,
++    to_date    DATE   NOT NULL,
++    retired_on DATE,
++    made_on    DATE
++);
++-- the merged person's own aliases
++CREATE TABLE person_merged_alias (
++    merge_id BIGINT       NOT NULL REFERENCES person_merge (id),
++    alias    VARCHAR(200) NOT NULL
++);
++-- the aliases the merge gave the person merged into
++CREATE TABLE person_merge_given_alias (
++    merge_id BIGINT       NOT NULL REFERENCES person_merge (id),
++    alias    VARCHAR(200) NOT NULL
++);
++-- the claims that came from the merged person
++CREATE TABLE person_merge_claim (
++    merge_id BIGINT NOT NULL REFERENCES person_merge (id),
++    claim_id BIGINT NOT NULL
++);
