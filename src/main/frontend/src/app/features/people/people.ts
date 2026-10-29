@@ -297,6 +297,7 @@ interface StatementView {
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+      <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
 
       <fieldset>
         <legend>Compare snapshots</legend>
@@ -2090,6 +2091,29 @@ export class People {
       }
     }
     this.downloadCsv('claims.csv', lines);
+  }
+
+  /**
+   * Downloads each person's figures for each period as a CSV file: people in list order, retired ones included, periods
+   * in the order they were added, with the due-total and carried figure as the person's row shows them.
+   */
+  protected async exportPeriods(): Promise<void> {
+    await this.session.settled();
+    const periods = [...this.periods.list()].sort((a, b) => a.id - b.id);
+    const dueBy = this.periodDueBy();
+    const carriedBy = this.periodCarriedBy();
+    const lines = [['person', 'period', 'figure', 'carried']];
+    for (const p of this.people()) {
+      for (const pd of periods) {
+        lines.push([
+          p.name,
+          pd.name,
+          dueBy.get(p.id)?.get(pd.id) ?? '0.00',
+          carriedBy.get(p.id)?.get(pd.id) ?? '0.00',
+        ]);
+      }
+    }
+    this.downloadCsv('periods.csv', lines);
   }
 
   /**
