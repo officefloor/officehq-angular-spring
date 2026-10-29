@@ -43,6 +43,8 @@ export interface Claim {
   remindedOn: string | null;
   // The sheet's today a steward waived the claim's late charge; null for one never waived. See waivedOn().
   waivedOn: string | null;
+  // Whether the claim is held: while held, an open or pending one no statement binds counts in no live total.
+  held: boolean;
   // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
   // settled or approved while it has none, nor while it lacks one of each of the sheet's proof kinds.
   proofs: number;
@@ -379,7 +381,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Held</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -408,6 +410,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-deferred-until">{{ (c.deferredUntil ?? '') | fig }}</td>
             <td data-testid="claim-reminded">{{ (c.remindedOn ?? '') | fig }}</td>
             <td data-testid="claim-waived">{{ (c.waivedOn !== null ? 'yes' : 'no') | fig }}</td>
+            <td data-testid="claim-held">{{ (c.held ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-status">{{ c.status | fig }}</td>
             <td data-testid="claim-review-late">{{ (reviewLate(c, session.sheetToday(), settings.reviewSla()) ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-batch">{{ (c.batch ?? '') | fig }}</td>
@@ -548,6 +551,9 @@ export function claimedTotal(claims: readonly Claim[]): string {
               </button>
               <button type="button" data-testid="claim-remind" (click)="remind(c)">
                 Remind<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <button type="button" data-testid="claim-hold" (click)="hold(c)">
+                {{ c.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               <button type="button" data-testid="claim-waive" (click)="waive(c)">
                 Waive late charge<span class="visually-hidden"> of claim of {{ c.amount }} on {{ c.date }}</span>
@@ -1062,6 +1068,23 @@ export class Claims {
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
     } catch {
       this.setRowError(c.id, 'Only a steward can waive a late charge.');
+    }
+  }
+
+  /** Holds an OPEN or PENDING claim, or releases a held one; any other status is refused. */
+  protected async hold(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (!isOpen(c)) {
+      this.setRowError(c.id, `A ${c.status} claim cannot be held or released; only an OPEN or PENDING one can.`);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/hold`;
+    try {
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
+    } catch {
+      this.setRowError(c.id, 'The claim could not be held or released.');
     }
   }
 

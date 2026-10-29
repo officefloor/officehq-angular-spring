@@ -376,13 +376,13 @@ public class Person {
 
     /**
      * Whether the claim counts toward the person's live totals: one whose status counts, except an open one dated
-     * within a hold that no statement binds, or once the person's retirement date is reached on the sheet's today, and
+     * held, or within a hold, that no statement binds, or once the person's retirement date is reached on the sheet's today, and
      * one deferred on the sheet's today.
      */
     public boolean countsLive(Claim claim, LocalDate today) {
         return claim.getStatus().counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isBound()
-                && (holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
+                && (claim.isHeld() || holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
     }
 
     /**
@@ -393,7 +393,7 @@ public class Person {
         ClaimStatus then = claim.statusAtEndOf(end);
         return then != null && then.counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isBound()
-                && (holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
+                && (claim.isHeld() || holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
     }
 
     /** The version of the person as stored, raised on each save. */

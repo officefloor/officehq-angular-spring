@@ -198,9 +198,9 @@ public class SheetCloneService {
                 Long copy = insert("INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status,"
                         + " settled_due, opened_by, edited_by, corrects, split_from, rounds_on, due_by, terms,"
                         + " deferred_until, deferred_on, reminded_on, late_entry, proofs, proof_photos, ref, tags, void_reason,"
-                        + " added_mark, escalated, waived_on) SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,"
+                        + " added_mark, escalated, waived_on, held) SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,"
                         + " edited_by, corrects, split_from, rounds_on, due_by, terms, deferred_until, deferred_on,"
-                        + " reminded_on, late_entry, proofs, proof_photos, ref, tags, void_reason, added_mark, escalated, waived_on FROM claim"
+                        + " reminded_on, late_entry, proofs, proof_photos, ref, tags, void_reason, added_mark, escalated, waived_on, held FROM claim"
                         + " WHERE id = ?", toSheetId,
                         people.get(person), c.getId());
                 copies.put(c.getId(), copy);

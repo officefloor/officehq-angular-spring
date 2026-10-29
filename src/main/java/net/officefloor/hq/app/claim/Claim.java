@@ -155,6 +155,10 @@ public class Claim {
     @Column(name = "waived_on")
     private LocalDate waivedOn;
 
+    /** Whether the claim is held: while held, an open one no statement binds counts in no live total. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** Whether the claim was ever escalated by a reminder; a claim is escalated once at most. */
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
@@ -253,6 +257,14 @@ public class Claim {
     /** Whether the claim's late charge is waived on the date: waived on or before it. */
     public boolean isWaivedOn(LocalDate day) {
         return waivedOn != null && day != null && !waivedOn.isAfter(day);
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
     }
 
     public boolean isEscalated() {

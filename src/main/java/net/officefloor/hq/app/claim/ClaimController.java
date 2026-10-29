@@ -40,13 +40,13 @@ public class ClaimController {
      * was soft-closed. Ref is its external reference, or null. Tags are its tags, sorted (none for a claim with none).
      * Comments are its comments, in the order they were written. Lines are its lines, in the order they were added.
      * Mark is the mark it was added at (see {@link Claim#getAddedMark}), or null for one just added. Waived-on is the sheet's today when
-     * a steward waived its late charge, or null; it bears no late charge from then on.
+     * a steward waived its late charge, or null; it bears no late charge from then on. Held is whether it is held.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
             String number, String settledDue, String openedBy, String editedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, int proofReceipts, int proofPhotos, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
-            List<CommentView> comments, Integer batch, List<LineView> lines, Long mark, LocalDate waivedOn) {
+            List<CommentView> comments, Integer batch, List<LineView> lines, Long mark, LocalDate waivedOn, boolean held) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
@@ -55,7 +55,7 @@ public class ClaimController {
                     c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason(),
                     c.getComments().stream().map(CommentView::of).toList(), c.getSettleBatch(),
                     c.getLines().stream().map(LineView::of).toList(),
-                    c.getAddedMark() == Long.MAX_VALUE ? null : c.getAddedMark(), c.getWaivedOn());
+                    c.getAddedMark() == Long.MAX_VALUE ? null : c.getAddedMark(), c.getWaivedOn(), c.isHeld());
         }
     }
 
@@ -339,6 +339,13 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.waive(user, sheetId, id));
+    }
+
+    @PostMapping("/claims/{id}/hold")
+    public ClaimView hold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.toggleHold(user, sheetId, id));
     }
 
     @PostMapping("/claims/{id}/remind")

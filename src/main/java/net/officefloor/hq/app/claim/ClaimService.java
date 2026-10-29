@@ -492,6 +492,26 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * Holds an OPEN or PENDING claim, or releases a held one: while held it counts in no live total unless a statement
+     * binds it, as a held person's claims do. Refused for a claim in any other status.
+     */
+    @Transactional
+    public Claim toggleHold(String by, String sheetId, Long id) {
+        Claim claim = lockedClaim(sheetId, id);
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be held or released.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setHeld(!claim.isHeld());
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", by,
+                person(sheetId, saved.getPersonId()), saved));
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
     /** Adds a comment to the claim, by the user on the sheet's today. Refused for a blank comment. */
     @Transactional
     public Claim comment(String by, String sheetId, Long id, String text) {
