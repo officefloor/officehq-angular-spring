@@ -252,24 +252,25 @@ export function plusDays(date: string, days: number): string {
 }
 
 /**
- * The due a claim shows and totals: a settled claim's frozen due; else its live due, the greater of the floor in
- * force on its date and its figure plus the late charge: for an overdue claim, for each full 30 days it is overdue,
- * the late percent in force on that boundary date (its due-by plus its grace, plus 30, 60, 90 ... days) of the figure
- * plus the charges of the boundaries before it (it compounds), rounded like the claim; a boundary whose percent is 0.00 adds nothing. A claim a statement binds shows the due it
+ * The due a claim shows and totals: a settled claim's frozen due; else its live due, its floored figure (the greater
+ * of the floor in force on its date and its figure) plus the late charge worked out on that floored figure: for an
+ * overdue claim, for each full 30 days it is overdue, the late percent in force on that boundary date (its due-by
+ * plus its grace, plus 30, 60, 90 ... days) of the floored figure plus the charges of the boundaries before it (it compounds), rounded like the claim; a boundary whose percent is 0.00 adds nothing. A claim a statement binds shows the due it
  * bound, charge and floor included. A correction has neither; a waived claim bears no charge.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness, grace = 0): string | null {
   const figure = figureOf(c, rates, late);
   if (figure === null || c.settledDue !== null || isBound(c) || isCorrection(c)) return figure;
-  if (!overdue(c, late.today, grace) || waivedOn(c, late.today)) return atLeast(figure, floor(c.date));
+  const floored = atLeast(figure, floor(c.date));
+  if (!overdue(c, late.today, grace) || waivedOn(c, late.today)) return floored;
   const from = lateFrom(c, grace);
   const periods = Math.floor(daysBetween(from, late.today!) / 30);
   const halfUp = roundsHalfUp(c, late);
-  let due = figure;
+  let due = floored;
   for (let k = 1; k <= periods; k++) {
     due = sumSkippingNa([due, dueOn(due, late.latePct(plusDays(from, 30 * k)), halfUp)]);
   }
-  return atLeast(due, floor(c.date));
+  return due;
 }
 
 const CLOSED = 'That claim is due by a date in a closed period, so it cannot change.';

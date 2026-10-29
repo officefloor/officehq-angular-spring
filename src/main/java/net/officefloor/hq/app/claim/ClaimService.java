@@ -1167,16 +1167,16 @@ public class ClaimService {
     }
 
     /**
-     * The live due of a claim on its (unfloored) figure: the greater of the floor in force on its date and the figure
-     * plus the late charge it has gained (when charged); a correction has neither floor nor charge. Null (n/a) for an
-     * n/a figure.
+     * The live due of a claim on its (unfloored) figure: its floored figure (the greater of the floor in force on its
+     * date and the figure) plus the late charge gained on that floored figure (when charged); a correction has neither
+     * floor nor charge. Null (n/a) for an n/a figure.
      */
     public static BigDecimal liveDue(BigDecimal figure, Claim claim, Person person, Sheet sheet, boolean charged) {
         if (figure == null || claim.isCorrection()) {
             return figure;
         }
-        BigDecimal due = charged ? withLateCharge(figure, claim, person, sheet) : figure;
-        return sheet == null ? due : floored(due, sheet.floorOn(claim.getDate()));
+        BigDecimal base = sheet == null ? figure : floored(figure, sheet.floorOn(claim.getDate()));
+        return charged ? withLateCharge(base, claim, person, sheet) : base;
     }
 
     /**
