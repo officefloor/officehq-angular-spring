@@ -125,8 +125,8 @@ public class Claim {
     private LocalDate roundsOn;
 
     /**
-     * The date the claim is due by: fixed when it is added, from the terms in force for its person's grade on its
-     * date; later changes to the terms or to its date leave it as it is. A holiday added on or before it re-fixes it
+     * The date the claim is due by: fixed when it is added, counted from its date with the terms in force on the
+     * day it is created (the sheet's today then) for the grade its person had that day; later changes to the terms or to its date leave it as it is. A holiday added on or before it re-fixes it
      * from its date with the terms it was fixed with, unless the claim is SETTLED or VOID.
      */
     @Column(name = "due_by", nullable = false)

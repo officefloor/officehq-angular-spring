@@ -118,7 +118,7 @@ public class ClaimService {
             String corrects, String ref, String tagged) {
         LocalDate on = dateOrEntryDate(sheetId, date);
         Person person = person(sheetId, personId);
-        int terms = termsFor(sheetId, person, on);
+        int terms = termsFor(sheetId, person);
         LocalDate dueBy = holidays.dueBy(sheetId, on, terms);
         refuseInClosedPeriod(sheetId, dueBy);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -871,7 +871,7 @@ public class ClaimService {
         Claim original = claims.saveAndFlush(claim);
         Claim part = new Claim(sheetId, claim.getPersonId(), scaled(amount), claim.getDate(), claim.getNote());
         part.setRoundsOn(claim.getRoundsOn());
-        int terms = termsFor(sheetId, person, claim.getDate());
+        int terms = termsFor(sheetId, person);
         part.setDueBy(holidays.dueBy(sheetId, claim.getDate(), terms));
         part.setTerms(terms);
         part.setSplitFrom(claim.getNumber());
@@ -1183,13 +1183,14 @@ public class ClaimService {
     }
 
     /**
-     * The terms a claim of the person dated on the date has: the person's own in force on it, else those of their grade on the date,
-     * else the sheet's on the date.
+     * The terms a claim of the person created now has, each looked up on the sheet's today (the day it is created,
+     * whatever its date): the person's own in force then, else those of the grade they had then, else the sheet's.
      */
-    private int termsFor(String sheetId, Person person, LocalDate on) {
-        Integer own = person.termsOn(on);
-        return own != null ? own
-                : sheets.load(sheetId).termsFor(person.gradeOn(on), on);
+    private int termsFor(String sheetId, Person person) {
+        Sheet sheet = sheets.load(sheetId);
+        LocalDate created = sheet.getToday();
+        Integer own = person.termsOn(created);
+        return own != null ? own : sheet.termsFor(person.gradeOn(created), created);
     }
 
     /** The audit line about a claim; one that has a number ends with it. */
