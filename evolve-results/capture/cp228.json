@@ -1,0 +1,73 @@
+{
+  "checkpoint": 228,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp228_rollover-soft-closes",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    207,
+    215,
+    219
+  ],
+  "replaced_tests": [
+    "cp207_year-end-rollover.spec.ts::year end rollover",
+    "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+    "cp219_rollover-undo.spec.ts::rollover undo",
+    "cp219_rollover-undo.spec.ts::rollover undo scenario 1"
+  ],
+  "request": {
+    "spec": "The rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "555d51e3d220d85627f427216a66739b5bdc4fef",
+  "reset_sha": "",
+  "preagent_sha": "0f01703fc052ce3acba7ffe09c4ad962518053a7",
+  "prev_sha": "0f01703fc052ce3acba7ffe09c4ad962518053a7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.42076499999999994,
+    "input_tokens": 30,
+    "output_tokens": 4077,
+    "cache_read_tokens": 454245,
+    "cache_creation_tokens": 31032,
+    "num_turns": 16,
+    "duration_ms": 435670,
+    "duration_api_ms": 53754,
+    "model": "claude-opus-5-5",
+    "session_id": "062af497-68b3-46a4-931c-caad5e159120",
+    "stop_reason": "success",
+    "result_text": "A rollover now also soft-closes every period of the old fiscal year that's still open, and all 4 tests in `bin/e2e` pass.\n\nThe whole change is in `src/main/java/net/officefloor/hq/app/period/PeriodService.java`:\n- **Rollover:** after writing the `ROLLOVER` audit line, it goes through the old year's periods in start-date order. It soft-closes each one that isn't already closed or soft-closed, which writes a `PERIOD_SOFT_CLOSED ... period=<name> total=<total>` line. Periods already closed by hand (2026-11 in the main test) are left alone.\n- **Shared code:** I moved the body of the soft-close action into a private `softClose(by, sheetId, period, today)`. The soft-close button and the rollover both use it, so they fix the same figures and write the same audit line. The rollover skips the per-role \"may close\" check, because only a steward can roll over in the first place.\n\nNo database or front-end changes were needed.\n\n**Port clash:** the first run failed because another process was already using port 3000, so the app never started. I reran with `PORT=3917 bin/e2e`, and that's the run that passed.\n\n**Decision for you:** undoing a rollover still only removes the periods it made and takes back the opening balances. It does **not** reopen the periods it soft-closed. The request didn't cover undo and the tests don't use it, so I left it as it was. If undo should restore those periods to open, it would need to record which periods the rollover soft-closed; I can add that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.42076499999999994,
+        "num_turns": 16,
+        "duration_ms": 435670,
+        "duration_api_ms": 53754,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp228.agent.jsonl",
+  "agent_diff_file": "cp228.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
