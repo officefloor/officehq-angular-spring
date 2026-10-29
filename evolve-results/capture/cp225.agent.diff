@@ -1,0 +1,193 @@
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+index c6e62141..e9e4bd71 100644
+--- a/src/main/frontend/src/app/features/grades/grades.ts
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -1,12 +1,14 @@
+-import { HttpErrorResponse } from '@angular/common/http';
+-import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
+ import { FigPipe } from '../../core/locale';
+ import { Session } from '../../core/session';
+ import { GRADES } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
+ 
+ // The grades of the active sheet and whether each is retired. A retired grade cannot be given to a new person or
+-// chosen in an edit; the people already on it keep it. Retiring a grade already retired is refused.
++// chosen in an edit; the people already on it keep it. Retiring a grade already retired is refused. A steward can
++// merge a grade into another: each person on it today is given the other from the sheet's today.
+ @Component({
+   selector: 'app-grades',
+   imports: [FigPipe],
+@@ -31,6 +33,35 @@ import { SettingsStore } from '../settings/settings';
+         }
+       </form>
+ 
++      <form (submit)="merge($event)" aria-label="Merge a grade">
++        <label for="grade-merge-from">Grade to merge</label>
++        <select
++          id="grade-merge-from"
++          data-testid="grade-merge-from"
++          [value]="mergeFrom()"
++          (change)="mergeFrom.set(value($event)); error.set(null)"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <label for="grade-merge-into">Merge into</label>
++        <select
++          id="grade-merge-into"
++          data-testid="grade-merge-into"
++          [value]="mergeInto()"
++          (change)="mergeInto.set(value($event)); error.set(null)"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="grade-merge">Merge grade</button>
++        @if (mergedCount() !== null) {
++          <p role="status">Regraded: <strong data-testid="grade-merged">{{ mergedCount() | fig }}</strong></p>
++        }
++      </form>
++
+       <table>
+         <caption>Grades</caption>
+         <thead>
+@@ -55,6 +86,15 @@ export class Grades {
+   protected readonly grades = GRADES;
+   protected readonly grade = signal(GRADES[0]);
+   protected readonly error = signal<string | null>(null);
++  protected readonly mergeFrom = signal(GRADES[0]);
++  protected readonly mergeInto = signal(GRADES[1]);
++  // How many people the last merge regraded, and the sheet load it was shown on: a later load clears it.
++  private readonly merged = signal<{ count: number; load: number } | null>(null);
++  protected readonly mergedCount = computed(() => {
++    const m = this.merged();
++    return m !== null && m.load === this.session.loads() ? m.count : null;
++  });
++  private readonly http = inject(HttpClient);
+   // A submit in flight: a second one before it answers is ignored.
+   private submitting = false;
+ 
+@@ -95,4 +135,40 @@ export class Grades {
+       this.submitting = false;
+     }
+   }
++
++  protected async merge(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.submitting) return;
++    this.error.set(null);
++    this.merged.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const from = this.mergeFrom();
++    const into = this.mergeInto();
++    if (from === into) {
++      this.error.set(`Grade ${from} cannot be merged into itself.`);
++      return;
++    }
++    this.submitting = true;
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ graded: unknown[] }>(`/api/sheets/${encodeURIComponent(sheet)}/people/merge-grade`, {
++          from,
++          into,
++        }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      // the people regraded, and every figure, are re-read from the store
++      await this.session.loadSheet(sheet);
++      this.merged.set({ count: result.graded.length, load: this.session.loads() });
++    } catch (err) {
++      this.error.set(
++        err instanceof HttpErrorResponse && err.status === 403
++          ? 'Only a steward can merge grades.'
++          : 'Could not merge that grade.',
++      );
++    } finally {
++      this.submitting = false;
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 9bac0cf0..03b2d9e0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -157,6 +157,10 @@ public class PersonController {
+     }
+ 
+     /** The people a bulk grade changed, in list order. */
++    /** A grade merge: the grade merged and the grade it is merged into. */
++    public record GradeMergeForm(@NotBlank @Size(max = 10) String from, @NotBlank @Size(max = 10) String into) {
++    }
++
+     public record BulkGradeView(List<PersonView> graded) {
+     }
+ 
+@@ -377,6 +381,22 @@ public class PersonController {
+         return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
+     }
+ 
++    /**
++     * A steward merges the grade into another: each person on the merged grade today is given the other from the
++     * sheet's today, as each one's edit would. Refused for the same grade twice, and for anyone but a steward.
++     */
++    @PostMapping("/merge-grade")
++    public BulkGradeView mergeGrade(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @Valid @RequestBody GradeMergeForm form,
++            @SessionAttribute(SessionController.USER) String user) {
++        List<Person> graded = service.mergeGrade(user, sheetId, form.from(), form.into());
++        LocalDate today = service.today(sheetId);
++        Set<Long> clashing = service.clashing(sheetId);
++        Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
++        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
++    }
++
+     /**
+      * Retires the people from the from-date together, in list order, as each one's retire would. A viewer, or anyone
+      * on an archived sheet, goes through with none retired.
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 7b2fe094..06e83121 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -278,6 +278,35 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /**
++     * A steward merges the grade into another: every person whose grade in force on the sheet's today is the merged
++     * grade is given the other from the sheet's today, in list order, exactly as saving each one's edit with it would,
++     * all or none, then records the rollup changes of the merge as a whole. Refused unless the user is a steward, and
++     * for the same grade twice. The people as saved.
++     */
++    @Transactional
++    public List<Person> mergeGrade(String by, String sheetId, String from, String into) {
++        if (!settings.isSteward(sheetId, by)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can merge grades.");
++        }
++        if (from == null || into == null || !from.matches("[ABC]") || !into.matches("[ABC]")) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The grades must be A, B or C.");
++        }
++        if (from.equals(into)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A grade cannot be merged into itself.");
++        }
++        LocalDate today = today(sheetId);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + by + " from=" + from + " into=" + into);
++        Set<Long> ids = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> from.equals(p.gradeOn(today))).map(Person::getId)
++                .collect(Collectors.toCollection(LinkedHashSet::new));
++        List<Person> saved = bulkGrade(by, sheetId, ids, into, null);
++        // the merge as a whole changes the rollup as its edits together did
++        rollup.recordChanges(by, sheetId, before);
++        return saved;
++    }
++
+     /**
+      * Swaps the person with the one above them in the list (up) or below them (down); refused for the top person
+      * moving up and the bottom one moving down. Neither person's version changes: their place is not an edit of them.
