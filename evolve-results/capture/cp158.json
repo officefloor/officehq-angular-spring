@@ -1,0 +1,64 @@
+{
+  "checkpoint": 158,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp158_column-chooser",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cfe51a9cb83e4707a7236b3979a008a425a87d44",
+  "reset_sha": "",
+  "preagent_sha": "7e639057af4c7415f218d707fa43cf019c7cecad",
+  "prev_sha": "7e639057af4c7415f218d707fa43cf019c7cecad",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6214456000000002,
+    "input_tokens": 32,
+    "output_tokens": 8419,
+    "cache_read_tokens": 569088,
+    "cache_creation_tokens": 42390,
+    "num_turns": 16,
+    "duration_ms": 392457,
+    "duration_api_ms": 87481,
+    "model": "claude-opus-5-5",
+    "session_id": "d2ea40c9-990b-48c7-ba36-09d9068c4080",
+    "stop_reason": "success",
+    "result_text": "Each user can now switch people-list columns on and off from a checkbox per column, and their choice is saved. `bin/e2e` passes all 4 tests.\n\n**One addition to your list:** the test also switches off an `excess` column, which wasn't in the change request. I added it as a 15th choice; without it the test can't pass.\n\n**How it works**\n- **Saved per user, not per sheet.** The choice is stored next to each user's existing locale setting, so it applies on every sheet they open and is loaded when they sign in. Another user's screen isn't affected.\n- **Hiding a column removes its heading too,** not just the cells, so the table stays lined up. I read \"the header is unaffected\" as the page header and its counts, which don't change. Totals, the summary and the audit file don't change either.\n- **Not audited,** same as the locale setting.\n\n**What changed**\n- **Data:** a new migration, `V86__user_pref_hidden_columns.sql`, adds a `hidden_columns` field to the `user_pref` table.\n- **Server:** `GET` and `PUT /api/me/columns` in `UserPrefController`, with the logic in `UserPrefService`. Saving an unknown column name is refused.\n- **Front end:**\n  - A new `core/columns.ts` holds the column list and the user's choice. It sends saves one after another, so quick clicks can't arrive out of order and leave an older choice stored.\n  - `core/session.ts` loads the choice at sign-in.\n  - In `features/people/people.ts`, the checkboxes (`column-<id>`) sit next to \"Show retired\".\n\nThe \"retired\" checkbox hides only the Retired yes/no column; the separate \"Retired from\" date column stays, because it wasn't in your list.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6214456000000002,
+        "num_turns": 16,
+        "duration_ms": 392457,
+        "duration_api_ms": 87481,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp158.agent.jsonl",
+  "agent_diff_file": "cp158.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
