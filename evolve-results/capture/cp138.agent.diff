@@ -1,0 +1,91 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4a8ef8eb..c4216f6e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -476,6 +476,19 @@ interface StatementView {
+                   [value]="retireDates()[p.id] ?? ''"
+                   (input)="setRetireDate(p.id, value($event))"
+                 />
++                <label [for]="'inline-grade-' + p.id">Grade<span class="visually-hidden"> for {{ p.name }}</span></label>
++                <select
++                  [id]="'inline-grade-' + p.id"
++                  data-testid="person-inline-grade"
++                  (change)="setInlineGrade(p.id, value($event))"
++                >
++                  @for (g of grades; track g) {
++                    <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeToday(p))">{{ g }}</option>
++                  }
++                </select>
++                <button type="button" data-testid="person-inline-grade-save" (click)="saveInlineGrade(p)">
++                  Save grade<span class="visually-hidden"> for {{ p.name }}</span>
++                </button>
+                 <button type="button" data-testid="person-move-up" (click)="move(p, 'up')">
+                   Move up<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
+@@ -644,6 +657,8 @@ export class People {
+   });
+   // Each row's retire-from date as typed, by person id; blank takes the sheet's today.
+   protected readonly retireDates = signal<Record<number, string>>({});
++  /** The grade chosen in each row's grade select, until saved. */
++  protected readonly inlineGrades = signal<Record<number, string>>({});
+   // The date typed beside each row's statement button, by person id: blank takes the statement now.
+   protected readonly statementAsOfs = signal<Record<number, string>>({});
+   // Each row's hold from- and to-dates as typed, by person id; a blank from-date takes the sheet's today, a blank
+@@ -1066,6 +1081,7 @@ export class People {
+         this.transferTargets.set({});
+         this.rowErrors.set({});
+         this.retireDates.set({});
++        this.inlineGrades.set({});
+         this.statementAsOfs.set({});
+         this.holdFroms.set({});
+         this.holdTos.set({});
+@@ -1138,6 +1154,49 @@ export class People {
+     }
+   }
+ 
++  protected setInlineGrade(id: number, grade: string): void {
++    this.inlineGrades.update((g) => ({ ...g, [id]: grade }));
++    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
++  }
++
++  /**
++   * Records the grade chosen on the row from the sheet's today, exactly as saving the person's edit with that grade
++   * would; refused when the person has been saved since the row was read.
++   */
++  protected async saveInlineGrade(p: Person): Promise<void> {
++    this.clearRowErrors(p.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const grade = this.inlineGrades()[p.id] ?? this.gradeToday(p);
++    if (!GRADES.includes(grade)) {
++      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Choose a grade of A, B or C.' }));
++      return;
++    }
++    const edit = {
++      name: p.name,
++      grade,
++      gradeFrom: null,
++      version: p.version,
++      terms: p.terms,
++      contact: p.contact,
++      tags: null,
++    };
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}`;
++    try {
++      const saved = await firstValueFrom(this.http.put<Person>(url, edit));
++      if (this.session.sheetId() !== sheet) return;
++      this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
++      this.inlineGrades.update(({ [p.id]: _, ...rest }) => rest);
++      if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
++    } catch (err) {
++      const stale = err instanceof HttpErrorResponse && err.status === 412;
++      this.rowErrors.update((e) => ({
++        ...e,
++        [p.id]: stale ? 'Someone else has saved this person since; reload the sheet.' : 'Could not save this grade.',
++      }));
++    }
++  }
++
+   /** Unretires a retired person; their retirement is kept on the row, to the sheet's today. */
+   protected async unretire(p: Person): Promise<void> {
+     this.clearRowErrors(p.id);

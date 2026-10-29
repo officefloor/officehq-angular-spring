@@ -1,0 +1,64 @@
+{
+  "checkpoint": 138,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp138_inline-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "02c2872ac29a6763b1fbdcff1ebd66b561e9df25",
+  "reset_sha": "",
+  "preagent_sha": "b335865c2a3a75ec065c91d9efff514e508cd81f",
+  "prev_sha": "b335865c2a3a75ec065c91d9efff514e508cd81f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6320247999999999,
+    "input_tokens": 32,
+    "output_tokens": 5676,
+    "cache_read_tokens": 601604,
+    "cache_creation_tokens": 49757,
+    "num_turns": 17,
+    "duration_ms": 163724,
+    "duration_api_ms": 80344,
+    "model": "claude-opus-5-5",
+    "session_id": "9a35c161-f899-4686-a833-379b5b6c3dc4",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has a grade select and a \"Save grade\" button. `bin/e2e` passes all 4 tests in the spec.\n\nThe change is front-end only, all in `src/main/frontend/src/app/features/people/people.ts`. The button sends the person's existing edit request (`PUT /api/sheets/{sheet}/people/{id}`), so the save goes through the same server code as the person form:\n- **Same records:** the grade is recorded from the sheet's today, and the audit gets the same `PERSON_EDITED` and rollup lines the form writes. Choosing the grade already in force records nothing, as with the form.\n- **Same refusals:** a viewer is refused. So is a save if someone else saved the person after the row was loaded, and that save in turn makes another user's open editor on that person stale. A refused save shows the row's `person-error`, which clears on your next change to the select or your next action on that row.\n- **Rest of the person left alone:** the name, terms and contact go back unchanged, and the tags are left as they are.\n\nThe select only offers A, B and C, so the test's attempt to pick \"D\" is refused before anything is sent. If you have the editor open on the same person, its version is updated after an inline save, the same way retire does it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6320247999999999,
+        "num_turns": 17,
+        "duration_ms": 163724,
+        "duration_api_ms": 80344,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp138.agent.jsonl",
+  "agent_diff_file": "cp138.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
