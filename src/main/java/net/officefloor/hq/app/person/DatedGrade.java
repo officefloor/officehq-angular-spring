@@ -36,6 +36,11 @@ public class DatedGrade {
         return madeOn == null || !madeOn.isAfter(day);
     }
 
+    /** The sheet's today when the grade was recorded; null: before that was kept. */
+    LocalDate madeOn() {
+        return madeOn;
+    }
+
     public String getGrade() {
         return grade;
     }

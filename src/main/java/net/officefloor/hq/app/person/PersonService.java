@@ -287,7 +287,9 @@ public class PersonService {
     /**
      * A steward merges the grade into another: every person whose grade in force on the sheet's today is the merged
      * grade is given the other from the sheet's today, in list order, exactly as saving each one's edit with it would,
-     * all or none, then records the rollup changes of the merge as a whole. Refused unless the user is a steward, and
+     * all or none; then every grade record of theirs on the merged grade becomes the other, so all their claims,
+     * whatever their date, take the other grade's rates, terms and thresholds (frozen figures and those bound by a
+     * statement are unchanged). It then records the rollup changes of the merge as a whole. Refused unless the user is a steward, and
      * for the same grade twice. The people as saved.
      */
     @Transactional
@@ -308,7 +310,13 @@ public class PersonService {
         Set<Long> ids = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> from.equals(p.gradeOn(today))).map(Person::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        List<Person> saved = bulkGrade(by, sheetId, ids, into, null);
+        List<Person> graded = bulkGrade(by, sheetId, ids, into, null);
+        // the merge is retroactive: every grade record of theirs on the merged grade becomes the other
+        List<Person> saved = new ArrayList<>();
+        for (Person p : graded) {
+            p.regrade(from, into);
+            saved.add(save(p));
+        }
         // the merge as a whole changes the rollup as its edits together did
         rollup.recordChanges(by, sheetId, before);
         return saved;

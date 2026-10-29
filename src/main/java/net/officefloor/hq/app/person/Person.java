@@ -210,6 +210,14 @@ public class Person {
                 .map(DatedGrade::getGrade).orElse(null);
     }
 
+    /**
+     * Makes every grade recorded for the person on the merged grade the other one, keeping its from-date and the day
+     * it was recorded.
+     */
+    public void regrade(String merged, String into) {
+        grades.replaceAll(g -> merged.equals(g.getGrade()) ? new DatedGrade(into, g.getFrom(), g.madeOn()) : g);
+    }
+
     /** Records the grade from the date, replacing one already recorded from that same date; the others are kept. */
     public void recordGrade(String grade, LocalDate from, LocalDate madeOn) {
         grades.removeIf(g -> Objects.equals(g.getFrom(), from));
