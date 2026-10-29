@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,13 +29,15 @@ public class PlanService {
 
     private final PlanRepository plans;
     private final PersonRepository people;
+    private final SettingsService settings;
     private final ClaimService claims;
     private final SheetService sheets;
     private final Audit audit;
     private final TransactionTemplate tx;
 
     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
-            Audit audit, PlatformTransactionManager transactions) {
+            SettingsService settings, Audit audit, PlatformTransactionManager transactions) {
+        this.settings = settings;
         this.plans = plans;
         this.people = people;
         this.claims = claims;
@@ -92,9 +95,12 @@ public class PlanService {
 
     /**
      * Makes the plans' claims. Each claim is made in a change of its own, so one the claim form refuses changes
-     * nothing and the others still go through.
+     * nothing and the others still go through. A user who may change nothing on the sheet makes none.
      */
     public Generated generate(String by, String sheetId) {
+        if (settings.isReadOnly(sheetId, by)) {
+            return new Generated(List.of(), list(sheetId));
+        }
         LocalDate today = sheets.load(sheetId).getToday();
         List<Claim> made = new ArrayList<>();
         for (Plan plan : tx.execute(s -> plans.findBySheetIdOrderByIdAsc(sheetId))) {

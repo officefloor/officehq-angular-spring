@@ -1,5 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { Session } from '../../core/session';
+import { LOCALES, UserLocale } from '../../core/locale';
 import { People } from '../people/people';
 import { Rates } from '../rates/rates';
 import { Settings, SettingsStore } from '../settings/settings';
@@ -15,10 +17,24 @@ import { PlanStore } from '../plans/plans';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, TreeSearch, AuditViewer],
+  imports: [FigPipe, People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, TreeSearch, AuditViewer],
   template: `
     @if (session.user(); as user) {
-      <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+      <p>Signed in as <strong data-testid="current-user">{{ user | fig }}</strong></p>
+
+      <form (submit)="saveLocale($event)" aria-label="Your locale">
+        <label for="user-locale">Locale</label>
+        <select id="user-locale" data-testid="user-locale" (change)="localeInput.set(value($event)); localeError.set(null)">
+          @for (l of locales; track l) {
+            <option [value]="l" [selected]="l === (localeInput() ?? userLocale.locale())">{{ l }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="user-locale-save">Save locale</button>
+        <span>Current: <strong data-testid="user-locale-current">{{ userLocale.locale() }}</strong></span>
+        @if (localeError(); as err) {
+          <p role="alert" data-testid="user-locale-error">{{ err }}</p>
+        }
+      </form>
 
       <form (submit)="load($event)" aria-label="Load sheet">
         <label for="sheet-id">Sheet id</label>
@@ -30,15 +46,15 @@ import { PlanStore } from '../plans/plans';
         />
         <button type="submit" data-testid="sheet-load">Load</button>
         @if (sheetError(); as err) {
-          <p role="alert" data-testid="sheet-load-error">{{ err }}</p>
+          <p role="alert" data-testid="sheet-load-error">{{ err | fig }}</p>
         }
       </form>
 
       @if (session.sheetId(); as id) {
-        <p>Sheet: <strong data-testid="sheet-current-id">{{ id }}</strong></p>
-        <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
-        <p>Archived: <strong data-testid="sheet-archived">{{ session.sheetArchived() ? 'yes' : 'no' }}</strong></p>
-        <p>Parent sheet: <strong data-testid="sheet-parent">{{ settings.parent() ?? '' }}</strong></p>
+        <p>Sheet: <strong data-testid="sheet-current-id">{{ id | fig }}</strong></p>
+        <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() | fig }}</strong></p>
+        <p>Archived: <strong data-testid="sheet-archived">{{ (session.sheetArchived() ? 'yes' : 'no') | fig }}</strong></p>
+        <p>Parent sheet: <strong data-testid="sheet-parent">{{ (settings.parent() ?? '') | fig }}</strong></p>
 
         <form (submit)="saveToday($event)" aria-label="Change today">
           <label for="sheet-today">New today</label>
@@ -63,9 +79,9 @@ import { PlanStore } from '../plans/plans';
           />
           <button type="submit" data-testid="sheet-clone">Clone sheet</button>
         </form>
-        <p>Cloned to: <strong data-testid="sheet-cloned-to">{{ clonedTo() ?? '' }}</strong></p>
+        <p>Cloned to: <strong data-testid="sheet-cloned-to">{{ (clonedTo() ?? '') | fig }}</strong></p>
 
-        <p>As of: <strong data-testid="sheet-asof">{{ session.sheetAsOf() ?? '' }}</strong></p>
+        <p>As of: <strong data-testid="sheet-asof">{{ (session.sheetAsOf() ?? '') | fig }}</strong></p>
         <form (submit)="setAsOf($event)" aria-label="Show the sheet as of a date">
           <label for="asof-date">Show as of</label>
           <input
@@ -78,11 +94,11 @@ import { PlanStore } from '../plans/plans';
           <button type="submit" data-testid="asof-set">Set as of</button>
           <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
           @if (asOfError(); as err) {
-            <p role="alert" data-testid="asof-error">{{ err }}</p>
+            <p role="alert" data-testid="asof-error">{{ err | fig }}</p>
           }
         </form>
         @if (todayError(); as err) {
-          <p role="alert" data-testid="sheet-error">{{ err }}</p>
+          <p role="alert" data-testid="sheet-error">{{ err | fig }}</p>
         }
 
         <app-rates />
@@ -107,7 +123,7 @@ import { PlanStore } from '../plans/plans';
         />
         <button type="submit" data-testid="signin-submit">Sign in</button>
         @if (signinError(); as err) {
-          <p role="alert" data-testid="signin-error">{{ err }}</p>
+          <p role="alert" data-testid="signin-error">{{ err | fig }}</p>
         }
       </form>
     }
@@ -117,6 +133,11 @@ export class Home {
   protected readonly session = inject(Session);
   protected readonly settings = inject(SettingsStore);
   private readonly plans = inject(PlanStore);
+  protected readonly userLocale = inject(UserLocale);
+  protected readonly locales = LOCALES;
+  // The locale chosen in the select, not yet saved; null while it shows the saved one.
+  protected readonly localeInput = signal<string | null>(null);
+  protected readonly localeError = signal<string | null>(null);
   protected readonly nameInput = signal('');
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal<string | null>(null);
@@ -133,7 +154,7 @@ export class Home {
   protected readonly asOfError = signal<string | null>(null);
 
   protected value(e: Event): string {
-    return (e.target as HTMLInputElement).value;
+    return (e.target as HTMLInputElement | HTMLSelectElement).value;
   }
 
   protected async signIn(e: Event): Promise<void> {
@@ -148,6 +169,17 @@ export class Home {
       await this.session.signIn(name);
     } catch {
       this.signinError.set('Could not sign in.');
+    }
+  }
+
+  protected async saveLocale(e: Event): Promise<void> {
+    e.preventDefault();
+    this.localeError.set(null);
+    try {
+      await this.userLocale.save(this.localeInput() ?? this.userLocale.locale());
+      this.localeInput.set(null);
+    } catch {
+      this.localeError.set('Could not save the locale.');
     }
   }
 

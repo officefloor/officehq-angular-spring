@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -8,6 +9,7 @@ import { Session } from '../../core/session';
 // those on the sheet's descendants (sheets by id, each newest first), then, for a person transferred to this sheet, the lines about them from the sheet they came from.
 @Component({
   selector: 'app-audit-viewer',
+  imports: [FigPipe],
   template: `
     <section aria-label="Audit">
       <h2>Audit</h2>
@@ -21,13 +23,13 @@ import { Session } from '../../core/session';
         />
         <button type="submit" data-testid="audit-show">Show audit</button>
         @if (error(); as err) {
-          <p role="alert" data-testid="audit-error">{{ err }}</p>
+          <p role="alert" data-testid="audit-error">{{ err | fig }}</p>
         }
       </form>
 
       <ol aria-label="Audit lines">
         @for (line of lines(); track $index) {
-          <li data-testid="audit-line">{{ line }}</li>
+          <li data-testid="audit-line">{{ line | fig }}</li>
         }
       </ol>
     </section>

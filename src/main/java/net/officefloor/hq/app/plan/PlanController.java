@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.session.SessionController;
+import net.officefloor.hq.app.settings.ViewerPasses;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -72,6 +73,7 @@ public class PlanController {
     }
 
     /** Makes the plans' claims up to the sheet's today. */
+    @ViewerPasses
     @PostMapping("/plans/generate")
     public GeneratedView generate(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { SettingsStore } from '../settings/settings';
@@ -223,6 +224,7 @@ export class PoolStore {
 // pot is the pot of each pool that is a member of none.
 @Component({
   selector: 'app-pools',
+  imports: [FigPipe],
   template: `
     <section aria-label="Pools">
       <h2>Pools</h2>
@@ -236,7 +238,7 @@ export class PoolStore {
         />
         <button type="submit" data-testid="pool-form-submit">Add pool</button>
         @if (error(); as err) {
-          <p role="alert" data-testid="pool-form-error">{{ err }}</p>
+          <p role="alert" data-testid="pool-form-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -254,17 +256,17 @@ export class PoolStore {
                 <ul [attr.aria-label]="'Members of ' + p.name">
                   @for (m of p.members; track m.key) {
                     <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
-                      {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>%
+                      {{ m.name }}: <span data-testid="pool-share">{{ m.share | fig }}</span>%
                       @if (m.from || m.to) { ({{ m.from ?? '…' }} to {{ m.to ?? '…' }}) }
                       @if (m.retired) { (retired) }
                       @if (m.out) { (not in the pool today) }
-                      <span class="visually-hidden">cut</span> <span data-testid="pool-cut">{{ m.cut }}</span>
+                      <span class="visually-hidden">cut</span> <span data-testid="pool-cut">{{ m.cut | fig }}</span>
                     </li>
                   }
                 </ul>
               </td>
-              <td data-testid="pool-total-share">{{ p.totalShare }}</td>
-              <td data-testid="pool-balanced">{{ p.balanced ? 'yes' : 'no' }}</td>
+              <td data-testid="pool-total-share">{{ p.totalShare | fig }}</td>
+              <td data-testid="pool-balanced">{{ (p.balanced ? 'yes' : 'no') | fig }}</td>
               <td>
                 <form (submit)="addMember($event, p)" [attr.aria-label]="'Add a member to ' + p.name">
                   <label [for]="'pool-member-select-' + p.id">Member<span class="visually-hidden"> for {{ p.name }}</span></label>
@@ -307,7 +309,7 @@ export class PoolStore {
                   />
                   <button type="submit" data-testid="pool-member-add">Add member<span class="visually-hidden"> to {{ p.name }}</span></button>
                   @if (rowErrors()[p.id]; as err) {
-                    <p role="alert" data-testid="pool-error">{{ err }}</p>
+                    <p role="alert" data-testid="pool-error">{{ err | fig }}</p>
                   }
                 </form>
               </td>

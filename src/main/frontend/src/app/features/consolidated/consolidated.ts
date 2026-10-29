@@ -1,5 +1,6 @@
 import { HttpClient, HttpContext } from '@angular/common/http';
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { AsOf, LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
@@ -16,16 +17,17 @@ interface DescendantFigures {
 // the sheet is shown as of a date they stay as the sheet and its descendants stand now, read from the store.
 @Component({
   selector: 'app-consolidated',
+  imports: [FigPipe],
   template: `
     <section aria-label="Consolidated figures">
       <h2>Consolidated (this sheet and its descendants)</h2>
       <dl>
         <dt>People</dt>
-        <dd data-testid="consolidated-people-count">{{ peopleCount() }}</dd>
+        <dd data-testid="consolidated-people-count">{{ peopleCount() | fig }}</dd>
         <dt>Due</dt>
-        <dd data-testid="consolidated-due-total">{{ dueTotal() }}</dd>
+        <dd data-testid="consolidated-due-total">{{ dueTotal() | fig }}</dd>
         <dt>Overdue</dt>
-        <dd data-testid="consolidated-overdue-total">{{ overdueTotal() }}</dd>
+        <dd data-testid="consolidated-overdue-total">{{ overdueTotal() | fig }}</dd>
       </dl>
     </section>
   `,

@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -15,6 +16,7 @@ interface DelegationView {
 // to-date, inclusive (each blank for the sheet's today); while the sheet's today is inside, the user acts as a steward.
 @Component({
   selector: 'app-delegation',
+  imports: [FigPipe],
   template: `
     <section aria-label="Delegations">
       <h2>Delegations</h2>
@@ -44,17 +46,17 @@ interface DelegationView {
         />
         <button type="submit" data-testid="delegate-submit">Delegate</button>
         @if (error(); as err) {
-          <p role="alert" data-testid="delegate-error">{{ err }}</p>
+          <p role="alert" data-testid="delegate-error">{{ err | fig }}</p>
         }
       </form>
 
       <ul aria-label="Delegations made">
         @for (d of delegations(); track d.id) {
           <li data-testid="delegate-line">
-            <span data-testid="delegate-line-user">{{ d.user }}</span> acts for
-            <span data-testid="delegate-line-by">{{ d.by }}</span> from
-            <span data-testid="delegate-line-from">{{ d.from }}</span> to
-            <span data-testid="delegate-line-to">{{ d.to }}</span>
+            <span data-testid="delegate-line-user">{{ d.user | fig }}</span> acts for
+            <span data-testid="delegate-line-by">{{ d.by | fig }}</span> from
+            <span data-testid="delegate-line-from">{{ d.from | fig }}</span> to
+            <span data-testid="delegate-line-to">{{ d.to | fig }}</span>
           </li>
         }
       </ul>

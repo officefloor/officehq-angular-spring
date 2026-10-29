@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { GRADES, RateStore } from '../rates/rates';
@@ -347,6 +348,7 @@ export class SettingsStore {
 // from, the grace days, and the role each user name has.
 @Component({
   selector: 'app-settings',
+  imports: [FigPipe],
   template: `
     <section aria-label="Settings">
       <h2>Settings</h2>
@@ -682,60 +684,60 @@ export class SettingsStore {
         </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
-          <p role="alert" data-testid="settings-error">{{ err }}</p>
+          <p role="alert" data-testid="settings-error">{{ err | fig }}</p>
         }
       </form>
-      <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ store.clerkLimit() ?? '' }}</strong></p>
-      <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floorToday() }}</strong></p>
-      <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.termsToday() }}</strong> days</p>
+      <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ (store.clerkLimit() ?? '') | fig }}</strong></p>
+      <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floorToday() | fig }}</strong></p>
+      <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.termsToday() | fig }}</strong> days</p>
       @for (g of grades; track g) {
         <p>
           Terms in force for grade {{ g }}:
-          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ store.termsFor(g, session.sheetToday()) }}</strong> days
+          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ (store.termsFor(g, session.sheetToday())) | fig }}</strong> days
         </p>
       }
       @for (g of grades; track g) {
         <p>
           Grace days in force for grade {{ g }}:
-          <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ store.graceShown(g, session.sheetToday()) }}</strong>
+          <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ (store.graceShown(g, session.sheetToday())) | fig }}</strong>
         </p>
       }
-      <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePctToday() }}</strong></p>
-      <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ store.policyDate() ?? '' }}</strong></p>
+      <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ store.latePctToday() | fig }}</strong></p>
+      <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ (store.policyDate() ?? '') | fig }}</strong></p>
       <p>
         Period numbering from:
-        <strong data-testid="setting-period-numbering-from-current">{{ store.periodNumberingFrom() ?? '' }}</strong>
+        <strong data-testid="setting-period-numbering-from-current">{{ (store.periodNumberingFrom() ?? '') | fig }}</strong>
       </p>
-      <p>Entry date: <strong data-testid="setting-entry-date-current">{{ store.entryDate() ?? '' }}</strong></p>
-      <p>Grace days: <strong data-testid="setting-grace-days-current">{{ store.graceDays() ?? '' }}</strong></p>
-      <p>Pot: <strong data-testid="setting-pot-current">{{ store.pot() ?? '' }}</strong></p>
-      <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ store.alertThreshold() ?? '' }}</strong></p>
-      <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong></p>
-      <p>Parent sheet: <strong data-testid="setting-parent-current">{{ store.parent() ?? '' }}</strong></p>
-      <p>Cap in force: <strong data-testid="setting-cap-current">{{ store.cap() ?? '' }}</strong></p>
+      <p>Entry date: <strong data-testid="setting-entry-date-current">{{ (store.entryDate() ?? '') | fig }}</strong></p>
+      <p>Grace days: <strong data-testid="setting-grace-days-current">{{ (store.graceDays() ?? '') | fig }}</strong></p>
+      <p>Pot: <strong data-testid="setting-pot-current">{{ (store.pot() ?? '') | fig }}</strong></p>
+      <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ (store.alertThreshold() ?? '') | fig }}</strong></p>
+      <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() | fig }}</strong></p>
+      <p>Parent sheet: <strong data-testid="setting-parent-current">{{ (store.parent() ?? '') | fig }}</strong></p>
+      <p>Cap in force: <strong data-testid="setting-cap-current">{{ (store.cap() ?? '') | fig }}</strong></p>
       <p>
         Proof threshold in force:
-        <strong data-testid="setting-proof-threshold-current">{{ store.proofThreshold() ?? '' }}</strong>
+        <strong data-testid="setting-proof-threshold-current">{{ (store.proofThreshold() ?? '') | fig }}</strong>
       </p>
       @for (g of grades; track g) {
         <p>
           Proof threshold in force for grade {{ g }}:
-          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ store.proofThresholdShown(g, session.sheetToday()) }}</strong>
+          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (store.proofThresholdShown(g, session.sheetToday())) | fig }}</strong>
         </p>
       }
       <p>
         Note threshold in force:
-        <strong data-testid="setting-note-threshold-current">{{ store.noteThreshold() ?? '' }}</strong>
+        <strong data-testid="setting-note-threshold-current">{{ (store.noteThreshold() ?? '') | fig }}</strong>
       </p>
       <p>
         Review threshold in force:
-        <strong data-testid="setting-review-threshold-current">{{ store.reviewThreshold() ?? '' }}</strong>
+        <strong data-testid="setting-review-threshold-current">{{ (store.reviewThreshold() ?? '') | fig }}</strong>
       </p>
-      <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ store.roundingToday() ?? '' }}</strong></p>
+      <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ (store.roundingToday() ?? '') | fig }}</strong></p>
       @for (p of permissionActions; track p.action) {
         <p>
           Roles that may {{ p.action }}:
-          <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ store.permissions()[p.action] ?? '' }}</strong>
+          <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ (store.permissions()[p.action] ?? '') | fig }}</strong>
           @if (store.permissions()[p.action] === undefined) {
             (standing rule: {{ p.standing }})
           }
@@ -765,7 +767,7 @@ export class SettingsStore {
         </datalist>
         <button type="submit" data-testid="role-form-submit">Set role</button>
         @if (roleError(); as err) {
-          <p role="alert" data-testid="role-form-error">{{ err }}</p>
+          <p role="alert" data-testid="role-form-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -777,8 +779,8 @@ export class SettingsStore {
         <tbody>
           @for (r of store.roles(); track r.user) {
             <tr [attr.data-testid]="'role-row-' + r.user">
-              <th scope="row" data-testid="role-user">{{ r.user }}</th>
-              <td data-testid="role-value">{{ r.role }}</td>
+              <th scope="row" data-testid="role-user">{{ r.user | fig }}</th>
+              <td data-testid="role-value">{{ r.role | fig }}</td>
             </tr>
           }
         </tbody>

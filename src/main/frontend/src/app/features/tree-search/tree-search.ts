@@ -1,5 +1,6 @@
 import { HttpClient, HttpContext } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
@@ -16,6 +17,7 @@ interface Found {
 // by sheet id.
 @Component({
   selector: 'app-tree-search',
+  imports: [FigPipe],
   template: `
     <section aria-label="Tree search">
       <h2>Search the tree</h2>
@@ -29,10 +31,10 @@ interface Found {
         />
         <button type="submit" data-testid="search">Search</button>
         @if (error(); as err) {
-          <p role="alert" data-testid="search-error">{{ err }}</p>
+          <p role="alert" data-testid="search-error">{{ err | fig }}</p>
         }
       </form>
-      <p>Found: <strong data-testid="search-count">{{ count() ?? '' }}</strong></p>
+      <p>Found: <strong data-testid="search-count">{{ (count() ?? '') | fig }}</strong></p>
       <ol aria-label="Found people">
         @for (f of found(); track $index) {
           <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} {{ f.dueTotal }}</li>

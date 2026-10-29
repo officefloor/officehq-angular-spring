@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -37,6 +38,7 @@ export class VoidReasonStore {
 // The active sheet's list of void reasons. A blank reason, or one already on the list, is refused.
 @Component({
   selector: 'app-void-reasons',
+  imports: [FigPipe],
   template: `
     <section aria-label="Void reasons">
       <h2>Void reasons</h2>
@@ -50,13 +52,13 @@ export class VoidReasonStore {
         />
         <button type="submit" data-testid="void-reason-add">Add void reason</button>
         @if (error(); as err) {
-          <p role="alert" data-testid="void-reason-error">{{ err }}</p>
+          <p role="alert" data-testid="void-reason-error">{{ err | fig }}</p>
         }
       </form>
 
       <ul aria-label="Void reasons on the sheet">
         @for (r of store.list(); track r.id) {
-          <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ r.reason }}</li>
+          <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ r.reason | fig }}</li>
         }
       </ul>
     </section>

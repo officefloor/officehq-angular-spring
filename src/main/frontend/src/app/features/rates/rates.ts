@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, signal } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -270,6 +271,7 @@ export class RateStore {
 // The rate in force for each grade on the sheet's today, every rate set, and the form that sets one.
 @Component({
   selector: 'app-rates',
+  imports: [FigPipe],
   template: `
     <section aria-label="Rates">
       <h2>Rates</h2>
@@ -311,7 +313,7 @@ export class RateStore {
         />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as err) {
-          <p role="alert" data-testid="rate-form-error">{{ err }}</p>
+          <p role="alert" data-testid="rate-form-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -326,10 +328,10 @@ export class RateStore {
         ></textarea>
         <button type="submit" data-testid="import-rates-submit">Import rates</button>
         @if (importSet() !== null) {
-          <p role="status">Set: <strong data-testid="import-rates-set">{{ importSet() }}</strong></p>
+          <p role="status">Set: <strong data-testid="import-rates-set">{{ importSet() | fig }}</strong></p>
         }
         @if (importError(); as err) {
-          <p role="alert" data-testid="import-rates-error">{{ err }}</p>
+          <p role="alert" data-testid="import-rates-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -356,12 +358,12 @@ export class RateStore {
         <button type="submit" data-testid="rate-preview">Preview</button>
         @if (previewResult(); as r) {
           <p>
-            Claims changed: <span data-testid="rate-preview-count">{{ r.count }}</span>;
-            difference: <span data-testid="rate-preview-diff">{{ r.diff }}</span>
+            Claims changed: <span data-testid="rate-preview-count">{{ r.count | fig }}</span>;
+            difference: <span data-testid="rate-preview-diff">{{ r.diff | fig }}</span>
           </p>
         }
         @if (previewError(); as err) {
-          <p role="alert" data-testid="rate-preview-error">{{ err }}</p>
+          <p role="alert" data-testid="rate-preview-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -374,7 +376,7 @@ export class RateStore {
           @for (g of grades; track g) {
             <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">{{ store.current().get(g) ?? 'n/a' }}</td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ (store.current().get(g) ?? 'n/a') | fig }}</td>
             </tr>
           }
         </tbody>
@@ -389,10 +391,10 @@ export class RateStore {
           @for (r of store.list(); track r.grade + '-' + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
-              <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
-              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
-              <td data-testid="rate-pct">{{ r.pct }}</td>
-              <td data-testid="rate-version">{{ r.version }}</td>
+              <td data-testid="rate-from">{{ (r.from ?? 'the start') | fig }}</td>
+              <td data-testid="rate-to">{{ (r.to ?? '') | fig }}</td>
+              <td data-testid="rate-pct">{{ r.pct | fig }}</td>
+              <td data-testid="rate-version">{{ r.version | fig }}</td>
             </tr>
           }
         </tbody>

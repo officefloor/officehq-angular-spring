@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, PeriodView, inClosedPeriod, periodOn } from '../periods/periods';
@@ -282,6 +283,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
 // One person's claims, newest first: one form adds a claim or, with a claim's editor open, saves it.
 @Component({
   selector: 'app-claims',
+  imports: [FigPipe],
   template: `
     <form (submit)="submit($event)" [attr.aria-label]="(editingId() === null ? 'Add claim for ' : 'Edit claim for ') + personName()">
       <label [for]="'claim-amount-' + personId()">Amount</label>
@@ -333,7 +335,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
       @if (error(); as err) {
-        <p role="alert" data-testid="claim-form-error">{{ err }}</p>
+        <p role="alert" data-testid="claim-form-error">{{ err | fig }}</p>
       }
     </form>
     <div role="group" [attr.aria-label]="'Add a claim from a template for ' + personName()">
@@ -373,27 +375,27 @@ export function claimedTotal(claims: readonly Claim[]): string {
                 (change)="selectedChange.emit({ id: c.id, checked: checked($event) })"
               />
             </td>
-            <td data-testid="claim-number">{{ c.number ?? '' }}</td>
-            <td data-testid="claim-amount">{{ c.amount }}</td>
-            <td data-testid="claim-date">{{ c.date }}</td>
-            <td data-testid="claim-note">{{ c.note }}</td>
-            <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
-            <td data-testid="claim-tags">{{ c.tags.join(', ') }}</td>
-            <td data-testid="claim-due">{{ dueOf(c, ratesOf(c), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a' }}</td>
-            <td data-testid="claim-due-by">{{ c.dueBy }}</td>
-            <td data-testid="claim-overdue">{{ overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no' }}</td>
-            <td data-testid="claim-deferred">{{ deferredUntilAfter(c, session.sheetToday()) ? 'yes' : 'no' }}</td>
-            <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
-            <td data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</td>
-            <td data-testid="claim-status">{{ c.status }}</td>
-            <td data-testid="claim-batch">{{ c.batch ?? '' }}</td>
-            <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
-            <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
-            <td data-testid="claim-period">{{ periodName(c) }}</td>
-            <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</td>
-            <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
-            <td data-testid="claim-proofs">{{ c.proofs }}</td>
-            <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
+            <td data-testid="claim-number">{{ (c.number ?? '') | fig }}</td>
+            <td data-testid="claim-amount">{{ c.amount | fig }}</td>
+            <td data-testid="claim-date">{{ c.date | fig }}</td>
+            <td data-testid="claim-note">{{ c.note | fig }}</td>
+            <td data-testid="claim-ref">{{ (c.ref ?? '') | fig }}</td>
+            <td data-testid="claim-tags">{{ (c.tags.join(', ')) | fig }}</td>
+            <td data-testid="claim-due">{{ (dueOf(c, ratesOf(c), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a') | fig }}</td>
+            <td data-testid="claim-due-by">{{ c.dueBy | fig }}</td>
+            <td data-testid="claim-overdue">{{ (overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no') | fig }}</td>
+            <td data-testid="claim-deferred">{{ (deferredUntilAfter(c, session.sheetToday()) ? 'yes' : 'no') | fig }}</td>
+            <td data-testid="claim-deferred-until">{{ (c.deferredUntil ?? '') | fig }}</td>
+            <td data-testid="claim-reminded">{{ (c.remindedOn ?? '') | fig }}</td>
+            <td data-testid="claim-status">{{ c.status | fig }}</td>
+            <td data-testid="claim-batch">{{ (c.batch ?? '') | fig }}</td>
+            <td data-testid="claim-opened-by">{{ (c.openedBy ?? '') | fig }}</td>
+            <td data-testid="claim-stated">{{ (c.stated ? 'yes' : 'no') | fig }}</td>
+            <td data-testid="claim-period">{{ periodName(c) | fig }}</td>
+            <td data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | fig }}</td>
+            <td data-testid="claim-corrects">{{ (c.corrects ?? '') | fig }}</td>
+            <td data-testid="claim-proofs">{{ c.proofs | fig }}</td>
+            <td data-testid="claim-split-from">{{ (c.splitFrom ?? '') | fig }}</td>
             <td>
               <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
                 @for (l of c.log; track $index) {
@@ -572,7 +574,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
                 <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
               }
               @if (rowErrors()[c.id]; as err) {
-                <p role="alert" data-testid="claim-error">{{ err }}</p>
+                <p role="alert" data-testid="claim-error">{{ err | fig }}</p>
               }
             </td>
           </tr>

@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -42,6 +43,7 @@ export class ClaimTemplateStore {
 // name again replaces that template.
 @Component({
   selector: 'app-claim-templates',
+  imports: [FigPipe],
   template: `
     <section aria-label="Claim templates">
       <h2>Claim templates</h2>
@@ -70,7 +72,7 @@ export class ClaimTemplateStore {
         />
         <button type="submit" data-testid="template-form-submit">Save template</button>
         @if (error(); as err) {
-          <p role="alert" data-testid="template-form-error">{{ err }}</p>
+          <p role="alert" data-testid="template-form-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -82,9 +84,9 @@ export class ClaimTemplateStore {
         <tbody>
           @for (t of store.list(); track t.id) {
             <tr [attr.data-testid]="'template-row-' + t.name">
-              <td data-testid="template-name">{{ t.name }}</td>
-              <td data-testid="template-amount">{{ t.amount }}</td>
-              <td data-testid="template-note">{{ t.note }}</td>
+              <td data-testid="template-name">{{ t.name | fig }}</td>
+              <td data-testid="template-amount">{{ t.amount | fig }}</td>
+              <td data-testid="template-note">{{ t.note | fig }}</td>
             </tr>
           }
         </tbody>

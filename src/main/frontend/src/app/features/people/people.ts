@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
@@ -81,7 +82,7 @@ interface StatementView {
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Consolidated, Header, Periods, PersonPlans, Summary],
+  imports: [FigPipe, Claims, Consolidated, Header, Periods, PersonPlans, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -163,7 +164,7 @@ interface StatementView {
           <button type="button" data-testid="person-form-cancel" (click)="reset()">Cancel</button>
         }
         @if (error(); as err) {
-          <p role="alert" data-testid="person-form-error">{{ err }}</p>
+          <p role="alert" data-testid="person-form-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -185,7 +186,7 @@ interface StatementView {
         />
         <button type="submit" data-testid="quick-submit">Quick add</button>
         @if (quickError(); as err) {
-          <p role="alert" data-testid="quick-error">{{ err }}</p>
+          <p role="alert" data-testid="quick-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -201,12 +202,12 @@ interface StatementView {
         <button type="submit" data-testid="import-submit">Import people</button>
         @if (importAdded() !== null) {
           <p role="status">
-            Added: <strong data-testid="import-added">{{ importAdded() }}</strong>, updated:
-            <strong data-testid="import-updated">{{ importUpdated() }}</strong>
+            Added: <strong data-testid="import-added">{{ importAdded() | fig }}</strong>, updated:
+            <strong data-testid="import-updated">{{ importUpdated() | fig }}</strong>
           </p>
         }
         @if (importError(); as err) {
-          <p role="alert" data-testid="import-error">{{ err }}</p>
+          <p role="alert" data-testid="import-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -221,20 +222,20 @@ interface StatementView {
         ></textarea>
         <button type="submit" data-testid="paste-submit">Open pasted claims</button>
         @if (pasteAdded() !== null) {
-          <p role="status">Went through: <strong data-testid="paste-added">{{ pasteAdded() }}</strong></p>
+          <p role="status">Went through: <strong data-testid="paste-added">{{ pasteAdded() | fig }}</strong></p>
         }
         @if (pasteError(); as err) {
-          <p role="alert" data-testid="paste-error">{{ err }}</p>
+          <p role="alert" data-testid="paste-error">{{ err | fig }}</p>
         }
       </form>
 
       <div role="group" aria-label="Generate the plans' claims">
         <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
         @if (plansGenerated() !== null) {
-          <p role="status">Made: <strong data-testid="plan-generated-count">{{ plansGenerated() }}</strong></p>
+          <p role="status">Made: <strong data-testid="plan-generated-count">{{ plansGenerated() | fig }}</strong></p>
         }
         @if (planGenerateError(); as err) {
-          <p role="alert" data-testid="plan-generate-error">{{ err }}</p>
+          <p role="alert" data-testid="plan-generate-error">{{ err | fig }}</p>
         }
       </div>
 
@@ -259,13 +260,13 @@ interface StatementView {
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
 
-      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
-      <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueClaims().length }}</strong></p>
-      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
-      <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
-      <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
-      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ poolStore.cutTotal() }}</strong></p>
+      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | fig }}</strong></p>
+      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | fig }}</strong></p>
+      <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueClaims().length | fig }}</strong></p>
+      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() | fig }}</strong></p>
+      <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | fig }}</strong></p>
+      <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() | fig }}</strong></p>
+      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ poolStore.cutTotal() | fig }}</strong></p>
       @if (tagDueTotals().length > 0) {
         <table>
           <caption>Due by tag</caption>
@@ -276,7 +277,7 @@ interface StatementView {
             @for (t of tagDueTotals(); track t.tag) {
               <tr>
                 <th scope="row">{{ t.tag }}</th>
-                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal | fig }}</td>
               </tr>
             }
           </tbody>
@@ -292,7 +293,7 @@ interface StatementView {
             @for (m of monthDueTotals(); track m.month) {
               <tr>
                 <th scope="row">{{ m.month }}</th>
-                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
+                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal | fig }}</td>
               </tr>
             }
           </tbody>
@@ -303,23 +304,23 @@ interface StatementView {
         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
         @if (bulkOpened(); as result) {
           <p role="status">
-            Opened: <strong data-testid="bulk-opened">{{ result.opened }}</strong>
-            Refused: <strong data-testid="bulk-refused">{{ result.refused }}</strong>
+            Opened: <strong data-testid="bulk-opened">{{ result.opened | fig }}</strong>
+            Refused: <strong data-testid="bulk-refused">{{ result.refused | fig }}</strong>
           </p>
         }
         @if (bulkError(); as err) {
-          <p role="alert" data-testid="bulk-open-error">{{ err }}</p>
+          <p role="alert" data-testid="bulk-open-error">{{ err | fig }}</p>
         }
         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
-        <span>Last batch: <strong data-testid="bulk-settle-batch">{{ session.sheetLastBatch() ?? '' }}</strong></span>
+        <span>Last batch: <strong data-testid="bulk-settle-batch">{{ (session.sheetLastBatch() ?? '') | fig }}</strong></span>
         @if (bulkSettled(); as result) {
           <p role="status">
-            Settled: <strong data-testid="bulk-settled">{{ result.settled }}</strong>
-            Refused: <strong data-testid="bulk-settle-refused">{{ result.refused }}</strong>
+            Settled: <strong data-testid="bulk-settled">{{ result.settled | fig }}</strong>
+            Refused: <strong data-testid="bulk-settle-refused">{{ result.refused | fig }}</strong>
           </p>
         }
         @if (bulkSettleError(); as err) {
-          <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
+          <p role="alert" data-testid="bulk-settle-error">{{ err | fig }}</p>
         }
         <label for="bulk-reassign-to">Move selected claims to</label>
         <select
@@ -335,12 +336,12 @@ interface StatementView {
         <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()">Move selected claims</button>
         @if (bulkReassigned(); as result) {
           <p role="status">
-            Moved: <strong data-testid="bulk-reassigned">{{ result.reassigned }}</strong>
-            Refused: <strong data-testid="bulk-reassign-refused">{{ result.refused }}</strong>
+            Moved: <strong data-testid="bulk-reassigned">{{ result.reassigned | fig }}</strong>
+            Refused: <strong data-testid="bulk-reassign-refused">{{ result.refused | fig }}</strong>
           </p>
         }
         @if (bulkReassignError(); as err) {
-          <p role="alert" data-testid="bulk-reassign-error">{{ err }}</p>
+          <p role="alert" data-testid="bulk-reassign-error">{{ err | fig }}</p>
         }
         <label for="bulk-redate-date">Re-date selected claims to</label>
         <input
@@ -353,12 +354,12 @@ interface StatementView {
         <button type="button" data-testid="bulk-redate" (click)="bulkRedate()">Re-date selected claims</button>
         @if (bulkRedated(); as result) {
           <p role="status">
-            Re-dated: <strong data-testid="bulk-redated">{{ result.redated }}</strong>
-            Refused: <strong data-testid="bulk-redate-refused">{{ result.refused }}</strong>
+            Re-dated: <strong data-testid="bulk-redated">{{ result.redated | fig }}</strong>
+            Refused: <strong data-testid="bulk-redate-refused">{{ result.refused | fig }}</strong>
           </p>
         }
         @if (bulkRedateError(); as err) {
-          <p role="alert" data-testid="bulk-redate-error">{{ err }}</p>
+          <p role="alert" data-testid="bulk-redate-error">{{ err | fig }}</p>
         }
       </div>
 
@@ -384,10 +385,10 @@ interface StatementView {
         />
         <button type="button" data-testid="bulk-grade-apply" (click)="applyBulkGrade()">Grade selected people</button>
         @if (bulkGraded() !== null) {
-          <p role="status">Changed: <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></p>
+          <p role="status">Changed: <strong data-testid="bulk-graded">{{ bulkGraded() | fig }}</strong></p>
         }
         @if (bulkGradeError(); as err) {
-          <p role="alert" data-testid="person-error">{{ err }}</p>
+          <p role="alert" data-testid="person-error">{{ err | fig }}</p>
         }
         <label for="bulk-retire-date">Retire selected people from</label>
         <input
@@ -399,10 +400,10 @@ interface StatementView {
         />
         <button type="button" data-testid="bulk-retire" (click)="applyBulkRetire()">Retire selected people</button>
         @if (bulkRetired() !== null) {
-          <p role="status">Retired: <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></p>
+          <p role="status">Retired: <strong data-testid="bulk-retired">{{ bulkRetired() | fig }}</strong></p>
         }
         @if (bulkRetireError(); as err) {
-          <p role="alert" data-testid="person-error">{{ err }}</p>
+          <p role="alert" data-testid="person-error">{{ err | fig }}</p>
         }
       </div>
 
@@ -434,38 +435,38 @@ interface StatementView {
                   (change)="selectPerson(p.id, checked($event))"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
-              <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
-              <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
-              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
-              <td data-testid="person-origin">{{ p.originSheet ?? '' }}</td>
-              <td data-testid="person-cut-total">{{ poolStore.cutTotals().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="person-claimed">{{ claimedBy().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="person-due-total">{{ dueBy().get(p.id) ?? 'n/a' }}</td>
-              <td data-testid="person-settled-total">{{ splitBy().get(p.id)?.settled ?? '0.00' }}</td>
-              <td data-testid="person-open-total">{{ splitBy().get(p.id)?.open ?? '0.00' }}</td>
-              <td data-testid="person-overdue-count">{{ overdueBy().get(p.id)?.length ?? 0 }}</td>
-              <td data-testid="person-overdue-total">{{ overdueTotalBy().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="person-aged-0-30">{{ agedBy().get(p.id)?.[0] ?? '0.00' }}</td>
-              <td data-testid="person-aged-31-60">{{ agedBy().get(p.id)?.[1] ?? '0.00' }}</td>
-              <td data-testid="person-aged-61">{{ agedBy().get(p.id)?.[2] ?? '0.00' }}</td>
-              <td data-testid="person-statement-count">{{ statementsBy().get(p.id)?.count ?? 0 }}</td>
-              <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) }}</td>
-              <td data-testid="person-statement-date">{{ statementsBy().get(p.id)?.date ?? '' }}</td>
-              <td data-testid="person-retired">{{ p.retiredFrom !== null ? 'yes' : 'no' }}</td>
-              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
-              <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
-              <td data-testid="person-patrons">{{ patronNamesBy().get(p.id) ?? '' }}</td>
-              <td data-testid="person-backing">{{ backingBy().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="person-excess">{{ excessBy().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+              <td data-testid="person-name">{{ p.name | fig }}</td>
+              <td data-testid="person-grade">{{ gradeToday(p) | fig }}</td>
+              <td data-testid="person-terms">{{ (p.terms ?? '') | fig }}</td>
+              <td data-testid="person-contact">{{ (p.contact ?? '') | fig }}</td>
+              <td data-testid="person-tags">{{ (p.tags.join(', ')) | fig }}</td>
+              <td data-testid="person-aliases">{{ (p.aliases.join(', ')) | fig }}</td>
+              <td data-testid="person-clashing">{{ (p.clashing ? 'yes' : 'no') | fig }}</td>
+              <td data-testid="person-origin">{{ (p.originSheet ?? '') | fig }}</td>
+              <td data-testid="person-cut-total">{{ (poolStore.cutTotals().get(p.id) ?? '0.00') | fig }}</td>
+              <td data-testid="person-claimed">{{ (claimedBy().get(p.id) ?? '0.00') | fig }}</td>
+              <td data-testid="person-due-total">{{ (dueBy().get(p.id) ?? 'n/a') | fig }}</td>
+              <td data-testid="person-settled-total">{{ (splitBy().get(p.id)?.settled ?? '0.00') | fig }}</td>
+              <td data-testid="person-open-total">{{ (splitBy().get(p.id)?.open ?? '0.00') | fig }}</td>
+              <td data-testid="person-overdue-count">{{ (overdueBy().get(p.id)?.length ?? 0) | fig }}</td>
+              <td data-testid="person-overdue-total">{{ (overdueTotalBy().get(p.id) ?? '0.00') | fig }}</td>
+              <td data-testid="person-aged-0-30">{{ (agedBy().get(p.id)?.[0] ?? '0.00') | fig }}</td>
+              <td data-testid="person-aged-31-60">{{ (agedBy().get(p.id)?.[1] ?? '0.00') | fig }}</td>
+              <td data-testid="person-aged-61">{{ (agedBy().get(p.id)?.[2] ?? '0.00') | fig }}</td>
+              <td data-testid="person-statement-count">{{ (statementsBy().get(p.id)?.count ?? 0) | fig }}</td>
+              <td data-testid="person-stated-total">{{ statedTotal(statementsBy().get(p.id)) | fig }}</td>
+              <td data-testid="person-statement-date">{{ (statementsBy().get(p.id)?.date ?? '') | fig }}</td>
+              <td data-testid="person-retired">{{ (p.retiredFrom !== null ? 'yes' : 'no') | fig }}</td>
+              <td data-testid="person-retired-from">{{ (p.retiredFrom ?? '') | fig }}</td>
+              <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | fig }}</td>
+              <td data-testid="person-active">{{ (activeIds().has(p.id) ? 'yes' : 'no') | fig }}</td>
+              <td data-testid="person-patrons">{{ (patronNamesBy().get(p.id) ?? '') | fig }}</td>
+              <td data-testid="person-backing">{{ (backingBy().get(p.id) ?? '0.00') | fig }}</td>
+              <td data-testid="person-excess">{{ (excessBy().get(p.id) ?? '0.00') | fig }}</td>
+              <td data-testid="person-watched">{{ (watched().has(p.id) ? 'yes' : 'no') | fig }}</td>
               @for (pd of periods.list(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
-                  {{ periodDueBy().get(p.id)?.get(pd.id) ?? '0.00' }}
+                  {{ (periodDueBy().get(p.id)?.get(pd.id) ?? '0.00') | fig }}
                 </td>
               }
               <td>
@@ -579,7 +580,7 @@ interface StatementView {
                   Add alias<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
                 @if (rowErrors()[p.id]; as err) {
-                  <p role="alert" data-testid="person-error">{{ err }}</p>
+                  <p role="alert" data-testid="person-error">{{ err | fig }}</p>
                 }
                 <label [for]="'patron-' + p.id">Patron<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <select
@@ -598,7 +599,7 @@ interface StatementView {
                   Add patron<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
                 @if (patronErrors()[p.id]; as err) {
-                  <p role="alert" data-testid="person-patron-error">{{ err }}</p>
+                  <p role="alert" data-testid="person-patron-error">{{ err | fig }}</p>
                 }
                 <label [for]="'merge-into-' + p.id">Merge into<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <select

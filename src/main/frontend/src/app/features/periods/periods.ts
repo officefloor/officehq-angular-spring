@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, computed, inject, input, signal } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { ClaimLogLine, ClaimStatus, statusAtEndOf } from '../claims/claims';
@@ -196,6 +197,7 @@ export class PeriodStore {
 // The sheet's periods, each with its due-total, and the form that adds one.
 @Component({
   selector: 'app-periods',
+  imports: [FigPipe],
   template: `
     <section aria-label="Periods">
       <h2>Periods</h2>
@@ -233,7 +235,7 @@ export class PeriodStore {
         />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as err) {
-          <p role="alert" data-testid="period-form-error">{{ err }}</p>
+          <p role="alert" data-testid="period-form-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -256,10 +258,10 @@ export class PeriodStore {
         />
         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
         @if (generated() !== null) {
-          <p role="status">Made: <strong data-testid="period-generated">{{ generated() }}</strong></p>
+          <p role="status">Made: <strong data-testid="period-generated">{{ generated() | fig }}</strong></p>
         }
         @if (genError(); as err) {
-          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+          <p role="alert" data-testid="period-generate-error">{{ err | fig }}</p>
         }
       </form>
 
@@ -283,13 +285,13 @@ export class PeriodStore {
         <tbody>
           @for (p of store.list(); track p.id) {
             <tr [attr.data-testid]="'period-row-' + p.name">
-              <th scope="row" data-testid="period-name">{{ p.name }}</th>
-              <td data-testid="period-from">{{ p.from }}</td>
-              <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
-              <td data-testid="period-due-total">{{ dueBy().get(p.id) }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
-              <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
+              <th scope="row" data-testid="period-name">{{ p.name | fig }}</th>
+              <td data-testid="period-from">{{ p.from | fig }}</td>
+              <td data-testid="period-to">{{ p.to | fig }}</td>
+              <td data-testid="period-cap">{{ (p.cap ?? '') | fig }}</td>
+              <td data-testid="period-due-total">{{ dueBy().get(p.id) | fig }}</td>
+              <td data-testid="period-closed">{{ (p.closed ? 'yes' : p.softClosed ? 'soft' : 'no') | fig }}</td>
+              <td data-testid="period-fy">{{ fiscalYear(p) | fig }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
@@ -301,7 +303,7 @@ export class PeriodStore {
                   Reopen<span class="visually-hidden"> period {{ p.name }}</span>
                 </button>
                 @if (rowErrors()[p.id]; as err) {
-                  <p role="alert" data-testid="period-error">{{ err }}</p>
+                  <p role="alert" data-testid="period-error">{{ err | fig }}</p>
                 }
               </td>
             </tr>

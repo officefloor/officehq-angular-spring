@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, computed, inject, input, signal } from '@angular/core';
+import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim } from '../claims/claims';
@@ -56,6 +57,7 @@ export class PlanStore {
 // day, a day outside 1 to 31, or an end before the start is refused.
 @Component({
   selector: 'app-person-plans',
+  imports: [FigPipe],
   template: `
     <table>
       <caption class="visually-hidden">Plans of {{ personName() }}</caption>
@@ -69,13 +71,13 @@ export class PlanStore {
       <tbody>
         @for (pl of plans(); track pl.id) {
           <tr [attr.data-testid]="'plan-row-' + pl.id">
-            <td data-testid="plan-figure">{{ pl.amount }}</td>
-            <td data-testid="plan-start">{{ pl.start }}</td>
-            <td data-testid="plan-every">{{ pl.every ?? '' }}</td>
-            <td data-testid="plan-day">{{ pl.day ?? '' }}</td>
-            <td data-testid="plan-end">{{ pl.end }}</td>
-            <td data-testid="plan-generated">{{ pl.generated }}</td>
-            <td data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</td>
+            <td data-testid="plan-figure">{{ pl.amount | fig }}</td>
+            <td data-testid="plan-start">{{ pl.start | fig }}</td>
+            <td data-testid="plan-every">{{ (pl.every ?? '') | fig }}</td>
+            <td data-testid="plan-day">{{ (pl.day ?? '') | fig }}</td>
+            <td data-testid="plan-end">{{ pl.end | fig }}</td>
+            <td data-testid="plan-generated">{{ pl.generated | fig }}</td>
+            <td data-testid="plan-next-dates">{{ (pl.nextDates.join(', ')) | fig }}</td>
           </tr>
         }
       </tbody>
@@ -125,7 +127,7 @@ export class PlanStore {
         Add plan<span class="visually-hidden"> for {{ personName() }}</span>
       </button>
       @if (error(); as err) {
-        <p role="alert" data-testid="plan-error">{{ err }}</p>
+        <p role="alert" data-testid="plan-error">{{ err | fig }}</p>
       }
     </form>
   `,
