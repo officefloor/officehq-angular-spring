@@ -1,0 +1,64 @@
+{
+  "checkpoint": 167,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp167_crew-lead-total",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user's crew total when a person with the user's name leads a\ncrew: the due-totals of the crews they lead, added up; nothing otherwise.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user's crew total when a person with the user's name leads a\ncrew: the due-totals of the crews they lead, added up; nothing otherwise.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "108d0057226dcd9665476d772fdec199550a28fd",
+  "reset_sha": "",
+  "preagent_sha": "a581549bcdc2201b15c552c78c65975b3f978c20",
+  "prev_sha": "a581549bcdc2201b15c552c78c65975b3f978c20",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45765700000000004,
+    "input_tokens": 22,
+    "output_tokens": 4671,
+    "cache_read_tokens": 341065,
+    "cache_creation_tokens": 36992,
+    "num_turns": 11,
+    "duration_ms": 291877,
+    "duration_api_ms": 78170,
+    "model": "claude-opus-5-5",
+    "session_id": "883e5d7f-3438-4303-950a-22a8afcff62c",
+    "stop_reason": "success",
+    "result_text": "The header now shows a \"My crew due\" figure (`my-crew-due-total`). It's the due-totals of every crew led by the signed-in user's person, added up. When that person leads no crew, or no person matches the user, it's blank. `bin/e2e` passes all 4 tests.\n\nIt finds \"the user's person\" the same way the existing \"My due\" figure does: a person whose name or alias matches the signed-in name, ignoring case. That's why the test passes once Cam is given the alias \"Uma\": the user uma then counts as leading Cam's crew.\n\nThis was a front-end change only, because crews and their due-totals were already worked out in the browser:\n- **`features/crews/crews.ts`**: I moved the crew due-total sum into a shared function, `crewDueTotal()`. The crews list is now kept in the `CrewRoster` service, so other parts of the screen can read it.\n- **`features/people/people.ts`**: it now works out the crew total from that list and the people's due-totals, and passes it to the header. I also split out the user-to-person matching so \"My due\" and the crew total share it.\n- **`features/header/header.ts`**: it has the new input and the new figure.\n\nNothing changed on the server, in the stored data, or in the audit file; the test expects no new audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45765700000000004,
+        "num_turns": 11,
+        "duration_ms": 291877,
+        "duration_api_ms": 78170,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp167.agent.jsonl",
+  "agent_diff_file": "cp167.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,130 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 9b8aacac..99e1e730 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -19,11 +19,18 @@ export interface CrewView {
+ }
+ 
+ // The people of the active sheet as the people list holds them now: who may be chosen as a lead or member, and each
+-// person's due-total as the list shows it (null: n/a), so a crew's due-total follows theirs.
++// person's due-total as the list shows it (null: n/a), so a crew's due-total follows theirs; and the sheet's crews as
++// the crews list holds them now.
+ @Injectable({ providedIn: 'root' })
+ export class CrewRoster {
+   readonly people = signal<readonly { id: number; name: string }[]>([]);
+   readonly dueBy = signal<ReadonlyMap<number, string | null>>(new Map());
++  readonly crews = signal<readonly CrewView[]>([]);
++}
++
++/** A crew's due-total: its lead's and members' due-totals added up, n/a skipped. */
++export function crewDueTotal(crew: CrewView, dueBy: ReadonlyMap<number, string | null>): string {
++  return sumSkippingNa([crew.leadId, ...crew.members.map((m) => m.personId)].map((id) => dueBy.get(id) ?? null));
+ }
+ 
+ // The active sheet's crews: each with its lead and members, and its due-total: the lead's and the members' due-totals
+@@ -104,7 +111,7 @@ export class Crews {
+   private readonly session = inject(Session);
+   protected readonly roster = inject(CrewRoster);
+ 
+-  protected readonly crews = signal<readonly CrewView[]>([]);
++  protected readonly crews = this.roster.crews;
+   // Each crew with its lead's and members' names as the people list has them now, and its due-total.
+   protected readonly shown = computed(() => {
+     const names = new Map(this.roster.people().map((p) => [p.id, p.name]));
+@@ -113,7 +120,7 @@ export class Crews {
+       ...c,
+       leadName: names.get(c.leadId) ?? c.leadName,
+       members: c.members.map((m) => ({ ...m, name: names.get(m.personId) ?? m.name })),
+-      dueTotal: sumSkippingNa([c.leadId, ...c.members.map((m) => m.personId)].map((id) => due.get(id) ?? null)),
++      dueTotal: crewDueTotal(c, due),
+     }));
+   });
+ 
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 53c7ebbc..e05bfd5a 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -3,7 +3,8 @@ import { FigPipe } from '../../core/locale';
+ import { STATUSES } from '../summary/summary';
+ 
+ // The sheet's counters, shown at all times: each repeats a figure shown elsewhere — the status counts those of the
+-// summary, the two totals the sheet's totals, and the signed-in user's own figures those of their person's row.
++// summary, the two totals the sheet's totals, the signed-in user's own figures those of their person's row,
++// and their crew total those of the crews their person leads.
+ @Component({
+   selector: 'app-header',
+   imports: [FigPipe],
+@@ -24,6 +25,8 @@ import { STATUSES } from '../summary/summary';
+         <dd data-testid="my-due-total">{{ myDueTotal() | fig }}</dd>
+         <dt>My overdue</dt>
+         <dd data-testid="my-overdue-total">{{ myOverdueTotal() | fig }}</dd>
++        <dt>My crew due</dt>
++        <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | fig }}</dd>
+       </dl>
+     </header>
+   `,
+@@ -38,6 +41,8 @@ export class Header {
+   // The signed-in user's own figures, as on the row of the person with their name or alias; blank with no such person.
+   readonly myDueTotal = input('');
+   readonly myOverdueTotal = input('');
++  // The due-totals of the crews that person leads, added up; blank when they lead none.
++  readonly myCrewDueTotal = input('');
+ 
+   protected readonly byStatus = computed(() =>
+     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 67d37835..099b56bd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,7 +12,7 @@ import { Header } from '../header/header';
+ import { Consolidated } from '../consolidated/consolidated';
+ import { Summary, SummaryPerson } from '../summary/summary';
+ import { PoolRoster, PoolStore } from '../pools/pools';
+-import { CrewRoster } from '../crews/crews';
++import { CrewRoster, crewDueTotal } from '../crews/crews';
+ import { PersonPlans, PlanStore } from '../plans/plans';
+ 
+ interface Person {
+@@ -95,6 +95,7 @@ interface StatementView {
+       [overdueTotal]="overdueTotal()"
+       [myDueTotal]="myFigures()?.dueTotal ?? ''"
+       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
++      [myCrewDueTotal]="myCrewDueTotal()"
+     />
+     <app-consolidated
+       [ownPeopleCount]="people().length"
+@@ -1153,18 +1154,31 @@ export class People {
+ 
+   // The signed-in user's own figures: those of the person whose name or an alias is, ignoring case, the user's name,
+   // shown as on their row; null when there is no such person.
+-  protected readonly myFigures = computed(() => {
++  private readonly me = computed(() => {
+     const user = this.session.user()?.toLowerCase();
+-    if (!user) return null;
+-    const me = this.people().find(
++    if (!user) return undefined;
++    return this.people().find(
+       (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
+     );
++  });
++  protected readonly myFigures = computed(() => {
++    const me = this.me();
+     if (me === undefined) return null;
+     return {
+       dueTotal: this.dueBy().get(me.id) ?? 'n/a',
+       overdueTotal: this.overdueTotalBy().get(me.id) ?? '0.00',
+     };
+   });
++  // The signed-in user's crew total: the due-totals of the crews their person leads, added up; blank when they lead
++  // none, or there is no such person.
++  protected readonly myCrewDueTotal = computed(() => {
++    const me = this.me();
++    if (me === undefined) return '';
++    const led = this.crewRoster.crews().filter((c) => c.leadId === me.id);
++    if (led.length === 0) return '';
++    const due = this.dueBy();
++    return sumSkippingNa(led.map((c) => crewDueTotal(c, due)));
++  });
+ 
+   constructor() {
+     // The pools offer these people, and count a member retired, or held, as soon as they are.
