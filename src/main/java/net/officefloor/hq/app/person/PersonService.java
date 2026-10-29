@@ -102,6 +102,16 @@ public class PersonService {
     @Transactional
     public Person add(String by, String sheetId, String name, String grade, Integer terms, String contact,
             String tagged) {
+        return add(by, sheetId, name, grade, terms, null, contact, tagged);
+    }
+
+    /**
+     * Adds the person as {@link #add(String, String, String, String, Integer, String, String)} does, their own terms
+     * applying from the terms from-date (null: from the beginning of time).
+     */
+    @Transactional
+    public Person add(String by, String sheetId, String name, String grade, Integer terms, LocalDate termsFrom,
+            String contact, String tagged) {
         String personTags = ClaimService.tagsOf(tagged);
         LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -114,7 +124,11 @@ public class PersonService {
             throw contactInUse();
         }
         Person person = new Person(sheetId, trimmed, grade, today);
-        person.setTerms(terms);
+        if (termsFrom != null) {
+            person.recordTerms(terms, termsFrom, today);
+        } else {
+            person.setTerms(terms);
+        }
         person.setContact(key);
         person.setTags(personTags);
         keepTags(sheetId, personTags);
@@ -153,12 +167,33 @@ public class PersonService {
     }
 
     /**
+     * Saves the edit as {@link #update(String, String, Long, long, String, String, LocalDate, Integer, String, String)}
+     * does, except that given a terms from-date the terms (null: none) are recorded from it, keeping those already
+     * recorded and replacing those recorded from that same date.
+     */
+    @Transactional
+    public Person update(String by, String sheetId, Long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tagged) {
+        return update(by, sheetId, id, version, name, grade, gradeFrom, terms, termsFrom, contact, tagged, true);
+    }
+
+    /**
      * Saves the edit as {@link #update(String, String, Long, long, String, String, LocalDate, Integer, String)} does;
      * when checking the tree, refused too when the name, or any alias the person keeps, is a name or alias on another
      * sheet of the sheet's tree.
      */
     private Person update(String by, String sheetId, Long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, String tagged, boolean checkTree) {
+        return update(by, sheetId, id, version, name, grade, gradeFrom, terms, null, contact, tagged, checkTree);
+    }
+
+    /**
+     * Saves the edit; with a terms from-date the terms are recorded from it, and without one an edit leaving the terms
+     * in force today as they are records nothing, while any other sets the terms from the beginning of time.
+     */
+    private Person update(String by, String sheetId, Long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tagged,
+            boolean checkTree) {
         String personTags = ClaimService.tagsOf(tagged);
         LocalDate today = today(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -186,8 +221,17 @@ public class PersonService {
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.recordGrade(grade, gradeFrom != null ? gradeFrom : today, today);
         }
-        boolean termsChanged = !Objects.equals(terms, person.getTerms());
-        person.setTerms(terms);
+        boolean termsChanged;
+        if (termsFrom != null) {
+            termsChanged = person.getDatedTerms().stream().noneMatch(t -> t.getFrom().equals(termsFrom)
+                    && Objects.equals(t.getTerms(), terms));
+            person.recordTerms(terms, termsFrom, today);
+        } else {
+            termsChanged = !Objects.equals(terms, person.termsOn(today)) && !Objects.equals(terms, person.getTerms());
+            if (termsChanged) {
+                person.setTerms(terms);
+            }
+        }
         boolean contactChanged = !Objects.equals(key, person.getContact());
         person.setContact(key);
         if (tagged != null) {
@@ -196,7 +240,7 @@ public class PersonService {
         }
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", by, saved, today)
-                + (termsChanged ? " terms=" + (terms != null ? terms : "") : "")
+                + (termsChanged ? " terms=" + Objects.toString(saved.termsOn(today), "") : "")
                 + (contactChanged ? " contact=" + (key != null ? key : "") : ""));
         rollup.recordChanges(by, sheetId, before);
         return saved;
@@ -216,7 +260,7 @@ public class PersonService {
         }
         List<Person> saved = new ArrayList<>();
         for (Person p : chosen) {
-            saved.add(update(by, sheetId, p.getId(), p.getVersion(), p.getName(), grade, from, p.getTerms(),
+            saved.add(update(by, sheetId, p.getId(), p.getVersion(), p.getName(), grade, from, p.termsOn(today(sheetId)),
                     p.getContact(), null, false));
         }
         return saved;

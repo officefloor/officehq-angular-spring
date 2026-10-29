@@ -1132,11 +1132,12 @@ public class ClaimService {
     }
 
     /**
-     * The terms a claim of the person dated on the date has: the person's own, else those of their grade on the date,
+     * The terms a claim of the person dated on the date has: the person's own in force on it, else those of their grade on the date,
      * else the sheet's on the date.
      */
     private int termsFor(String sheetId, Person person, LocalDate on) {
-        return person.getTerms() != null ? person.getTerms()
+        Integer own = person.termsOn(on);
+        return own != null ? own
                 : sheets.load(sheetId).termsFor(person.gradeOn(on), on);
     }
 

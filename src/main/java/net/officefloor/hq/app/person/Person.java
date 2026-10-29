@@ -22,7 +22,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 
 /**
  * A person on a sheet, with a name (unique on the sheet, ignoring case) and a dated grade (A, B or C): each grade
- * applies from its from-date, the first one given from the beginning of time; and the terms of their own, if any.
+ * applies from its from-date, the first one given from the beginning of time; and the terms of their own, if any,
+ * from the beginning of time and from their from-dates.
  */
 @Entity
 @Table(name = "person")
@@ -46,8 +47,13 @@ public class Person {
     @Column(name = "list_position", nullable = false)
     private long position;
 
+    /** The person's own terms from the beginning of time; null: none. */
     @Column(name = "terms")
     private Integer terms;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_terms", joinColumns = @JoinColumn(name = "person_id"))
+    private List<DatedTerms> datedTerms = new ArrayList<>();
 
     /** The person's contact, without surrounding spaces and lower-cased; null: none. */
     @Column(name = "contact")
@@ -116,6 +122,7 @@ public class Person {
         then.position = position;
         then.originSheet = originSheet;
         then.terms = terms;
+        datedTerms.stream().filter(t -> t.madeBy(day)).forEach(then.datedTerms::add);
         then.addedOn = addedOn;
         then.version = version;
         grades.stream().filter(g -> g.madeBy(day)).forEach(then.grades::add);
@@ -189,9 +196,33 @@ public class Person {
         grades.add(new DatedGrade(grade, from, madeOn));
     }
 
-    /** The person's own terms in business days: a claim of theirs is due by that many business days after its date; null for none. */
+    /**
+     * The person's own terms from the beginning of time in business days: a claim of theirs is due by that many business
+     * days after its date, unless dated terms are in force on it; null for none.
+     */
     public Integer getTerms() {
         return terms;
+    }
+
+    /** Every dated terms recorded for the person, earliest from-date first. */
+    public List<DatedTerms> getDatedTerms() {
+        return datedTerms.stream().sorted(Comparator.comparing(DatedTerms::getFrom)).toList();
+    }
+
+    /**
+     * The person's own terms in force on the date: those with the latest from-date on or before it, else those from
+     * the beginning of time; null for none.
+     */
+    public Integer termsOn(LocalDate date) {
+        DatedTerms inForce = datedTerms.stream().filter(t -> date != null && !t.getFrom().isAfter(date))
+                .max(Comparator.comparing(DatedTerms::getFrom)).orElse(null);
+        return inForce != null ? inForce.getTerms() : terms;
+    }
+
+    /** Records the terms (null: none) from the date, replacing those already recorded from that same date. */
+    public void recordTerms(Integer terms, LocalDate from, LocalDate madeOn) {
+        datedTerms.removeIf(t -> t.getFrom().equals(from));
+        datedTerms.add(new DatedTerms(terms, from, madeOn));
     }
 
     public void setTerms(Integer terms) {

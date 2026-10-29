@@ -134,6 +134,8 @@ public class SheetCloneService {
                     + " made_on FROM person_grade WHERE person_id = ?", copy, id);
             jdbc.update("INSERT INTO person_hold (person_id, from_date, to_date, made_on) SELECT ?, from_date,"
                     + " to_date, made_on FROM person_hold WHERE person_id = ?", copy, id);
+            jdbc.update("INSERT INTO person_terms (person_id, from_date, terms, made_on) SELECT ?, from_date, terms,"
+                    + " made_on FROM person_terms WHERE person_id = ?", copy, id);
             jdbc.update("INSERT INTO person_retirement (person_id, from_date, to_date, retired_on, made_on)"
                     + " SELECT ?, from_date, to_date, retired_on, made_on FROM person_retirement WHERE person_id = ?",
                     copy, id);

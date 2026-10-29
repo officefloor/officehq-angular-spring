@@ -35,7 +35,7 @@ public class PersonController {
 
     /**
      * A person as listed: the grade is the one in force on the sheet's today, the grades every one recorded, the
-     * terms their own (null: none), the sheet they were transferred from (null: none); clashing when their name or an alias is on another sheet of the sheet's tree.
+     * terms their own in force on the sheet's today (null: none), the sheet they were transferred from (null: none); clashing when their name or an alias is on another sheet of the sheet's tree.
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
@@ -45,7 +45,7 @@ public class PersonController {
                 Map<Long, List<SnapshotView>> snapshots) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
-                    p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
+                    p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.termsOn(today),
                     p.getContact(), p.getAliases(), clashing.contains(p.getId()),
                     p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList(),
                     ClaimService.tagList(p.getTags()), snapshots.getOrDefault(p.getId(), List.of()));
@@ -82,21 +82,22 @@ public class PersonController {
 
     /**
      * A person's fields as the form submits them; the name is stored without surrounding spaces, the terms are whole
-     * days, 0 or more, or null for none; the contact is stored without surrounding spaces, lower-cased, blank or
+     * days, 0 or more, or null for none, from the terms from-date (null: the beginning of time); the contact is stored without surrounding spaces, lower-cased, blank or
      * null for none; the tags are comma separated, blank or null for none.
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) @Max(99999) Integer terms,
-            @Size(max = 200) String contact, @Size(max = 1000) String tags) {
+            LocalDate termsFrom, @Size(max = 200) String contact, @Size(max = 1000) String tags) {
     }
 
     /**
      * An edit of a person: its fields, the date its grade applies from (missing: the sheet's today) and the version
-     * of the person the editor loaded, their own terms (null: none) and their contact (blank or null: none) and their tags, comma separated (blank: none; null: kept as they are).
+     * of the person the editor loaded, their own terms (null: none) from the terms from-date (missing: from the beginning of time) and their contact (blank or null: none) and their tags, comma separated (blank: none; null: kept as they are).
      */
     public record PersonEdit(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
-            @Min(0) @Max(99999) Integer terms, @Size(max = 200) String contact, @Size(max = 1000) String tags) {
+            @Min(0) @Max(99999) Integer terms, LocalDate termsFrom, @Size(max = 200) String contact,
+            @Size(max = 1000) String tags) {
     }
 
     /** One person named as another's patron. */
@@ -202,7 +203,7 @@ public class PersonController {
             @Valid @RequestBody PersonForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId, service.add(user, sheetId, form.name(), form.grade(), form.terms(),
-                form.contact(), form.tags()));
+                form.termsFrom(), form.contact(), form.tags()));
     }
 
     /**
@@ -229,7 +230,7 @@ public class PersonController {
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId,
                 service.update(user, sheetId, id, form.version(), form.name(), form.grade(), form.gradeFrom(),
-                        form.terms(), form.contact(), form.tags()));
+                        form.terms(), form.termsFrom(), form.contact(), form.tags()));
     }
 
     /** Gives the person an alias; refused when blank or when it is a name or alias on the sheet. */

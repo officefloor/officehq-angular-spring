@@ -21,7 +21,7 @@ interface Person {
   // The grade in force on the sheet's today when the store answered, and every grade recorded, each from its date.
   grade: string;
   grades: DatedGrade[];
-  // The person's own terms in days, ahead of their grade's and the sheet's; null for none.
+  // The person's own terms in days in force on the sheet's today, ahead of their grade's and the sheet's; null for none.
   terms: number | null;
   // The person's contact, without surrounding spaces and lower-cased; null for none.
   contact: string | null;
@@ -147,6 +147,14 @@ interface StatementView {
           data-testid="person-form-terms"
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
+        />
+        <label for="person-terms-from">Terms from</label>
+        <input
+          type="date"
+          id="person-terms-from"
+          data-testid="person-form-terms-from"
+          [value]="termsFrom()"
+          (input)="termsFrom.set(value($event)); error.set(null)"
         />
         <label for="person-contact">Contact</label>
         <input
@@ -769,6 +777,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   // The person's own terms in whole days as typed; blank for none.
   protected readonly terms = signal('');
+  // The date the terms apply from; blank for the beginning of time.
+  protected readonly termsFrom = signal('');
   // The person's contact as typed; blank for none.
   protected readonly contact = signal('');
   // The person's tags as typed, comma separated; blank for none.
@@ -1716,6 +1726,7 @@ export class People {
     this.grade.set(this.gradeToday(p));
     this.gradeFrom.set('');
     this.terms.set(p.terms === null ? '' : String(p.terms));
+    this.termsFrom.set('');
     this.contact.set(p.contact ?? '');
     this.tags.set(p.tags.join(', '));
     this.error.set(null);
@@ -1989,6 +2000,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.termsFrom.set('');
     this.contact.set('');
     this.tags.set('');
     this.error.set(null);
@@ -2012,6 +2024,7 @@ export class People {
       name: this.name().trim(),
       grade: this.grade(),
       terms: termsText === '' ? null : Number(termsText),
+      termsFrom: this.termsFrom() || null,
       contact: contactText === '' ? null : contactText,
       tags: this.tags(),
     };
