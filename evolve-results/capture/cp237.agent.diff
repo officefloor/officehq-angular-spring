@@ -1,0 +1,67 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index e8444a40..64c7098b 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -89,6 +89,7 @@ export const PERMISSIONS: readonly { action: string; standing: string }[] = [
+   { action: 'reassign', standing: 'steward' },
+   { action: 'close', standing: 'clerk,steward' },
+   { action: 'reopen', standing: 'steward' },
++  { action: 'today', standing: 'clerk,steward,restricted' },
+ ];
+ 
+ /** Roles typed as a comma separated list, trimmed and each listed once; blank for none typed. */
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 0862a49c..8ef7d78d 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -38,7 +38,8 @@ public class SettingsService implements Audit.OnBehalf {
+             "void", List.of(SheetRole.CLERK, SheetRole.STEWARD),
+             "reassign", List.of(SheetRole.STEWARD),
+             "close", List.of(SheetRole.CLERK, SheetRole.STEWARD),
+-            "reopen", List.of(SheetRole.STEWARD));
++            "reopen", List.of(SheetRole.STEWARD),
++            "today", List.of(SheetRole.CLERK, SheetRole.STEWARD, SheetRole.RESTRICTED));
+ 
+     private final SheetRoleRepository roles;
+     private final DelegationRepository delegations;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index e233fcb4..b5e4e910 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -9,6 +9,7 @@ import java.time.LocalDate;
+ import net.officefloor.hq.app.asof.AsOfReads;
+ import net.officefloor.hq.app.asof.AsOfService;
+ import net.officefloor.hq.app.session.SessionController;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.settings.ViewerPasses;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -42,11 +43,14 @@ public class SheetController {
+     private final SheetService service;
+     private final SheetCloneService clones;
+     private final AsOfService asOf;
++    private final SettingsService settings;
+ 
+-    public SheetController(SheetService service, SheetCloneService clones, AsOfService asOf) {
++    public SheetController(SheetService service, SheetCloneService clones, AsOfService asOf,
++            SettingsService settings) {
+         this.service = service;
+         this.clones = clones;
+         this.asOf = asOf;
++        this.settings = settings;
+     }
+ 
+     /** Load a sheet by id, starting it empty if it was never loaded before. */
+@@ -57,10 +61,11 @@ public class SheetController {
+         return SheetView.of(service.load(id));
+     }
+ 
+-    /** Change the sheet's today. */
++    /** Change the sheet's today; refused for a role the permission matrix does not let change it. */
+     @PutMapping("/{id}/today")
+     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String id,
+             @Valid @RequestBody TodayChange change, @SessionAttribute(SessionController.USER) String user) {
++        settings.refuseUnlessMay(id, user, "today");
+         return SheetView.of(service.setToday(user, id, change.today()));
+     }
+ 
