@@ -206,6 +206,13 @@ public class PersonController {
         return service.list(sheetId).stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList();
     }
 
+    /** Each person's snapshot lines on the sheet, by person id, oldest first, as the store holds them now. */
+    @GetMapping("/snapshots")
+    public Map<Long, List<SnapshotView>> snapshots(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.snapshotLines(sheetId);
+    }
+
     @PostMapping
     public PersonView add(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

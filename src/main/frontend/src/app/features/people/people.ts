@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DOCUMENT, computed, effect, inject, signal, untracked } from '@angular/core';
-import { FigPipe } from '../../core/locale';
+import { FigPipe, UserLocale, formatFigure } from '../../core/locale';
 import { COLUMNS, UserColumns } from '../../core/columns';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -296,6 +296,24 @@ interface StatementView {
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+
+      <fieldset>
+        <legend>Compare snapshots</legend>
+        <label for="snapshot-from">From</label>
+        <input type="date" id="snapshot-from" data-testid="snapshot-from" [value]="snapshotFrom()"
+          (input)="snapshotFrom.set(value($event))" />
+        <label for="snapshot-to">To</label>
+        <input type="date" id="snapshot-to" data-testid="snapshot-to" [value]="snapshotTo()"
+          (input)="snapshotTo.set(value($event))" />
+        <button type="button" data-testid="snapshot-compare" (click)="compareSnapshots()">Compare</button>
+        @if (snapshotCompared()) {
+          <ul>
+            @for (l of snapshotComparison(); track $index) {
+              <li data-testid="snapshot-line">{{ l }}</li>
+            }
+          </ul>
+        }
+      </fieldset>
 
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | fig }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | fig }}</strong></p>
@@ -819,6 +837,29 @@ export class People {
   // The order the list is shown in; it belongs to the screen (each user's own), so loading a sheet keeps it.
   // Only the screen is sorted: positions, rollups and every action in list order are unaffected.
   protected readonly sortKey = signal('added');
+  // The snapshot comparison: the dates typed, and the pair last compared (null: none yet).
+  protected readonly snapshotFrom = signal('');
+  protected readonly snapshotTo = signal('');
+  protected readonly snapshotCompared = signal<{ from: string; to: string } | null>(null);
+  private readonly userLocale = inject(UserLocale);
+  // Per person in list order, <name> <then> <now>: then is their due-total in the snapshot written when the sheet's
+  // today was changed away from the from-date (empty: none), now likewise for the to-date, or their due-total now
+  // when the to-date is blank. An empty figure leaves no trailing space.
+  protected readonly snapshotComparison = computed(() => {
+    const compared = this.snapshotCompared();
+    if (compared === null) return [];
+    const due = this.dueBy();
+    const on = (p: Person, day: string): string => {
+      const s = p.snapshots.filter((l) => l.day === day).at(-1);
+      return s === undefined ? '' : (s.dueTotal ?? 'n/a');
+    };
+    return this.people().map((p) => {
+      const then = compared.from === '' ? '' : on(p, compared.from);
+      const now = compared.to === '' ? (due.get(p.id) ?? 'n/a') : on(p, compared.to);
+      const locale = this.userLocale.locale();
+      return [p.name, formatFigure(then, locale), formatFigure(now, locale)].join(' ').trim();
+    });
+  });
   protected readonly shownPeople = computed(() => {
     const shown = this.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null);
     const key = this.sortKey();
@@ -1366,6 +1407,19 @@ export class People {
         if (id) void this.fetch(id);
       });
     });
+  }
+
+  /** Compares the snapshots of the typed dates, re-reading everyone's snapshot lines from the store first. */
+  protected async compareSnapshots(): Promise<void> {
+    const sheet = this.session.sheetId();
+    const compared = { from: this.snapshotFrom(), to: this.snapshotTo() };
+    this.snapshotCompared.set(null);
+    if (sheet === null) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/snapshots`;
+    const lines = await firstValueFrom(this.http.get<Record<string, SnapshotLine[]>>(url));
+    if (this.session.sheetId() !== sheet) return;
+    this.people.update((list) => list.map((p) => ({ ...p, snapshots: lines[p.id] ?? [] })));
+    this.snapshotCompared.set(compared);
   }
 
   protected value(e: Event): string {
