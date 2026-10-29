@@ -21,6 +21,7 @@ import net.officefloor.hq.app.asof.AsOfService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -177,11 +178,33 @@ public class RollupService {
                 claimsBy.computeIfAbsent(c.getPersonId(), id -> new ArrayList<>()).add(c);
             }
         }
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        // the parts of shared claims: what each holder's share of a counted claim's figure comes to, by holder, and
+        // what the claim's own person gives away of it, by claim
+        Map<Long, List<Part>> partsBy = new HashMap<>();
+        Map<Long, BigDecimal> givenBy = new HashMap<>();
+        for (Person p : listed) {
+            for (Claim c : claimsBy.getOrDefault(p.getId(), List.of())) {
+                if (c.getShares().isEmpty() || !p.countsLive(c, today)) {
+                    continue;
+                }
+                BigDecimal figure = liveFigure(c, p, tiers, byTier, sheet);
+                if (figure == null) {
+                    continue;
+                }
+                for (ClaimShare share : c.getShares()) {
+                    BigDecimal part = figure.multiply(share.getShare()).movePointLeft(2)
+                            .setScale(2, RoundingMode.HALF_EVEN);
+                    partsBy.computeIfAbsent(share.getPersonId(), id -> new ArrayList<>()).add(new Part(c, part));
+                    givenBy.merge(c.getId(), part, BigDecimal::add);
+                }
+            }
+        }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+        for (Person p : listed) {
             // an open claim of a retired person counts in no live total, unless a statement binds it; nor does one
             // deferred on the sheet's today; a hold leaves nothing out
             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
@@ -201,28 +224,31 @@ public class RollupService {
             for (Claim c : counted) {
                 grades.add(p.gradeOn(c.getDate()));
                 kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
-                // the claim's rate is the one its person's grade in force on its date has
-                Map<String, List<Rate>> claimRates = byTier.get(tiers.stream()
-                        .filter(t -> t.upTo() == null || c.getAddedMark() <= t.upTo()).findFirst().orElseThrow());
-                BigDecimal figure = figure(c, claimRates.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
-                // a settled or bound claim's figure is its due as fixed or as shown when stated
-                if (c.getSettledDue() == null && !c.isBound()) {
-                    figure = ClaimService.liveDue(figure, c, p, sheet, c.getStatus().isOpen());
-                }
+                BigDecimal figure = liveFigure(c, p, tiers, byTier, sheet);
                 boolean late = isOverdue(c, p, sheet, today);
                 if (late) {
                     overdueCount++;
                 }
                 if (figure != null) {
                     kept = true;
-                    due = due.add(figure);
+                    // a shared claim's due-total counts the figure less its holders' parts
+                    BigDecimal own = figure.subtract(givenBy.getOrDefault(c.getId(), ZERO));
+                    due = due.add(own);
                     if (late) {
                         overdue = overdue.add(figure);
                     }
                     // a correction's figure counts toward no score
                     if (c.getStatus() == ClaimStatus.SETTLED && c.getCorrects() == null) {
-                        settled = settled.add(figure);
+                        settled = settled.add(own);
                     }
+                }
+            }
+            // the parts the person holds of others' claims count as figures of theirs
+            for (Part part : partsBy.getOrDefault(p.getId(), List.of())) {
+                kept = true;
+                due = due.add(part.figure());
+                if (part.claim().getStatus() == ClaimStatus.SETTLED && part.claim().getCorrects() == null) {
+                    settled = settled.add(part.figure());
                 }
             }
             // with no rate in force today for any of those grades and no claim with a figure (kept, or live at a
@@ -435,6 +461,25 @@ public class RollupService {
 
     private static boolean above(Figures f, BigDecimal threshold) {
         return f != null && f.dueTotal() != null && f.dueTotal().compareTo(threshold) > 0;
+    }
+
+    /** A holder's part of a shared claim: the claim, and its figure times the holder's share divided by 100. */
+    private record Part(Claim claim, BigDecimal figure) {
+    }
+
+    /**
+     * The figure a counted claim of the person totals: a settled or bound claim's due as fixed or as shown when stated,
+     * else its live due at the rate its person's grade in force on its date has (in the tier of its added mark).
+     */
+    private static BigDecimal liveFigure(Claim c, Person p, List<RateChain.Tier> tiers,
+            Map<RateChain.Tier, Map<String, List<Rate>>> byTier, Sheet sheet) {
+        Map<String, List<Rate>> claimRates = byTier.get(tiers.stream()
+                .filter(t -> t.upTo() == null || c.getAddedMark() <= t.upTo()).findFirst().orElseThrow());
+        BigDecimal figure = figure(c, claimRates.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
+        if (c.getSettledDue() == null && !c.isBound()) {
+            figure = ClaimService.liveDue(figure, c, p, sheet, c.getStatus().isOpen());
+        }
+        return figure;
     }
 
     /**

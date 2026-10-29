@@ -46,7 +46,8 @@ public class ClaimController {
             String number, String settledDue, String openedBy, String editedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, int proofReceipts, int proofPhotos, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
-            List<CommentView> comments, Integer batch, List<LineView> lines, Long mark, LocalDate waivedOn, boolean held) {
+            List<CommentView> comments, Integer batch, List<LineView> lines, Long mark, LocalDate waivedOn, boolean held,
+            List<ShareView> shares) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
@@ -55,7 +56,15 @@ public class ClaimController {
                     c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason(),
                     c.getComments().stream().map(CommentView::of).toList(), c.getSettleBatch(),
                     c.getLines().stream().map(LineView::of).toList(),
-                    c.getAddedMark() == Long.MAX_VALUE ? null : c.getAddedMark(), c.getWaivedOn(), c.isHeld());
+                    c.getAddedMark() == Long.MAX_VALUE ? null : c.getAddedMark(), c.getWaivedOn(), c.isHeld(),
+                    c.getShares().stream().map(ShareView::of).toList());
+        }
+    }
+
+    /** A share of a claim: the person holding it, by id, and the share (two decimals). */
+    public record ShareView(Long personId, String share) {
+        public static ShareView of(ClaimShare s) {
+            return new ShareView(s.getPersonId(), s.getShare().toPlainString());
         }
     }
 
@@ -374,6 +383,18 @@ public class ClaimController {
             @SessionAttribute(SessionController.USER) String user) {
         ClaimService.PartSettle result = service.settlePart(user, sheetId, id, form.amount());
         return new PartSettleView(ClaimView.of(result.original()), ClaimView.of(result.settled()));
+    }
+
+    /** The person a claim is to be shared with, by id, and their share (two decimals, more than 0.00). */
+    public record ShareForm(@NotNull Long personId, @NotNull @Digits(integer = 3, fraction = 2) BigDecimal share) {
+    }
+
+    @PostMapping("/claims/{id}/share")
+    public ClaimView share(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody ShareForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.share(user, sheetId, id, form.personId(), form.share()));
     }
 
     @PostMapping("/claims/{id}/waive")

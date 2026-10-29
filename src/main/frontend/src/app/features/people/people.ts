@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays, reviewLate } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
-import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
+import { DatedGrade, GRADES, RateStore, atMost, difference, dueOn, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
 import { Header } from '../header/header';
@@ -1075,6 +1075,32 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
+  // The parts of the shared claims counted live: for each holder, each claim they hold a share of and their part, its
+  // figure times their share divided by 100, rounded half to even; and for each such claim what its own person gives
+  // away, its holders' parts added up. A claim with no figure (n/a) has no parts.
+  private readonly shareParts = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const rates = this.rates.byClaim();
+    const floor = this.settings.floor();
+    const late = this.settings.lateness();
+    const held = new Map<number, { claim: Claim; part: string }[]>();
+    const given = new Map<number, string>();
+    for (const c of this.liveClaims()) {
+      if (c.shares.length === 0) continue;
+      const own = grades.get(c.personId) ?? [];
+      const due = dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
+      if (due === null) continue;
+      const parts = c.shares.map((s) => dueOn(due, s.share) ?? '0.00');
+      c.shares.forEach((s, i) => held.set(s.personId, [...(held.get(s.personId) ?? []), { claim: c, part: parts[i] }]));
+      given.set(c.id, sumSkippingNa(parts));
+    }
+    return { held, given };
+  });
+  // A counted claim's figure as its own person's totals count it: less what its holders' parts give away.
+  private ownFigure(c: Claim, due: string | null): string | null {
+    const given = this.shareParts().given.get(c.id);
+    return due === null || given === undefined ? due : difference(due, given);
+  }
   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
   // today nor for the grade of any counted claim's date it is null (n/a), unless a counted claim has a figure (a
@@ -1089,7 +1115,9 @@ export class People {
       const counted = this.liveBy().get(p.id) ?? [];
       // the grades whose rate today decides n/a: the one in force today and each counted claim's
       const grades = [this.gradeToday(p), ...counted.map((c) => gradeOn(p.grades, c.date))];
-      const dues = counted.map((c) => dueOf(c, rates(c).get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late)));
+      const dues = counted.map((c) => this.ownFigure(c, dueOf(c, rates(c).get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late))));
+      // the parts they hold of others' shared claims count as figures of theirs
+      dues.push(...(this.shareParts().held.get(p.id) ?? []).map((h) => h.part));
       if (!grades.some((g) => current.has(g)) && dues.every((d) => d === null)) {
         by.set(p.id, null);
         continue;
@@ -1107,13 +1135,21 @@ export class People {
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const by = new Map<number, { settled: string; open: string; scored: string }>();
-    for (const [id, list] of this.liveBy()) {
+    const { held } = this.shareParts();
+    const ids = new Set([...this.liveBy().keys(), ...held.keys()]);
+    for (const id of ids) {
       const own = grades.get(id) ?? [];
-      const due = (c: Claim) => dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
+      const due = (c: Claim) => this.ownFigure(c, dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late)));
+      // their own claims less the parts given away, and the parts they hold of others'
+      const figures = [
+        ...(this.liveBy().get(id) ?? []).map((c) => ({ claim: c, figure: due(c) })),
+        ...(held.get(id) ?? []).map((h) => ({ claim: h.claim, figure: h.part as string | null })),
+      ];
+      const sum = (keep: (c: Claim) => boolean) => sumSkippingNa(figures.filter((f) => keep(f.claim)).map((f) => f.figure));
       by.set(id, {
-        settled: sumSkippingNa(list.filter((c) => c.status === 'SETTLED').map(due)),
-        open: sumSkippingNa(list.filter(isOpen).map(due)),
-        scored: sumSkippingNa(list.filter((c) => c.status === 'SETTLED' && !c.corrects).map(due)),
+        settled: sum((c) => c.status === 'SETTLED'),
+        open: sum(isOpen),
+        scored: sum((c) => c.status === 'SETTLED' && !c.corrects),
       });
     }
     return by;

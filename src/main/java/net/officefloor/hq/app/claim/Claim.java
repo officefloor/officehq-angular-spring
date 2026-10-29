@@ -211,6 +211,13 @@ public class Claim {
     @OrderBy("id ASC")
     private List<ClaimLine> lines = new ArrayList<>();
 
+    /** The people the claim is shared with and their shares, in the order they were added. */
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @JoinColumn(name = "claim_id", nullable = false)
+    @OrderBy("id ASC")
+    private List<ClaimShare> shares = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -573,6 +580,20 @@ public class Claim {
     /** Adds a comment: by the user, on the sheet's today. */
     public void comment(String by, LocalDate on, String text) {
         comments.add(new ClaimComment(by, on, text));
+    }
+
+    public List<ClaimShare> getShares() {
+        return shares;
+    }
+
+    /** Shares the claim with the person: they hold the share (two decimals) of it. */
+    public void share(Long personId, BigDecimal share) {
+        shares.add(new ClaimShare(personId, share));
+    }
+
+    /** What the claim's shares add up to. */
+    public BigDecimal sharedTotal() {
+        return shares.stream().map(ClaimShare::getShare).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     public List<ClaimLine> getLines() {

@@ -70,6 +70,14 @@ export interface Claim {
   batch: number | null;
   // The claim's lines, in the order they were added; while it has any, its amount is the sum of theirs.
   lines: ClaimLine[];
+  // The people the claim is shared with and their shares, in the order they were added; none for a claim not shared.
+  shares: ClaimShare[];
+}
+
+// A share of a claim: the person holding it, by id, and their share (two decimals, more than 0.00).
+export interface ClaimShare {
+  personId: number;
+  share: string;
 }
 
 // A line of a claim: its label, a whole quantity of at least 1 and a unit amount (two decimals).
@@ -382,7 +390,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Held</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Shared with</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Held</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -404,6 +412,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-note">{{ c.note | fig }}</td>
             <td data-testid="claim-ref">{{ (c.ref ?? '') | fig }}</td>
             <td data-testid="claim-tags">{{ (c.tags.join(', ')) | fig }}</td>
+            <td data-testid="claim-shares">{{ sharesText(c) | fig }}</td>
             <td data-testid="claim-due">{{ (dueOf(c, ratesOf(c), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a') | fig }}</td>
             <td data-testid="claim-due-by">{{ c.dueBy | fig }}</td>
             <td data-testid="claim-overdue">{{ (overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no') | fig }}</td>
@@ -629,6 +638,30 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-reassign" (click)="reassign(c)">
                 Move<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <label [for]="'claim-share-to-' + c.id">Share with</label>
+              <select
+                [id]="'claim-share-to-' + c.id"
+                data-testid="claim-share-select"
+                (change)="setShareTo(c.id, value($event))"
+              >
+                <option value="" [selected]="!shareTo()[c.id]">Choose a person</option>
+                @for (q of people(); track q.id) {
+                  @if (q.id !== c.personId) {
+                    <option [value]="q.id" [selected]="shareTo()[c.id] === '' + q.id">{{ q.name }}</option>
+                  }
+                }
+              </select>
+              <label [for]="'claim-share-pct-' + c.id">Share (%)</label>
+              <input
+                [id]="'claim-share-pct-' + c.id"
+                inputmode="decimal"
+                data-testid="claim-share-pct"
+                [value]="sharePcts()[c.id] ?? ''"
+                (input)="setSharePct(c.id, value($event))"
+              />
+              <button type="button" data-testid="claim-share-add" (click)="share(c)">
+                Share<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <label [for]="'claim-inline-amount-' + c.id">New amount</label>
               <input
                 [id]="'claim-inline-amount-' + c.id"
@@ -718,6 +751,9 @@ export class Claims {
   protected readonly settlePartAmounts = signal<Record<number, string>>({});
   // The person (by id) chosen to move each claim to, by claim id.
   protected readonly reassignTo = signal<Record<number, string>>({});
+  // The person (by id) chosen to share each claim with, and the share typed for it, by claim id.
+  protected readonly shareTo = signal<Record<number, string>>({});
+  protected readonly sharePcts = signal<Record<number, string>>({});
   // The comment typed for each claim, by claim id.
   protected readonly commentTexts = signal<Record<number, string>>({});
   // The timeline shown for each claim, by claim id: its audit lines, newest first.
@@ -1424,6 +1460,68 @@ export class Claims {
         c.id,
         forbidden ? 'Your role may not move a claim on this sheet.' : `This ${c.status} claim cannot be moved to that person.`,
       );
+    }
+  }
+
+  /** The claim's holders as <name> <share>, comma and space separated, in the order they were added. */
+  protected sharesText(c: Claim): string {
+    const names = new Map(this.people().map((q) => [q.id, q.name]));
+    return c.shares.map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
+  }
+
+  protected setShareTo(id: number, personId: string): void {
+    this.shareTo.update((r) => ({ ...r, [id]: personId }));
+    this.clearRowError(id);
+  }
+
+  protected setSharePct(id: number, pct: string): void {
+    this.sharePcts.update((r) => ({ ...r, [id]: pct }));
+    this.clearRowError(id);
+  }
+
+  /**
+   * Shares the claim with the chosen person, who holds the typed share (two decimals, more than 0.00) of it. Refused
+   * for the claim's own person, one already holding a share, shares totalling more than 100.00, and a SETTLED, VOID
+   * or DELETED claim.
+   */
+  protected async share(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = this.shareTo()[c.id] ?? '';
+    const pct = (this.sharePcts()[c.id] ?? '').trim();
+    if (!to) {
+      this.setRowError(c.id, 'Choose the person to share this claim with.');
+      return;
+    }
+    if (!AMOUNT.test(pct) || Number(pct) <= 0) {
+      this.setRowError(c.id, 'A share is more than 0.00, with up to two decimals.');
+      return;
+    }
+    if (c.status === 'SETTLED' || c.status === 'VOID' || c.status === 'DELETED') {
+      this.setRowError(c.id, `A ${c.status} claim cannot be shared.`);
+      return;
+    }
+    if (Number(to) === c.personId) {
+      this.setRowError(c.id, 'A claim cannot be shared with its own person.');
+      return;
+    }
+    if (c.shares.some((s) => s.personId === Number(to))) {
+      this.setRowError(c.id, 'That person already holds a share of this claim.');
+      return;
+    }
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/share`;
+    try {
+      const shared = await firstValueFrom(this.http.post<Claim>(url, { personId: Number(to), share: pct }));
+      this.shareTo.update(({ [c.id]: _, ...rest }) => rest);
+      this.sharePcts.update(({ [c.id]: _, ...rest }) => rest);
+      this.saved.emit(shared);
+    } catch {
+      this.setRowError(c.id, 'This claim cannot be shared with that person for that share.');
     }
   }
 

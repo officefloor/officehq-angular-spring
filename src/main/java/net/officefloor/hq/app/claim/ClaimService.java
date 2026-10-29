@@ -566,6 +566,43 @@ public class ClaimService {
     }
 
     /**
+     * Shares the claim with another person of its sheet, who holds the share (two decimals, more than 0.00) of it:
+     * their due-total counts the claim's due times the share divided by 100, rounded half to even, and its own
+     * person's counts the rest. Refused for the claim's own person, a person already holding a share of it, shares
+     * totalling more than 100.00, and a SETTLED, VOID or DELETED claim.
+     */
+    @Transactional
+    public Claim share(String by, String sheetId, Long id, Long personId, BigDecimal share) {
+        if (share == null || share.signum() <= 0 || share.stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A share is more than 0.00, with up to two decimals.");
+        }
+        Claim claim = lockedClaim(sheetId, id);
+        ClaimStatus status = claim.getStatus();
+        if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + status + " claim cannot be shared.");
+        }
+        Person holder = person(sheetId, personId);
+        if (holder.getId().equals(claim.getPersonId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim cannot be shared with its own person.");
+        }
+        if (claim.getShares().stream().anyMatch(s -> s.getPersonId().equals(holder.getId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, holder.getName() + " already holds a share.");
+        }
+        BigDecimal scaled = share.setScale(2, RoundingMode.UNNECESSARY);
+        if (claim.sharedTotal().add(scaled).compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The shares would total more than 100.00.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.share(holder.getId(), scaled);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_SHARED", by, person(sheetId, saved.getPersonId()), saved) + " with="
+                + holder.getName() + " share=" + scaled.toPlainString());
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
      * Holds an OPEN or PENDING claim, or releases a held one: a held claim still counts in every total. Refused for a
      * claim in any other status.
      */
