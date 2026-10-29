@@ -38,7 +38,8 @@ public class SettingsService implements Audit.OnBehalf {
             "void", List.of(SheetRole.CLERK, SheetRole.STEWARD),
             "reassign", List.of(SheetRole.STEWARD),
             "close", List.of(SheetRole.CLERK, SheetRole.STEWARD),
-            "reopen", List.of(SheetRole.STEWARD));
+            "reopen", List.of(SheetRole.STEWARD),
+            "today", List.of(SheetRole.CLERK, SheetRole.STEWARD, SheetRole.RESTRICTED));
 
     private final SheetRoleRepository roles;
     private final DelegationRepository delegations;

@@ -89,6 +89,7 @@ export const PERMISSIONS: readonly { action: string; standing: string }[] = [
   { action: 'reassign', standing: 'steward' },
   { action: 'close', standing: 'clerk,steward' },
   { action: 'reopen', standing: 'steward' },
+  { action: 'today', standing: 'clerk,steward,restricted' },
 ];
 
 /** Roles typed as a comma separated list, trimmed and each listed once; blank for none typed. */
