@@ -51,7 +51,7 @@ interface SettingsView {
 
 /**
  * One value recorded for a dated setting, in force from its from-date until the next one recorded for its key:
- * clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold, proof-threshold-<grade> or
+ * clerk-limit, clerk-limit-<grade>, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold, proof-threshold-<grade> or
  * note-threshold, review-threshold or rounding. The value is null for none (a blank clerk limit, grace, cap, proof
  * threshold, note threshold, review threshold or rounding mode).
  */
@@ -62,7 +62,7 @@ interface DatedSetting {
 }
 
 /** A dated setting's key as the form and its fields name it. */
-export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | 'review-threshold' | 'rounding' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}`;
+export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | 'review-threshold' | 'rounding' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}` | `clerk-limit-${string}`;
 
 export const ROLES = ['clerk', 'steward', 'viewer'];
 /** The roles the permission matrix can list; a viewer may take no action. */
@@ -270,7 +270,9 @@ export class SettingsStore {
         ? `grade-grace/${encodeURIComponent(key.slice('grace-'.length))}`
         : key.startsWith('proof-threshold-')
           ? `grade-proof-threshold/${encodeURIComponent(key.slice('proof-threshold-'.length))}`
-          : key;
+          : key.startsWith('clerk-limit-')
+            ? `grade-clerk-limit/${encodeURIComponent(key.slice('clerk-limit-'.length))}`
+            : key;
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/${path}`, { value, from }),
     );
@@ -293,6 +295,11 @@ export class SettingsStore {
   /** The grace days recorded for the grade in force on the date, as text; blank with none. */
   graceShown(grade: string, date: string | null): string {
     return valueOn(this.dated(), `grace-${grade}`, date) ?? '';
+  }
+
+  /** The clerk limit recorded for the grade in force on the date, as text; blank with none. */
+  clerkLimitShown(grade: string, date: string | null): string {
+    return valueOn(this.dated(), `clerk-limit-${grade}`, date) ?? '';
   }
 
   /** The proof threshold recorded for the grade in force on the date, as text; blank with none. */
@@ -425,6 +432,27 @@ export class SettingsStore {
           (input)="setFrom('clerk-limit', value($event))"
           (change)="setFrom('clerk-limit', value($event))"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (in place of the sheet's; blank for none)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g"
+            [attr.data-testid]="'setting-clerk-limit-' + g"
+            inputmode="decimal"
+            [value]="gradeLimit()[g] ?? ''"
+            (input)="setGradeLimitField(g, value($event))"
+            (keydown.delete)="gradeLimitChanged.add(g); settingsError.set(null)"
+            (keydown.backspace)="gradeLimitChanged.add(g); settingsError.set(null)"
+          />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} from (blank for the sheet's today)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g + '-from'"
+            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+            type="date"
+            [value]="from()[limitKey(g)] ?? ''"
+            (input)="setFrom(limitKey(g), value($event))"
+            (change)="setFrom(limitKey(g), value($event))"
+          />
+        }
         <label for="setting-floor">Floor (the least a live due can be)</label>
         <input
           id="setting-floor"
@@ -779,6 +807,12 @@ export class SettingsStore {
         }
       </form>
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ (store.clerkLimit() ?? '') | fig }}</strong></p>
+      @for (g of grades; track g) {
+        <p>
+          Clerk limit in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (store.clerkLimitShown(g, session.sheetToday())) | fig }}</strong>
+        </p>
+      }
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floorToday() | fig }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.termsToday() | fig }}</strong> days</p>
       @for (g of grades; track g) {
@@ -894,6 +928,7 @@ export class Settings {
   // The roles typed for each action of the permission matrix, by action.
   protected readonly perms = signal<Readonly<Record<string, string>>>({});
   protected readonly limit = signal('');
+  protected readonly gradeLimit = signal<Readonly<Record<string, string>>>({});
   protected readonly floor = signal('');
   protected readonly terms = signal('');
   protected readonly gradeTerms = signal<Readonly<Record<string, string>>>({});
@@ -922,6 +957,7 @@ export class Settings {
   // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
   // clearing one that already shows blank (as the clerk limit, for none) still saves it.
   protected limitChanged = false;
+  protected readonly gradeLimitChanged = new Set<string>();
   protected floorChanged = false;
   protected termsChanged = false;
   protected readonly gradeTermsChanged = new Set<string>();
@@ -985,6 +1021,12 @@ export class Settings {
     this.settingsError.set(null);
   }
 
+  protected setGradeLimitField(grade: string, v: string): void {
+    this.gradeLimit.update((t) => ({ ...t, [grade]: v }));
+    this.gradeLimitChanged.add(grade);
+    this.settingsError.set(null);
+  }
+
   protected setGradeProofField(grade: string, v: string): void {
     this.gradeProof.update((t) => ({ ...t, [grade]: v }));
     this.gradeProofChanged.add(grade);
@@ -1003,6 +1045,10 @@ export class Settings {
 
   protected graceKey(grade: string): DatedKey {
     return `grace-${grade}`;
+  }
+
+  protected limitKey(grade: string): DatedKey {
+    return `clerk-limit-${grade}`;
   }
 
   protected proofKey(grade: string): DatedKey {
@@ -1042,7 +1088,11 @@ export class Settings {
         this.roundingChanged ||= this.rounding().trim() !== '';
         break;
       default:
-        if (key.startsWith('proof-threshold-')) {
+        if (key.startsWith('clerk-limit-')) {
+          if ((this.gradeLimit()[key.slice('clerk-limit-'.length)] ?? '').trim() !== '') {
+            this.gradeLimitChanged.add(key.slice('clerk-limit-'.length));
+          }
+        } else if (key.startsWith('proof-threshold-')) {
           if ((this.gradeProof()[key.slice('proof-threshold-'.length)] ?? '').trim() !== '') {
             this.gradeProofChanged.add(key.slice('proof-threshold-'.length));
           }
@@ -1075,6 +1125,14 @@ export class Settings {
     if (this.limitChanged && limit && !LIMIT.test(limit)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
+    }
+    const gradeLimit = new Map<string, string>();
+    for (const g of this.gradeLimitChanged) gradeLimit.set(g, (this.gradeLimit()[g] ?? '').trim());
+    for (const [g, t] of gradeLimit) {
+      if (t && !LIMIT.test(t)) {
+        this.settingsError.set(`Enter a clerk limit for grade ${g} of 0.00 or more, with up to two decimals, or leave it blank for none.`);
+        return;
+      }
     }
     const floor = this.floor().trim();
     if (this.floorChanged && !LIMIT.test(floor)) {
@@ -1216,6 +1274,7 @@ export class Settings {
     }
     const keys: DatedKey[] = [];
     if (this.limitChanged) keys.push('clerk-limit');
+    for (const g of gradeLimit.keys()) keys.push(`clerk-limit-${g}`);
     if (this.floorChanged) keys.push('floor');
     if (this.termsChanged) keys.push('terms');
     for (const g of gradeTerms.keys()) keys.push(`terms-${g}`);
@@ -1242,6 +1301,10 @@ export class Settings {
         await this.store.setDated(sheet, 'clerk-limit', limit || null, from.get('clerk-limit') ?? null);
         // a value typed while it was saving stays to be saved
         this.limitChanged = this.limit().trim() !== limit;
+      }
+      for (const [g, t] of gradeLimit) {
+        await this.store.setDated(sheet, `clerk-limit-${g}`, t || null, from.get(`clerk-limit-${g}`) ?? null);
+        if ((this.gradeLimit()[g] ?? '').trim() === t) this.gradeLimitChanged.delete(g);
       }
       if (this.floorChanged) {
         await this.store.setDated(sheet, 'floor', floor, from.get('floor') ?? null);

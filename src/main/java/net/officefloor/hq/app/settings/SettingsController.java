@@ -291,6 +291,14 @@ public class SettingsController {
         return SettingsView.of(service.setGradeGrace(user, sheetId, grade, form.value(), form.from()));
     }
 
+    @PutMapping("/settings/grade-clerk-limit/{grade}")
+    public SettingsView setGradeClerkLimit(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody ClerkLimitForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setGradeClerkLimit(user, sheetId, grade, form.value(), form.from()));
+    }
+
     @PutMapping("/settings/grade-proof-threshold/{grade}")
     public SettingsView setGradeProofThreshold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

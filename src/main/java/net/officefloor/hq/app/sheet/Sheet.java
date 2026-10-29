@@ -258,6 +258,20 @@ public class Sheet {
         return inForce(CLERK_LIMIT, today).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
     }
 
+    /**
+     * The clerk limit a claim has when its person has the grade: the grade's own in force on the sheet's today when
+     * one is set (not blank), else the sheet's; null means no limit.
+     */
+    public BigDecimal clerkLimitFor(String grade) {
+        if (grade != null) {
+            String own = inForce(CLERK_LIMIT + "-" + grade, today).map(DatedSetting::getValue).orElse(null);
+            if (own != null) {
+                return new BigDecimal(own);
+            }
+        }
+        return getClerkLimit();
+    }
+
     /** The least a claim's live due can be, in force on the date; the starting 1.00 before any is recorded. */
     public BigDecimal floorOn(LocalDate on) {
         return inForce(FLOOR, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(DEFAULT_FLOOR);

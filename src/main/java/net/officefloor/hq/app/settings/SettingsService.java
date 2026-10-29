@@ -211,6 +211,15 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Records the clerk limit for one grade (null for none) from the date (null for the sheet's today): a claim whose
+     * person has the grade takes it in place of the sheet's while one is set.
+     */
+    @Transactional
+    public Sheet setGradeClerkLimit(String by, String sheetId, String grade, BigDecimal limit, LocalDate from) {
+        return record(by, sheetId, Sheet.CLERK_LIMIT + "-" + grade, limit == null ? null : money(limit), from, false);
+    }
+
+    /**
      * Records the sheet's terms from the date (null for the sheet's today): the days after its date a claim dated on
      * or after it is due by. Claims already added keep the due-by they were given.
      */
@@ -557,11 +566,12 @@ public class SettingsService implements Audit.OnBehalf {
 
     /**
      * Whether the user settling a claim with the due (null for n/a) needs a steward's approval: they are a clerk and
-     * the due is above the sheet's clerk limit. A steward settles anything, and an n/a due is within any limit.
+     * the due is above the clerk limit in force for the grade (the person's grade's when one is set, else the
+     * sheet's). A steward settles anything, and an n/a due is within any limit.
      */
     @Transactional(readOnly = true)
-    public boolean aboveClerkLimit(String sheetId, String user, BigDecimal due) {
-        BigDecimal limit = sheets.load(sheetId).getClerkLimit();
+    public boolean aboveClerkLimit(String sheetId, String user, String grade, BigDecimal due) {
+        BigDecimal limit = sheets.load(sheetId).clerkLimitFor(grade);
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }
