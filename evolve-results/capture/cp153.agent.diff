@@ -1,0 +1,233 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 509c8d59..be86dd7c 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -10,6 +10,8 @@ export interface RateView {
+   from: string | null;
+   // The date the rate applies through; null for a rate with no end.
+   to: string | null;
++  // How many versions the rate has; the one shown is the newest, the one in force.
++  version: number;
+ }
+ 
+ export const GRADES = ['A', 'B', 'C'];
+@@ -337,7 +339,7 @@ export class RateStore {
+       <table>
+         <caption>In force on {{ session.sheetToday() }}</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+         </thead>
+         <tbody>
+           @for (g of grades; track g) {
+@@ -352,7 +354,7 @@ export class RateStore {
+       <table>
+         <caption>All rates</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+         </thead>
+         <tbody>
+           @for (r of store.list(); track r.grade + '-' + (r.from ?? 'start')) {
+@@ -361,6 +363,7 @@ export class RateStore {
+               <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
+               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
+               <td data-testid="rate-pct">{{ r.pct }}</td>
++              <td data-testid="rate-version">{{ r.version }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 5774ffe4..3c55c260 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -42,6 +42,10 @@ public class Rate {
+     @Column(name = "to_date")
+     private LocalDate to;
+ 
++    /** The number of this, the newest version, counting from 1; the older ones are kept as {@link RateVersion}s. */
++    @Column(name = "version", nullable = false)
++    private int version = 1;
++
+     protected Rate() {
+     }
+ 
+@@ -84,6 +88,17 @@ public class Rate {
+         this.to = to;
+     }
+ 
++    public int getVersion() {
++        return version;
++    }
++
++    /** Replaces this version with a newer one of the percent and to-date; the caller keeps the one replaced. */
++    public void newVersion(BigDecimal pct, LocalDate to) {
++        this.version++;
++        this.pct = pct;
++        this.to = to;
++    }
++
+     /**
+      * The rate in force on the date among one grade's rates: the one with the latest from-date on or before it, unless
+      * the date is past that one's to-date; null with none.
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index a28dbb57..f1295130 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -31,11 +31,12 @@ public class RateController {
+ 
+     /**
+      * A grade's rate as the screen shows it; the percent always carries two decimals, and the from-date is null for a
+-     * rate that applies from the beginning of time; the to-date is null for a rate with no end.
++     * rate that applies from the beginning of time; the to-date is null for a rate with no end. The version is the
++     * number of versions the rate has (its newest, the one shown, counting from 1).
+      */
+-    public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
++    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int version) {
+         static RateView of(Rate r) {
+-            return new RateView(r.getGrade(), r.getPct().toPlainString(), r.getFrom(), r.getTo());
++            return new RateView(r.getGrade(), r.getPct().toPlainString(), r.getFrom(), r.getTo(), r.getVersion());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 937da374..d0c8d59f 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -19,15 +19,18 @@ public class RateService {
+ 
+     private final RateRepository rates;
+     private final RateChangeRepository changes;
++    private final RateVersionRepository versions;
+     private final RateChain chain;
+     private final SheetService sheets;
+     private final RollupService rollup;
+     private final Audit audit;
+ 
+-    public RateService(RateRepository rates, RateChangeRepository changes, RateChain chain, SheetService sheets,
++    public RateService(RateRepository rates, RateChangeRepository changes,
++            RateVersionRepository versions, RateChain chain, SheetService sheets,
+             RollupService rollup, Audit audit) {
+         this.rates = rates;
+         this.changes = changes;
++        this.versions = versions;
+         this.chain = chain;
+         this.sheets = sheets;
+         this.rollup = rollup;
+@@ -48,16 +51,21 @@ public class RateService {
+ 
+     /**
+      * Sets the grade's rate from the date (null: from the beginning of time) through the to-date (null: with no end),
+-     * replacing any rate it had for that from-date.
++     * as a new version of any rate it had for that from-date, the one it replaces kept as an older version.
+      */
+     @Transactional
+     public Rate set(String by, String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
+         LocalDate today = sheets.load(sheetId).getToday();
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         BigDecimal scaled = pct.setScale(2, RoundingMode.UNNECESSARY);
+-        Rate rate = rates.findExact(sheetId, grade, from).orElseGet(() -> new Rate(sheetId, grade, from, scaled));
+-        rate.setPct(scaled);
+-        rate.setTo(to);
++        Rate rate = rates.findExact(sheetId, grade, from).orElse(null);
++        if (rate == null) {
++            rate = new Rate(sheetId, grade, from, scaled);
++            rate.setTo(to);
++        } else {
++            versions.save(new RateVersion(rate));
++            rate.newVersion(scaled, to);
++        }
+         Rate saved;
+         try {
+             saved = rates.saveAndFlush(rate);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersion.java b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+new file mode 100644
+index 00000000..ef95f380
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** An older version of a rate: the percent and to-date it had before a newer version replaced them. */
++@Entity
++@Table(name = "rate_version")
++public class RateVersion {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "rate_id", nullable = false)
++    private Long rateId;
++
++    @Column(name = "version", nullable = false)
++    private int version;
++
++    @Column(name = "pct", nullable = false, precision = 7, scale = 2)
++    private BigDecimal pct;
++
++    @Column(name = "to_date")
++    private LocalDate to;
++
++    protected RateVersion() {
++    }
++
++    /** The rate's version as it is now, kept before it is replaced. */
++    public RateVersion(Rate rate) {
++        this.rateId = rate.getId();
++        this.version = rate.getVersion();
++        this.pct = rate.getPct();
++        this.to = rate.getTo();
++    }
++
++    public int getVersion() {
++        return version;
++    }
++
++    public BigDecimal getPct() {
++        return pct;
++    }
++
++    public LocalDate getTo() {
++        return to;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
+new file mode 100644
+index 00000000..05d7e485
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.rate;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface RateVersionRepository extends JpaRepository<RateVersion, Long> {
++}
+diff --git a/src/main/resources/db/migration/V83__rate_version.sql b/src/main/resources/db/migration/V83__rate_version.sql
+new file mode 100644
+index 00000000..5901cd4f
+--- /dev/null
++++ b/src/main/resources/db/migration/V83__rate_version.sql
+@@ -0,0 +1,12 @@
++-- A rate is kept as versions: setting a grade's rate for a from-date it already has keeps the value it replaces as an
++-- older version and makes the new one the newest. The rate row holds the newest version (the one in force) and its
++-- number, counting from 1; rate_version holds each older one.
++ALTER TABLE rate ADD COLUMN version INTEGER DEFAULT 1 NOT NULL;
++CREATE TABLE rate_version (
++    id      BIGINT AUTO_INCREMENT PRIMARY KEY,
++    rate_id BIGINT        NOT NULL REFERENCES rate (id),
++    version INTEGER       NOT NULL,
++    pct     DECIMAL(7, 2) NOT NULL,
++    to_date DATE
++);
++CREATE UNIQUE INDEX rate_version_rate ON rate_version (rate_id, version);
