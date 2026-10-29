@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a88135d8..4a8ef8eb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -239,6 +239,15 @@ interface StatementView {
+         />
+         Show retired
+       </label>
++      <label>
++        Sort by
++        <select data-testid="sort-by" [value]="sortKey()" (change)="sortKey.set(value($event))">
++          <option value="added">Added</option>
++          <option value="name">Name</option>
++          <option value="grade">Grade</option>
++          <option value="due-total">Due-total</option>
++        </select>
++      </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+ 
+@@ -611,9 +620,28 @@ export class People {
+   protected readonly people = signal<Person[]>([]);
+   // Retired people are left out of the list unless this is on; it belongs to the screen, so loading a sheet keeps it.
+   protected readonly showRetired = signal(false);
+-  protected readonly shownPeople = computed(() =>
+-    this.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null),
+-  );
++  // The order the list is shown in; it belongs to the screen (each user's own), so loading a sheet keeps it.
++  // Only the screen is sorted: positions, rollups and every action in list order are unaffected.
++  protected readonly sortKey = signal('added');
++  protected readonly shownPeople = computed(() => {
++    const shown = this.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null);
++    const key = this.sortKey();
++    if (key === 'added') return shown;
++    const due = this.dueBy();
++    const sortValue = (p: Person): string | number | null => {
++      if (key === 'name') return p.name.toLowerCase();
++      if (key === 'grade') return this.gradeToday(p);
++      const d = due.get(p.id);
++      return d == null ? null : Number(d);
++    };
++    const keyed = shown.map((p) => ({ p, v: sortValue(p) }));
++    // Array.prototype.sort is stable, so equal keys keep list order; n/a goes last.
++    keyed.sort((a, b) => {
++      if (a.v === null || b.v === null) return a.v === null ? (b.v === null ? 0 : 1) : -1;
++      return a.v < b.v ? -1 : a.v > b.v ? 1 : 0;
++    });
++    return keyed.map((k) => k.p);
++  });
+   // Each row's retire-from date as typed, by person id; blank takes the sheet's today.
+   protected readonly retireDates = signal<Record<number, string>>({});
+   // The date typed beside each row's statement button, by person id: blank takes the statement now.
