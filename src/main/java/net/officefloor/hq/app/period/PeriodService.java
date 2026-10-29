@@ -115,6 +115,32 @@ public class PeriodService {
     }
 
     /**
+     * Adds the four calendar quarters of the year, named yyyy-Q1 to yyyy-Q4, each from the first day of its first month
+     * to the last day of its third, by quarter. A quarter whose name is in use on the sheet or whose days overlap a
+     * period is left out; the others are still made.
+     */
+    @Transactional
+    public List<Period> generateQuarters(String by, String sheetId, int year) {
+        // the sheet stays locked until the transaction ends, so periods added at once are checked in turn
+        sheets.lock(sheetId);
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            String name = String.format("%04d-Q%d", year, quarter);
+            LocalDate first = YearMonth.of(year, quarter * 3 - 2).atDay(1);
+            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
+            if (periods.existsBySheetIdAndName(sheetId, name)
+                    || periods.existsBySheetIdAndFromLessThanEqualAndToGreaterThanEqual(sheetId, last, first)) {
+                continue;
+            }
+            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + by + " period=" + added.getName()
+                    + " from=" + added.getFrom() + " to=" + added.getTo());
+            made.add(added);
+        }
+        return made;
+    }
+
+    /**
      * Adds the twelve monthly periods of the fiscal year FY<year>, the one starting on the first of the sheet's fiscal
      * start month in that year, exactly as {@link #generate} does for its first through its last day.
      */

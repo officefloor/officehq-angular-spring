@@ -63,6 +63,10 @@ public class PeriodController {
     public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** The calendar year to generate quarterly periods for. */
+    public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
+    }
+
     /** The opening balances paste box: lines of name,period,amount. */
     public record OpeningsForm(@NotNull @Size(max = 100_000) String text) {
     }
@@ -113,6 +117,14 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody GenerateFiscalYearForm form, @SessionAttribute(SessionController.USER) String user) {
         return service.generateFiscalYear(user, sheetId, form.year()).stream().map(PeriodView::of).toList();
+    }
+
+    /** Generates the calendar year's quarterly periods; answers the ones made, by quarter. */
+    @PostMapping("/generate-quarters")
+    public List<PeriodView> generateQuarters(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody GenerateQuartersForm form, @SessionAttribute(SessionController.USER) String user) {
+        return service.generateQuarters(user, sheetId, form.year()).stream().map(PeriodView::of).toList();
     }
 
     @PostMapping("/{id}/close")

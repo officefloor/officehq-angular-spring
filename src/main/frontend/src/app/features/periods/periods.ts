@@ -203,6 +203,15 @@ export class PeriodStore {
     return made.length;
   }
 
+  /** Generate the calendar year's four quarterly periods, <yyyy>-Q1 to <yyyy>-Q4; answers how many were made. */
+  async generateQuarters(sheet: string, year: number): Promise<number> {
+    const made = await firstValueFrom(
+      this.http.post<PeriodView[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate-quarters`, { year }),
+    );
+    for (const p of made) this.put(sheet, p);
+    return made.length;
+  }
+
   async close(sheet: string, id: number): Promise<void> {
     const p = await firstValueFrom(
       this.http.post<PeriodView>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${id}/close`, null),
@@ -334,6 +343,18 @@ export class PeriodStore {
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
 
+      <form (submit)="generateQuarters($event)" aria-label="Generate a year's quarterly periods">
+        <label for="period-generate-quarters-year">Year (yyyy)</label>
+        <input
+          id="period-generate-quarters-year"
+          data-testid="period-generate-quarters-year"
+          inputmode="numeric"
+          [value]="quarterYear()"
+          (input)="quarterYear.set(value($event)); genError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
+      </form>
+
       <form (submit)="importOpenings($event)" aria-label="Paste opening balances">
         <label for="opening-import">Opening balances, one per line as name,period,amount</label>
         <textarea
@@ -413,6 +434,7 @@ export class Periods {
   protected readonly genTo = signal('');
   protected readonly genError = signal<string | null>(null);
   protected readonly fyYear = signal('');
+  protected readonly quarterYear = signal('');
   // How many periods the last generate made; null while one runs or before any.
   protected readonly generated = signal<number | null>(null);
   private generating = false;
@@ -614,6 +636,31 @@ export class Periods {
       this.generated.set(made);
     } catch {
       this.genError.set('Could not generate that fiscal year\'s periods.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Generates the calendar year's four quarters as the period form would add them, leaving out any named or overlapped; shows how many were made. */
+  protected async generateQuarters(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.generating) return;
+    this.generated.set(null);
+    this.genError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const year = this.quarterYear().trim();
+    if (!/^\d{4}$/.test(year) || year === '0000') {
+      this.genError.set('Enter a year as yyyy.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.store.generateQuarters(sheet, Number(year));
+      if (this.session.sheetId() !== sheet) return;
+      this.generated.set(made);
+    } catch {
+      this.genError.set('Could not generate that year\'s quarters.');
     } finally {
       this.generating = false;
     }
