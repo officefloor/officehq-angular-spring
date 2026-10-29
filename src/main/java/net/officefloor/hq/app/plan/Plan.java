@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -63,6 +64,12 @@ public class Plan {
     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
     private List<PlanPause> pauses = new ArrayList<>();
 
+    /** The plan's changes of amount, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_change", joinColumns = @JoinColumn(name = "plan_id"))
+    @OrderColumn(name = "pos")
+    private List<PlanChange> changes = new ArrayList<>();
+
     protected Plan() {
     }
 
@@ -95,6 +102,17 @@ public class Plan {
 
     public BigDecimal getAmount() {
         return amount;
+    }
+
+    /** The plan's changes of amount, oldest first. */
+    public List<PlanChange> getChanges() {
+        return changes;
+    }
+
+    /** Changes the plan's amount from the day: the claims generated from then on take it. */
+    public void changeAmount(LocalDate on, BigDecimal amount) {
+        this.amount = amount;
+        changes.add(new PlanChange(on, amount));
     }
 
     public LocalDate getStart() {

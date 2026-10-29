@@ -28,15 +28,25 @@ public class PlanController {
 
     /**
      * A plan as the screen shows it, with how many claims it has made so far and its next five plan dates after the
-     * sheet's today.
+     * sheet's today, and its changes of amount, oldest first.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
+            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(),
                     p.getEvery(), p.getDay(), p.getEnd(), p.getGenerated(), p.nextDates(today, 5),
-                    p.isPaused());
+                    p.isPaused(), p.getChanges().stream().map(ChangeView::of).toList());
         }
+    }
+
+    /** A change of a plan's amount: the day it was made and the new amount. */
+    public record ChangeView(LocalDate on, String amount) {
+        static ChangeView of(PlanChange c) {
+            return new ChangeView(c.getChangedOn(), c.getAmount().toPlainString());
+        }
+    }
+
+    public record AmountForm(@NotNull BigDecimal amount) {
     }
 
     public record PlanForm(@NotNull BigDecimal amount, @NotNull LocalDate start, Integer every, Integer day,
@@ -80,6 +90,16 @@ public class PlanController {
             @PathVariable Long planId, @PathVariable String action,
             @SessionAttribute(SessionController.USER) String user) {
         Plan plan = service.setPaused(user, sheetId, planId, action.equals("pause"));
+        return PlanView.of(plan, sheets.load(sheetId).getToday());
+    }
+
+    /** Changes the plan's amount from the sheet's today. */
+    @PostMapping("/plans/{planId}/amount")
+    public PlanView changeAmount(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long planId, @Valid @RequestBody AmountForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        Plan plan = service.changeAmount(user, sheetId, planId, form.amount());
         return PlanView.of(plan, sheets.load(sheetId).getToday());
     }
 

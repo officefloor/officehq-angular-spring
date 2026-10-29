@@ -60,10 +60,7 @@ public class PlanService {
     @Transactional
     public Plan add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every,
             Integer day, LocalDate end) {
-        if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2
-                || amount.precision() - amount.scale() > 12) {
-            throw refused("Enter an amount of at least 0 with up to two decimals.");
-        }
+        checkAmount(amount);
         if ((every == null) == (day == null)) {
             throw refused("Enter either a number of days or a day of the month.");
         }
@@ -114,6 +111,25 @@ public class PlanService {
         return saved;
     }
 
+    /**
+     * Changes the plan's amount from the sheet's today: the claims generated from then on take it, those already made
+     * keep theirs. Refused when the amount is negative or has more than two decimals.
+     */
+    @Transactional
+    public Plan changeAmount(String by, String sheetId, Long planId, BigDecimal amount) {
+        checkAmount(amount);
+        sheets.lock(sheetId);
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan."));
+        BigDecimal scaled = amount.setScale(2, RoundingMode.UNNECESSARY);
+        plan.changeAmount(sheets.load(sheetId).getToday(), scaled);
+        Plan saved = plans.saveAndFlush(plan);
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
+        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + by + " name=" + person.getName() + " start="
+                + plan.getStart() + " amount=" + scaled.toPlainString());
+        return saved;
+    }
+
     /** What a generate made: the claims, in the order they were made, and every plan of the sheet as it stands. */
     public record Generated(List<Claim> claims, List<Plan> plans) {
     }
@@ -154,6 +170,13 @@ public class PlanService {
         }
         made.removeIf(c -> c == null);
         return new Generated(made, list(sheetId));
+    }
+
+    private static void checkAmount(BigDecimal amount) {
+        if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2
+                || amount.precision() - amount.scale() > 12) {
+            throw refused("Enter an amount of at least 0 with up to two decimals.");
+        }
     }
 
     private static ResponseStatusException refused(String reason) {

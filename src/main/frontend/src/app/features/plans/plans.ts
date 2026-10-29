@@ -20,6 +20,8 @@ export interface PlanView {
   nextDates: string[];
   // Whether the plan is paused and not resumed yet.
   paused: boolean;
+  // The plan's changes of amount, oldest first.
+  changes: { on: string; amount: string }[];
 }
 
 // The plans of the active sheet, in the order they were added.
@@ -55,6 +57,14 @@ export class PlanStore {
     if (this.session.sheetId() === sheet) this.list.update((l) => l.map((x) => (x.id === p.id ? p : x)));
   }
 
+  /** Changes the plan's amount from the sheet's today. */
+  async changeAmount(sheet: string, planId: number, amount: string): Promise<void> {
+    const p = await firstValueFrom(
+      this.http.post<PlanView>(`/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/amount`, { amount }),
+    );
+    if (this.session.sheetId() === sheet) this.list.update((l) => l.map((x) => (x.id === p.id ? p : x)));
+  }
+
   /** Makes the plans' claims up to the sheet's today: the claims made, in the order they were made. */
   async generate(sheet: string): Promise<Claim[]> {
     const g = await firstValueFrom(
@@ -78,7 +88,8 @@ export class PlanStore {
         <tr>
           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
           <th scope="col">Day of month</th><th scope="col">End</th><th scope="col">Claims made</th>
-          <th scope="col">Next dates</th><th scope="col">Paused</th><th scope="col">Actions</th>
+          <th scope="col">Next dates</th><th scope="col">Paused</th><th scope="col">Changes</th>
+          <th scope="col">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -93,6 +104,24 @@ export class PlanStore {
             <td data-testid="plan-next-dates">{{ (pl.nextDates.join(', ')) | fig }}</td>
             <td data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</td>
             <td>
+              <ul>
+                @for (c of pl.changes; track $index) {
+                  <li data-testid="plan-change-line">{{ c.on }} amount={{ c.amount }}</li>
+                }
+              </ul>
+            </td>
+            <td>
+              <label [for]="'plan-new-amount-' + pl.id">New amount</label>
+              <input
+                [id]="'plan-new-amount-' + pl.id"
+                data-testid="plan-amount"
+                inputmode="decimal"
+                [value]="newAmounts()[pl.id] ?? ''"
+                (input)="setNewAmount(pl.id, value($event))"
+              />
+              <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl.id)">
+                Save amount<span class="visually-hidden"> of plan starting {{ pl.start }}</span>
+              </button>
               <button type="button" data-testid="plan-pause" (click)="setPaused(pl.id, true)">
                 Pause<span class="visually-hidden"> plan starting {{ pl.start }}</span>
               </button>
@@ -173,11 +202,41 @@ export class PersonPlans {
   protected readonly error = signal<string | null>(null);
   // The refusal of the last action taken on a plan's row.
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+  // The new amounts typed on the plans' rows, by plan id.
+  protected readonly newAmounts = signal<Record<number, string>>({});
   // A submit in flight: a second one before it answers is ignored.
   private submitting = false;
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  protected setNewAmount(planId: number, amount: string): void {
+    this.newAmounts.update((m) => ({ ...m, [planId]: amount }));
+    if (this.rowError()?.id === planId) this.rowError.set(null);
+  }
+
+  protected async changeAmount(planId: number): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const amount = (this.newAmounts()[planId] ?? '').trim();
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) {
+      this.rowError.set({ id: planId, message: 'Enter an amount of at least 0 with up to two decimals.' });
+      return;
+    }
+    try {
+      await this.store.changeAmount(sheet, planId, amount);
+    } catch (err) {
+      const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
+      this.rowError.set({
+        id: planId,
+        message:
+          err instanceof HttpErrorResponse && err.status === 403
+            ? 'Your role may not change a plan on this sheet.'
+            : reason || 'Could not change the plan amount.',
+      });
+    }
   }
 
   protected async setPaused(planId: number, paused: boolean): Promise<void> {
