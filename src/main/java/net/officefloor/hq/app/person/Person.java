@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -428,6 +429,32 @@ public class Person {
         return then != null && then.counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isBound()
                 && isRetiredOn(today));
+    }
+
+    /**
+     * One line per dated thing about the person, in date order, and on a date their grade changes, then their claims,
+     * then their holds, then their retirements, then their unretirements: {@code <date> grade <grade>},
+     * {@code <date> claim <amount> <status>}, {@code <date> hold [to <date>]}, {@code <date> retired} and
+     * {@code <date> unretired}. The grade given from the beginning of time has no date, so no line.
+     */
+    public List<String> timeline(List<Claim> claims) {
+        record Line(LocalDate date, int kind, String text) {
+        }
+        List<Line> lines = new ArrayList<>();
+        grades.stream().filter(g -> g.getFrom() != null)
+                .forEach(g -> lines.add(new Line(g.getFrom(), 0, "grade " + g.getGrade())));
+        claims.stream().filter(c -> c.getDate() != null).forEach(c -> lines.add(new Line(c.getDate(), 1,
+                "claim " + c.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString() + " " + c.getStatus())));
+        holds.forEach(h -> lines.add(new Line(h.getFrom(), 2, h.getTo() == null ? "hold" : "hold to " + h.getTo())));
+        pastRetirements.forEach(r -> lines.add(new Line(r.getFrom(), 3, "retired")));
+        if (retiredFrom != null) {
+            lines.add(new Line(retiredFrom, 3, "retired"));
+        }
+        pastRetirements.forEach(r -> lines.add(new Line(r.getTo(), 4, "unretired")));
+        // same-dated lines of a kind in the order of their text
+        return lines.stream().sorted(Comparator.comparing(Line::date).thenComparingInt(Line::kind)
+                .thenComparing(Line::text))
+                .map(l -> l.date() + " " + l.text()).toList();
     }
 
     /** The version of the person as stored, raised on each save. */

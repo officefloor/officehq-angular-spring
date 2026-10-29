@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import net.officefloor.hq.app.claim.Claim;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,16 +42,16 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
             List<String> aliases, boolean clashing, String originSheet, List<RetirementView> pastRetirements,
-            List<String> tags, List<SnapshotView> snapshots, String flag, String approver) {
+            List<String> tags, List<SnapshotView> snapshots, String flag, String approver, List<String> timeline) {
         public static PersonView of(Person p, LocalDate today, Set<Long> clashing,
-                Map<Long, List<SnapshotView>> snapshots) {
+                Map<Long, List<SnapshotView>> snapshots, Map<Long, List<Claim>> claims) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.termsOn(today),
                     p.getContact(), p.getAliases(), clashing.contains(p.getId()),
                     p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList(),
                     ClaimService.tagList(p.getTags()), snapshots.getOrDefault(p.getId(), List.of()),
-                    p.flagOn(today), p.getApprover());
+                    p.flagOn(today), p.getApprover(), p.timeline(claims.getOrDefault(p.getId(), List.of())));
         }
     }
 
@@ -217,7 +218,8 @@ public class PersonController {
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
-        return service.list(sheetId).stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList();
+        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
+        return service.list(sheetId).stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList();
     }
 
     /** Each person's snapshot lines on the sheet, by person id, oldest first, as the store holds them now. */
@@ -249,8 +251,9 @@ public class PersonController {
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
-        return new ImportView(result.added().stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList(),
-                result.updated().stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
+        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
+        return new ImportView(result.added().stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList(),
+                result.updated().stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
     }
 
     @PutMapping("/{id}")
@@ -401,7 +404,8 @@ public class PersonController {
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
-        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
+        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
+        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
     }
 
     /**
@@ -417,7 +421,8 @@ public class PersonController {
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
-        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
+        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
+        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
     }
 
     /**
@@ -437,7 +442,8 @@ public class PersonController {
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
-        return new BulkRetireView(retired.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
+        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
+        return new BulkRetireView(retired.stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
     }
 
     /**
@@ -457,12 +463,14 @@ public class PersonController {
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
-        return new BulkHoldView(held.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
+        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
+        return new BulkHoldView(held.stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
     }
 
     /** The person as listed on the sheet's today. */
     private PersonView view(String sheetId, Person person) {
-        return PersonView.of(person, service.today(sheetId), service.clashing(sheetId), service.snapshotLines(sheetId));
+        return PersonView.of(person, service.today(sheetId), service.clashing(sheetId), service.snapshotLines(sheetId),
+                service.claimsByPerson(sheetId));
     }
 
     /** The ids of the people on the sheet the signed-in user watches, in the order they started watching. */

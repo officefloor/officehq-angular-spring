@@ -51,6 +51,9 @@ interface Person {
   flag: string | null;
   // The user who may approve or reject the person's PENDING claims as a steward may; null for none.
   approver: string | null;
+  // One line per dated thing about the person, in date order: <date> grade <grade>, <date> claim <amount> <status>,
+  // <date> hold [to <date>], <date> retired, <date> unretired.
+  timeline: string[];
 }
 
 // A hold on a person from its from-date to its to-date (null: with no end), both included. Their open claims dated
@@ -695,6 +698,13 @@ interface TreePerson {
                   <ul aria-label="Statements">
                     @for (l of statementsBy().get(p.id)!.lines; track $index) {
                       <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal ?? 'n/a' }}</li>
+                    }
+                  </ul>
+                }
+                @if (p.timeline.length > 0) {
+                  <ul aria-label="Timeline">
+                    @for (l of p.timeline; track $index) {
+                      <li data-testid="person-timeline-line">{{ l }}</li>
                     }
                   </ul>
                 }

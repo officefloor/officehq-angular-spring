@@ -13,6 +13,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimTag;
 import net.officefloor.hq.app.claim.ClaimTagRepository;
@@ -41,10 +43,12 @@ public class PersonService {
     private final ClaimTagRepository tags;
     private final PersonSnapshotRepository snapshotLines;
     private final SettingsService settings;
+    private final ClaimRepository claims;
 
     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
             SheetRepository sheetRepository, RollupService rollup, Audit audit, ClaimTagRepository tags,
-            PersonSnapshotRepository snapshotLines, SettingsService settings) {
+            PersonSnapshotRepository snapshotLines, SettingsService settings, ClaimRepository claims) {
+        this.claims = claims;
         this.settings = settings;
         this.snapshotLines = snapshotLines;
         this.tags = tags;
@@ -59,6 +63,13 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+    }
+
+    /** Each person's claims on the sheet, by person id, earliest added first. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<Claim>> claimsByPerson(String sheetId) {
+        return claims.findBySheetIdOrderByIdAsc(sheetId).stream().filter(c -> c.getPersonId() != null)
+                .collect(Collectors.groupingBy(Claim::getPersonId));
     }
 
     /** Each person's snapshot lines on the sheet, by person id, oldest first. */
