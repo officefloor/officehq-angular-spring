@@ -63,6 +63,12 @@ public class Plan {
     @Column(name = "on_date", nullable = false)
     private Set<LocalDate> made = new HashSet<>();
 
+    /** The claims the plan has made, on its own sheet or the descendant it names. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_made_claim", joinColumns = @JoinColumn(name = "plan_id"))
+    @Column(name = "claim_id", nullable = false)
+    private Set<Long> madeClaims = new HashSet<>();
+
     /** The plan's pauses, in the order they were made; the last one is open while the plan is paused. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
@@ -204,7 +210,13 @@ public class Plan {
         return made.contains(date);
     }
 
-    public void markMade(LocalDate date) {
+    public void markMade(LocalDate date, Long claimId) {
         made.add(date);
+        madeClaims.add(claimId);
+    }
+
+    /** The ids of the claims the plan has made, on its own sheet or the descendant it names. */
+    public Set<Long> getMadeClaims() {
+        return madeClaims;
     }
 }

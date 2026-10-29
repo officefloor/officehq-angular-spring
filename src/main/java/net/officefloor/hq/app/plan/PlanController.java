@@ -58,6 +58,10 @@ public class PlanController {
     public record GeneratedView(List<ClaimView> claims, List<PlanView> plans) {
     }
 
+    /** The plan after a change of its amount, and the sheet's drafts it made that the change edited, in order. */
+    public record AmountChangedView(PlanView plan, List<ClaimView> claims) {
+    }
+
     private final PlanService service;
     private final SheetService sheets;
 
@@ -96,12 +100,13 @@ public class PlanController {
 
     /** Changes the plan's amount from the sheet's today. */
     @PostMapping("/plans/{planId}/amount")
-    public PlanView changeAmount(
+    public AmountChangedView changeAmount(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long planId, @Valid @RequestBody AmountForm form,
             @SessionAttribute(SessionController.USER) String user) {
-        Plan plan = service.changeAmount(user, sheetId, planId, form.amount());
-        return PlanView.of(plan, sheets.load(sheetId).getToday());
+        PlanService.AmountChanged changed = service.changeAmount(user, sheetId, planId, form.amount());
+        return new AmountChangedView(PlanView.of(changed.plan(), sheets.load(sheetId).getToday()),
+                changed.claims().stream().map(ClaimView::of).toList());
     }
 
     /** Makes the plans' claims up to the sheet's today. */

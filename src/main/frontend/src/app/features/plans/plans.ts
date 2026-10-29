@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, Injectable, computed, inject, input, signal } from '@angular/core';
+import { Component, Injectable, computed, inject, input, output, signal } from '@angular/core';
 import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -59,12 +59,19 @@ export class PlanStore {
     if (this.session.sheetId() === sheet) this.list.update((l) => l.map((x) => (x.id === p.id ? p : x)));
   }
 
-  /** Changes the plan's amount from the sheet's today. */
-  async changeAmount(sheet: string, planId: number, amount: string): Promise<void> {
-    const p = await firstValueFrom(
-      this.http.post<PlanView>(`/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/amount`, { amount }),
+  /**
+   * Changes the plan's amount from the sheet's today: the drafts it made take it too. The drafts it edited, in order.
+   */
+  async changeAmount(sheet: string, planId: number, amount: string): Promise<Claim[]> {
+    const r = await firstValueFrom(
+      this.http.post<{ plan: PlanView; claims: Claim[] }>(
+        `/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/amount`,
+        { amount },
+      ),
     );
+    const p = r.plan;
     if (this.session.sheetId() === sheet) this.list.update((l) => l.map((x) => (x.id === p.id ? p : x)));
+    return r.claims;
   }
 
   /** Makes the plans' claims up to the sheet's today: the claims made, in the order they were made. */
@@ -202,6 +209,8 @@ export class PersonPlans {
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
+  // A draft the plan made that a change of its amount edited.
+  readonly claimEdited = output<Claim>();
 
   protected readonly plans = computed(() => this.store.list().filter((p) => p.personId === this.personId()));
   protected readonly amount = signal('');
@@ -237,7 +246,8 @@ export class PersonPlans {
       return;
     }
     try {
-      await this.store.changeAmount(sheet, planId, amount);
+      const edited = await this.store.changeAmount(sheet, planId, amount);
+      if (this.session.sheetId() === sheet) for (const c of edited) this.claimEdited.emit(c);
     } catch (err) {
       const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
       this.rowError.set({

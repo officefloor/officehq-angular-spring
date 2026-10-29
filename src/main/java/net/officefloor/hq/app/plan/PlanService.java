@@ -7,7 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -32,16 +34,18 @@ public class PlanService {
     private final PersonRepository people;
     private final SettingsService settings;
     private final ClaimService claims;
+    private final ClaimRepository claimRows;
     private final SheetService sheets;
     private final Audit audit;
     private final TransactionTemplate tx;
 
-    public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
-            SettingsService settings, Audit audit, PlatformTransactionManager transactions) {
+    public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims,
+            ClaimRepository claimRows, SheetService sheets, SettingsService settings, Audit audit, PlatformTransactionManager transactions) {
         this.settings = settings;
         this.plans = plans;
         this.people = people;
         this.claims = claims;
+        this.claimRows = claimRows;
         this.sheets = sheets;
         this.audit = audit;
         this.tx = new TransactionTemplate(transactions);
@@ -117,23 +121,53 @@ public class PlanService {
         return saved;
     }
 
+    /** What a change of amount made: the plan as it stands and the claims of the sheet it edited, in order. */
+    public record AmountChanged(Plan plan, List<Claim> claims) {
+    }
+
     /**
-     * Changes the plan's amount from the sheet's today: the claims generated from then on take it, those already made
-     * keep theirs. Refused when the amount is negative or has more than two decimals.
+     * Changes the plan's amount from the sheet's today: the claims generated from then on take it, and so do those it
+     * made that are still drafts, each edited as the claim form would edit it after the change; those in any other
+     * status keep theirs. Each draft is edited in a change of its own, so one the claim form refuses keeps its amount
+     * and the others still go through. Refused when the amount is negative or has more than two decimals.
      */
-    @Transactional
-    public Plan changeAmount(String by, String sheetId, Long planId, BigDecimal amount) {
+    public AmountChanged changeAmount(String by, String sheetId, Long planId, BigDecimal amount) {
         checkAmount(amount);
-        sheets.lock(sheetId);
-        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan."));
         BigDecimal scaled = amount.setScale(2, RoundingMode.UNNECESSARY);
-        plan.changeAmount(sheets.load(sheetId).getToday(), scaled);
-        Plan saved = plans.saveAndFlush(plan);
-        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
-        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + by + " name=" + person.getName() + " start="
-                + plan.getStart() + " amount=" + scaled.toPlainString());
-        return saved;
+        Plan saved = tx.execute(s -> {
+            sheets.lock(sheetId);
+            Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan."));
+            plan.changeAmount(sheets.load(sheetId).getToday(), scaled);
+            Plan changed = plans.saveAndFlush(plan);
+            Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
+            audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + by + " name=" + person.getName()
+                    + " start=" + plan.getStart() + " amount=" + scaled.toPlainString());
+            return changed;
+        });
+        String claimSheet = saved.getTargetSheetId() == null ? sheetId : saved.getTargetSheetId();
+        if (settings.isReadOnly(claimSheet, by)) {
+            return new AmountChanged(saved, List.of());
+        }
+        List<Claim> edited = new ArrayList<>();
+        for (Long claimId : saved.getMadeClaims().stream().sorted().toList()) {
+            try {
+                Claim done = tx.execute(s -> {
+                    Claim draft = claimRows.findByIdAndSheetId(claimId, claimSheet).orElse(null);
+                    if (draft == null || draft.getStatus() != ClaimStatus.DRAFT) {
+                        return null;
+                    }
+                    return claims.update(by, claimSheet, claimId, scaled, draft.getDate(), draft.getNote(),
+                            draft.getCorrects(), draft.getRef(), draft.getTags());
+                });
+                if (done != null && claimSheet.equals(sheetId)) {
+                    edited.add(done);
+                }
+            } catch (ResponseStatusException refused) {
+                // the claim form refused this edit: the draft keeps its amount
+            }
+        }
+        return new AmountChanged(saved, edited);
     }
 
     /** What a generate made: the claims, in the order they were made, and every plan of the sheet as it stands. */
@@ -180,7 +214,7 @@ public class PlanService {
                             claim = claims.add(by, target, there.getId(), current.getAmount(), date, "", null, null,
                                     null);
                         }
-                        current.markMade(date);
+                        current.markMade(date, claim.getId());
                         plans.saveAndFlush(current);
                         return claim;
                     }));

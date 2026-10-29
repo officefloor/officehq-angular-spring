@@ -791,7 +791,7 @@ interface StatementView {
                 }
               </td>
               <td>
-                <app-person-plans [personId]="p.id" [personName]="p.name" />
+                <app-person-plans [personId]="p.id" [personName]="p.name" (claimEdited)="claimSaved($event)" />
               </td>
               <td>
                 <app-claims
