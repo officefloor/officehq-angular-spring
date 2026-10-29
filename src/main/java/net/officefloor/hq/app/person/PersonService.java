@@ -279,6 +279,35 @@ public class PersonService {
     }
 
     /**
+     * A steward merges the grade into another: every person whose grade in force on the sheet's today is the merged
+     * grade is given the other from the sheet's today, in list order, exactly as saving each one's edit with it would,
+     * all or none, then records the rollup changes of the merge as a whole. Refused unless the user is a steward, and
+     * for the same grade twice. The people as saved.
+     */
+    @Transactional
+    public List<Person> mergeGrade(String by, String sheetId, String from, String into) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can merge grades.");
+        }
+        if (from == null || into == null || !from.matches("[ABC]") || !into.matches("[ABC]")) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The grades must be A, B or C.");
+        }
+        if (from.equals(into)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A grade cannot be merged into itself.");
+        }
+        LocalDate today = today(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + by + " from=" + from + " into=" + into);
+        Set<Long> ids = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> from.equals(p.gradeOn(today))).map(Person::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<Person> saved = bulkGrade(by, sheetId, ids, into, null);
+        // the merge as a whole changes the rollup as its edits together did
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
+    /**
      * Swaps the person with the one above them in the list (up) or below them (down); refused for the top person
      * moving up and the bottom one moving down. Neither person's version changes: their place is not an edit of them.
      */

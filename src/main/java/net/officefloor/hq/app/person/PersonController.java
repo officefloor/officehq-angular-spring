@@ -157,6 +157,10 @@ public class PersonController {
     }
 
     /** The people a bulk grade changed, in list order. */
+    /** A grade merge: the grade merged and the grade it is merged into. */
+    public record GradeMergeForm(@NotBlank @Size(max = 10) String from, @NotBlank @Size(max = 10) String into) {
+    }
+
     public record BulkGradeView(List<PersonView> graded) {
     }
 
@@ -371,6 +375,22 @@ public class PersonController {
             return new BulkGradeView(List.of());
         }
         List<Person> graded = service.bulkGrade(user, sheetId, form.ids(), form.grade(), form.from());
+        LocalDate today = service.today(sheetId);
+        Set<Long> clashing = service.clashing(sheetId);
+        Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
+    }
+
+    /**
+     * A steward merges the grade into another: each person on the merged grade today is given the other from the
+     * sheet's today, as each one's edit would. Refused for the same grade twice, and for anyone but a steward.
+     */
+    @PostMapping("/merge-grade")
+    public BulkGradeView mergeGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody GradeMergeForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        List<Person> graded = service.mergeGrade(user, sheetId, form.from(), form.into());
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
