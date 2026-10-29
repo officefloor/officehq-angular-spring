@@ -164,7 +164,8 @@ public class PeriodService {
      * Rolls the fiscal year FY<year> over: generates FY<year + 1>'s twelve monthly periods exactly as
      * {@link #generateFiscalYear} does, then adds each person's open figure at the end of FY<year>'s last period (the
      * figures of their claims that count, belonging to a period of FY<year>, still open or pending at the end of its last
-     * day, skipping n/a) to their opening balance for FY<year + 1>'s first period. Refused unless the user is a steward,
+     * day, skipping n/a) to their opening balance for FY<year + 1>'s first period, and then soft-closes every period of FY<year> still open, by
+     * from-date, as {@link #softClose} does. Refused unless the user is a steward,
      * and when FY<year> has no periods. Answers the periods made.
      */
     @Transactional
@@ -217,6 +218,12 @@ public class PeriodService {
         rollovers.saveAndFlush(new PeriodRollover(sheetId, by, today, year, made.stream().map(Period::getId).toList(),
                 set));
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + by + " fy=FY" + year + " periods=" + made.size());
+        // every period of the old year still open is soft-closed, by from-date, as a soft close would
+        for (Period period : old) {
+            if (!period.isClosed() && !period.isSoftClosed()) {
+                softClose(by, sheetId, period, today);
+            }
+        }
         return made;
     }
 
@@ -292,6 +299,10 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
         }
+        return softClose(by, sheetId, period, today);
+    }
+
+    private Period softClose(String by, String sheetId, Period period, LocalDate today) {
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period, today);
         BigDecimal total = sum(personTotals);
         period.softClose(total, personTotals, personCarried(sheetId, period, today),
