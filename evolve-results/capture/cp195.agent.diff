@@ -1,0 +1,39 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index cfa91872..9d4b87d2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -589,6 +589,9 @@ interface StatementView {
+                 <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)">
+                   Cancel statement<span class="visually-hidden"> for {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)">
++                  Export statement (CSV)<span class="visually-hidden"> for {{ p.name }}</span>
++                </button>
+                 <label [for]="'retire-date-' + p.id">Retire from<span class="visually-hidden"> for {{ p.name }}</span></label>
+                 <input
+                   type="date"
+@@ -1872,6 +1875,24 @@ export class People {
+     this.downloadCsv('claims.csv', lines);
+   }
+ 
++  /**
++   * Downloads the person's statement as a CSV file: each claim of theirs bound by their last statement, oldest
++   * first, with the bound figure as the claim shows it.
++   */
++  protected async exportStatement(p: Person): Promise<void> {
++    await this.session.settled();
++    const rates = this.rates.byClaim();
++    const floor = this.settings.floor();
++    const late = this.settings.lateness();
++    const lines = [['number', 'date', 'amount', 'figure', 'status']];
++    for (const c of [...(this.claimsBy().get(p.id) ?? [])].reverse()) {
++      if (!isBound(c)) continue;
++      const figure = dueOf(c, rates(c).get(gradeOn(p.grades, c.date)) ?? [], floor, late, graceOf(c, p.grades, late));
++      lines.push([c.number ?? '', c.date, c.amount, figure ?? 'n/a', c.status]);
++    }
++    this.downloadCsv(`statement-${p.name}.csv`, lines);
++  }
++
+   private downloadCsv(fileName: string, lines: string[][]): void {
+     const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
