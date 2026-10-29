@@ -1,0 +1,162 @@
+diff --git a/src/main/frontend/src/app/features/duplicates/duplicates.ts b/src/main/frontend/src/app/features/duplicates/duplicates.ts
+new file mode 100644
+index 00000000..dcff1463
+--- /dev/null
++++ b/src/main/frontend/src/app/features/duplicates/duplicates.ts
+@@ -0,0 +1,62 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The duplicate claims: for each person, date and amount with two or more claims (VOID and DELETED left out), one
++// line "<name> <date> <amount> x<count>"; people in list order, then by date, then by amount.
++@Component({
++  selector: 'app-duplicates',
++  template: `
++    <section aria-label="Duplicate claims">
++      <h2>Duplicate claims</h2>
++      <button type="button" data-testid="dups-show" (click)="show()">Show duplicates</button>
++      @if (error(); as err) {
++        <p role="alert" data-testid="dups-error">{{ err }}</p>
++      }
++      <ol aria-label="Duplicate claims">
++        @for (line of lines(); track $index) {
++          <li data-testid="dup-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class Duplicates {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<readonly string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  // Each press is numbered, so only the latest one's answer shows.
++  private press = 0;
++
++  constructor() {
++    // A newly loaded sheet starts with nothing shown.
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      untracked(() => {
++        this.press++;
++        this.error.set(null);
++        this.lines.set([]);
++      });
++    });
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    this.lines.set([]);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const press = ++this.press;
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims/duplicates`),
++      );
++      if (press === this.press) this.lines.set(lines);
++    } catch {
++      if (press === this.press) this.error.set('Could not show the duplicate claims.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 764aa61c..c9fe4cdf 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -14,12 +14,13 @@ import { Pools } from '../pools/pools';
+ import { Crews } from '../crews/crews';
+ import { AuditViewer } from '../audit-viewer/audit-viewer';
+ import { TreeSearch } from '../tree-search/tree-search';
++import { Duplicates } from '../duplicates/duplicates';
+ import { PlanStore } from '../plans/plans';
+ 
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [FigPipe, People, Rates, Settings, Delegation, Holidays, VoidReasons, Notes, ClaimTemplates, Pools, Crews, TreeSearch, AuditViewer],
++  imports: [FigPipe, People, Rates, Settings, Delegation, Holidays, VoidReasons, Notes, ClaimTemplates, Pools, Crews, TreeSearch, Duplicates, AuditViewer],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user | fig }}</strong></p>
+@@ -114,6 +115,7 @@ import { PlanStore } from '../plans/plans';
+         <app-pools />
+         <app-crews />
+         <app-tree-search />
++        <app-duplicates />
+         <app-audit-viewer />
+       }
+     } @else {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index ead3447b..a7e10111 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -126,6 +126,13 @@ public class ClaimController {
+     }
+ 
+     /** The claim's timeline: the audit lines about it, newest first. */
++    /** The sheet's duplicate claims, one line per person, date and amount claimed two or more times. */
++    @GetMapping("/claims/duplicates")
++    public List<String> duplicates(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
++        return service.duplicates(sheetId);
++    }
++
+     @GetMapping("/claims/{id}/timeline")
+     public List<String> timeline(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b240767c..87282915 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -4,9 +4,14 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
++import java.util.ArrayList;
+ import java.util.Arrays;
++import java.util.Comparator;
++import java.util.HashMap;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
++import java.util.TreeMap;
+ import java.util.TreeSet;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.asof.AsOfService;
+@@ -79,6 +84,29 @@ public class ClaimService {
+         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+     }
+ 
++    /**
++     * The sheet's duplicate claims: for each person, date and amount with two or more claims (VOID and DELETED ones
++     * left out), one line {@code <name> <date> <amount> x<count>}; people in list order, then by date, then by amount.
++     */
++    @Transactional(readOnly = true)
++    public List<String> duplicates(String sheetId) {
++        record Key(LocalDate date, BigDecimal amount) {}
++        Map<Long, Map<Key, Integer>> counts = new HashMap<>();
++        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (c.getStatus() == ClaimStatus.VOID || c.getStatus() == ClaimStatus.DELETED) continue;
++            counts.computeIfAbsent(c.getPersonId(), k -> new TreeMap<>(
++                    Comparator.comparing(Key::date).thenComparing(Key::amount)))
++                    .merge(new Key(c.getDate(), c.getAmount().setScale(2, RoundingMode.HALF_UP)), 1, Integer::sum);
++        }
++        List<String> lines = new ArrayList<>();
++        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            counts.getOrDefault(p.getId(), Map.of()).forEach((k, n) -> {
++                if (n >= 2) lines.add(p.getName() + " " + k.date() + " " + k.amount().toPlainString() + " x" + n);
++            });
++        }
++        return lines;
++    }
++
+     /**
+      * The claim's timeline: the audit lines about it, newest first, as the file holds them (see
+      * {@link Audit#claimLines}).
