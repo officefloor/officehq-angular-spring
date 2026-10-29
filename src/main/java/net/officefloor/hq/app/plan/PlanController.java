@@ -31,11 +31,12 @@ public class PlanController {
      * sheet's today, and its changes of amount, oldest first.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
+            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes,
+            String sheet) {
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(),
                     p.getEvery(), p.getDay(), p.getEnd(), p.getGenerated(), p.nextDates(today, 5),
-                    p.isPaused(), p.getChanges().stream().map(ChangeView::of).toList());
+                    p.isPaused(), p.getChanges().stream().map(ChangeView::of).toList(), p.getTargetSheetId());
         }
     }
 
@@ -50,7 +51,7 @@ public class PlanController {
     }
 
     public record PlanForm(@NotNull BigDecimal amount, @NotNull LocalDate start, Integer every, Integer day,
-            @NotNull LocalDate end) {
+            @NotNull LocalDate end, @Size(max = 100) String sheet) {
     }
 
     /** The claims a generate made, in the order made, and the sheet's plans as they stand. */
@@ -79,7 +80,7 @@ public class PlanController {
             @PathVariable Long personId, @Valid @RequestBody PlanForm form,
             @SessionAttribute(SessionController.USER) String user) {
         Plan added = service.add(user, sheetId, personId, form.amount(), form.start(), form.every(), form.day(),
-                form.end());
+                form.end(), form.sheet());
         return PlanView.of(added, sheets.load(sheetId).getToday());
     }
 

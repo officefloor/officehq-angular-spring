@@ -22,7 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The sheet's plans. Generating makes, for each plan in the order they were added, a draft claim of its amount on
  * each of its plan dates up to its end and the sheet's today that has none yet, dated that day with an empty note, by
- * every rule of the claim form; a date the form refuses is skipped and tried again next time.
+ * every rule of the claim form; a date the form refuses is skipped and tried again next time. A plan naming one of the
+ * sheet's descendants makes its claims there instead, for the person of the same name, by that sheet's rules.
  */
 @Service
 public class PlanService {
@@ -59,7 +60,7 @@ public class PlanService {
      */
     @Transactional
     public Plan add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String targetSheetId) {
         checkAmount(amount);
         if ((every == null) == (day == null)) {
             throw refused("Enter either a number of days or a day of the month.");
@@ -76,13 +77,18 @@ public class PlanService {
         if (end.isBefore(start)) {
             throw refused("The end date is before the start date.");
         }
+        String target = targetSheetId == null || targetSheetId.isBlank() ? null : targetSheetId.trim();
+        if (target != null && !sheets.isDescendant(sheetId, target)) {
+            throw refused("That sheet is not a descendant of this sheet.");
+        }
         sheets.lock(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         BigDecimal scaled = amount.setScale(2, RoundingMode.UNNECESSARY);
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, scaled, start, every, day, end));
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, scaled, start, every, day, end, target));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + by + " name=" + person.getName() + " amount="
-                + scaled.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+                + scaled.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end
+                + (target != null ? " sheet=" + target : ""));
         return saved;
     }
 
@@ -157,8 +163,23 @@ public class PlanService {
                         if (current.hasMade(date) || current.isSkipped(date)) {
                             return null;
                         }
-                        Claim claim = claims.add(by, sheetId, current.getPersonId(), current.getAmount(), date, "",
-                                null, null, null);
+                        Claim claim;
+                        if (current.getTargetSheetId() == null) {
+                            claim = claims.add(by, sheetId, current.getPersonId(), current.getAmount(), date, "",
+                                    null, null, null);
+                        } else {
+                            // on the descendant, for the person of the same name there; none when there is no such
+                            // person or the user may change nothing there
+                            String target = current.getTargetSheetId();
+                            Person named = people.findByIdAndSheetId(current.getPersonId(), sheetId).orElse(null);
+                            Person there = named == null ? null
+                                    : people.findBySheetIdAndNameIgnoreCase(target, named.getName()).orElse(null);
+                            if (there == null || settings.isReadOnly(target, by)) {
+                                return null;
+                            }
+                            claim = claims.add(by, target, there.getId(), current.getAmount(), date, "", null, null,
+                                    null);
+                        }
                         current.markMade(date);
                         plans.saveAndFlush(current);
                         return claim;

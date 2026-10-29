@@ -22,6 +22,8 @@ export interface PlanView {
   paused: boolean;
   // The plan's changes of amount, oldest first.
   changes: { on: string; amount: string }[];
+  // The descendant sheet the plan makes its claims on, or null for this sheet.
+  sheet: string | null;
 }
 
 // The plans of the active sheet, in the order they were added.
@@ -39,7 +41,7 @@ export class PlanStore {
     if (this.session.sheetId() === sheet) this.list.set(l);
   }
 
-  async add(sheet: string, personId: number, form: { amount: string; start: string; every: number | null; day: number | null; end: string }): Promise<void> {
+  async add(sheet: string, personId: number, form: { amount: string; start: string; every: number | null; day: number | null; end: string; sheet: string | null }): Promise<void> {
     const p = await firstValueFrom(
       this.http.post<PlanView>(`/api/sheets/${encodeURIComponent(sheet)}/people/${personId}/plans`, form),
     );
@@ -88,7 +90,7 @@ export class PlanStore {
         <tr>
           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
           <th scope="col">Day of month</th><th scope="col">End</th><th scope="col">Claims made</th>
-          <th scope="col">Next dates</th><th scope="col">Paused</th><th scope="col">Changes</th>
+          <th scope="col">Next dates</th><th scope="col">Sheet</th><th scope="col">Paused</th><th scope="col">Changes</th>
           <th scope="col">Actions</th>
         </tr>
       </thead>
@@ -102,6 +104,7 @@ export class PlanStore {
             <td data-testid="plan-end">{{ pl.end | fig }}</td>
             <td data-testid="plan-generated">{{ pl.generated | fig }}</td>
             <td data-testid="plan-next-dates">{{ (pl.nextDates.join(', ')) | fig }}</td>
+            <td data-testid="plan-sheet">{{ (pl.sheet ?? '') | fig }}</td>
             <td data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</td>
             <td>
               <ul>
@@ -169,6 +172,13 @@ export class PlanStore {
         [value]="day()"
         (input)="day.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-sheet-' + personId()">On descendant sheet</label>
+      <input
+        [id]="'plan-sheet-' + personId()"
+        data-testid="plan-form-sheet"
+        [value]="targetSheet()"
+        (input)="targetSheet.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-end-' + personId()">End</label>
       <input
         type="date"
@@ -199,6 +209,7 @@ export class PersonPlans {
   protected readonly every = signal('');
   protected readonly day = signal('');
   protected readonly end = signal('');
+  protected readonly targetSheet = signal('');
   protected readonly error = signal<string | null>(null);
   // The refusal of the last action taken on a plan's row.
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
@@ -302,6 +313,7 @@ export class PersonPlans {
         every: every ? Number(every) : null,
         day: day ? Number(day) : null,
         end,
+        sheet: this.targetSheet().trim() || null,
       });
     } catch (err) {
       const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;

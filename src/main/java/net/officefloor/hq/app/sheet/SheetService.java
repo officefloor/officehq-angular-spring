@@ -103,6 +103,24 @@ public class SheetService {
         return tree;
     }
 
+    /** Whether the other sheet is one of the sheet's descendants: a sheet naming it as parent, one naming that, and so on. */
+    @Transactional(readOnly = true)
+    public boolean isDescendant(String id, String other) {
+        Set<String> seen = new HashSet<>(Set.of(id));
+        ArrayDeque<String> toVisit = new ArrayDeque<>(List.of(id));
+        while (!toVisit.isEmpty()) {
+            for (Sheet child : sheets.findByParentIdOrderByIdAsc(toVisit.poll())) {
+                if (child.getId().equals(other)) {
+                    return true;
+                }
+                if (seen.add(child.getId())) {
+                    toVisit.add(child.getId());
+                }
+            }
+        }
+        return false;
+    }
+
     /** Takes the sheet's next settle batch number; two callers at once never get the same one. */
     @Transactional
     public int nextSettleBatch(String id) {
