@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index a19b629e..33296404 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -254,9 +254,12 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
+ /** A claim form's amount: a negative one is a correction. */
+ const SIGNED_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
+ 
+-/** The sum of the counted claims' amounts, with two decimals; added in whole cents so nothing drifts. */
++/**
++ * The sum of the counted claims' amounts, leaving out claims that correct another, with two decimals; added in whole
++ * cents so nothing drifts.
++ */
+ export function claimedTotal(claims: readonly Claim[]): string {
+-  const cents = claims.filter(counts).reduce((sum, c) => sum + Math.round(Number(c.amount) * 100), 0);
++  const cents = claims.filter(c => counts(c) && !c.corrects).reduce((sum, c) => sum + Math.round(Number(c.amount) * 100), 0);
+   return (cents / 100).toFixed(2);
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index b6180618..b991ba03 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -100,7 +100,10 @@ public class RollupService {
+             grades.add(p.gradeOn(today));
+             for (Claim c : counted) {
+                 grades.add(p.gradeOn(c.getDate()));
+-                claimed = claimed.add(c.getAmount());
++                // a claim correcting another counts toward due but not toward what is claimed
++                if (c.getCorrects() == null) {
++                    claimed = claimed.add(c.getAmount());
++                }
+                 kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
+                 // the claim's rate is the one its person's grade in force on its date has
+                 BigDecimal figure = figure(c, byGrade.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
