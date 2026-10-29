@@ -118,6 +118,9 @@ public class PersonService {
         String personTags = ClaimService.tagsOf(tagged);
         LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        if (!sheets.load(sheetId).isGrade(grade)) {
+            throw noSuchGrade(grade);
+        }
         if (sheets.load(sheetId).isGradeRetired(grade)) {
             throw gradeRetired(grade);
         }
@@ -210,6 +213,9 @@ public class PersonService {
         }
         // keeping a retired grade as it is, with no from-date, is not a choice of it
         boolean gradeChosen = gradeFrom != null || !grade.equals(person.gradeOn(today));
+        if (gradeChosen && !sheets.load(sheetId).isGrade(grade)) {
+            throw noSuchGrade(grade);
+        }
         if (gradeChosen && sheets.load(sheetId).isGradeRetired(grade)) {
             throw gradeRetired(grade);
         }
@@ -289,8 +295,9 @@ public class PersonService {
         if (!settings.isSteward(sheetId, by)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can merge grades.");
         }
-        if (from == null || into == null || !from.matches("[ABC]") || !into.matches("[ABC]")) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The grades must be A, B or C.");
+        Sheet sheet = sheets.load(sheetId);
+        if (!sheet.isGrade(from) || !sheet.isGrade(into)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The grades must be grades of the sheet.");
         }
         if (from.equals(into)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A grade cannot be merged into itself.");
@@ -664,6 +671,10 @@ public class PersonService {
     private static ResponseStatusException nameOrContactInUse() {
         return new ResponseStatusException(HttpStatus.CONFLICT,
                 "That name or contact is already in use on this sheet.");
+    }
+
+    private static ResponseStatusException noSuchGrade(String grade) {
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No such grade: " + grade + ".");
     }
 
     private static ResponseStatusException gradeRetired(String grade) {

@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.asof.AsOfService;
 import net.officefloor.hq.app.session.SessionController;
@@ -87,7 +88,7 @@ public class PersonController {
      * null for none; the tags are comma separated, blank or null for none.
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) @Max(99999) Integer terms,
+            @NotNull @Pattern(regexp = Sheet.GRADE_CODE) String grade, @Min(0) @Max(99999) Integer terms,
             LocalDate termsFrom, @Size(max = 200) String contact, @Size(max = 1000) String tags) {
     }
 
@@ -96,7 +97,7 @@ public class PersonController {
      * of the person the editor loaded, their own terms (null: none) from the terms from-date (missing: from the beginning of time) and their contact (blank or null: none) and their tags, comma separated (blank: none; null: kept as they are).
      */
     public record PersonEdit(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
+            @NotNull @Pattern(regexp = Sheet.GRADE_CODE) String grade, LocalDate gradeFrom, @NotNull Long version,
             @Min(0) @Max(99999) Integer terms, LocalDate termsFrom, @Size(max = 200) String contact,
             @Size(max = 1000) String tags) {
     }
@@ -144,7 +145,7 @@ public class PersonController {
     }
 
     /** A grade to give the people with the ids together, from its from-date (missing: the sheet's today). */
-    public record BulkGradeForm(@NotEmpty Set<Long> ids, @NotNull @Pattern(regexp = "[ABC]") String grade,
+    public record BulkGradeForm(@NotEmpty Set<Long> ids, @NotNull @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             LocalDate from) {
     }
 

@@ -185,6 +185,13 @@ public class Sheet {
     @Column(name = "retired_grades")
     private String retiredGrades;
 
+    /**
+     * The grades added to the sheet, comma separated in the order added, after the standing A, B and C. Null (blank)
+     * for none. Not dated.
+     */
+    @Column(name = "added_grades")
+    private String addedGrades;
+
     /** Whether a steward has archived the sheet: it stays visible and every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -259,6 +266,7 @@ public class Sheet {
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
         then.retiredGrades = retiredGrades;
+        then.addedGrades = addedGrades;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -516,6 +524,41 @@ public class Sheet {
     /** Whether the grade is retired on the sheet. */
     public boolean isGradeRetired(String grade) {
         return retiredGradeList().contains(grade);
+    }
+
+    /** The standing grades every sheet has. */
+    public static final List<String> STANDING_GRADES = List.of("A", "B", "C");
+
+    /** The form of a grade's code: one to three capital letters. */
+    public static final String GRADE_CODE = "[A-Z]{1,3}";
+
+    /** The sheet's grades: the standing A, B and C, then those added, in the order added. */
+    public List<String> gradeList() {
+        if (addedGrades == null) {
+            return STANDING_GRADES;
+        }
+        List<String> all = new ArrayList<>(STANDING_GRADES);
+        all.addAll(List.of(addedGrades.split(",")));
+        return List.copyOf(all);
+    }
+
+    /** Whether the code is one of the sheet's grades. */
+    public boolean isGrade(String grade) {
+        return grade != null && gradeList().contains(grade);
+    }
+
+    /** Adds the grade, kept after those already added. */
+    public void addGrade(String grade) {
+        addedGrades = addedGrades == null ? grade : addedGrades + "," + grade;
+    }
+
+    /** The grades added, comma separated in the order added; null for none. */
+    public String getAddedGrades() {
+        return addedGrades;
+    }
+
+    public void setAddedGrades(String addedGrades) {
+        this.addedGrades = addedGrades;
     }
 
     /** Retires the grade, kept after those already retired. */

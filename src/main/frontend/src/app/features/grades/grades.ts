@@ -3,10 +3,10 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { firstValueFrom } from 'rxjs';
 import { FigPipe } from '../../core/locale';
 import { Session } from '../../core/session';
-import { GRADES } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 
-// The grades of the active sheet and whether each is retired. A retired grade cannot be given to a new person or
+// The grades of the active sheet (A, B and C, then those added) and whether each is retired. A grade can be added: a
+// code of one to three capital letters not yet a grade; anything else is refused. A retired grade cannot be given to a new person or
 // chosen in an edit; the people already on it keep it. Retiring a grade already retired is refused. A steward can
 // merge a grade into another: each person on it today is given the other from the sheet's today.
 @Component({
@@ -15,6 +15,18 @@ import { SettingsStore } from '../settings/settings';
   template: `
     <section aria-label="Grades">
       <h2>Grades</h2>
+      <form (submit)="add($event)" aria-label="Add a grade">
+        <label for="grade-add-code">Grade code (one to three capital letters)</label>
+        <input
+          id="grade-add-code"
+          data-testid="grade-add-code"
+          autocomplete="off"
+          [value]="code()"
+          (input)="code.set(text($event)); error.set(null)"
+        />
+        <button type="submit" data-testid="grade-add">Add grade</button>
+      </form>
+
       <form (submit)="retire($event)" aria-label="Retire a grade">
         <label for="grade-retire-select">Grade to retire</label>
         <select
@@ -23,7 +35,7 @@ import { SettingsStore } from '../settings/settings';
           [value]="grade()"
           (change)="grade.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -41,7 +53,7 @@ import { SettingsStore } from '../settings/settings';
           [value]="mergeFrom()"
           (change)="mergeFrom.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -52,7 +64,7 @@ import { SettingsStore } from '../settings/settings';
           [value]="mergeInto()"
           (change)="mergeInto.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -68,7 +80,7 @@ import { SettingsStore } from '../settings/settings';
           <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr [attr.data-testid]="'grade-row-' + g">
               <th scope="row" data-testid="grade-code">{{ g }}</th>
               <td data-testid="grade-retired">{{ store.retiredGrades().includes(g) ? 'yes' : 'no' }}</td>
@@ -83,11 +95,12 @@ export class Grades {
   private readonly session = inject(Session);
   protected readonly store = inject(SettingsStore);
 
-  protected readonly grades = GRADES;
-  protected readonly grade = signal(GRADES[0]);
+  protected readonly grades = this.store.grades;
+  protected readonly code = signal('');
+  protected readonly grade = signal('A');
   protected readonly error = signal<string | null>(null);
-  protected readonly mergeFrom = signal(GRADES[0]);
-  protected readonly mergeInto = signal(GRADES[1]);
+  protected readonly mergeFrom = signal('A');
+  protected readonly mergeInto = signal('B');
   // How many people the last merge regraded, and the sheet load it was shown on: a later load clears it.
   private readonly merged = signal<{ count: number; load: number } | null>(null);
   protected readonly mergedCount = computed(() => {
@@ -109,6 +122,40 @@ export class Grades {
 
   protected value(e: Event): string {
     return (e.target as HTMLSelectElement).value;
+  }
+
+  protected text(e: Event): string {
+    return (e.target as HTMLInputElement).value;
+  }
+
+  protected async add(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const code = this.code().trim();
+    if (!/^[A-Z]{1,3}$/.test(code)) {
+      this.error.set('Enter a grade code of one to three capital letters.');
+      return;
+    }
+    if (this.grades().includes(code)) {
+      this.error.set(`Grade ${code} is already a grade.`);
+      return;
+    }
+    this.submitting = true;
+    try {
+      await this.store.addGrade(sheet, code);
+      this.code.set('');
+    } catch (err) {
+      this.error.set(
+        err instanceof HttpErrorResponse && err.status === 409
+          ? `Grade ${code} is already a grade.`
+          : 'Could not add that grade.',
+      );
+    } finally {
+      this.submitting = false;
+    }
   }
 
   protected async retire(e: Event): Promise<void> {

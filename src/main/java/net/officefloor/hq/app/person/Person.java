@@ -21,7 +21,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
 /**
- * A person on a sheet, with a name (unique on the sheet, ignoring case) and a dated grade (A, B or C): each grade
+ * A person on a sheet, with a name (unique on the sheet, ignoring case) and a dated grade (one of the sheet's grades): each grade
  * applies from its from-date, the first one given from the beginning of time; and the terms of their own, if any,
  * from the beginning of time and from their from-dates.
  */

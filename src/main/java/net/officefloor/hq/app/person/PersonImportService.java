@@ -51,13 +51,14 @@ public class PersonImportService {
         Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         String defaultGrade = sheets.load(sheetId).defaultGradeOrA();
+        List<String> grades = sheets.load(sheetId).gradeList();
         int n = 0;
         for (String raw : text.split("\\r?\\n")) {
             n++;
             if (raw.isBlank()) {
                 continue;
             }
-            Line line = read(n, raw, defaultGrade);
+            Line line = read(n, raw, defaultGrade, grades);
             if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
                 throw refused("Line " + n + " repeats the name " + line.name() + ".");
             }
@@ -98,7 +99,7 @@ public class PersonImportService {
         return new Result(added, updated);
     }
 
-    private Line read(int n, String raw, String defaultGrade) {
+    private Line read(int n, String raw, String defaultGrade, List<String> grades) {
         String[] f = raw.split(",", 4);
         if (f.length < 2) {
             throw refused("Line " + n + " needs at least a name and a grade.");
@@ -114,8 +115,8 @@ public class PersonImportService {
         if (grade.isEmpty()) {
             grade = defaultGrade;
         }
-        if (!grade.matches("[ABC]")) {
-            throw refused("Line " + n + " has a grade that is not A, B or C.");
+        if (!grades.contains(grade)) {
+            throw refused("Line " + n + " has a grade that is not one of the grades.");
         }
         Integer terms = null;
         String termsText = f.length > 2 ? f[2].strip() : "";

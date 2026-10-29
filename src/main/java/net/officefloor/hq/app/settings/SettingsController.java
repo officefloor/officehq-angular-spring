@@ -19,6 +19,7 @@ import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetController.SheetView;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.SessionAttribute;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @Validated
@@ -39,14 +41,14 @@ public class SettingsController {
      * cap in force on the sheet's today (the clerk limit carries two decimals, or is null for none, the floor carries
      * two decimals, the terms are whole days, the late percent carries two decimals, and the cap carries two decimals,
      * or is null for none); the policy date, null when blank (the sheet's today), and the period numbering from, null
-     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the maximum of open claims per person, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); the mid and high score thresholds, null when blank (none); the score log switch, "on" or null when blank (off); the retired grades, in the order retired; and every value recorded for the dated settings, from which the screen works out the one in
+     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the maximum of open claims per person, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); the mid and high score thresholds, null when blank (none); the score log switch, "on" or null when blank (off); the retired grades, in the order retired; the sheet's grades, A, B and C then those added in the order added; and every value recorded for the dated settings, from which the screen works out the one in
      * force on any date; and the permission matrix as set, by action (an action not listed keeps the standing rule).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, LocalDate entryDate, Integer graceDays, String cap, List<DatedSettingView> dated, Map<String, String> permissions,
             String pot, String alertThreshold, String parent, int fiscalStartMonth,
             Integer escalateAfter, Integer reviewSla, Integer maxOpen, String proofKinds, String defaultGrade,
-            Integer scoreMid, Integer scoreHigh, String scoreLog, List<String> retiredGrades) {
+            Integer scoreMid, Integer scoreHigh, String scoreLog, List<String> retiredGrades, List<String> grades) {
         static SettingsView of(Sheet sheet) {
             LocalDate today = sheet.getToday();
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -61,7 +63,7 @@ public class SettingsController {
                     sheet.getParentId(), sheet.getFiscalStartMonth(), sheet.getEscalateAfter(),
                     sheet.getReviewSla(), sheet.getMaxOpen(), sheet.getProofKinds(), sheet.getDefaultGrade(),
                     sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog() ? "on" : null,
-                    sheet.retiredGradeList());
+                    sheet.retiredGradeList(), sheet.gradeList());
         }
     }
 
@@ -179,6 +181,10 @@ public class SettingsController {
     public record ProofKindsForm(@Size(max = 100) String value) {
     }
 
+    /** A grade to add as the form submits it: its code, kept without surrounding spaces. */
+    public record GradeForm(@Size(max = 100) String code) {
+    }
+
     /** The default grade as the form submits it: one of the grades, or null (blank) for A. */
     public record DefaultGradeForm(@Size(max = 100) String value) {
     }
@@ -234,8 +240,6 @@ public class SettingsController {
     public record DelegationForm(@NotBlank @Size(max = 100) String user, LocalDate from, LocalDate to) {
     }
 
-    private static final List<String> GRADES = List.of("A", "B", "C");
-
     private final SettingsService service;
     private final SheetService sheets;
 
@@ -286,39 +290,43 @@ public class SettingsController {
     public List<GradeTermsView> gradeTerms(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
         Sheet sheet = sheets.load(sheetId);
-        return GRADES.stream().flatMap(g -> sheet.gradeTermsOn(g, sheet.getToday())
+        return sheet.gradeList().stream().flatMap(g -> sheet.gradeTermsOn(g, sheet.getToday())
                 .map(t -> new GradeTermsView(g, t)).stream()).toList();
     }
 
     @PutMapping("/settings/grade-terms/{grade}")
     public SettingsView setGradeTerms(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody TermsForm form,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade, @Valid @RequestBody TermsForm form,
             @SessionAttribute(SessionController.USER) String user) {
+        requireGrade(sheetId, grade);
         return SettingsView.of(service.setGradeTerms(user, sheetId, grade, form.value(), form.from()));
     }
 
     @PutMapping("/settings/grade-grace/{grade}")
     public SettingsView setGradeGrace(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody GradeGraceForm form,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade, @Valid @RequestBody GradeGraceForm form,
             @SessionAttribute(SessionController.USER) String user) {
+        requireGrade(sheetId, grade);
         return SettingsView.of(service.setGradeGrace(user, sheetId, grade, form.value(), form.from()));
     }
 
     @PutMapping("/settings/grade-clerk-limit/{grade}")
     public SettingsView setGradeClerkLimit(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody ClerkLimitForm form,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade, @Valid @RequestBody ClerkLimitForm form,
             @SessionAttribute(SessionController.USER) String user) {
+        requireGrade(sheetId, grade);
         return SettingsView.of(service.setGradeClerkLimit(user, sheetId, grade, form.value(), form.from()));
     }
 
     @PutMapping("/settings/grade-proof-threshold/{grade}")
     public SettingsView setGradeProofThreshold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody ProofThresholdForm form,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade, @Valid @RequestBody ProofThresholdForm form,
             @SessionAttribute(SessionController.USER) String user) {
+        requireGrade(sheetId, grade);
         return SettingsView.of(service.setGradeProofThreshold(user, sheetId, grade, form.value(), form.from()));
     }
 
@@ -362,6 +370,28 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody ProofKindsForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setProofKinds(user, sheetId, form.value()));
+    }
+
+    /** The sheet's grades: A, B and C, then those added, in the order added. Not dated. */
+    @GetMapping("/grades")
+    public List<String> grades(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return sheets.load(sheetId).gradeList();
+    }
+
+    /** Adds a grade to the sheet: a code of one to three capital letters not yet one of its grades. */
+    @PostMapping("/grades")
+    public SettingsView addGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody GradeForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.addGrade(user, sheetId, form.code()));
+    }
+
+    /** Refuses a grade that is not one of the sheet's grades. */
+    private void requireGrade(String sheetId, String grade) {
+        if (!sheets.load(sheetId).isGrade(grade)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No such grade: " + grade + ".");
+        }
     }
 
     /** Retires the grade: it can no longer be given to a new person or chosen in an edit. */

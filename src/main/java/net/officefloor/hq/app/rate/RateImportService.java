@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,9 +20,11 @@ public class RateImportService {
     }
 
     private final RateService rates;
+    private final SheetService sheets;
 
-    public RateImportService(RateService rates) {
+    public RateImportService(RateService rates, SheetService sheets) {
         this.rates = rates;
+        this.sheets = sheets;
     }
 
     /**
@@ -31,12 +34,13 @@ public class RateImportService {
      */
     @Transactional
     public List<Rate> importRates(String by, String sheetId, String text) {
+        List<String> grades = sheets.load(sheetId).gradeList();
         List<Line> lines = new ArrayList<>();
         int n = 0;
         for (String raw : text.split("\\r?\\n")) {
             n++;
             if (!raw.isBlank()) {
-                lines.add(read(n, raw));
+                lines.add(read(n, raw, grades));
             }
         }
         if (lines.isEmpty()) {
@@ -49,7 +53,7 @@ public class RateImportService {
         return set;
     }
 
-    private Line read(int n, String raw) {
+    private Line read(int n, String raw, List<String> grades) {
         String[] f = raw.split(",", -1);
         if (f.length < 2) {
             throw refused("Line " + n + " needs at least a grade and a rate.");
@@ -58,8 +62,8 @@ public class RateImportService {
             throw refused("Line " + n + " has more than grade,rate,from,to.");
         }
         String grade = f[0].strip();
-        if (!grade.matches("[ABC]")) {
-            throw refused("Line " + n + " has a grade that is not A, B or C.");
+        if (!grades.contains(grade)) {
+            throw refused("Line " + n + " has a grade that is not one of the grades.");
         }
         String pct = f[1].strip();
         if (!pct.matches("\\d{1,5}(\\.\\d{1,2})?")) {

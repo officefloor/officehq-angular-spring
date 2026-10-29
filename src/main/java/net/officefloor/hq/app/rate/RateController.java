@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.settings.ViewerPasses;
@@ -111,7 +112,7 @@ public class RateController {
     @PutMapping("/{grade}")
     public RateView set(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody RateForm form,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade, @Valid @RequestBody RateForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), form.pct()));
     }
@@ -129,7 +130,7 @@ public class RateController {
     @PostMapping("/{grade}/preview")
     public PreviewView preview(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody PreviewForm form) {
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade, @Valid @RequestBody PreviewForm form) {
         ClaimService.RatePreview p = claims.previewRate(sheetId, grade, form.pct());
         return new PreviewView(p.count(), p.diff().toPlainString());
     }

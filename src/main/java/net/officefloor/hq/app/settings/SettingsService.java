@@ -385,14 +385,35 @@ public class SettingsService implements Audit.OnBehalf {
     @Transactional
     public Sheet setDefaultGrade(String by, String sheetId, String grade) {
         String value = grade == null || grade.isBlank() ? null : grade.strip();
-        if (value != null && !value.matches("[ABC]")) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The default grade must be A, B or C.");
-        }
         Sheet sheet = sheets.lock(sheetId);
+        if (value != null && !sheet.isGrade(value)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The default grade must be a grade.");
+        }
         sheet.setDefaultGrade(value);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=default-grade value="
                 + (value == null ? "" : value));
+        return saved;
+    }
+
+    /**
+     * Adds a grade to the sheet: a code of one to three capital letters (surrounding spaces dropped) not yet one of its
+     * grades. Refused for anything else. Not dated.
+     */
+    @Transactional
+    public Sheet addGrade(String by, String sheetId, String code) {
+        String value = code == null ? "" : code.strip();
+        if (!value.matches(Sheet.GRADE_CODE)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "A grade is one to three capital letters.");
+        }
+        Sheet sheet = sheets.lock(sheetId);
+        if (sheet.isGrade(value)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + value + " is already a grade.");
+        }
+        sheet.addGrade(value);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("GRADE_ADDED sheet=" + sheetId + " by=" + by + " grade=" + value);
         return saved;
     }
 
@@ -403,10 +424,10 @@ public class SettingsService implements Audit.OnBehalf {
     @Transactional
     public Sheet retireGrade(String by, String sheetId, String grade) {
         String value = grade == null ? "" : grade.strip();
-        if (!value.matches("[ABC]")) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The grade must be A, B or C.");
-        }
         Sheet sheet = sheets.lock(sheetId);
+        if (!sheet.isGrade(value)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The grade must be one of the grades.");
+        }
         if (sheet.isGradeRetired(value)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + value + " is already retired.");
         }

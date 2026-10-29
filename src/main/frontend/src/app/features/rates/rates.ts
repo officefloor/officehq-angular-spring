@@ -3,6 +3,7 @@ import { Component, Injectable, computed, effect, inject, signal } from '@angula
 import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { SettingsStore } from '../settings/settings';
 
 export interface RateView {
   grade: string;
@@ -318,7 +319,7 @@ export class RateStore {
           [value]="grade()"
           (change)="grade.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
@@ -378,7 +379,7 @@ export class RateStore {
           [value]="previewGrade()"
           (change)="previewGrade.set(value($event)); clearPreview()"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
           }
         </select>
@@ -408,7 +409,7 @@ export class RateStore {
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ (store.current().get(g) ?? 'n/a') | fig }}</td>
@@ -428,7 +429,7 @@ export class RateStore {
           </tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               @for (m of store.calendar(); track m.month) {
@@ -463,7 +464,8 @@ export class Rates {
   protected readonly session = inject(Session);
   protected readonly store = inject(RateStore);
 
-  protected readonly grades = GRADES;
+  /** The sheet's grades, A, B and C then those added. */
+  protected readonly grades = inject(SettingsStore).grades;
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');
@@ -507,8 +509,8 @@ export class Rates {
       this.previewError.set('Enter a rate of 0.00 or more, with up to two decimals.');
       return;
     }
-    if (!GRADES.includes(this.previewGrade())) {
-      this.previewError.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(this.previewGrade())) {
+      this.previewError.set('Choose one of the grades.');
       return;
     }
     try {
@@ -564,8 +566,8 @@ export class Rates {
       this.error.set('Enter a rate of 0.00 or more, with up to two decimals.');
       return;
     }
-    if (!GRADES.includes(this.grade())) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(this.grade())) {
+      this.error.set('Choose one of the grades.');
       return;
     }
     const from = this.from().trim();

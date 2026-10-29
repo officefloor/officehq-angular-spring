@@ -1238,6 +1238,9 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public RatePreview previewRate(String sheetId, String grade, BigDecimal pct) {
         Sheet sheet = sheets.load(sheetId);
+        if (!sheet.isGrade(grade)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No such grade: " + grade + ".");
+        }
         int count = 0;
         BigDecimal diff = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {

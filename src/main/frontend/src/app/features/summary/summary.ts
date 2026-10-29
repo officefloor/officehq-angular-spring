@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { FigPipe } from '../../core/locale';
 import { DatedFigure, PeriodStore, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
-import { GRADES, difference, sumSkippingNa } from '../rates/rates';
+import { difference, sumSkippingNa } from '../rates/rates';
+import { SettingsStore } from '../settings/settings';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
 
 /**
@@ -136,6 +137,7 @@ export class Summary {
   private readonly session = inject(Session);
   private readonly periods = inject(PeriodStore);
   private readonly voidReasons = inject(VoidReasonStore);
+  private readonly grades = inject(SettingsStore).grades;
 
   readonly people = input<readonly SummaryPerson[]>([]);
   // The counted claims of the sheet: each one's date and figure, as the periods total them.
@@ -150,7 +152,7 @@ export class Summary {
   // Per grade: the people on it today, leaving out retired ones, their due-totals added up, skipping n/a, and how
   // many of them are active.
   protected readonly byGrade = computed(() =>
-    GRADES.map((grade) => {
+    this.grades().map((grade) => {
       const on = this.people().filter((p) => !p.retired && p.grade === grade);
       return {
         grade,

@@ -1,7 +1,8 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
+import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
 import { GRADES, RateStore } from '../rates/rates';
 
@@ -42,6 +43,8 @@ interface SettingsView {
   // The grade the quick-add bar gives a new person and an import line with a blank grade uses; null when blank: A.
   defaultGrade: string | null;
   retiredGrades: string[] | null;
+  // The sheet's grades: A, B and C, then those added, in the order added.
+  grades: string[] | null;
   cap: string | null;
   // The pot shared among the members of each balanced pool by their shares, two decimals; null when blank: none.
   pot: string | null;
@@ -204,6 +207,8 @@ export class SettingsStore {
   readonly defaultGrade = signal<string | null>(null);
   /** The grades retired on the sheet: none can be given to a new person or chosen in an edit. */
   readonly retiredGrades = signal<readonly string[]>([]);
+  /** The sheet's grades: A, B and C, then those added, in the order added. */
+  readonly grades = signal<readonly string[]>(GRADES);
   /** The pot as set; null when blank (none). */
   readonly pot = signal<string | null>(null);
   /** The alert threshold as set; null when blank (off). */
@@ -243,19 +248,23 @@ export class SettingsStore {
     this.proofKinds.set(null);
     this.defaultGrade.set(null);
     this.retiredGrades.set([]);
+    this.grades.set(GRADES);
     this.pot.set(null);
     this.alertThreshold.set(null);
     this.parent.set(null);
     this.fiscalStartMonth.set(1);
     this.permissions.set({});
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [roles, settings] = await Promise.all([
+    const [roles, settings, grades] = await Promise.all([
       firstValueFrom(this.http.get<RoleView[]>(`${base}/roles`)),
       firstValueFrom(this.http.get<SettingsView>(`${base}/settings`)),
+      // grades are not dated: a sheet shown as of a date has the grades it has now
+      firstValueFrom(this.http.get<string[]>(`${base}/grades`, { context: new HttpContext().set(LIVE, true) })),
     ]);
     if (this.session.sheetId() === sheet) {
       this.roles.set(roles);
       this.show(settings);
+      this.grades.set(grades);
     }
   }
 
@@ -274,6 +283,7 @@ export class SettingsStore {
     this.proofKinds.set(s.proofKinds ?? null);
     this.defaultGrade.set(s.defaultGrade ?? null);
     this.retiredGrades.set(s.retiredGrades ?? []);
+    this.grades.set(s.grades ?? GRADES);
     this.pot.set(s.pot ?? null);
     this.alertThreshold.set(s.alertThreshold ?? null);
     this.parent.set(s.parent ?? null);
@@ -426,6 +436,13 @@ export class SettingsStore {
     if (this.session.sheetId() === sheet) this.show(s);
   }
 
+  async addGrade(sheet: string, code: string): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.post<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/grades`, { code }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
   async retireGrade(sheet: string, grade: string): Promise<void> {
     const s = await firstValueFrom(
       this.http.post<SettingsView>(
@@ -501,7 +518,7 @@ export class SettingsStore {
           (input)="setFrom('clerk-limit', value($event))"
           (change)="setFrom('clerk-limit', value($event))"
         />
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (in place of the sheet's; blank for none)</label>
           <input
             [id]="'setting-clerk-limit-' + g"
@@ -560,7 +577,7 @@ export class SettingsStore {
           (input)="setFrom('terms', value($event))"
           (change)="setFrom('terms', value($event))"
         />
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days; the sheet's terms until set)</label>
           <input
             [id]="'setting-terms-' + g"
@@ -581,7 +598,7 @@ export class SettingsStore {
             (change)="setFrom(gradeKey(g), value($event))"
           />
         }
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} (days past its due-by before a claim is overdue; blank for none)</label>
           <input
             [id]="'setting-grace-' + g"
@@ -732,7 +749,7 @@ export class SettingsStore {
           (keydown.delete)="proofKindsChanged = true; settingsError.set(null)"
           (keydown.backspace)="proofKindsChanged = true; settingsError.set(null)"
         />
-        <label for="setting-default-grade">Default grade (A, B or C: the grade the quick-add bar and an import line with a blank grade give a new person; blank for A)</label>
+        <label for="setting-default-grade">Default grade (one of the grades: the grade the quick-add bar and an import line with a blank grade give a new person; blank for A)</label>
         <input
           id="setting-default-grade"
           data-testid="setting-default-grade"
@@ -818,7 +835,7 @@ export class SettingsStore {
           (input)="setFrom('proof-threshold', value($event))"
           (change)="setFrom('proof-threshold', value($event))"
         />
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (in place of the sheet's; blank for none)</label>
           <input
             [id]="'setting-proof-threshold-' + g"
@@ -915,7 +932,7 @@ export class SettingsStore {
         }
       </form>
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ (store.clerkLimit() ?? '') | fig }}</strong></p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>
           Clerk limit in force for grade {{ g }}:
           <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (store.clerkLimitShown(g, session.sheetToday())) | fig }}</strong>
@@ -923,13 +940,13 @@ export class SettingsStore {
       }
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floorToday() | fig }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.termsToday() | fig }}</strong> days</p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>
           Terms in force for grade {{ g }}:
           <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ (store.termsFor(g, session.sheetToday())) | fig }}</strong> days
         </p>
       }
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>
           Grace days in force for grade {{ g }}:
           <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ (store.graceShown(g, session.sheetToday())) | fig }}</strong>
@@ -960,7 +977,7 @@ export class SettingsStore {
         Proof threshold in force:
         <strong data-testid="setting-proof-threshold-current">{{ (store.proofThreshold() ?? '') | fig }}</strong>
       </p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>
           Proof threshold in force for grade {{ g }}:
           <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (store.proofThresholdShown(g, session.sheetToday())) | fig }}</strong>
@@ -1035,7 +1052,8 @@ export class Settings {
   private readonly rates = inject(RateStore);
 
   protected readonly roles = ROLES;
-  protected readonly grades = GRADES;
+  /** The sheet's grades, A, B and C then those added. */
+  protected readonly grades = this.store.grades;
   protected readonly permissionActions = PERMISSIONS;
   // The roles typed for each action of the permission matrix, by action.
   protected readonly perms = signal<Readonly<Record<string, string>>>({});
@@ -1346,8 +1364,8 @@ export class Settings {
       return;
     }
     const defaultGrade = this.defaultGrade().trim();
-    if (this.defaultGradeChanged && defaultGrade && !/^[ABC]$/.test(defaultGrade)) {
-      this.settingsError.set('Enter the default grade as A, B or C, or leave it blank for A.');
+    if (this.defaultGradeChanged && defaultGrade && !this.grades().includes(defaultGrade)) {
+      this.settingsError.set('Enter the default grade as one of the grades, or leave it blank for A.');
       return;
     }
     const pot = this.pot().trim();

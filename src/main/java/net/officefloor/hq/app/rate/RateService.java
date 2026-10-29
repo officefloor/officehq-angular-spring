@@ -63,6 +63,9 @@ public class RateService {
      */
     @Transactional
     public Rate set(String by, String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
+        if (!sheets.load(sheetId).isGrade(grade)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No such grade: " + grade + ".");
+        }
         LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pct.setScale(2, RoundingMode.UNNECESSARY);

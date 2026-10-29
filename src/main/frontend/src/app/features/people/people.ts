@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays, reviewLate } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
-import { DatedGrade, GRADES, RateStore, atMost, capLess, difference, dueOn, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
+import { DatedGrade, RateStore, atMost, capLess, difference, dueOn, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
 import { Header } from '../header/header';
@@ -138,7 +138,7 @@ interface StatementView {
           [value]="grade()"
           (change)="grade.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
@@ -452,7 +452,7 @@ interface StatementView {
           [value]="bulkGrade()"
           (change)="bulkGrade.set(value($event)); bulkGradeError.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === bulkGrade()">{{ g }}</option>
           }
         </select>
@@ -631,7 +631,7 @@ interface StatementView {
                   data-testid="person-inline-grade"
                   (change)="setInlineGrade(p.id, value($event))"
                 >
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeToday(p))">{{ g }}</option>
                   }
                 </select>
@@ -832,7 +832,8 @@ export class People {
   protected readonly columns = inject(UserColumns);
   protected readonly columnChoices = COLUMNS;
 
-  protected readonly grades = GRADES;
+  /** The sheet's grades, A, B and C then those added. */
+  protected readonly grades = this.settings.grades;
   protected readonly people = signal<Person[]>([]);
   // Retired people are left out of the list unless this is on; it belongs to the screen, so loading a sheet keeps it.
   protected readonly showRetired = signal(false);
@@ -1190,13 +1191,13 @@ export class People {
     for (const [id, due] of this.uncappedDueBy()) by.set(id, atMost(due, capLess(cap, cuts.get(id) ?? '0.00')));
     return by;
   });
-  // Each person's excess: what their due-total plus their cut total is above the sheet's cap, else 0.00.
+  // Each person's excess: what their due-total is above the sheet's cap less their cut total (what the cap holds
+  // back), else 0.00.
   protected readonly excessBy = computed(() => {
     const cap = this.settings.cap();
     const cuts = this.poolStore.cutTotals();
     const by = new Map<number, string>();
-    for (const [id, due] of this.uncappedDueBy())
-      by.set(id, excessOver(due === null ? null : sumSkippingNa([due, cuts.get(id) ?? '0.00']), cap));
+    for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, capLess(cap, cuts.get(id) ?? '0.00')));
     return by;
   });
   // Every claim the live rules do not leave out: its person, its due-by, the figure it totals and its log, for the
@@ -1598,8 +1599,8 @@ export class People {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const grade = this.inlineGrades()[p.id] ?? this.gradeToday(p);
-    if (!GRADES.includes(grade)) {
-      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Choose a grade of A, B or C.' }));
+    if (!this.grades().includes(grade)) {
+      this.rowErrors.update((e) => ({ ...e, [p.id]: 'Choose one of the grades.' }));
       return;
     }
     const edit = {
@@ -2352,8 +2353,8 @@ export class People {
       this.bulkGradeError.set('Select at least one person to grade.');
       return;
     }
-    if (!GRADES.includes(grade)) {
-      this.bulkGradeError.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(grade)) {
+      this.bulkGradeError.set('Choose one of the grades.');
       return;
     }
     if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
@@ -2467,8 +2468,8 @@ export class People {
       this.error.set('Enter a name.');
       return;
     }
-    if (!GRADES.includes(form.grade)) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(form.grade)) {
+      this.error.set('Choose one of the grades.');
       return;
     }
     const base = `/api/sheets/${encodeURIComponent(sheet)}/people`;

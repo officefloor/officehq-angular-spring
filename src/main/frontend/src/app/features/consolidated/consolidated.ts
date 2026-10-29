@@ -4,7 +4,8 @@ import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { AsOf, LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
-import { GRADES, sumSkippingNa, trimmedSum } from '../rates/rates';
+import { sumSkippingNa, trimmedSum } from '../rates/rates';
+import { SettingsStore } from '../settings/settings';
 import { STATUSES, SummaryPerson } from '../summary/summary';
 
 // One person of a sheet of the tree: their name and aliases, due-total (null for n/a) and overdue-total.
@@ -107,6 +108,7 @@ export class Consolidated {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   private readonly asOf = inject(AsOf);
+  private readonly grades = inject(SettingsStore).grades;
 
   // The sheet's own figures, as it shows them.
   readonly ownMembers = input<readonly TreeMember[]>([]);
@@ -135,8 +137,11 @@ export class Consolidated {
   // Per grade: the due-totals of the people on it today, retired ones left out and n/a skipped, over the tree.
   protected readonly byGrade = computed(() => {
     const asOf = this.asOfFigures();
-    return GRADES.map((grade) => {
-      const below = (asOf ?? this.descendants()).gradeDueTotals?.[grade] ?? null;
+    const totals = (asOf ?? this.descendants()).gradeDueTotals ?? {};
+    // the sheet's grades, then any other a descendant has people on
+    const grades = [...this.grades(), ...Object.keys(totals).filter((g) => !this.grades().includes(g)).sort()];
+    return grades.map((grade) => {
+      const below = totals[grade] ?? null;
       const own = asOf
         ? []
         : this.ownPeople()
