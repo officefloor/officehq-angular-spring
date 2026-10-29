@@ -113,6 +113,9 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    @Column(name = "pending_sla")
+    private Integer pendingSla;
+
     /**
      * The maximum of open claims per person: opening a claim is refused while the person already has this many OPEN
      * or PENDING claims; null for none. Not dated.
@@ -259,6 +262,7 @@ public class Sheet {
         then.graceDays = graceDays;
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
+        then.pendingSla = pendingSla;
         then.maxOpen = maxOpen;
         then.scoreMid = scoreMid;
         then.scoreHigh = scoreHigh;
@@ -482,6 +486,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getPendingSla() {
+        return pendingSla;
+    }
+
+    public void setPendingSla(Integer pendingSla) {
+        this.pendingSla = pendingSla;
     }
 
     public Integer getMaxOpen() {

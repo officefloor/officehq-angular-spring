@@ -320,6 +320,20 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Sets the sheet's pending SLA (null for blank: none): a PENDING claim whose pending day (the sheet's today when it
+     * went to PENDING) plus these many days is before the sheet's today is late. Not dated.
+     */
+    @Transactional
+    public Sheet setPendingSla(String by, String sheetId, Integer days) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setPendingSla(days);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=pending-sla value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's review SLA (null for blank: none): a REVIEW claim whose review day (the sheet's today when it
      * went to REVIEW) plus these many days is before the sheet's today is late. Not dated.
      */

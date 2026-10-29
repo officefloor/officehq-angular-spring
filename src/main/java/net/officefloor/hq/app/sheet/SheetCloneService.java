@@ -72,10 +72,10 @@ public class SheetCloneService {
         claims.flush();
         try {
             jdbc.update("INSERT INTO sheet (id, created_at, today, policy_date, period_numbering_from, entry_date,"
-                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, max_open, proof_kinds,"
+                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, pending_sla, max_open, proof_kinds,"
                     + " score_mid, score_high, score_log, added_grades, cloned_from)"
                     + " SELECT ?, CURRENT_TIMESTAMP, today, policy_date, period_numbering_from, entry_date, grace_days, pot,"
-                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, max_open, proof_kinds, score_mid, score_high, score_log, added_grades, id"
+                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, pending_sla, max_open, proof_kinds, score_mid, score_high, score_log, added_grades, id"
                     + " FROM sheet WHERE id = ?",
                     toSheetId, sheetId);
         } catch (DataIntegrityViolationException e) {

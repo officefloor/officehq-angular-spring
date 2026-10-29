@@ -4,7 +4,7 @@ import { FigPipe, UserLocale, formatFigure } from '../../core/locale';
 import { COLUMNS, UserColumns } from '../../core/columns';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays, reviewLate } from '../claims/claims';
+import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, pendingLate, plusDays, reviewLate } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
 import { DatedGrade, RateStore, atMost, capLess, difference, dueOn, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -118,6 +118,7 @@ interface StatementView {
       [statuses]="claimStatuses()"
       [voidedWith]="voidedWith()"
       [reviewLateCount]="reviewLateCount()"
+      [pendingLateCount]="pendingLateCount()"
     />
 
     <section aria-label="People">
@@ -1272,6 +1273,12 @@ export class People {
     const today = this.session.sheetToday();
     const sla = this.settings.reviewSla();
     return this.claims().filter((c) => reviewLate(c, today, sla)).length;
+  });
+  // The PENDING claims late against the pending SLA.
+  protected readonly pendingLateCount = computed(() => {
+    const today = this.session.sheetToday();
+    const sla = this.settings.pendingSla();
+    return this.claims().filter((c) => pendingLate(c, today, sla)).length;
   });
   protected readonly voidedWith = computed(() =>
     this.claims()

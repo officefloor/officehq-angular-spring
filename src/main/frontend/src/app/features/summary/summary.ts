@@ -97,6 +97,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
         }
       </ul>
       <p>Late in review: <strong data-testid="summary-review-late-count">{{ reviewLateCount() | fig }}</strong></p>
+      <p>Late in pending: <strong data-testid="summary-pending-late-count">{{ pendingLateCount() | fig }}</strong></p>
       <table>
         <caption>By void reason</caption>
         <thead>
@@ -148,6 +149,7 @@ export class Summary {
   readonly voidedWith = input<readonly (string | null)[]>([]);
   // How many REVIEW claims on the sheet are late against the review SLA.
   readonly reviewLateCount = input(0);
+  readonly pendingLateCount = input(0);
 
   // Per grade: the people on it today, leaving out retired ones, their due-totals added up, skipping n/a, and how
   // many of them are active.

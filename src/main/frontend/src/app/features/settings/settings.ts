@@ -29,6 +29,7 @@ interface SettingsView {
   escalateAfter: number | null;
   // The review SLA: a REVIEW claim whose review day plus this many days is before today is late; null when blank: none.
   reviewSla: number | null;
+  pendingSla: number | null;
   // The maximum of open claims per person: opening one is refused while they have this many OPEN or PENDING; null: none.
   maxOpen: number | null;
   // The score thresholds: while both are set, a person at or above the high one is HIGH, at or above the mid one MID,
@@ -193,6 +194,7 @@ export class SettingsStore {
   readonly escalateAfter = signal<number | null>(null);
   /** The review SLA in days as set; null when blank (none). */
   readonly reviewSla = signal<number | null>(null);
+  readonly pendingSla = signal<number | null>(null);
   /** The maximum of open claims per person as set; null when blank (none). */
   readonly maxOpen = signal<number | null>(null);
   /** The mid score threshold as set; null when blank (none). */
@@ -241,6 +243,7 @@ export class SettingsStore {
     this.graceDays.set(null);
     this.escalateAfter.set(null);
     this.reviewSla.set(null);
+    this.pendingSla.set(null);
     this.maxOpen.set(null);
     this.scoreMid.set(null);
     this.scoreHigh.set(null);
@@ -276,6 +279,7 @@ export class SettingsStore {
     this.graceDays.set(s.graceDays);
     this.escalateAfter.set(s.escalateAfter ?? null);
     this.reviewSla.set(s.reviewSla ?? null);
+    this.pendingSla.set(s.pendingSla ?? null);
     this.maxOpen.set(s.maxOpen ?? null);
     this.scoreMid.set(s.scoreMid ?? null);
     this.scoreHigh.set(s.scoreHigh ?? null);
@@ -418,6 +422,13 @@ export class SettingsStore {
   async setReviewSla(sheet: string, value: number | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/review-sla`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setPendingSla(sheet: string, value: number | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/pending-sla`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -730,6 +741,16 @@ export class SettingsStore {
           (keydown.delete)="reviewSlaChanged = true; settingsError.set(null)"
           (keydown.backspace)="reviewSlaChanged = true; settingsError.set(null)"
         />
+        <label for="setting-pending-sla">Pending SLA (a PENDING claim this many days past the day it went to pending is late; blank for none)</label>
+        <input
+          id="setting-pending-sla"
+          data-testid="setting-pending-sla"
+          inputmode="numeric"
+          [value]="pendingSla()"
+          (input)="pendingSla.set(value($event)); pendingSlaChanged = true; settingsError.set(null)"
+          (keydown.delete)="pendingSlaChanged = true; settingsError.set(null)"
+          (keydown.backspace)="pendingSlaChanged = true; settingsError.set(null)"
+        />
         <label for="setting-max-open">Max open claims (opening a claim is refused while its person has this many OPEN or PENDING; blank for none)</label>
         <input
           id="setting-max-open"
@@ -965,6 +986,7 @@ export class SettingsStore {
       <p>Score high: <strong data-testid="setting-score-high-current">{{ (store.scoreHigh() ?? '') | fig }}</strong></p>
       <p>Score log: <strong data-testid="setting-score-log-current">{{ store.scoreLog() ?? '' }}</strong></p>
       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ (store.reviewSla() ?? '') | fig }}</strong></p>
+      <p>Pending SLA: <strong data-testid="setting-pending-sla-current">{{ (store.pendingSla() ?? '') | fig }}</strong></p>
       <p>Max open claims: <strong data-testid="setting-max-open-current">{{ (store.maxOpen() ?? '') | fig }}</strong></p>
       <p>Proof kinds: <strong data-testid="setting-proof-kinds-current">{{ (store.proofKinds() ?? '') | fig }}</strong></p>
       <p>Default grade: <strong data-testid="setting-default-grade-current">{{ (store.defaultGrade() ?? '') | fig }}</strong></p>
@@ -1071,6 +1093,7 @@ export class Settings {
   protected readonly graceDays = signal('');
   protected readonly escalateAfter = signal('');
   protected readonly reviewSla = signal('');
+  protected readonly pendingSla = signal('');
   protected readonly maxOpen = signal('');
   protected readonly scoreMid = signal('');
   protected readonly scoreHigh = signal('');
@@ -1105,6 +1128,7 @@ export class Settings {
   protected potChanged = false;
   protected escalateAfterChanged = false;
   protected reviewSlaChanged = false;
+  protected pendingSlaChanged = false;
   protected maxOpenChanged = false;
   protected scoreMidChanged = false;
   protected scoreHighChanged = false;
@@ -1348,6 +1372,11 @@ export class Settings {
       this.settingsError.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
       return;
     }
+    const pendingSla = this.pendingSla().trim();
+    if (this.pendingSlaChanged && pendingSla && !DAYS.test(pendingSla)) {
+      this.settingsError.set('Enter the pending SLA as a whole number of days, 0 or more, or leave it blank for none.');
+      return;
+    }
     const maxOpen = this.maxOpen().trim();
     if (this.maxOpenChanged && maxOpen && !DAYS.test(maxOpen)) {
       this.settingsError.set('Enter the max open claims as a whole number, 0 or more, or leave it blank for none.');
@@ -1519,6 +1548,10 @@ export class Settings {
       if (this.reviewSlaChanged) {
         await this.store.setReviewSla(sheet, reviewSla ? Number(reviewSla) : null);
         this.reviewSlaChanged = this.reviewSla().trim() !== reviewSla;
+      }
+      if (this.pendingSlaChanged) {
+        await this.store.setPendingSla(sheet, pendingSla ? Number(pendingSla) : null);
+        this.pendingSlaChanged = this.pendingSla().trim() !== pendingSla;
       }
       if (this.maxOpenChanged) {
         await this.store.setMaxOpen(sheet, maxOpen ? Number(maxOpen) : null);
