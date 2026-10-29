@@ -1,0 +1,64 @@
+{
+  "checkpoint": 179,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp179_flags",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can flag a person with a reason and an until date (entries and a button on the row;\nPERSON_FLAGGED name=<name> reason=<reason> until=<date>; anyone else or a blank reason is refused\nwith an error on the row). While the sheet's today is on or before the until date the row shows the\nreason, and only a steward may open a claim of that person (alone, by the bulk button, or by a\npaste); after the date the flag shows nothing and has no effect.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can flag a person with a reason and an until date (entries and a button on the row;\nPERSON_FLAGGED name=<name> reason=<reason> until=<date>; anyone else or a blank reason is refused\nwith an error on the row). While the sheet's today is on or before the until date the row shows the\nreason, and only a steward may open a claim of that person (alone, by the bulk button, or by a\npaste); after the date the flag shows nothing and has no effect.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4868f4fbf8b16f5dc4de36685799da0799ae62b8",
+  "reset_sha": "",
+  "preagent_sha": "2b7a9c5ab5b3c8f603ce84c75d61689e98fc183b",
+  "prev_sha": "2b7a9c5ab5b3c8f603ce84c75d61689e98fc183b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2742492000000005,
+    "input_tokens": 68,
+    "output_tokens": 15052,
+    "cache_read_tokens": 1887966,
+    "cache_creation_tokens": 74418,
+    "num_turns": 36,
+    "duration_ms": 816078,
+    "duration_api_ms": 151935,
+    "model": "claude-opus-5-5",
+    "session_id": "88051108-99b1-44ed-964d-a04d1ada750d",
+    "stop_reason": "success",
+    "result_text": "Flagging is in, and `bin/e2e` passes all 4 tests. I changed one comment after that run and didn't rerun.\n\n**How it works**\n- **Stored data:** a new migration, `V97__person_flag.sql`, adds `flag_reason` and `flag_until` to `person`. Flagging someone again replaces their old flag.\n- **Server:**\n  - A new endpoint, `POST /api/sheets/{sheetId}/people/{id}/flag`, is handled by `PersonService.flag`. It refuses anyone who isn't a steward and any blank reason. Otherwise it writes `PERSON_FLAGGED \u2026 name= reason= until=` to the audit file.\n  - The person data sent to the page now includes `flag`: the reason while today is on or before the until date, otherwise nothing.\n- **Opening claims:** the steward check is a single line in `ClaimService.changeStatus`. Opening one claim, the bulk button and a paste all go through that method, so it covers all three. A refused bulk open counts that claim as refused. A refused paste is turned down as a whole.\n- **Front end:** each row in `people.ts` has a reason box, an until-date box and a Flag button, plus a \"Flag\" column that shows the reason. Errors appear in the row's existing error spot and clear when either box is edited.\n\n**One change outside the request:** the \"flags scenario 1\" test failed the same way twice, on a line unrelated to flags. When someone edits a person's terms to blank while terms set from an earlier date still apply, the test expects every such edit to write `terms=20` to the audit file. The app only wrote it the first time, because it also compared against the person's stored undated terms. I dropped that extra comparison in `PersonService.update` (around line 233), so an edit now counts as a terms change whenever it differs from the terms in force today. Scenarios 2 and 3 still pass, but this does change what the audit file records for edits like that, so please check it's what you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2742492000000005,
+        "num_turns": 36,
+        "duration_ms": 816078,
+        "duration_api_ms": 151935,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp179.agent.jsonl",
+  "agent_diff_file": "cp179.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
