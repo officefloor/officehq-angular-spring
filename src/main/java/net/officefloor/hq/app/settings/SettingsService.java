@@ -474,16 +474,18 @@ public class SettingsService implements Audit.OnBehalf {
 
     /**
      * Sets the sheet's pot (null for blank: none): shared among the members of each balanced pool by their shares.
-     * Not dated.
+     * Not dated. The due-totals its cuts move under the cap are rolled up.
      */
     @Transactional
     public Sheet setPot(String by, String sheetId, BigDecimal pot) {
         BigDecimal scaled = pot == null ? null : pot.setScale(2, RoundingMode.UNNECESSARY);
         Sheet sheet = sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         sheet.setPot(scaled);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=pot value="
                 + (scaled == null ? "" : scaled.toPlainString()));
+        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 

@@ -576,8 +576,20 @@ public class Sheet {
 
     /** The due-total (null for n/a, which is not capped) held to the cap when it is above it. */
     public BigDecimal capped(BigDecimal dueTotal) {
+        return capped(dueTotal, null);
+    }
+
+    /**
+     * The due-total (null for n/a, which is not capped) held to the cap less the person's cut total (null for none),
+     * not below 0.00, when it is above that.
+     */
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
         BigDecimal cap = getCap();
-        return cap != null && dueTotal != null && dueTotal.compareTo(cap) > 0 ? cap.setScale(2) : dueTotal;
+        if (cap == null || dueTotal == null) {
+            return dueTotal;
+        }
+        BigDecimal room = cutTotal == null ? cap : cap.subtract(cutTotal).max(BigDecimal.ZERO);
+        return dueTotal.compareTo(room) > 0 ? room.setScale(2) : dueTotal;
     }
 
     /** The rounding mode (half-up or half-even) in force on the date; empty when none is (blank, or none recorded). */

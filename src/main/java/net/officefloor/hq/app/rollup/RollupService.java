@@ -27,10 +27,12 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonSnapshot;
 import net.officefloor.hq.app.person.PersonSnapshotRepository;
+import net.officefloor.hq.app.pool.PoolCuts;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -144,10 +146,12 @@ public class RollupService {
     private final Audit audit;
     private final PersonSnapshotRepository snapshotLines;
     private final AsOfService asOf;
+    private final ObjectProvider<PoolCuts> poolCuts;
 
     public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates, SheetRepository sheets,
-            Audit audit, PersonSnapshotRepository snapshotLines, AsOfService asOf) {
+            Audit audit, PersonSnapshotRepository snapshotLines, AsOfService asOf, ObjectProvider<PoolCuts> poolCuts) {
         this.asOf = asOf;
+        this.poolCuts = poolCuts;
         this.people = people;
         this.claims = claims;
         this.rates = rates;
@@ -201,6 +205,9 @@ public class RollupService {
                 }
             }
         }
+        // each person's cut total, which the cap covers along with their due-total
+        Map<Long, BigDecimal> cutTotals = sheet != null && sheet.getCap() != null
+                ? poolCuts.getObject().totals(sheetId, today) : Map.of();
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
@@ -258,9 +265,9 @@ public class RollupService {
                     .allMatch(g -> Rate.inForce(byGrade.getOrDefault(g, List.of()), today) == null))) {
                 due = null;
             }
-            // the due-total is at most the sheet's cap
+            // the due-total is at most the sheet's cap less the person's cut total
             if (sheet != null) {
-                due = sheet.capped(due);
+                due = sheet.capped(due, cutTotals.get(p.getId()));
             }
             figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount));
             claimedTotal = claimedTotal.add(claimed);

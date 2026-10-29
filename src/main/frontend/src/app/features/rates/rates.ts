@@ -88,6 +88,13 @@ export function excessOver(value: string | null, cap: string | null): string {
   return value !== null && cap !== null && cents(value) > cents(cap) ? formatCents(cents(value) - cents(cap)) : '0.00';
 }
 
+/** The cap less the cut total (both two decimals), not below 0.00; no cap (null) stays none. */
+export function capLess(cap: string | null, cut: string): string | null {
+  if (cap === null) return null;
+  const room = cents(cap) - cents(cut);
+  return formatCents(room < 0n ? 0n : room);
+}
+
 /** The sum of two-decimal values, skipping n/a. */
 export function sumSkippingNa(values: readonly (string | null)[]): string {
   return formatCents(values.reduce((sum, v) => (v === null ? sum : sum + cents(v)), 0n));

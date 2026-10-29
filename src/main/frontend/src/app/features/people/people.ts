@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays, reviewLate } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
-import { DatedGrade, GRADES, RateStore, atMost, difference, dueOn, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
+import { DatedGrade, GRADES, RateStore, atMost, capLess, difference, dueOn, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
 import { Header } from '../header/header';
@@ -1181,18 +1181,22 @@ export class People {
   // The sheet's settled-total and open-total: everyone's figure added up, not trimmed.
   protected readonly settledTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.settled)));
   protected readonly openTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.open)));
-  // Each person's due-total held to the sheet's cap; everything that adds up due-totals uses it. n/a is not capped.
+  // Each person's due-total held to the sheet's cap less their cut total (not below 0.00); everything that adds up
+  // due-totals uses it. n/a is not capped.
   protected readonly dueBy = computed(() => {
     const cap = this.settings.cap();
+    const cuts = this.poolStore.cutTotals();
     const by = new Map<number, string | null>();
-    for (const [id, due] of this.uncappedDueBy()) by.set(id, atMost(due, cap));
+    for (const [id, due] of this.uncappedDueBy()) by.set(id, atMost(due, capLess(cap, cuts.get(id) ?? '0.00')));
     return by;
   });
-  // Each person's excess: what their due-total is above the sheet's cap, else 0.00.
+  // Each person's excess: what their due-total plus their cut total is above the sheet's cap, else 0.00.
   protected readonly excessBy = computed(() => {
     const cap = this.settings.cap();
+    const cuts = this.poolStore.cutTotals();
     const by = new Map<number, string>();
-    for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, cap));
+    for (const [id, due] of this.uncappedDueBy())
+      by.set(id, excessOver(due === null ? null : sumSkippingNa([due, cuts.get(id) ?? '0.00']), cap));
     return by;
   });
   // Every claim the live rules do not leave out: its person, its due-by, the figure it totals and its log, for the
