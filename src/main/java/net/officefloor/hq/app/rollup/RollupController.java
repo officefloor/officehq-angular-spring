@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.TreeMap;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,10 +20,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/descendants")
 public class RollupController {
 
-    /** The descendants' figures added up: the number of people, and the due-totals and overdue-totals, two decimals. */
-    public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal) {
+    /**
+     * The descendants' figures added up: the number of people, the due-totals and overdue-totals, per grade the
+     * due-totals of its people (two decimals), and per status the count of claims.
+     */
+    public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal,
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
         static ConsolidatedView of(RollupService.Consolidated c) {
-            return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString());
+            Map<String, String> grades = new TreeMap<>();
+            c.gradeDueTotals().forEach((g, d) -> grades.put(g, d.toPlainString()));
+            Map<String, Integer> statuses = new TreeMap<>();
+            c.statusCounts().forEach((s, n) -> statuses.put(s.name(), n));
+            return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString(),
+                    grades, statuses);
         }
     }
 

@@ -4,14 +4,27 @@ import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { AsOf, LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
-import { sumSkippingNa } from '../rates/rates';
+import { GRADES, sumSkippingNa } from '../rates/rates';
+import { STATUSES, SummaryPerson } from '../summary/summary';
 
 // The figures of the sheet's descendants (the sheets naming it as parent, theirs, and so on), added up by the store.
 interface DescendantFigures {
   peopleCount: number;
   dueTotal: string;
   overdueTotal: string;
+  // Per grade, the due-totals of the people on it today (retired people left out); a grade with none is missing.
+  gradeDueTotals: Record<string, string>;
+  // Per status, the count of claims in it; a status with none is missing.
+  statusCounts: Record<string, number>;
 }
+
+const NONE: DescendantFigures = {
+  peopleCount: 0,
+  dueTotal: '0.00',
+  overdueTotal: '0.00',
+  gradeDueTotals: {},
+  statusCounts: {},
+};
 
 // The figures over the sheet and all its descendants: the sheet's own, as it shows them, plus each descendant's. While
 // the sheet is shown as of a date they are as of that date too: every sheet of the tree as it stood at the end of that
@@ -30,6 +43,34 @@ interface DescendantFigures {
         <dt>Overdue</dt>
         <dd data-testid="consolidated-overdue-total">{{ overdueTotal() | fig }}</dd>
       </dl>
+      <table>
+        <caption>By grade</caption>
+        <thead>
+          <tr><th scope="col">Grade</th><th scope="col">Due</th></tr>
+        </thead>
+        <tbody>
+          @for (g of byGrade(); track g.grade) {
+            <tr>
+              <th scope="row">{{ g.grade }}</th>
+              <td [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | fig }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>By status</caption>
+        <thead>
+          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
+        </thead>
+        <tbody>
+          @for (s of byStatus(); track s.status) {
+            <tr>
+              <th scope="row">{{ s.status }}</th>
+              <td [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count | fig }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </section>
   `,
 })
@@ -42,8 +83,10 @@ export class Consolidated {
   readonly ownPeopleCount = input(0);
   readonly ownDueTotal = input('0.00');
   readonly ownOverdueTotal = input('0.00');
+  readonly ownPeople = input<readonly SummaryPerson[]>([]);
+  readonly ownStatuses = input<readonly string[]>([]);
 
-  private readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+  private readonly descendants = signal<DescendantFigures>(NONE);
 
   // The sheet's and its descendants' figures as of the date the sheet is shown as of, read while it is.
   private readonly asOfFigures = signal<DescendantFigures | null>(null);
@@ -58,6 +101,29 @@ export class Consolidated {
     () => this.asOfFigures()?.overdueTotal ?? sumSkippingNa([this.ownOverdueTotal(), this.descendants().overdueTotal]),
   );
 
+  // Per grade: the due-totals of the people on it today, retired ones left out and n/a skipped, over the tree.
+  protected readonly byGrade = computed(() => {
+    const asOf = this.asOfFigures();
+    return GRADES.map((grade) => {
+      const below = (asOf ?? this.descendants()).gradeDueTotals?.[grade] ?? null;
+      const own = asOf
+        ? []
+        : this.ownPeople()
+            .filter((p) => !p.retired && p.grade === grade)
+            .map((p) => p.dueTotal);
+      return { grade, dueTotal: sumSkippingNa([...own, below]) };
+    });
+  });
+  // Per status: the count of claims in it over the tree.
+  protected readonly byStatus = computed(() => {
+    const asOf = this.asOfFigures();
+    return STATUSES.map((status) => {
+      const below = (asOf ?? this.descendants()).statusCounts?.[status] ?? 0;
+      const own = asOf ? 0 : this.ownStatuses().filter((s) => s === status).length;
+      return { status, count: own + below };
+    });
+  });
+
   constructor() {
     // Re-read the descendants' figures from the store each time a sheet is loaded.
     effect(() => {
@@ -65,7 +131,7 @@ export class Consolidated {
       const asOf = this.asOf.date();
       this.session.loads();
       untracked(() => {
-        this.descendants.set({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+        this.descendants.set(NONE);
         this.asOfFigures.set(null);
         if (id && asOf) void this.loadAsOf(id, asOf);
         else if (id) void this.load(id);

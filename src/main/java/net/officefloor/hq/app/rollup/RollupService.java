@@ -5,6 +5,7 @@ import java.util.ArrayDeque;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -12,11 +13,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.asof.AsOfService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonSnapshot;
@@ -45,8 +48,26 @@ public class RollupService {
             BigDecimal overdueTotal) {
     }
 
-    /** Figures added up over sheets: their people, and each sheet's due-total and overdue-total. */
-    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /**
+     * Figures added up over sheets: their people, each sheet's due-total and overdue-total, per grade the due-totals of
+     * the people on it today (retired people left out, n/a skipped), and per status the count of claims in it.
+     */
+    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
+            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts) {
+
+        static Consolidated empty() {
+            return new Consolidated(0, ZERO, ZERO, new TreeMap<>(), new EnumMap<>(ClaimStatus.class));
+        }
+
+        Consolidated plus(Consolidated o) {
+            Map<String, BigDecimal> grades = new TreeMap<>(gradeDueTotals);
+            o.gradeDueTotals.forEach((g, d) -> grades.merge(g, d, BigDecimal::add));
+            Map<ClaimStatus, Integer> statuses = new EnumMap<>(ClaimStatus.class);
+            statuses.putAll(statusCounts);
+            o.statusCounts.forEach((s, n) -> statuses.merge(s, n, Integer::sum));
+            return new Consolidated(peopleCount + o.peopleCount, dueTotal.add(o.dueTotal),
+                    overdueTotal.add(o.overdueTotal), grades, statuses);
+        }
     }
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
@@ -157,16 +178,31 @@ public class RollupService {
      */
     @Transactional(readOnly = true)
     public Consolidated descendants(String sheetId) {
-        int peopleCount = 0;
-        BigDecimal due = ZERO;
-        BigDecimal overdue = ZERO;
+        Consolidated sum = Consolidated.empty();
         for (String id : descendantIds(sheetId)) {
-            Snapshot s = snapshot(id);
-            peopleCount += s.people().size();
-            due = due.add(s.dueTotal());
-            overdue = overdue.add(s.overdueTotal());
+            sum = sum.plus(sheetFigures(id));
         }
-        return new Consolidated(peopleCount, due, overdue);
+        return sum;
+    }
+
+    /** One sheet's figures as {@link Consolidated} adds them up, as the store holds them (or as of a date, inside one). */
+    private Consolidated sheetFigures(String sheetId) {
+        Snapshot s = snapshot(sheetId);
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        Map<String, BigDecimal> grades = new TreeMap<>();
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            Figures f = s.people().get(p.getId());
+            String grade = p.gradeOn(today);
+            if (p.getRetiredFrom() != null || f == null || grade == null) {
+                continue;
+            }
+            grades.merge(grade, f.dueTotal() == null ? ZERO : f.dueTotal(), BigDecimal::add);
+        }
+        Map<ClaimStatus, Integer> statuses = new EnumMap<>(ClaimStatus.class);
+        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            statuses.merge(c.getStatus(), 1, Integer::sum);
+        }
+        return new Consolidated(s.people().size(), s.dueTotal(), s.overdueTotal(), grades, statuses);
     }
 
     /**
@@ -195,25 +231,17 @@ public class RollupService {
     public Consolidated consolidatedAsOf(String sheetId, LocalDate day) {
         List<String> tree = new ArrayList<>(List.of(sheetId));
         tree.addAll(descendantIds(sheetId));
-        int peopleCount = 0;
-        BigDecimal due = ZERO;
-        BigDecimal overdue = ZERO;
+        Consolidated sum = Consolidated.empty();
         for (String id : tree) {
-            Snapshot s = asOf.readAsOf(id, day, () -> snapshot(id));
-            peopleCount += s.people().size();
-            due = due.add(s.dueTotal());
-            overdue = overdue.add(s.overdueTotal());
+            sum = sum.plus(asOf.readAsOf(id, day, () -> sheetFigures(id)));
         }
-        return new Consolidated(peopleCount, due, overdue);
+        return sum;
     }
 
     /** The sheet's own figures and its descendants' added up: the consolidated figures as the store holds them now. */
     @Transactional(readOnly = true)
     public Consolidated consolidated(String sheetId) {
-        Snapshot own = snapshot(sheetId);
-        Consolidated below = descendants(sheetId);
-        return new Consolidated(own.people().size() + below.peopleCount(), own.dueTotal().add(below.dueTotal()),
-                own.overdueTotal().add(below.overdueTotal()));
+        return sheetFigures(sheetId).plus(descendants(sheetId));
     }
 
     /** The sheet-total of the people's figures: with three or more, the single highest and lowest are left out. */

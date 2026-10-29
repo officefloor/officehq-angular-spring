@@ -108,6 +108,8 @@ interface StatementView {
       [ownPeopleCount]="people().length"
       [ownDueTotal]="dueTotal()"
       [ownOverdueTotal]="overdueTotal()"
+      [ownPeople]="summaryPeople()"
+      [ownStatuses]="claimStatuses()"
     />
     <app-periods [figures]="countedFigures()" />
     <app-summary
