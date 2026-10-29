@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.asof.AsOfService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -56,9 +57,11 @@ public class RollupService {
     private final SheetRepository sheets;
     private final Audit audit;
     private final PersonSnapshotRepository snapshotLines;
+    private final AsOfService asOf;
 
     public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates, SheetRepository sheets,
-            Audit audit, PersonSnapshotRepository snapshotLines) {
+            Audit audit, PersonSnapshotRepository snapshotLines, AsOfService asOf) {
+        this.asOf = asOf;
         this.people = people;
         this.claims = claims;
         this.rates = rates;
@@ -154,22 +157,52 @@ public class RollupService {
      */
     @Transactional(readOnly = true)
     public Consolidated descendants(String sheetId) {
-        Set<String> seen = new HashSet<>(Set.of(sheetId));
-        ArrayDeque<String> toVisit = new ArrayDeque<>(List.of(sheetId));
         int peopleCount = 0;
         BigDecimal due = ZERO;
         BigDecimal overdue = ZERO;
+        for (String id : descendantIds(sheetId)) {
+            Snapshot s = snapshot(id);
+            peopleCount += s.people().size();
+            due = due.add(s.dueTotal());
+            overdue = overdue.add(s.overdueTotal());
+        }
+        return new Consolidated(peopleCount, due, overdue);
+    }
+
+    /**
+     * The ids of the sheet's descendants as linked now: each sheet naming it as parent, their children, and so on, each
+     * once and the sheet itself left out.
+     */
+    private List<String> descendantIds(String sheetId) {
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        ArrayDeque<String> toVisit = new ArrayDeque<>(List.of(sheetId));
+        List<String> ids = new ArrayList<>();
         while (!toVisit.isEmpty()) {
             for (Sheet child : sheets.findByParentIdOrderByIdAsc(toVisit.poll())) {
-                if (!seen.add(child.getId())) {
-                    continue;
+                if (seen.add(child.getId())) {
+                    toVisit.add(child.getId());
+                    ids.add(child.getId());
                 }
-                toVisit.add(child.getId());
-                Snapshot s = snapshot(child.getId());
-                peopleCount += s.people().size();
-                due = due.add(s.dueTotal());
-                overdue = overdue.add(s.overdueTotal());
             }
+        }
+        return ids;
+    }
+
+    /**
+     * The consolidated figures as of the day: the sheet and each of its descendants (as linked now), each as it stood at
+     * the end of the day with the day as its today (see {@link AsOfService#storeAsOf}), added up.
+     */
+    public Consolidated consolidatedAsOf(String sheetId, LocalDate day) {
+        List<String> tree = new ArrayList<>(List.of(sheetId));
+        tree.addAll(descendantIds(sheetId));
+        int peopleCount = 0;
+        BigDecimal due = ZERO;
+        BigDecimal overdue = ZERO;
+        for (String id : tree) {
+            Snapshot s = asOf.readAsOf(id, day, () -> snapshot(id));
+            peopleCount += s.people().size();
+            due = due.add(s.dueTotal());
+            overdue = overdue.add(s.overdueTotal());
         }
         return new Consolidated(peopleCount, due, overdue);
     }

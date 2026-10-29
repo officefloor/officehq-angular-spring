@@ -14,7 +14,8 @@ interface DescendantFigures {
 }
 
 // The figures over the sheet and all its descendants: the sheet's own, as it shows them, plus each descendant's. While
-// the sheet is shown as of a date they stay as the sheet and its descendants stand now, read from the store.
+// the sheet is shown as of a date they are as of that date too: every sheet of the tree as it stood at the end of that
+// day, with that date as its today, added up by the store.
 @Component({
   selector: 'app-consolidated',
   imports: [FigPipe],
@@ -44,17 +45,17 @@ export class Consolidated {
 
   private readonly descendants = signal<DescendantFigures>({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
 
-  // The sheet's and its descendants' figures as they stand now, read while the sheet is shown as of a date.
-  private readonly live = signal<DescendantFigures | null>(null);
+  // The sheet's and its descendants' figures as of the date the sheet is shown as of, read while it is.
+  private readonly asOfFigures = signal<DescendantFigures | null>(null);
 
   protected readonly peopleCount = computed(
-    () => this.live()?.peopleCount ?? this.ownPeopleCount() + this.descendants().peopleCount,
+    () => this.asOfFigures()?.peopleCount ?? this.ownPeopleCount() + this.descendants().peopleCount,
   );
   protected readonly dueTotal = computed(
-    () => this.live()?.dueTotal ?? sumSkippingNa([this.ownDueTotal(), this.descendants().dueTotal]),
+    () => this.asOfFigures()?.dueTotal ?? sumSkippingNa([this.ownDueTotal(), this.descendants().dueTotal]),
   );
   protected readonly overdueTotal = computed(
-    () => this.live()?.overdueTotal ?? sumSkippingNa([this.ownOverdueTotal(), this.descendants().overdueTotal]),
+    () => this.asOfFigures()?.overdueTotal ?? sumSkippingNa([this.ownOverdueTotal(), this.descendants().overdueTotal]),
   );
 
   constructor() {
@@ -65,8 +66,8 @@ export class Consolidated {
       this.session.loads();
       untracked(() => {
         this.descendants.set({ peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' });
-        this.live.set(null);
-        if (id && asOf) void this.loadLive(id);
+        this.asOfFigures.set(null);
+        if (id && asOf) void this.loadAsOf(id, asOf);
         else if (id) void this.load(id);
       });
     });
@@ -83,14 +84,16 @@ export class Consolidated {
     }
   }
 
-  private async loadLive(id: string): Promise<void> {
+  // Read without the as-of header: the store opens each sheet of the tree as of the date itself.
+  private async loadAsOf(id: string, asOf: string): Promise<void> {
     try {
       const figures = await firstValueFrom(
         this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(id)}/descendants/consolidated`, {
+          params: { asOf },
           context: new HttpContext().set(LIVE, true),
         }),
       );
-      if (this.session.sheetId() === id && this.asOf.date()) this.live.set(figures);
+      if (this.session.sheetId() === id && this.asOf.date() === asOf) this.asOfFigures.set(figures);
     } catch {
       // with none read, the figures shown as of the date stand
     }

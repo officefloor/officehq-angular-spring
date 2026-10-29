@@ -22,6 +22,8 @@ export interface PeriodView {
   closedTotal: string | null;
   // Each person's due-total fixed when it was closed or soft-closed, by person id; empty while it is open.
   closedPersonTotals: Record<string, string>;
+  // Each person's carried figure fixed when it was closed or soft-closed, by person id; empty while it is open.
+  closedPersonCarried: Record<string, string>;
 }
 
 /**
@@ -103,8 +105,9 @@ export function personPeriodDueTotals(
 }
 
 /**
- * The person's carried figure for each period, by period id: the figures now of their claims belonging to a period that
- * ends before this one starts and still open or pending at the end of this one's last day, skipping n/a.
+ * The person's carried figure for each period, by period id: a closed or soft-closed one's figure fixed for them when it
+ * was closed (0.00 for a person added since), else the figures now of their claims belonging to a period that ends
+ * before this one starts and still open or pending at the end of this one's last day, skipping n/a.
  */
 export function personPeriodCarried(
   periods: readonly PeriodView[],
@@ -123,7 +126,12 @@ export function personPeriodCarried(
       if (status === 'OPEN' || status === 'PENDING') by.get(p.id)?.push(f.figure);
     }
   }
-  return new Map(periods.map((p) => [p.id, sumSkippingNa(by.get(p.id) ?? [])]));
+  return new Map(
+    periods.map((p) => [
+      p.id,
+      p.closed || p.softClosed ? (p.closedPersonCarried[personId] ?? '0.00') : sumSkippingNa(by.get(p.id) ?? []),
+    ]),
+  );
 }
 
 /** Each period's due-total, by period id: the sum of the people's due-totals for it. */

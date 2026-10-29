@@ -28,15 +28,18 @@ public class PeriodController {
 
     /**
      * A period as the screen shows it; a closed or soft-closed one carries the due-total fixed when it was closed, and each person's
-     * then, by person id.
+     * due-total and carried figure then, by person id.
      */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, Integer cap, boolean closed,
-            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals) {
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals,
+            Map<Long, String> closedPersonCarried) {
         static PeriodView of(Period p) {
             Map<Long, String> personTotals = new TreeMap<>();
             p.getClosedPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
+            Map<Long, String> personCarried = new TreeMap<>();
+            p.getClosedPersonCarried().forEach((person, carried) -> personCarried.put(person, carried.toPlainString()));
             return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.getCap(), p.isClosed(), p.isSoftClosed(),
-                    p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), personTotals);
+                    p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), personTotals, personCarried);
         }
     }
 

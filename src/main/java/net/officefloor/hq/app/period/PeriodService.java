@@ -157,7 +157,7 @@ public class PeriodService {
         }
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period, today);
         BigDecimal total = sum(personTotals);
-        period.softClose(total, personTotals);
+        period.softClose(total, personTotals, personCarried(sheetId, period, today));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
                 + " total=" + total.toPlainString());
@@ -190,7 +190,7 @@ public class PeriodService {
     private Period close(String by, String sheetId, Period period, LocalDate today, String auditSuffix) {
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period, today);
         BigDecimal total = sum(personTotals);
-        period.close(total, personTotals);
+        period.close(total, personTotals, personCarried(sheetId, period, today));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
                 + " total=" + total.toPlainString() + auditSuffix);
@@ -224,6 +224,35 @@ public class PeriodService {
             }
         }
         return personTotals;
+    }
+
+    /**
+     * Each person's carried figure for the period now: the figures of their claims belonging to a period of the sheet
+     * that ends before this one starts and still open or pending at the end of its last day, skipping n/a; 0.00 for a
+     * person with none.
+     */
+    private Map<Long, BigDecimal> personCarried(String sheetId, Period period, LocalDate today) {
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        List<Period> earlier = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> p.getTo().isBefore(period.getFrom())).toList();
+        Map<Long, BigDecimal> carried = new HashMap<>();
+        for (Long personId : byId.keySet()) {
+            carried.put(personId, BigDecimal.ZERO.setScale(2));
+        }
+        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(c.getPersonId());
+            if (person == null || c.getDueBy() == null || earlier.stream().noneMatch(p -> p.contains(c.getDueBy()))
+                    || !person.countsAtEndOf(c, period.getTo(), today)
+                    || !c.statusAtEndOf(period.getTo()).isOpen()) {
+                continue;
+            }
+            BigDecimal figure = claimService.due(sheetId, person, c);
+            if (figure != null) {
+                carried.merge(person.getId(), figure, BigDecimal::add);
+            }
+        }
+        return carried;
     }
 
     /**

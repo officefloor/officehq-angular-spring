@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * A period of a sheet: a name unique on the sheet and a from and to date, inclusive. A closed period keeps the
- * due-total it had when it was closed, and each person's due-total for it then. A soft-closed period keeps them
+ * due-total it had when it was closed, and each person's due-total and carried figure for it then. A soft-closed period keeps them
  * the same way, but claims due by a date in it can still change.
  */
 @Entity
@@ -58,6 +58,12 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "total", nullable = false)
     private Map<Long, BigDecimal> closedPersonTotals = new HashMap<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "carried", nullable = false)
+    private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
 
     protected Period() {
     }
@@ -117,14 +123,23 @@ public class Period {
         return Map.copyOf(closedPersonTotals);
     }
 
+    /** Each person's carried figure fixed when the period was closed, by person id; empty while it is open. */
+    public Map<Long, BigDecimal> getClosedPersonCarried() {
+        return Map.copyOf(closedPersonCarried);
+    }
+
     /**
-     * Folds the due-total fixed for one person into another's (a person with none fixed takes it as theirs): the
+     * Folds the due-total and carried figure fixed for one person into another's (a person with none fixed takes them as theirs): the
      * merged person leaves the period, their figure kept under the person they were merged into.
      */
     public void mergePersonTotal(Long from, Long into) {
         BigDecimal moved = closedPersonTotals.remove(from);
         if (moved != null) {
             closedPersonTotals.merge(into, moved, BigDecimal::add);
+        }
+        BigDecimal carried = closedPersonCarried.remove(from);
+        if (carried != null) {
+            closedPersonCarried.merge(into, carried, BigDecimal::add);
         }
     }
 
@@ -133,30 +148,36 @@ public class Period {
         return !date.isBefore(from) && !date.isAfter(to);
     }
 
-    /** Closes the period, fixing its due-total and each person's. */
-    public void close(BigDecimal total, Map<Long, BigDecimal> personTotals) {
-        fix(total, personTotals);
+    /** Closes the period, fixing its due-total and each person's, and each person's carried figure. */
+    public void close(BigDecimal total, Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+        fix(total, personTotals, personCarried);
         this.closed = true;
         this.softClosed = false;
     }
 
-    /** Soft-closes the period, fixing its due-total and each person's; claims due by a date in it can still change. */
-    public void softClose(BigDecimal total, Map<Long, BigDecimal> personTotals) {
-        fix(total, personTotals);
+    /**
+     * Soft-closes the period, fixing its due-total and each person's, and each person's carried figure; claims due by a
+     * date in it can still change.
+     */
+    public void softClose(BigDecimal total, Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+        fix(total, personTotals, personCarried);
         this.softClosed = true;
     }
 
-    private void fix(BigDecimal total, Map<Long, BigDecimal> personTotals) {
+    private void fix(BigDecimal total, Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
         this.closedTotal = total;
         this.closedPersonTotals.clear();
         this.closedPersonTotals.putAll(personTotals);
+        this.closedPersonCarried.clear();
+        this.closedPersonCarried.putAll(personCarried);
     }
 
-    /** Reopens the period, closed or soft-closed: its due-total is live again. */
+    /** Reopens the period, closed or soft-closed: its due-total and carried figures are live again. */
     public void reopen() {
         this.closed = false;
         this.softClosed = false;
         this.closedTotal = null;
         this.closedPersonTotals.clear();
+        this.closedPersonCarried.clear();
     }
 }

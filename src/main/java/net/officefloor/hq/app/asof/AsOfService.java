@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.sql.DataSource;
@@ -22,8 +23,11 @@ import org.springframework.data.domain.Limit;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Keeps every state each sheet stands in, and answers for a sheet as it stood at the end of a day.
@@ -57,15 +61,37 @@ public class AsOfService {
     private final DataSource dataSource;
     private final JdbcTemplate jdbc;
     private final SheetSnapshotRepository snapshots;
+    private final TransactionTemplate readOnly;
     private final AtomicLong storeNames = new AtomicLong();
     private final Map<String, Store> stores = new LinkedHashMap<>(16, 0.75f, true);
     private volatile List<Kept> kept;
     private volatile List<String> schema;
 
-    public AsOfService(DataSource dataSource, SheetSnapshotRepository snapshots) {
+    public AsOfService(DataSource dataSource, SheetSnapshotRepository snapshots,
+            PlatformTransactionManager transactions) {
         this.dataSource = dataSource;
         this.jdbc = new JdbcTemplate(dataSource);
         this.snapshots = snapshots;
+        this.readOnly = new TransactionTemplate(transactions);
+        this.readOnly.setReadOnly(true);
+        this.readOnly.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /**
+     * Reads the sheet as it stood at the end of the day (see {@link #storeAsOf}): the read runs in a transaction of its
+     * own on that store, so it sees nothing read from the store itself or from another sheet as of a day. To be called
+     * while the request in hand reads the store itself.
+     */
+    public <T> T readAsOf(String sheetId, LocalDate day, Supplier<T> read) {
+        if (AsOfContext.active()) {
+            throw new IllegalStateException("Already reading a sheet as of a date");
+        }
+        AsOfContext.enter(storeAsOf(sheetId, day));
+        try {
+            return readOnly.execute(status -> read.get());
+        } finally {
+            AsOfContext.leave();
+        }
     }
 
     /** Stores the sheet's state as it stands now, with its today, unless it is the state last stored. */
