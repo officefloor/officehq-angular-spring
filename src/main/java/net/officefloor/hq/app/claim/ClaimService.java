@@ -360,10 +360,8 @@ public class ClaimService {
             refuseWithoutNote(sheetId, claim);
             refuseOverPeriodCap(sheetId, claim);
             if (aboveReviewThreshold(sheetId, person, claim)) {
-                // it waits for a steward's review, and is numbered once it is reviewed
+                // it waits for a steward's review; like an OPEN claim it is numbered only once it is settled
                 next = ClaimStatus.REVIEW;
-            } else {
-                number(sheetId, claim);
             }
             claim.setOpenedBy(by);
         }
@@ -389,6 +387,7 @@ public class ClaimService {
                 event = "CLAIM_PENDING";
             } else {
                 claim.setSettledDue(fixed);
+                numberOnSettle(sheetId, claim);
                 tail = " due=" + (fixed == null ? "n/a" : fixed.toPlainString())
                         + (on == null ? "" : " on=" + on);
             }
@@ -736,7 +735,7 @@ public class ClaimService {
     }
 
     /**
-     * A steward reviews a claim in REVIEW: it is OPEN, numbered now, and keeps the user who opened it. Refused unless
+     * A steward reviews a claim in REVIEW: it is OPEN, still unnumbered until it is settled, and keeps the user who opened it. Refused unless
      * it is in REVIEW, unless the user is a steward, and in a closed period.
      */
     @Transactional
@@ -751,7 +750,6 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = person(sheetId, claim.getPersonId());
         audit.recordOnCommit(record("CLAIM_REVIEWED", by, person, claim));
-        number(sheetId, claim);
         claim.setStatus(ClaimStatus.OPEN);
         logStatus(by, sheetId, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -780,6 +778,7 @@ public class ClaimService {
         BigDecimal fixed = due(sheetId, person, claim);
         refuseWithoutProof(sheetId, claim, fixed);
         claim.setSettledDue(fixed);
+        numberOnSettle(sheetId, claim);
         claim.setStatus(ClaimStatus.SETTLED);
         logStatus(by, sheetId, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -972,11 +971,11 @@ public class ClaimService {
         // a split is judged by the original alone: the part is a late entry when the original is
         part.setLateEntry(claim.isLateEntry());
         part.setStatus(ClaimStatus.OPEN);
-        number(sheetId, part);
         part.setOpenedBy(by);
         logStatus(by, sheetId, person, part);
         Claim added = claims.saveAndFlush(part);
-        audit.recordOnCommit(record("CLAIM_SPLIT", by, person, original) + " into=" + added.getNumber());
+        audit.recordOnCommit(record("CLAIM_SPLIT", by, person, original) + " into="
+                + (added.getNumber() == null ? "" : added.getNumber()));
         audit.recordOnCommit(record("CLAIM_OPENED", by, person, added));
         rollup.recordChanges(by, sheetId, before);
         return new Split(original, added);
@@ -1063,7 +1062,7 @@ public class ClaimService {
     }
 
     /**
-     * Gives the claim being opened its number: while the sheet's period numbering from is set and its today is on or
+     * Gives the claim being settled its number: while the sheet's period numbering from is set and its today is on or
      * after it, the next in the sequence of the period the claim's due-by falls in (X for none), else FY<year>-n, the
      * next in the fiscal year the due-by falls in, counted across the sheet's tree.
      * The sheet is locked, so two claims opened at once never get the same one.
@@ -1078,6 +1077,16 @@ public class ClaimService {
         String sequence = sequenceOn(sheetId, claim.getDueBy());
         Long last = claims.lastInSequence(sheetId, sequence);
         claim.numberIn(sequence, last == null ? 1 : last + 1);
+    }
+
+    /**
+     * Gives the claim being settled (or approved) its number, by the sheet's numbering and the claim's due-by as they
+     * are now; a claim numbered before claims were numbered at settlement keeps the number it has.
+     */
+    private void numberOnSettle(String sheetId, Claim claim) {
+        if (claim.getNumber() == null) {
+            number(sheetId, claim);
+        }
     }
 
     /**
