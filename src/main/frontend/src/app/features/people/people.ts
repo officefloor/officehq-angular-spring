@@ -102,6 +102,7 @@ interface StatementView {
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDueTotal()"
+      [myReviewsCount]="myReviewsCount()"
     />
     <app-dashboard [statuses]="claimStatuses()" [overdueCount]="overdueClaims().length" />
     <app-consolidated
@@ -1255,6 +1256,11 @@ export class People {
     }));
   });
   protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));
+  // The REVIEW claims assigned to the signed-in user.
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user();
+    return this.claims().filter((c) => c.status === 'REVIEW' && user !== null && c.reviewAssigned === user).length;
+  });
   // The REVIEW claims late against the review SLA.
   protected readonly reviewLateCount = computed(() => {
     const today = this.session.sheetToday();

@@ -27,6 +27,8 @@ import { STATUSES } from '../summary/summary';
         <dd data-testid="my-overdue-total">{{ myOverdueTotal() | fig }}</dd>
         <dt>My crew due</dt>
         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | fig }}</dd>
+        <dt>My reviews</dt>
+        <dd data-testid="my-reviews-count">{{ myReviewsCount() | fig }}</dd>
       </dl>
     </header>
   `,
@@ -43,6 +45,8 @@ export class Header {
   readonly myOverdueTotal = input('');
   // The due-totals of the crews that person leads, added up; blank when they lead none.
   readonly myCrewDueTotal = input('');
+  // The REVIEW claims assigned to the signed-in user.
+  readonly myReviewsCount = input(0);
 
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),

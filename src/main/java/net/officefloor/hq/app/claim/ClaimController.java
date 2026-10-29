@@ -41,13 +41,14 @@ public class ClaimController {
      * Comments are its comments, in the order they were written. Lines are its lines, in the order they were added.
      * Mark is the mark it was added at (see {@link Claim#getAddedMark}), or null for one just added. Waived-on is the sheet's today when
      * a steward waived its late charge, or null; it bears no late charge from then on. Held is whether it is held.
+     * Review-assigned is the user a steward assigned it to in REVIEW, or null.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
             String number, String settledDue, String openedBy, String editedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, int proofReceipts, int proofPhotos, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
             List<CommentView> comments, Integer batch, List<LineView> lines, Long mark, LocalDate waivedOn, boolean held,
-            List<ShareView> shares) {
+            List<ShareView> shares, String reviewAssigned) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
@@ -57,7 +58,7 @@ public class ClaimController {
                     c.getComments().stream().map(CommentView::of).toList(), c.getSettleBatch(),
                     c.getLines().stream().map(LineView::of).toList(),
                     c.getAddedMark() == Long.MAX_VALUE ? null : c.getAddedMark(), c.getWaivedOn(), c.isHeld(),
-                    c.getShares().stream().map(ShareView::of).toList());
+                    c.getShares().stream().map(ShareView::of).toList(), c.getReviewAssigned());
         }
     }
 
@@ -334,6 +335,18 @@ public class ClaimController {
             @PathVariable Long id, @Valid @RequestBody DeferForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.defer(user, sheetId, id, form.until()));
+    }
+
+    /** The user a claim in REVIEW is assigned to. */
+    public record AssignReviewForm(@NotNull @Size(max = 100) String user) {
+    }
+
+    @PostMapping("/claims/{id}/assign-review")
+    public ClaimView assignReview(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody AssignReviewForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.assignReview(user, sheetId, id, form.user()));
     }
 
     /** The new date of an open or pending claim. */

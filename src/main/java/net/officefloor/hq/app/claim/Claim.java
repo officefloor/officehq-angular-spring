@@ -160,6 +160,10 @@ public class Claim {
     @Column(name = "held", nullable = false)
     private boolean held;
 
+    /** The user a steward assigned the claim to while it was in REVIEW; null for one never assigned. */
+    @Column(name = "review_assigned", length = 100)
+    private String reviewAssigned;
+
     /** Whether the claim was ever escalated by a reminder; a claim is escalated once at most. */
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
@@ -273,6 +277,14 @@ public class Claim {
 
     public void setHeld(boolean held) {
         this.held = held;
+    }
+
+    public String getReviewAssigned() {
+        return reviewAssigned;
+    }
+
+    public void setReviewAssigned(String reviewAssigned) {
+        this.reviewAssigned = reviewAssigned;
     }
 
     public boolean isEscalated() {

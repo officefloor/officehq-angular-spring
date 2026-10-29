@@ -813,6 +813,31 @@ public class ClaimService {
     }
 
     /**
+     * A steward assigns a claim in REVIEW to a user, who is shown on it from then on. Refused unless the user is a
+     * steward, for a blank user, and for a claim in any other status.
+     */
+    @Transactional
+    public Claim assignReview(String by, String sheetId, Long id, String user) {
+        String assignee = user == null ? "" : user.trim();
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can assign a review.");
+        }
+        if (assignee.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Name the user to assign the review to.");
+        }
+        sheets.lock(sheetId);
+        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a claim in REVIEW can be assigned for review.");
+        }
+        claim.setReviewAssigned(assignee);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("REVIEW_ASSIGNED", by, person(sheetId, claim.getPersonId()), saved) + " user=" + assignee);
+        return saved;
+    }
+
+    /**
      * A steward approves a pending claim: it is settled, its due fixed at the live figure it shows now. Refused
      * unless it is pending, unless the user is a steward, for the user who opened it or last edited it, and in a
      * closed period.

@@ -45,6 +45,8 @@ export interface Claim {
   waivedOn: string | null;
   // Whether the claim is held; a held claim still counts in every total.
   held: boolean;
+  // The user a steward assigned the claim to while it was in REVIEW; null for one never assigned.
+  reviewAssigned: string | null;
   // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
   // settled or approved while it has none, nor while it lacks one of each of the sheet's proof kinds.
   proofs: number;
@@ -390,7 +392,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Shared with</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Held</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Shared with</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Held</th><th scope="col">Status</th><th scope="col">Review assigned to</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -422,6 +424,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-waived">{{ (c.waivedOn !== null ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-held">{{ (c.held ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-status">{{ c.status | fig }}</td>
+            <td data-testid="claim-review-assigned">{{ c.reviewAssigned | fig }}</td>
             <td data-testid="claim-review-late">{{ (reviewLate(c, session.sheetToday(), settings.reviewSla()) ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-batch">{{ (c.batch ?? '') | fig }}</td>
             <td data-testid="claim-opened-by">{{ (c.openedBy ?? '') | fig }}</td>
@@ -544,6 +547,16 @@ export function claimedTotal(claims: readonly Claim[]): string {
               />
               <button type="button" data-testid="claim-defer" (click)="defer(c)">
                 Defer<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <label [for]="'claim-review-user-' + c.id">Assign review to</label>
+              <input
+                [id]="'claim-review-user-' + c.id"
+                data-testid="claim-review-user"
+                [value]="reviewUsers()[c.id] ?? ''"
+                (input)="setReviewUser(c.id, value($event))"
+              />
+              <button type="button" data-testid="claim-review-assign" (click)="assignReview(c)">
+                Assign review<span class="visually-hidden"> of claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               <label [for]="'claim-date-new-' + c.id">New date</label>
               <input
@@ -745,6 +758,7 @@ export class Claims {
   protected readonly deferDates = signal<Record<number, string>>({});
   // The new date typed for each claim, by claim id.
   protected readonly redates = signal<Record<number, string>>({});
+  protected readonly reviewUsers = signal<Record<number, string>>({});
   // The amount typed to split off each claim, by claim id.
   protected readonly splitAmounts = signal<Record<number, string>>({});
   // The amount typed to part-settle each claim, by claim id.
@@ -1305,6 +1319,35 @@ export class Claims {
       this.saved.emit(saved);
     } catch {
       this.setRowError(c.id, `This ${c.status} claim cannot be deferred until ${until}.`);
+    }
+  }
+
+  protected setReviewUser(id: number, user: string): void {
+    this.reviewUsers.update((u) => ({ ...u, [id]: user }));
+    this.clearRowError(id);
+  }
+
+  /** A steward assigns a claim in REVIEW to the typed user, who is shown on it. Refused for a blank user. */
+  protected async assignReview(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const user = (this.reviewUsers()[c.id] ?? '').trim();
+    if (!user) {
+      this.setRowError(c.id, 'Enter the user to assign this review to.');
+      return;
+    }
+    if (c.status !== 'REVIEW') {
+      this.setRowError(c.id, `A ${c.status} claim cannot be assigned for review; only a REVIEW one can.`);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/assign-review`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { user }));
+      this.reviewUsers.update(({ [c.id]: _, ...rest }) => rest);
+      this.saved.emit(saved);
+    } catch {
+      this.setRowError(c.id, `This ${c.status} claim cannot be assigned for review to ${user}.`);
     }
   }
 
