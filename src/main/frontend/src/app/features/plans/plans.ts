@@ -9,7 +9,9 @@ export interface PlanView {
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  // The interval in days, or null for a plan that runs monthly on `day`.
+  every: number | null;
+  day: number | null;
   end: string;
   // How many claims the plan has made so far.
   generated: number;
@@ -30,7 +32,7 @@ export class PlanStore {
     if (this.session.sheetId() === sheet) this.list.set(l);
   }
 
-  async add(sheet: string, personId: number, form: { amount: string; start: string; every: number; end: string }): Promise<void> {
+  async add(sheet: string, personId: number, form: { amount: string; start: string; every: number | null; day: number | null; end: string }): Promise<void> {
     const p = await firstValueFrom(
       this.http.post<PlanView>(`/api/sheets/${encodeURIComponent(sheet)}/people/${personId}/plans`, form),
     );
@@ -47,8 +49,9 @@ export class PlanStore {
   }
 }
 
-// A person's plans, and the form that adds one. An amount the claim form would refuse without a claim to correct, an
-// interval under one day, or an end before the start is refused.
+// A person's plans, and the form that adds one, every so many days or monthly on a day of the month. An amount the
+// claim form would refuse without a claim to correct, both or neither of an interval and a day, an interval under one
+// day, a day outside 1 to 31, or an end before the start is refused.
 @Component({
   selector: 'app-person-plans',
   template: `
@@ -57,7 +60,7 @@ export class PlanStore {
       <thead>
         <tr>
           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
-          <th scope="col">End</th><th scope="col">Claims made</th>
+          <th scope="col">Day of month</th><th scope="col">End</th><th scope="col">Claims made</th>
         </tr>
       </thead>
       <tbody>
@@ -65,7 +68,8 @@ export class PlanStore {
           <tr [attr.data-testid]="'plan-row-' + pl.id">
             <td data-testid="plan-figure">{{ pl.amount }}</td>
             <td data-testid="plan-start">{{ pl.start }}</td>
-            <td data-testid="plan-every">{{ pl.every }}</td>
+            <td data-testid="plan-every">{{ pl.every ?? '' }}</td>
+            <td data-testid="plan-day">{{ pl.day ?? '' }}</td>
             <td data-testid="plan-end">{{ pl.end }}</td>
             <td data-testid="plan-generated">{{ pl.generated }}</td>
           </tr>
@@ -97,6 +101,14 @@ export class PlanStore {
         [value]="every()"
         (input)="every.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-day-' + personId()">Or monthly on day</label>
+      <input
+        [id]="'plan-day-' + personId()"
+        data-testid="plan-form-day"
+        inputmode="numeric"
+        [value]="day()"
+        (input)="day.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-end-' + personId()">End</label>
       <input
         type="date"
@@ -125,6 +137,7 @@ export class PersonPlans {
   protected readonly amount = signal('');
   protected readonly start = signal('');
   protected readonly every = signal('');
+  protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
   // A submit in flight: a second one before it answers is ignored.
@@ -146,8 +159,17 @@ export class PersonPlans {
       return;
     }
     const every = this.every().trim();
-    if (!/^\d+$/.test(every) || Number(every) < 1) {
+    const day = this.day().trim();
+    if (!every === !day) {
+      this.error.set('Enter either a number of days or a day of the month.');
+      return;
+    }
+    if (every && (!/^\d+$/.test(every) || Number(every) < 1)) {
       this.error.set('Enter a whole number of days of at least 1.');
+      return;
+    }
+    if (day && (!/^\d+$/.test(day) || Number(day) < 1 || Number(day) > 31)) {
+      this.error.set('Enter a day of the month from 1 to 31.');
       return;
     }
     // a blank start takes the sheet's today
@@ -163,7 +185,13 @@ export class PersonPlans {
     }
     this.submitting = true;
     try {
-      await this.store.add(sheet, this.personId(), { amount, start, every: Number(every), end });
+      await this.store.add(sheet, this.personId(), {
+        amount,
+        start,
+        every: every ? Number(every) : null,
+        day: day ? Number(day) : null,
+        end,
+      });
     } catch (err) {
       const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
       this.error.set(

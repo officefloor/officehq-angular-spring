@@ -50,18 +50,25 @@ public class PlanService {
     }
 
     /**
-     * Adds a plan for the person. Refused when the amount is negative or has more than two decimals, the interval is
-     * less than one day, or the end is before the start.
+     * Adds a plan for the person, every so many days or monthly on a day of the month. Refused when the amount is
+     * negative or has more than two decimals, both or neither of the interval and the day are given, the interval is
+     * less than one day, the day is not 1 to 31, or the end is before the start.
      */
     @Transactional
     public Plan add(String by, String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every,
-            LocalDate end) {
+            Integer day, LocalDate end) {
         if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2
                 || amount.precision() - amount.scale() > 12) {
             throw refused("Enter an amount of at least 0 with up to two decimals.");
         }
-        if (every == null || every < 1) {
+        if ((every == null) == (day == null)) {
+            throw refused("Enter either a number of days or a day of the month.");
+        }
+        if (every != null && every < 1) {
             throw refused("Enter a whole number of days of at least 1.");
+        }
+        if (day != null && (day < 1 || day > 31)) {
+            throw refused("Enter a day of the month from 1 to 31.");
         }
         if (start == null || end == null) {
             throw refused("Enter a start date and an end date.");
@@ -73,9 +80,9 @@ public class PlanService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         BigDecimal scaled = amount.setScale(2, RoundingMode.UNNECESSARY);
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, scaled, start, every, end));
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, scaled, start, every, day, end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + by + " name=" + person.getName() + " amount="
-                + scaled.toPlainString() + " start=" + start + " every=" + every + " end=" + end);
+                + scaled.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
         return saved;
     }
 
@@ -92,7 +99,7 @@ public class PlanService {
         List<Claim> made = new ArrayList<>();
         for (Plan plan : tx.execute(s -> plans.findBySheetIdOrderByIdAsc(sheetId))) {
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
-            for (LocalDate on = plan.getStart(); !on.isAfter(last); on = on.plusDays(plan.getEvery())) {
+            for (LocalDate on : plan.datesUpTo(last)) {
                 if (plan.hasMade(on)) {
                     continue;
                 }

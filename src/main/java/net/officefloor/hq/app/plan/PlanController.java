@@ -25,15 +25,15 @@ import org.springframework.web.bind.annotation.SessionAttribute;
 public class PlanController {
 
     /** A plan as the screen shows it, with how many claims it has made so far. */
-    public record PlanView(Long id, Long personId, String amount, LocalDate start, int every, LocalDate end,
-            int generated) {
+    public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, int generated) {
         static PlanView of(Plan p) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(),
-                    p.getEvery(), p.getEnd(), p.getGenerated());
+                    p.getEvery(), p.getDay(), p.getEnd(), p.getGenerated());
         }
     }
 
-    public record PlanForm(@NotNull BigDecimal amount, @NotNull LocalDate start, @NotNull Integer every,
+    public record PlanForm(@NotNull BigDecimal amount, @NotNull LocalDate start, Integer every, Integer day,
             @NotNull LocalDate end) {
     }
 
@@ -60,7 +60,7 @@ public class PlanController {
             @PathVariable Long personId, @Valid @RequestBody PlanForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return PlanView.of(service.add(user, sheetId, personId, form.amount(), form.start(), form.every(),
-                form.end()));
+                form.day(), form.end()));
     }
 
     /** Makes the plans' claims up to the sheet's today. */
