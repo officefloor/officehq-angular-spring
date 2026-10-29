@@ -15,7 +15,7 @@ export interface SummaryPerson {
 }
 
 // Every status a claim's count is shown for.
-export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'];
 
 // The sheet's figures at a glance, each worked out the same way as the list shows it.
 @Component({

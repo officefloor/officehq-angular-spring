@@ -446,6 +446,15 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Records the sheet's review threshold (null for none) from the date (null for the sheet's today): a claim dated
+     * on or after it whose due is above it goes to REVIEW when opened, for a steward to review.
+     */
+    @Transactional
+    public Sheet setReviewThreshold(String by, String sheetId, BigDecimal threshold, LocalDate from) {
+        return record(by, sheetId, Sheet.REVIEW_THRESHOLD, threshold == null ? null : money(threshold), from, false);
+    }
+
+    /**
      * Records the dated setting's value (null for none) from the date, or from the sheet's today when none is given,
      * replacing a value already recorded from that date. The audit line carries the from-date only when one was
      * given. When it can move live figures, the ones it moves are rolled up.

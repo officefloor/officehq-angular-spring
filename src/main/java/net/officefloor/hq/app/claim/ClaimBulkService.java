@@ -51,7 +51,7 @@ public class ClaimBulkService {
     /**
      * Opens each of the claims that can be opened, in list order (the order of people, newest claim first within a
      * person), so they are numbered in that order. Each is opened in its own transaction: one that is refused, or is
-     * not a claim of the sheet, is left as it is and counted as refused.
+     * not a claim of the sheet, is left as it is and counted as refused; one that goes to REVIEW counts as opened.
      */
     public Result open(String by, String sheetId, Set<Long> ids) {
         return each(by, sheetId, ids, id -> claims.changeStatus(by, sheetId, id, ClaimStatus.OPEN));

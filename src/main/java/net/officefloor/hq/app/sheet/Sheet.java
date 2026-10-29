@@ -33,6 +33,7 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String REVIEW_THRESHOLD = "review-threshold";
     public static final String ROUNDING = "rounding";
     public static final String HALF_UP = "half-up";
     public static final String HALF_EVEN = "half-even";
@@ -289,6 +290,14 @@ public class Sheet {
      */
     public BigDecimal noteThresholdOn(LocalDate on) {
         return inForce(NOTE_THRESHOLD, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+    }
+
+    /**
+     * The review threshold in force on the date: a claim dated then whose due is above it goes to REVIEW when opened.
+     * Null means none.
+     */
+    public BigDecimal reviewThresholdOn(LocalDate on) {
+        return inForce(REVIEW_THRESHOLD, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
     }
 
     /** The permission matrix as set, by action; an action not listed keeps the standing rule. */

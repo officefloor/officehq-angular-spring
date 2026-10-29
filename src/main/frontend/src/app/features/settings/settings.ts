@@ -42,8 +42,8 @@ interface SettingsView {
 /**
  * One value recorded for a dated setting, in force from its from-date until the next one recorded for its key:
  * clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold, proof-threshold-<grade> or
- * note-threshold or rounding. The value is null for none (a blank clerk limit, grace, cap, proof threshold, note
- * threshold or rounding mode).
+ * note-threshold, review-threshold or rounding. The value is null for none (a blank clerk limit, grace, cap, proof
+ * threshold, note threshold, review threshold or rounding mode).
  */
 interface DatedSetting {
   key: string;
@@ -52,7 +52,7 @@ interface DatedSetting {
 }
 
 /** A dated setting's key as the form and its fields name it. */
-export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | 'rounding' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}`;
+export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | 'review-threshold' | 'rounding' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}`;
 
 export const ROLES = ['clerk', 'steward', 'viewer'];
 /** The roles the permission matrix can list; a viewer may take no action. */
@@ -141,6 +141,8 @@ export class SettingsStore {
   readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.session.sheetToday()) ?? null);
   /** The note threshold in force on the sheet's today; null for none. */
   readonly noteThreshold = computed(() => valueOn(this.dated(), 'note-threshold', this.session.sheetToday()) ?? null);
+  /** The review threshold in force on the sheet's today; null for none. */
+  readonly reviewThreshold = computed(() => valueOn(this.dated(), 'review-threshold', this.session.sheetToday()) ?? null);
   /** The rounding mode in force on a date; null for none (blank, or none recorded): the policy date decides. */
   readonly rounding = computed(() => {
     const dated = this.dated();
@@ -627,6 +629,25 @@ export class SettingsStore {
           (input)="setFrom('note-threshold', value($event))"
           (change)="setFrom('note-threshold', value($event))"
         />
+        <label for="setting-review-threshold">Review threshold (a claim due above it goes to review when opened; blank for none)</label>
+        <input
+          id="setting-review-threshold"
+          data-testid="setting-review-threshold"
+          inputmode="decimal"
+          [value]="reviewThreshold()"
+          (input)="reviewThreshold.set(value($event)); reviewThresholdChanged = true; settingsError.set(null)"
+          (keydown.delete)="reviewThresholdChanged = true; settingsError.set(null)"
+          (keydown.backspace)="reviewThresholdChanged = true; settingsError.set(null)"
+        />
+        <label for="setting-review-threshold-from">Review threshold from (blank for the sheet's today)</label>
+        <input
+          id="setting-review-threshold-from"
+          data-testid="setting-review-threshold-from"
+          type="date"
+          [value]="from()['review-threshold'] ?? ''"
+          (input)="setFrom('review-threshold', value($event))"
+          (change)="setFrom('review-threshold', value($event))"
+        />
         <label for="setting-rounding">Rounding mode (half-up or half-even; blank for none: the policy date decides)</label>
         <input
           id="setting-rounding"
@@ -705,6 +726,10 @@ export class SettingsStore {
       <p>
         Note threshold in force:
         <strong data-testid="setting-note-threshold-current">{{ store.noteThreshold() ?? '' }}</strong>
+      </p>
+      <p>
+        Review threshold in force:
+        <strong data-testid="setting-review-threshold-current">{{ store.reviewThreshold() ?? '' }}</strong>
       </p>
       <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ store.roundingToday() ?? '' }}</strong></p>
       @for (p of permissionActions; track p.action) {
@@ -789,6 +814,7 @@ export class Settings {
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
   protected readonly noteThreshold = signal('');
+  protected readonly reviewThreshold = signal('');
   protected readonly rounding = signal('');
   // The from-date typed for each dated setting, by key; blank for the sheet's today.
   protected readonly from = signal<Readonly<Partial<Record<DatedKey, string>>>>({});
@@ -812,6 +838,7 @@ export class Settings {
   protected capChanged = false;
   protected proofThresholdChanged = false;
   protected noteThresholdChanged = false;
+  protected reviewThresholdChanged = false;
   protected roundingChanged = false;
   protected readonly permsChanged = new Set<string>();
   protected readonly user = signal('');
@@ -902,6 +929,9 @@ export class Settings {
         break;
       case 'note-threshold':
         this.noteThresholdChanged ||= this.noteThreshold().trim() !== '';
+        break;
+      case 'review-threshold':
+        this.reviewThresholdChanged ||= this.reviewThreshold().trim() !== '';
         break;
       case 'rounding':
         this.roundingChanged ||= this.rounding().trim() !== '';
@@ -1035,6 +1065,11 @@ export class Settings {
       this.settingsError.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const reviewThreshold = this.reviewThreshold().trim();
+    if (this.reviewThresholdChanged && reviewThreshold && !LIMIT.test(reviewThreshold)) {
+      this.settingsError.set('Enter a review threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     const rounding = this.rounding().trim();
     if (this.roundingChanged && rounding && !ROUNDING_MODES.includes(rounding)) {
       this.settingsError.set('Enter a rounding mode of half-up or half-even, or leave it blank for none.');
@@ -1060,6 +1095,7 @@ export class Settings {
     if (this.proofThresholdChanged) keys.push('proof-threshold');
     for (const g of gradeProof.keys()) keys.push(`proof-threshold-${g}`);
     if (this.noteThresholdChanged) keys.push('note-threshold');
+    if (this.reviewThresholdChanged) keys.push('review-threshold');
     if (this.roundingChanged) keys.push('rounding');
     const from = new Map<DatedKey, string | null>();
     for (const k of keys) {
@@ -1146,6 +1182,10 @@ export class Settings {
       if (this.noteThresholdChanged) {
         await this.store.setDated(sheet, 'note-threshold', noteThreshold || null, from.get('note-threshold') ?? null);
         this.noteThresholdChanged = this.noteThreshold().trim() !== noteThreshold;
+      }
+      if (this.reviewThresholdChanged) {
+        await this.store.setDated(sheet, 'review-threshold', reviewThreshold || null, from.get('review-threshold') ?? null);
+        this.reviewThresholdChanged = this.reviewThreshold().trim() !== reviewThreshold;
       }
       if (this.roundingChanged) {
         await this.store.setDated(sheet, 'rounding', rounding || null, from.get('rounding') ?? null);

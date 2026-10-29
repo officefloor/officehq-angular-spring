@@ -86,9 +86,11 @@ export interface ClaimLogLine {
 
 // A clerk settling a claim whose due is above the clerk limit makes it PENDING, for a steward to approve (SETTLED)
 // or reject (OPEN again). A deleted DRAFT is DELETED, counts nowhere, and on the day it was deleted can be restored.
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+// Opening a claim whose due is above the review threshold in force on its date makes it REVIEW, unnumbered and
+// counting nowhere, until a steward reviews it (OPEN).
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
-type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
+type ClaimAction = 'open' | 'review' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
 
 /** Only open, pending and settled claims count toward what is claimed and due. */
 export function counts(c: Claim): boolean {
@@ -449,6 +451,9 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
                 Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <button type="button" data-testid="claim-review" (click)="act(c, 'review')">
+                Review<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">
                 Settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
@@ -903,6 +908,10 @@ export class Claims {
           ? 'You opened this claim, so another user must settle it.'
           : action === 'settle' && editor
           ? 'You last edited this claim, so another user must settle it.'
+          : action === 'review' && forbidden
+          ? 'Only a steward can review a claim.'
+          : action === 'review' && c.status !== 'REVIEW'
+          ? `A ${c.status} claim cannot be reviewed; only one in REVIEW can.`
           : (action === 'approve' || action === 'reject') && forbidden
             ? 'Only a steward can approve or reject a pending claim.'
             : action === 'resettle' && forbidden
