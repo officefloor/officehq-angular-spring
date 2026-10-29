@@ -1,0 +1,76 @@
+{
+  "checkpoint": 164,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp164_correction-limit",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    34,
+    35,
+    51,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+    "cp30_corrections.spec.ts::corrections",
+    "cp34_bulk-open.spec.ts::bulk open scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "request": {
+    "spec": "A correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f4e61346cb1dd09f65433cb74d22a32f8a126f87",
+  "reset_sha": "",
+  "preagent_sha": "ec006cc375a6b1f508b8f573d9c3b236c5cce780",
+  "prev_sha": "ec006cc375a6b1f508b8f573d9c3b236c5cce780",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9226727999999998,
+    "input_tokens": 28,
+    "output_tokens": 6251,
+    "cache_read_tokens": 740768,
+    "cache_creation_tokens": 20621,
+    "num_turns": 13,
+    "duration_ms": 216678,
+    "duration_api_ms": 120793,
+    "model": "claude-opus-5-5",
+    "session_id": "e545b23d-f71e-4c1d-bcb7-302b7f59d2a7",
+    "stop_reason": "success",
+    "result_text": "I added the correction limit, and the main \"correction limit\" test passes along with scenarios 1 and 3. Scenario 2 still fails, every time, on a check that has nothing to do with corrections. I left that one alone rather than change existing behaviour that's outside this request.\n\n**The change** (all in `ClaimService.java`):\n- When a correction is added or a draft is edited, it is now refused if its size is more than what's left of the claim it corrects. What's left is the original amount minus the corrections already made against it. VOID and DELETED corrections don't count, and neither does the draft being edited.\n- A refusal returns an error that the form shows in `claim-form-error`, and nothing is written to the store or the audit file. No front-end change was needed.\n- I also applied the same check when a deleted correction is restored to a draft, because restoring it would otherwise let the total go over. The spec doesn't test this; say if you'd rather I take it out.\n\n**The scenario 2 failure** (`acceptance.spec.ts:917`): the test views the sheet as of 2026-02-10 and expects `rate-current-A` to show \"n/a\", but the app shows 5.00.\n- The 5.00 comes from the parent sheet `${sheet}-p`. Its rates were set with no from-date, so they apply on every date.\n- When viewing a past date, the app links a sheet to its parent as that link stands today. It does this even when the sheet itself was still empty on that date. `AsOfService` says so in its comments and its code inserts the link on purpose.\n- So the app is doing what it was designed to do, and the spec expects the opposite: no parent rates when looking back to a date before the sheet had anything in it. B and C would show 20.00 for the same reason.\n\nMaking scenario 2 pass means changing how parent sheets work when viewing a past date, which this change request doesn't cover. Do you want me to make that change (for example, an empty past sheet shows no parent rates), or treat it as a separate issue?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9226727999999998,
+        "num_turns": 13,
+        "duration_ms": 216678,
+        "duration_api_ms": 120793,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp164.agent.jsonl",
+  "agent_diff_file": "cp164.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
