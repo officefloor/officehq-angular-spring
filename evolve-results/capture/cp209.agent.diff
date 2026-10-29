@@ -1,0 +1,115 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index da48bcfd..426f3ea6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays, reviewLate } from '../claims/claims';
+ import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
+-import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
++import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
+ import { SettingsStore } from '../settings/settings';
+ import { VoidReasonStore } from '../void-reasons/void-reasons';
+ import { Header } from '../header/header';
+@@ -490,7 +490,7 @@ interface StatementView {
+         <thead>
+           <tr>
+             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shown('terms')) {<th scope="col">Terms</th>}@if (columns.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columns.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th>@if (columns.shown('claimed')) {<th scope="col">Claimed</th>}@if (columns.shown('due-total')) {<th scope="col">Due</th>}
+-            <th scope="col">Settled total</th><th scope="col">Open total</th>
++            <th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Score</th>
+             @if (columns.shown('overdue-count')) {<th scope="col">Overdue</th>}@if (columns.shown('overdue-total')) {<th scope="col">Overdue total</th>}
+             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
+             @if (columns.shown('statement-count')) {<th scope="col">Statements</th>}@if (columns.shown('stated-total')) {<th scope="col">Last stated total</th>}@if (columns.shown('statement-date')) {<th scope="col">Last statement</th>}
+@@ -538,6 +538,7 @@ interface StatementView {
+               }
+               <td data-testid="person-settled-total">{{ (splitBy().get(p.id)?.settled ?? '0.00') | fig }}</td>
+               <td data-testid="person-open-total">{{ (splitBy().get(p.id)?.open ?? '0.00') | fig }}</td>
++              <td data-testid="person-score">{{ (scoreBy().get(p.id) ?? '0') | fig }}</td>
+               @if (columns.shown('overdue-count')) {
+                 <td data-testid="person-overdue-count">{{ (overdueBy().get(p.id)?.length ?? 0) | fig }}</td>
+               }
+@@ -1115,6 +1116,15 @@ export class People {
+     }
+     return by;
+   });
++  // Each person's score: their settled-total divided by 100, minus 5 for each of their overdue claims that count,
++  // rounded half to even to a whole number.
++  protected readonly scoreBy = computed(() => {
++    const split = this.splitBy();
++    const overdue = this.overdueBy();
++    const by = new Map<number, string>();
++    for (const p of this.people()) by.set(p.id, scoreOf(split.get(p.id)?.settled ?? '0.00', overdue.get(p.id)?.length ?? 0));
++    return by;
++  });
+   // The sheet's settled-total and open-total: everyone's figure added up, not trimmed.
+   protected readonly settledTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.settled)));
+   protected readonly openTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.open)));
+@@ -1331,6 +1341,9 @@ export class People {
+   });
+   // The role the signed-in user acts in on the sheet, as the store last told it; null until it answers.
+   private readonly myRole = signal<string | null>(null);
++  // The people the signed-in user added on this screen since the sheet was last loaded: a restricted user still
++  // sees them until the sheet is loaded again.
++  private readonly addedHere = signal<ReadonlySet<number>>(new Set());
+   private roleSheet: string | null = null;
+   // The people a restricted user may see on the list: their person, and everyone in the crews that person leads or
+   // belongs to; null when the list shows everyone. Every other figure is still over everyone on the sheet.
+@@ -1338,8 +1351,8 @@ export class People {
+     const role = this.myRole();
+     if (role !== null && role !== 'restricted') return null;
+     const me = this.me();
+-    if (role === null || me === undefined) return new Set();
+-    const ids = new Set([me.id]);
++    if (role === null || me === undefined) return new Set(this.addedHere());
++    const ids = new Set([...this.addedHere(), me.id]);
+     for (const c of this.crewRoster.crews()) {
+       if (c.leadId !== me.id && !c.members.some((m) => m.personId === me.id)) continue;
+       if (c.leadId !== null) ids.add(c.leadId);
+@@ -1381,6 +1394,7 @@ export class People {
+       untracked(() => {
+         const key = `${id} ${user}`;
+         if (key !== this.roleSheet) this.myRole.set(null);
++        this.addedHere.set(new Set());
+         this.roleSheet = key;
+         if (id) void this.loadRole(id);
+       });
+@@ -2396,6 +2410,7 @@ export class People {
+       if (editing === null) {
+         const added = await firstValueFrom(this.http.post<Person>(base, form));
+         this.people.update((list) => [...list, added]);
++        this.addedHere.update((ids) => new Set([...ids, added.id]));
+       } else {
+         const edit = { ...form, gradeFrom: this.gradeFrom() || null, version: this.editingVersion() };
+         const saved = await firstValueFrom(this.http.put<Person>(`${base}/${editing}`, edit));
+@@ -2445,6 +2460,7 @@ export class People {
+       if (this.session.sheetId() !== sheet) return;
+       if (!this.people().some((p) => p.id === added.person.id)) {
+         this.people.update((list) => [...list, added.person]);
++        this.addedHere.update((ids) => new Set([...ids, added.person.id]));
+       }
+       this.claimSaved(added.claim);
+       this.quickName.set('');
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 22318fe1..e3521167 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -121,6 +121,19 @@ export function sharedSum(parts: readonly { figure: string; share: string }[]):
+   return formatCents(product < 0n ? -total : total);
+ }
+ 
++/**
++ * A score: the two-decimal figure divided by 100, minus 5 for each of the count, rounded half to even to a whole
++ * number, with a minus sign when negative.
++ */
++export function scoreOf(figure: string, minusFives: number): string {
++  const value = cents(figure) - BigInt(minusFives) * 50000n;
++  const size = value < 0n ? -value : value;
++  let score = size / 10000n;
++  const rest = size % 10000n;
++  if (rest > 5000n || (rest === 5000n && score % 2n === 1n)) score += 1n;
++  return (value < 0n && score > 0n ? '-' : '') + score.toString();
++}
++
+ /**
+  * The sheet-total of two-decimal figures, skipping n/a: with three or more figures, the single highest and the
+  * single lowest are left out.
