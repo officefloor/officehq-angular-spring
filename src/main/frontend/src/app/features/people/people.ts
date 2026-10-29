@@ -795,6 +795,8 @@ export class People {
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The grade chosen in each row's grade select, until saved. */
   protected readonly inlineGrades = signal<Record<number, string>>({});
+  // The sheet whose people are on screen; a re-load of it keeps them showing until the store answers.
+  private shownSheet: string | null = null;
   // The date typed beside each row's statement button, by person id: blank takes the statement now.
   protected readonly statementAsOfs = signal<Record<number, string>>({});
   // Each row's hold from- and to-dates as typed, by person id; a blank from-date takes the sheet's today, a blank
@@ -1249,12 +1251,16 @@ export class People {
       const id = this.session.sheetId();
       this.session.loads();
       untracked(() => {
-        this.people.set([]);
-        this.claims.set([]);
-        this.usedTags.set([]);
-        this.statements.set([]);
-        this.patrons.set([]);
-        this.watched.set(new Set());
+        // a re-load of the same sheet keeps its rows until the store answers, so none blinks out meanwhile
+        if (id !== this.shownSheet) {
+          this.people.set([]);
+          this.claims.set([]);
+          this.usedTags.set([]);
+          this.statements.set([]);
+          this.patrons.set([]);
+          this.watched.set(new Set());
+        }
+        this.shownSheet = id;
         this.patronChoices.set({});
         this.aliasInputs.set({});
         this.patronErrors.set({});

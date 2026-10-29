@@ -28,11 +28,12 @@ public class PeriodController {
 
     /**
      * A period as the screen shows it; a closed or soft-closed one carries the due-total fixed when it was closed, and each person's
-     * due-total and carried figure then, by person id; and each person's opening balance for it, by person id.
+     * due-total and carried figure then, by person id; each person's opening balance for it, by person id; and whether
+     * it is locked.
      */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, Integer cap, boolean closed,
             boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals,
-            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked) {
         static PeriodView of(Period p) {
             Map<Long, String> personTotals = new TreeMap<>();
             p.getClosedPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
@@ -42,7 +43,7 @@ public class PeriodController {
             p.getPersonOpenings().forEach((person, amount) -> openings.put(person, amount.toPlainString()));
             return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.getCap(), p.isClosed(), p.isSoftClosed(),
                     p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), personTotals, personCarried,
-                    openings);
+                    openings, p.isLocked());
         }
     }
 
@@ -133,5 +134,19 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
         return PeriodView.of(service.reopen(user, sheetId, id));
+    }
+
+    @PostMapping("/{id}/lock")
+    public PeriodView lock(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return PeriodView.of(service.lock(user, sheetId, id, true));
+    }
+
+    @PostMapping("/{id}/unlock")
+    public PeriodView unlock(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+        return PeriodView.of(service.lock(user, sheetId, id, false));
     }
 }

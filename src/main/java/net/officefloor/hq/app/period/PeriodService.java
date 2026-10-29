@@ -322,7 +322,7 @@ public class PeriodService {
 
     /**
      * Reopens a closed or soft-closed period, making its due-total live again. Refused unless the user's role may reopen (a steward by
-     * the standing rule), or when the period is not closed.
+     * the standing rule), when the period is not closed, or while it is locked.
      */
     @Transactional
     public Period reopen(String by, String sheetId, Long id) {
@@ -333,9 +333,35 @@ public class PeriodService {
         if (!period.isClosed() && !period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed.");
         }
+        if (period.isLocked()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is locked; unlock it first.");
+        }
         period.reopen();
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + by + " period=" + saved.getName());
+        return saved;
+    }
+
+    /**
+     * Locks the period, or unlocks it; a locked period cannot be reopened. Refused unless the user is a steward, and
+     * when the period is already locked (or, to unlock, not locked).
+     */
+    @Transactional
+    public Period lock(String by, String sheetId, Long id, boolean locked) {
+        sheets.lock(sheetId);
+        Period period = periods.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can lock or unlock a period.");
+        }
+        if (period.isLocked() == locked) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    locked ? "That period is already locked." : "That period is not locked.");
+        }
+        period.setLocked(locked);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit((locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + by
+                + " period=" + saved.getName());
         return saved;
     }
 

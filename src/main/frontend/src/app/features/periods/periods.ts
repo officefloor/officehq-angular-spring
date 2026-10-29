@@ -26,6 +26,8 @@ export interface PeriodView {
   closedPersonCarried: Record<string, string>;
   // Each person's opening balance for it, added to their carried figure, by person id; a person with none has no entry.
   personOpenings: Record<string, string>;
+  // A locked period cannot be reopened until a steward unlocks it.
+  locked: boolean;
 }
 
 /**
@@ -222,6 +224,17 @@ export class PeriodStore {
     this.put(sheet, p);
   }
 
+  /** Lock the period, or unlock it. */
+  async setLocked(sheet: string, id: number, locked: boolean): Promise<void> {
+    const p = await firstValueFrom(
+      this.http.post<PeriodView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/periods/${id}/${locked ? 'lock' : 'unlock'}`,
+        null,
+      ),
+    );
+    this.put(sheet, p);
+  }
+
   /** Add each pasted line of name,period,amount to the opening balances, all or none; answers how many went through. */
   async importOpenings(sheet: string, text: string): Promise<number> {
     const done = await firstValueFrom(
@@ -340,7 +353,7 @@ export class PeriodStore {
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Cap</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Cap</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Locked</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
@@ -353,6 +366,7 @@ export class PeriodStore {
               <td data-testid="period-due-total">{{ dueBy().get(p.id) | fig }}</td>
               <td data-testid="period-closed">{{ (p.closed ? 'yes' : p.softClosed ? 'soft' : 'no') | fig }}</td>
               <td data-testid="period-fy">{{ fiscalYear(p) | fig }}</td>
+              <td data-testid="period-locked">{{ (p.locked ? 'yes' : 'no') | fig }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
@@ -362,6 +376,12 @@ export class PeriodStore {
                 </button>
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)">
                   Reopen<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="period-lock" (click)="setLocked(p, true)">
+                  Lock<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="period-unlock" (click)="setLocked(p, false)">
+                  Unlock<span class="visually-hidden"> period {{ p.name }}</span>
                 </button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="period-error">{{ err | fig }}</p>
@@ -463,6 +483,10 @@ export class Periods {
       this.setRowError(p.id, 'That period is not closed.');
       return;
     }
+    if (p.locked) {
+      this.setRowError(p.id, 'That period is locked; unlock it first.');
+      return;
+    }
     try {
       await this.store.reopen(sheet, p.id);
     } catch (err) {
@@ -471,6 +495,29 @@ export class Periods {
         err instanceof HttpErrorResponse && err.status === 403
           ? 'Your role may not reopen a period on this sheet.'
           : 'Could not reopen that period.',
+      );
+    }
+  }
+
+  /** Locks or unlocks the period; a steward only. */
+  protected async setLocked(p: PeriodView, locked: boolean): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (p.locked === locked) {
+      this.setRowError(p.id, locked ? 'That period is already locked.' : 'That period is not locked.');
+      return;
+    }
+    try {
+      await this.store.setLocked(sheet, p.id, locked);
+    } catch (err) {
+      this.setRowError(
+        p.id,
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward may lock or unlock a period.'
+          : locked
+            ? 'Could not lock that period.'
+            : 'Could not unlock that period.',
       );
     }
   }
