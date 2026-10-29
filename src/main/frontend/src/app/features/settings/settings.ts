@@ -26,6 +26,8 @@ interface SettingsView {
   cap: string | null;
   // The pot shared among the members of each balanced pool by their shares, two decimals; null when blank: none.
   pot: string | null;
+  // The due-total above which a person is alerted, two decimals; null when blank: off.
+  alertThreshold: string | null;
   // The id of the parent sheet, whose rates fill in for a grade with none in force on a date here; null for none.
   parent: string | null;
   // The month (1 to 12) the sheet's fiscal years start in.
@@ -148,6 +150,8 @@ export class SettingsStore {
   readonly graceDays = signal<number | null>(null);
   /** The pot as set; null when blank (none). */
   readonly pot = signal<string | null>(null);
+  /** The alert threshold as set; null when blank (off). */
+  readonly alertThreshold = signal<string | null>(null);
   /** The parent sheet's id; null when blank (none). */
   readonly parent = signal<string | null>(null);
   /** The month (1 to 12) the sheet's fiscal years start in. */
@@ -174,6 +178,7 @@ export class SettingsStore {
     this.entryDate.set(null);
     this.graceDays.set(null);
     this.pot.set(null);
+    this.alertThreshold.set(null);
     this.parent.set(null);
     this.fiscalStartMonth.set(1);
     this.permissions.set({});
@@ -195,6 +200,7 @@ export class SettingsStore {
     this.entryDate.set(s.entryDate);
     this.graceDays.set(s.graceDays);
     this.pot.set(s.pot ?? null);
+    this.alertThreshold.set(s.alertThreshold ?? null);
     this.parent.set(s.parent ?? null);
     this.fiscalStartMonth.set(s.fiscalStartMonth ?? 1);
     this.permissions.set(s.permissions ?? {});
@@ -306,6 +312,13 @@ export class SettingsStore {
   async setPot(sheet: string, value: string | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/pot`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setAlertThreshold(sheet: string, value: string | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/alert-threshold`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -491,6 +504,16 @@ export class SettingsStore {
           (keydown.delete)="potChanged = true; settingsError.set(null)"
           (keydown.backspace)="potChanged = true; settingsError.set(null)"
         />
+        <label for="setting-alert-threshold">Alert threshold (a person whose due-total goes above it is alerted; blank for off)</label>
+        <input
+          id="setting-alert-threshold"
+          data-testid="setting-alert-threshold"
+          inputmode="decimal"
+          [value]="alertThreshold()"
+          (input)="alertThreshold.set(value($event)); alertThresholdChanged = true; settingsError.set(null)"
+          (keydown.delete)="alertThresholdChanged = true; settingsError.set(null)"
+          (keydown.backspace)="alertThresholdChanged = true; settingsError.set(null)"
+        />
         <label for="setting-fiscal-start-month">Fiscal start month (1 to 12; fiscal years start on its first day)</label>
         <input
           id="setting-fiscal-start-month"
@@ -631,6 +654,7 @@ export class SettingsStore {
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ store.entryDate() ?? '' }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ store.graceDays() ?? '' }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ store.pot() ?? '' }}</strong></p>
+      <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ store.alertThreshold() ?? '' }}</strong></p>
       <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong></p>
       <p>Parent sheet: <strong data-testid="setting-parent-current">{{ store.parent() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ store.cap() ?? '' }}</strong></p>
@@ -724,6 +748,7 @@ export class Settings {
   protected readonly entryDate = signal('');
   protected readonly graceDays = signal('');
   protected readonly pot = signal('');
+  protected readonly alertThreshold = signal('');
   protected readonly fiscalStartMonth = signal('');
   protected readonly parent = signal('');
   protected readonly cap = signal('');
@@ -745,6 +770,7 @@ export class Settings {
   protected entryDateChanged = false;
   protected graceDaysChanged = false;
   protected potChanged = false;
+  protected alertThresholdChanged = false;
   protected fiscalStartMonthChanged = false;
   protected parentChanged = false;
   protected capChanged = false;
@@ -931,6 +957,11 @@ export class Settings {
       this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const alertThreshold = this.alertThreshold().trim();
+    if (this.alertThresholdChanged && alertThreshold && !LIMIT.test(alertThreshold)) {
+      this.settingsError.set('Enter an alert threshold of 0.00 or more, with up to two decimals, or leave it blank for off.');
+      return;
+    }
     const fiscalStartMonth = this.fiscalStartMonth().trim();
     if (this.fiscalStartMonthChanged && !MONTH.test(fiscalStartMonth)) {
       this.settingsError.set('Enter a fiscal start month from 1 to 12.');
@@ -1039,6 +1070,10 @@ export class Settings {
       if (this.potChanged) {
         await this.store.setPot(sheet, pot || null);
         this.potChanged = this.pot().trim() !== pot;
+      }
+      if (this.alertThresholdChanged) {
+        await this.store.setAlertThreshold(sheet, alertThreshold || null);
+        this.alertThresholdChanged = this.alertThreshold().trim() !== alertThreshold;
       }
       if (this.fiscalStartMonthChanged) {
         await this.store.setFiscalStartMonth(sheet, Number(fiscalStartMonth));

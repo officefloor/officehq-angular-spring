@@ -206,6 +206,7 @@ public class RollupService {
                     + " due-total=" + after.dueTotal().toPlainString() + " overdue-total="
                     + after.overdueTotal().toPlainString());
         }
+        recordAlerts(head, sheetId, before, after);
     }
 
     /** Records, once the change commits, a ROLLUP line for every person on the sheet, then its TOTALS line. */
@@ -218,6 +219,29 @@ public class RollupService {
         }
         audit.recordOnCommit("TOTALS" + head + " claimed-total=" + now.claimedTotal().toPlainString() + " due-total="
                 + now.dueTotal().toPlainString() + " overdue-total=" + now.overdueTotal().toPlainString());
+        recordAlerts(head, sheetId, null, now);
+    }
+
+    /**
+     * Records, once the change commits, an ALERT line (in list order) for each person whose due-total went from at or
+     * below the sheet's alert threshold (or n/a, or not yet on the sheet) to above it; none while the threshold is off.
+     */
+    private void recordAlerts(String head, String sheetId, Snapshot before, Snapshot after) {
+        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+        if (threshold == null) {
+            return;
+        }
+        for (Map.Entry<Long, Figures> e : after.people().entrySet()) {
+            Figures was = before == null ? null : before.people().get(e.getKey());
+            Figures now = e.getValue();
+            if (above(now, threshold) && !above(was, threshold)) {
+                audit.recordOnCommit("ALERT" + head + " name=" + now.name() + " due-total=" + text(now.dueTotal()));
+            }
+        }
+    }
+
+    private static boolean above(Figures f, BigDecimal threshold) {
+        return f != null && f.dueTotal() != null && f.dueTotal().compareTo(threshold) > 0;
     }
 
     /**

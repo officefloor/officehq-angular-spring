@@ -39,12 +39,12 @@ public class SettingsController {
      * cap in force on the sheet's today (the clerk limit carries two decimals, or is null for none, the floor carries
      * two decimals, the terms are whole days, the late percent carries two decimals, and the cap carries two decimals,
      * or is null for none); the policy date, null when blank (the sheet's today), and the period numbering from, null
-     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the parent sheet's id, null for none; the fiscal start month, 1 to 12; and every value recorded for the dated settings, from which the screen works out the one in
+     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; and every value recorded for the dated settings, from which the screen works out the one in
      * force on any date; and the permission matrix as set, by action (an action not listed keeps the standing rule).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, LocalDate entryDate, Integer graceDays, String cap, List<DatedSettingView> dated, Map<String, String> permissions,
-            String pot, String parent, int fiscalStartMonth) {
+            String pot, String alertThreshold, String parent, int fiscalStartMonth) {
         static SettingsView of(Sheet sheet) {
             LocalDate today = sheet.getToday();
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -55,6 +55,7 @@ public class SettingsController {
                             .sorted(Comparator.comparing(DatedSettingView::key).thenComparing(DatedSettingView::from))
                             .toList(),
                     sheet.getPermissions(), sheet.getPot() == null ? null : sheet.getPot().toPlainString(),
+                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getParentId(), sheet.getFiscalStartMonth());
         }
     }
@@ -136,6 +137,10 @@ public class SettingsController {
 
     /** The pot as the form submits it: 0.00 or more with up to two decimals, or null for blank (none). */
     public record PotForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value) {
+    }
+
+    /** The alert threshold as the form submits it: 0.00 or more with up to two decimals, or null for blank (off). */
+    public record AlertThresholdForm(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal value) {
     }
 
     /** The fiscal start month as the form submits it: 1 to 12. */
@@ -294,6 +299,13 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody PotForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setPot(user, sheetId, form.value()));
+    }
+
+    @PutMapping("/settings/alert-threshold")
+    public SettingsView setAlertThreshold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody AlertThresholdForm form, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.setAlertThreshold(user, sheetId, form.value()));
     }
 
     @PutMapping("/settings/fiscal-start-month")

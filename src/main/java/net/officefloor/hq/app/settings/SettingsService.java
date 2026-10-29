@@ -321,6 +321,21 @@ public class SettingsService implements Audit.OnBehalf {
         return saved;
     }
 
+    /**
+     * Sets the sheet's alert threshold (null for blank: off): a person whose due-total crosses above it is alerted.
+     * Not dated.
+     */
+    @Transactional
+    public Sheet setAlertThreshold(String by, String sheetId, BigDecimal threshold) {
+        BigDecimal scaled = threshold == null ? null : threshold.setScale(2, RoundingMode.UNNECESSARY);
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setAlertThreshold(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=alert-threshold value="
+                + (scaled == null ? "" : scaled.toPlainString()));
+        return saved;
+    }
+
     /** Sets the month (1 to 12) the sheet's fiscal years start in. Not dated. */
     @Transactional
     public Sheet setFiscalStartMonth(String by, String sheetId, int month) {
