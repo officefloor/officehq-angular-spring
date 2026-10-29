@@ -7,8 +7,10 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimTag;
@@ -35,9 +37,12 @@ public class PersonService {
     private final RollupService rollup;
     private final Audit audit;
     private final ClaimTagRepository tags;
+    private final PersonSnapshotRepository snapshotLines;
 
     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
-            SheetRepository sheetRepository, RollupService rollup, Audit audit, ClaimTagRepository tags) {
+            SheetRepository sheetRepository, RollupService rollup, Audit audit, ClaimTagRepository tags,
+            PersonSnapshotRepository snapshotLines) {
+        this.snapshotLines = snapshotLines;
         this.tags = tags;
         this.people = people;
         this.patrons = patrons;
@@ -50,6 +55,13 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+    }
+
+    /** Each person's snapshot lines on the sheet, by person id, oldest first. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<PersonController.SnapshotView>> snapshotLines(String sheetId) {
+        return snapshotLines.findOfSheet(sheetId).stream().collect(Collectors.groupingBy(
+                PersonSnapshot::getPersonId, Collectors.mapping(PersonController.SnapshotView::of, Collectors.toList())));
     }
 
     /** The sheet's today, which the grade a person is listed with is in force on. */

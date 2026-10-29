@@ -35,6 +35,8 @@ interface Person {
   retiredFrom: string | null;
   // The retirements the person was unretired from, earliest first: each from its from-date to the day unretired.
   pastRetirements: PastRetirement[];
+  // One line per SNAPSHOT written for the person, oldest first: the day being left and their due-total then.
+  snapshots: SnapshotLine[];
   // The sheet the person was transferred from; null when they were not.
   originSheet: string | null;
   // Whether the person has any hold, and every hold put on them, earliest from-date first.
@@ -53,6 +55,12 @@ interface DatedHold {
 interface PastRetirement {
   from: string;
   to: string;
+}
+
+// A snapshot line: the day being left when the sheet's today changed, and the person's due-total (null: n/a) then.
+interface SnapshotLine {
+  day: string;
+  dueTotal: string | null;
 }
 
 // One person named as another's patron.
@@ -523,6 +531,13 @@ interface StatementView {
                   <ul aria-label="Past retirements">
                     @for (r of p.pastRetirements; track $index) {
                       <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                    }
+                  </ul>
+                }
+                @if (p.snapshots.length > 0) {
+                  <ul aria-label="Snapshots">
+                    @for (s of p.snapshots; track $index) {
+                      <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal ?? 'n/a' }}</li>
                     }
                   </ul>
                 }

@@ -18,6 +18,8 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonSnapshot;
+import net.officefloor.hq.app.person.PersonSnapshotRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -53,14 +55,16 @@ public class RollupService {
     private final RateChain rates;
     private final SheetRepository sheets;
     private final Audit audit;
+    private final PersonSnapshotRepository snapshotLines;
 
     public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates, SheetRepository sheets,
-            Audit audit) {
+            Audit audit, PersonSnapshotRepository snapshotLines) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
+        this.snapshotLines = snapshotLines;
     }
 
     /** The sheet's figures as the store holds them now (as the screen computes them). */
@@ -175,9 +179,16 @@ public class RollupService {
         return sum;
     }
 
-    /** Records, once the change commits, a SNAPSHOT line per person with their due-total in the given snapshot. */
-    public void recordSnapshot(String by, String sheetId, Snapshot snapshot) {
-        for (Figures f : snapshot.people().values()) {
+    /**
+     * Records, once the change commits, a SNAPSHOT line per person with their due-total in the given snapshot, and
+     * keeps it as the person's snapshot line for the day being left.
+     */
+    public void recordSnapshot(String by, String sheetId, Snapshot snapshot, LocalDate day) {
+        for (Map.Entry<Long, Figures> e : snapshot.people().entrySet()) {
+            Figures f = e.getValue();
+            if (day != null) {
+                snapshotLines.save(new PersonSnapshot(e.getKey(), day, f.dueTotal()));
+            }
             audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + by + " name=" + f.name() + " due-total="
                     + text(f.dueTotal()));
         }

@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.asof.AsOfService;
@@ -38,14 +39,22 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
             List<String> aliases, boolean clashing, String originSheet, List<RetirementView> pastRetirements,
-            List<String> tags) {
-        public static PersonView of(Person p, LocalDate today, Set<Long> clashing) {
+            List<String> tags, List<SnapshotView> snapshots) {
+        public static PersonView of(Person p, LocalDate today, Set<Long> clashing,
+                Map<Long, List<SnapshotView>> snapshots) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
                     p.getContact(), p.getAliases(), clashing.contains(p.getId()),
                     p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList(),
-                    ClaimService.tagList(p.getTags()));
+                    ClaimService.tagList(p.getTags()), snapshots.getOrDefault(p.getId(), List.of()));
+        }
+    }
+
+    /** A snapshot line of a person: the day being left when it was written, and their due-total then (null: n/a). */
+    public record SnapshotView(LocalDate day, String dueTotal) {
+        public static SnapshotView of(PersonSnapshot s) {
+            return new SnapshotView(s.getDay(), s.getDueTotal() == null ? null : s.getDueTotal().toPlainString());
         }
     }
 
@@ -182,7 +191,8 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
-        return service.list(sheetId).stream().map(p -> PersonView.of(p, today, clashing)).toList();
+        Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+        return service.list(sheetId).stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList();
     }
 
     @PostMapping
@@ -206,8 +216,9 @@ public class PersonController {
         PersonImportService.Result result = imports.importPeople(user, sheetId, form.text());
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
-        return new ImportView(result.added().stream().map(p -> PersonView.of(p, today, clashing)).toList(),
-                result.updated().stream().map(p -> PersonView.of(p, today, clashing)).toList());
+        Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+        return new ImportView(result.added().stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList(),
+                result.updated().stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
     }
 
     @PutMapping("/{id}")
@@ -311,7 +322,8 @@ public class PersonController {
         List<Person> graded = service.bulkGrade(user, sheetId, form.ids(), form.grade(), form.from());
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
-        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing)).toList());
+        Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
     }
 
     /**
@@ -330,12 +342,13 @@ public class PersonController {
         List<Person> retired = service.bulkRetire(user, sheetId, form.ids(), form.from());
         LocalDate today = service.today(sheetId);
         Set<Long> clashing = service.clashing(sheetId);
-        return new BulkRetireView(retired.stream().map(p -> PersonView.of(p, today, clashing)).toList());
+        Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+        return new BulkRetireView(retired.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
     }
 
     /** The person as listed on the sheet's today. */
     private PersonView view(String sheetId, Person person) {
-        return PersonView.of(person, service.today(sheetId), service.clashing(sheetId));
+        return PersonView.of(person, service.today(sheetId), service.clashing(sheetId), service.snapshotLines(sheetId));
     }
 
     /** The ids of the people on the sheet the signed-in user watches, in the order they started watching. */

@@ -39,7 +39,7 @@ public class SheetService {
     public Sheet setToday(String by, String id, LocalDate today) {
         Sheet sheet = load(id);
         RollupService.Snapshot before = rollup.snapshot(id);
-        rollup.recordSnapshot(by, id, before);
+        rollup.recordSnapshot(by, id, before, sheet.getToday());
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         events.publishEvent(new TodayChanged(by, saved));
