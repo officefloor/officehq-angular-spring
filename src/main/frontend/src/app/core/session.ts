@@ -1,7 +1,8 @@
 import { HttpClient } from '@angular/common/http';
-import { ApplicationRef, Injectable, inject, signal } from '@angular/core';
+import { ApplicationRef, Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { AsOf } from './as-of';
+import { Preview } from './preview';
 import { UserColumns } from './columns';
 import { UserLocale } from './locale';
 
@@ -11,13 +12,19 @@ export class Session {
   private readonly http = inject(HttpClient);
   private readonly appRef = inject(ApplicationRef);
   private readonly asOf = inject(AsOf);
+  private readonly preview = inject(Preview);
   private readonly userLocale = inject(UserLocale);
   private readonly userColumns = inject(UserColumns);
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
-  // The active sheet's today (yyyy-mm-dd): every date decision and default date uses it.
-  readonly sheetToday = signal<string | null>(null);
+  // The active sheet's real today (yyyy-mm-dd): every change, and every default date, uses it.
+  readonly realToday = signal<string | null>(null);
+  // The date the screen previews the sheet on, or null: while set, every figure is shown as if it were the sheet's
+  // today, over the sheet's current records; changes still use the real today.
+  readonly sheetPreview = this.preview.date.asReadonly();
+  // The today every figure on the screen is shown by: the preview date while set, else the sheet's real today.
+  readonly sheetToday = computed(() => this.preview.date() ?? this.realToday());
   // Whether the active sheet is archived: it stays visible and every change on it is refused.
   readonly sheetArchived = signal(false);
   // The number of the active sheet's last bulk settle batch, or null when there has been none.
@@ -40,7 +47,7 @@ export class Session {
       this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}`, null),
     );
     this.sheetId.set(s.id);
-    this.sheetToday.set(s.today);
+    this.realToday.set(s.today);
     this.sheetArchived.set(s.archived);
     this.sheetLastBatch.set(s.lastBatch);
     this.loads.update((n) => n + 1);
@@ -49,6 +56,13 @@ export class Session {
   // Shows the sheet as of the date (null: as it stands now), re-read from the store.
   async setAsOf(date: string | null): Promise<void> {
     this.asOf.date.set(date);
+    const id = this.sheetId();
+    if (id) await this.loadSheet(id);
+  }
+
+  // Previews the sheet on the date (null: none), re-read from the store.
+  async setPreview(date: string | null): Promise<void> {
+    this.preview.date.set(date);
     const id = this.sheetId();
     if (id) await this.loadSheet(id);
   }
@@ -69,7 +83,7 @@ export class Session {
     const s = await firstValueFrom(
       this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/today`, { today }),
     );
-    this.sheetToday.set(s.today);
+    this.realToday.set(s.today);
   }
 
   // Clones the active sheet to another id, never used before.

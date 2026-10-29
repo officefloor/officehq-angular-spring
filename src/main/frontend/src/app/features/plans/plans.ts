@@ -305,7 +305,7 @@ export class PersonPlans {
       return;
     }
     // a blank start takes the sheet's today
-    const start = this.start() || this.session.sheetToday() || '';
+    const start = this.start() || this.session.realToday() || '';
     const end = this.end();
     if (!start || !end) {
       this.error.set('Enter a start date and an end date.');

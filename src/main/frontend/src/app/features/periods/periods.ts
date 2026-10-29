@@ -602,7 +602,7 @@ export class Periods {
     this.genError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const from = this.genFrom().trim() || (this.session.sheetToday() ?? '');
+    const from = this.genFrom().trim() || (this.session.realToday() ?? '');
     const to = this.genTo().trim();
     if (!DATE.test(from) || !DATE.test(to)) {
       this.genError.set('Enter a from and a to date as yyyy-mm-dd.');
@@ -774,7 +774,7 @@ export class Periods {
       this.error.set('Enter a name.');
       return;
     }
-    const from = this.from().trim() || (this.session.sheetToday() ?? '');
+    const from = this.from().trim() || (this.session.realToday() ?? '');
     const to = this.to().trim();
     if (!DATE.test(from) || !DATE.test(to)) {
       this.error.set('Enter a from and a to date as yyyy-mm-dd.');

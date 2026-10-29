@@ -89,7 +89,8 @@ public class StatementService {
 
     /**
      * Takes a statement for the person: records their due-total now (late charges included) and binds each of their claims that counts to
-     * the due it shows now, late charge included (one already bound keeps its bound due); a claim that does not count (as an open one dated within a hold, or a deferred one) is freed (live again).
+     * the due it shows now, late charge included (one already bound keeps its bound due), and counts the parts they
+     * hold of others' shared claims; a claim that does not count (as an open one dated within a hold, or a deferred one) is freed (live again).
      */
     @Transactional
     public Summary take(String by, String sheetId, Long personId) {
@@ -120,6 +121,12 @@ public class StatementService {
                 kept = true;
                 total = total.add(due);
             }
+        }
+        // the parts the person holds of others' shared claims count, as on screen
+        RollupService.Figures figures = before.people().get(personId);
+        if (figures != null && figures.heldTotal() != null) {
+            kept = true;
+            total = total.add(figures.heldTotal());
         }
         claims.flush();
         // as on screen: with no rate in force today for any of those grades and no claim with a figure, the due-total

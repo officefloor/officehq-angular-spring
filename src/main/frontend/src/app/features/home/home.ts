@@ -56,7 +56,7 @@ import { PlanStore } from '../plans/plans';
 
       @if (session.sheetId(); as id) {
         <p>Sheet: <strong data-testid="sheet-current-id">{{ id | fig }}</strong></p>
-        <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() | fig }}</strong></p>
+        <p>Today: <strong data-testid="sheet-today">{{ session.realToday() | fig }}</strong></p>
         <p>Archived: <strong data-testid="sheet-archived">{{ (session.sheetArchived() ? 'yes' : 'no') | fig }}</strong></p>
         <p>Parent sheet: <strong data-testid="sheet-parent">{{ (settings.parent() ?? '') | fig }}</strong></p>
 
@@ -99,6 +99,22 @@ import { PlanStore } from '../plans/plans';
           <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
           @if (asOfError(); as err) {
             <p role="alert" data-testid="asof-error">{{ err | fig }}</p>
+          }
+        </form>
+        <p>Preview: <strong data-testid="sheet-preview">{{ (session.sheetPreview() ?? '') | fig }}</strong></p>
+        <form (submit)="setPreview($event)" aria-label="Preview the sheet on a date">
+          <label for="preview-date">Preview on</label>
+          <input
+            id="preview-date"
+            type="date"
+            data-testid="preview-date"
+            [value]="previewInput()"
+            (input)="previewInput.set(value($event)); previewError.set(null)"
+          />
+          <button type="submit" data-testid="preview-set">Set preview</button>
+          <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
+          @if (previewError(); as err) {
+            <p role="alert" data-testid="preview-error">{{ err | fig }}</p>
           }
         </form>
         @if (todayError(); as err) {
@@ -160,6 +176,10 @@ export class Home {
   protected readonly asOfInput = signal('');
   // The as-of entry's own error: a date that is not one, or a sheet that could not be shown as of it.
   protected readonly asOfError = signal<string | null>(null);
+
+  protected readonly previewInput = signal('');
+  // The preview entry's own error: a date that is not one, or a sheet that could not be previewed on it.
+  protected readonly previewError = signal<string | null>(null);
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
@@ -246,6 +266,30 @@ export class Home {
       await this.session.setAsOf(null);
     } catch {
       this.asOfError.set('Could not show the sheet as it stands.');
+    }
+  }
+
+  protected async setPreview(e: Event): Promise<void> {
+    e.preventDefault();
+    this.previewError.set(null);
+    const date = this.previewInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.previewError.set('Enter a date as yyyy-mm-dd.');
+      return;
+    }
+    try {
+      await this.session.setPreview(date);
+    } catch {
+      this.previewError.set('Could not preview the sheet on that date.');
+    }
+  }
+
+  protected async clearPreview(): Promise<void> {
+    this.previewError.set(null);
+    try {
+      await this.session.setPreview(null);
+    } catch {
+      this.previewError.set('Could not show the sheet without a preview.');
     }
   }
 

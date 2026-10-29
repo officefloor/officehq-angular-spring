@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import net.officefloor.hq.app.preview.PreviewContext;
 
 /** A sheet, chosen by its id. Everything else in the app is kept per sheet. */
 @Entity
@@ -213,8 +214,9 @@ public class Sheet {
         return lastSettleBatch;
     }
 
+    /** The sheet's today; a read previewing the sheet on a date takes that date instead (see {@link PreviewContext}). */
     public LocalDate getToday() {
-        return today;
+        return PreviewContext.todayOf(id, today);
     }
 
     public void setToday(LocalDate today) {
@@ -289,7 +291,7 @@ public class Sheet {
 
     /** The most a clerk may settle a claim for, in force on the sheet's today; null means no limit. */
     public BigDecimal getClerkLimit() {
-        return inForce(CLERK_LIMIT, today).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+        return inForce(CLERK_LIMIT, getToday()).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
     }
 
     /**
@@ -298,7 +300,7 @@ public class Sheet {
      */
     public BigDecimal clerkLimitFor(String grade) {
         if (grade != null) {
-            String own = inForce(CLERK_LIMIT + "-" + grade, today).map(DatedSetting::getValue).orElse(null);
+            String own = inForce(CLERK_LIMIT + "-" + grade, getToday()).map(DatedSetting::getValue).orElse(null);
             if (own != null) {
                 return new BigDecimal(own);
             }
@@ -347,7 +349,7 @@ public class Sheet {
 
     /** The most a person's due-total can be, in force on the sheet's today; null means no cap. */
     public BigDecimal getCap() {
-        return inForce(CAP, today).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+        return inForce(CAP, getToday()).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
     }
 
     /**
@@ -606,7 +608,7 @@ public class Sheet {
         if (mode.isPresent()) {
             return HALF_UP.equals(mode.get()) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
         }
-        LocalDate policy = policyDate != null ? policyDate : today;
+        LocalDate policy = policyDate != null ? policyDate : getToday();
         return policy != null && roundsOn.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 }

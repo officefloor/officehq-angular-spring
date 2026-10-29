@@ -47,10 +47,11 @@ public class RollupService {
     /**
      * One person's figures; a null due-total is n/a. The overdue-total sums their overdue claims' dues. The
      * settled-total sums the figures of their counted settled claims that correct nothing, and the overdue count is how many of their counted
-     * claims are overdue (whether or not they have a figure).
+     * claims are overdue (whether or not they have a figure). The held-total sums the parts they hold of others'
+     * shared claims (null when they hold none), which their due-total counts.
      */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
-            BigDecimal settledTotal, int overdueCount) {
+            BigDecimal settledTotal, int overdueCount, BigDecimal heldTotal) {
 
         /**
          * The person's score: their settled-total divided by 100, minus 5 for each of their overdue claims, rounded
@@ -252,9 +253,11 @@ public class RollupService {
                 }
             }
             // the parts the person holds of others' claims count as figures of theirs
+            BigDecimal held = partsBy.containsKey(p.getId()) ? ZERO : null;
             for (Part part : partsBy.getOrDefault(p.getId(), List.of())) {
                 kept = true;
                 due = due.add(part.figure());
+                held = held.add(part.figure());
                 if (part.claim().getStatus() == ClaimStatus.SETTLED && part.claim().getCorrects() == null) {
                     settled = settled.add(part.figure());
                 }
@@ -269,7 +272,7 @@ public class RollupService {
             if (sheet != null) {
                 due = sheet.capped(due, cutTotals.get(p.getId()));
             }
-            figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount));
+            figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount, held));
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
             if (due != null) {

@@ -1886,7 +1886,7 @@ export class People {
       refuse('Enter hold dates as yyyy-mm-dd.');
       return;
     }
-    if (to && to < (from || this.session.sheetToday() || '')) {
+    if (to && to < (from || this.session.realToday() || '')) {
       refuse('A hold cannot end before it starts.');
       return;
     }

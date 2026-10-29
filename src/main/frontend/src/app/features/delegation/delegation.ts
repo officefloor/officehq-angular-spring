@@ -112,7 +112,7 @@ export class Delegation {
       this.error.set('Enter a user name.');
       return;
     }
-    const today = this.session.sheetToday();
+    const today = this.session.realToday();
     const start = from ?? today;
     const end = to ?? today;
     if (start && end && end < start) {

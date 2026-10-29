@@ -799,7 +799,7 @@ export class Claims {
     // A today change releases every claim, so an open editor is closed with it.
     let today: string | null | undefined;
     effect(() => {
-      const now = this.session.sheetToday();
+      const now = this.session.realToday();
       if (today !== undefined && now !== today) untracked(() => this.reset());
       today = now;
     });
@@ -1024,7 +1024,7 @@ export class Claims {
       return;
     }
     const settleOn = (this.settleDates()[c.id] ?? '').trim();
-    const today = this.session.sheetToday();
+    const today = this.session.realToday();
     if (
       action === 'settle' &&
       settleOn !== '' &&
@@ -1065,7 +1065,7 @@ export class Claims {
           ? `A ${c.status} claim cannot be restored; only a deleted one can.`
           : action === 'settle' && settleOn !== '' && e instanceof HttpErrorResponse && e.status === 422
           ? `This claim did not exist on ${settleOn}, so it cannot be settled as of then.`
-          : action === 'settle' && deferred(c, this.session.sheetToday())
+          : action === 'settle' && deferred(c, this.session.realToday())
           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
           : action === 'void' && e instanceof HttpErrorResponse && e.status === 422
           ? 'Choose a reason from the list to void this claim.'
@@ -1136,7 +1136,7 @@ export class Claims {
       this.setRowError(c.id, `A ${c.status} claim cannot be reminded; only an OPEN or PENDING one can.`);
       return;
     }
-    const today = this.session.sheetToday();
+    const today = this.session.realToday();
     if (today !== null && c.remindedOn === today) {
       this.setRowError(c.id, `This claim was already reminded on ${today}.`);
       return;
@@ -1299,7 +1299,7 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const until = (this.deferDates()[c.id] ?? '').trim();
-    const today = this.session.sheetToday();
+    const today = this.session.realToday();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || (today !== null && until <= today)) {
       this.setRowError(c.id, `Enter a date after ${today ?? 'today'} to defer this claim until.`);
       return;
@@ -1405,7 +1405,7 @@ export class Claims {
       this.setRowError(c.id, `Enter an amount more than 0.00 and less than ${c.amount} to split off this claim.`);
       return;
     }
-    if (c.status !== 'OPEN' || deferred(c, this.session.sheetToday())) {
+    if (c.status !== 'OPEN' || deferred(c, this.session.realToday())) {
       this.setRowError(c.id, `Only an OPEN claim that is not deferred can be split.`);
       return;
     }
@@ -1446,7 +1446,7 @@ export class Claims {
       this.setRowError(c.id, `Enter an amount more than 0.00 and less than ${c.amount} to settle off this claim.`);
       return;
     }
-    if (c.status !== 'OPEN' || deferred(c, this.session.sheetToday())) {
+    if (c.status !== 'OPEN' || deferred(c, this.session.realToday())) {
       this.setRowError(c.id, `Only an OPEN claim that is not deferred can be part-settled.`);
       return;
     }
@@ -1677,7 +1677,7 @@ export class Claims {
     }
     const retiredFrom = this.retiredFrom();
     // a new claim with no date is dated on the sheet's entry date, when set, as the store dates it
-    const on = date || ((was ? null : this.settings.entryDate()) ?? this.session.sheetToday() ?? '');
+    const on = date || ((was ? null : this.settings.entryDate()) ?? this.session.realToday() ?? '');
     if (retiredFrom !== null && on > retiredFrom) {
       this.error.set(`${this.personName()} is retired from ${retiredFrom}, so a claim cannot be dated after it.`);
       return;
