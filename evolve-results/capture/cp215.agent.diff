@@ -1,0 +1,175 @@
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index f9e1c90e..23596324 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,4 +1,7 @@
+-import { Component, computed, inject, input } from '@angular/core';
++import { HttpClient } from '@angular/common/http';
++import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
+ import { FigPipe } from '../../core/locale';
+ import { DatedFigure, PeriodStore, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
+ import { GRADES, difference, sumSkippingNa } from '../rates/rates';
+@@ -15,6 +18,12 @@ export interface SummaryPerson {
+   active: boolean;
+ }
+ 
++// Another sheet's figures as the comparison reads them: whether it exists, and per grade its people's due-totals.
++interface OtherGradeDueTotals {
++  exists: boolean;
++  gradeDueTotals: Record<string, string>;
++}
++
+ // Every status a claim's count is shown for.
+ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'];
+ 
+@@ -70,6 +79,22 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
+           }
+         </tbody>
+       </table>
++      <form aria-label="Compare with another sheet" (submit)="$event.preventDefault(); compare()">
++        <label>
++          Other sheet
++          <input
++            data-testid="compare-sheet"
++            [value]="compareWith()"
++            (input)="compareWith.set(value($event))"
++          />
++        </label>
++        <button type="submit" data-testid="compare">Compare</button>
++      </form>
++      <ul aria-label="Due by grade, this sheet then the other">
++        @for (line of compareLines(); track $index) {
++          <li data-testid="compare-line">{{ line }}</li>
++        }
++      </ul>
+       <p>Late in review: <strong data-testid="summary-review-late-count">{{ reviewLateCount() | fig }}</strong></p>
+       <table>
+         <caption>By void reason</caption>
+@@ -107,6 +132,8 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
+   `,
+ })
+ export class Summary {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
+   private readonly periods = inject(PeriodStore);
+   private readonly voidReasons = inject(VoidReasonStore);
+ 
+@@ -133,6 +160,45 @@ export class Summary {
+       };
+     }),
+   );
++  // The id of the sheet to compare with, and the other sheet's per-grade due-totals once read (null before).
++  protected readonly compareWith = signal('');
++  private readonly other = signal<OtherGradeDueTotals | null>(null);
++  // One line per grade of this sheet: its summary due-total, then the other sheet's (0.00 for a grade it has no one
++  // on); none for a sheet that does not exist.
++  protected readonly compareLines = computed(() => {
++    const other = this.other();
++    if (!other?.exists) return [];
++    return this.byGrade().map((g) => `${g.grade} ${g.dueTotal} ${sumSkippingNa([other.gradeDueTotals[g.grade] ?? null])}`);
++  });
++
++  constructor() {
++    // A comparison belongs to the sheet it was made on.
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      untracked(() => this.other.set(null));
++    });
++  }
++
++  protected value(e: Event): string {
++    return (e.target as HTMLInputElement).value;
++  }
++
++  // Reads the other sheet's per-grade due-totals; the old lines are gone while it is read.
++  protected async compare(): Promise<void> {
++    const id = this.compareWith().trim();
++    this.other.set(null);
++    if (!/^[A-Za-z0-9_.-]{1,100}$/.test(id)) return;
++    try {
++      const other = await firstValueFrom(
++        this.http.get<OtherGradeDueTotals>(`/api/sheets/${encodeURIComponent(id)}/grade-due-totals`),
++      );
++      if (this.compareWith().trim() === id) this.other.set(other);
++    } catch {
++      // with nothing read, no lines show
++    }
++  }
++
+   // Per period: its due-total, and its change from the period before it by from-date (none for the earliest).
+   protected readonly byPeriod = computed(() => {
+     const totals = periodDueTotals(this.periods.list(), this.figures());
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/CompareController.java b/src/main/java/net/officefloor/hq/app/rollup/CompareController.java
+new file mode 100644
+index 00000000..dc50c427
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/CompareController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.util.Map;
++import java.util.TreeMap;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RestController;
++
++/** A sheet's per-grade due-totals, which the screen compares with its own summary. */
++@RestController
++@Validated
++public class CompareController {
++
++    /** Whether the sheet exists, and per grade the due-totals of its people on it today (two decimals). */
++    public record GradeDueTotalsView(boolean exists, Map<String, String> gradeDueTotals) {
++    }
++
++    private final RollupService service;
++
++    public CompareController(RollupService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/api/sheets/{sheetId}/grade-due-totals")
++    public GradeDueTotalsView gradeDueTotals(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
++        Map<String, String> grades = new TreeMap<>();
++        boolean exists = service.sheetExists(sheetId);
++        service.gradeDueTotals(sheetId).forEach((g, d) -> grades.put(g, d.toPlainString()));
++        return new GradeDueTotalsView(exists, grades);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 8f5ba56b..e1cbc693 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -258,6 +258,24 @@ public class RollupService {
+         return sum;
+     }
+ 
++    /** Whether the store holds the sheet. */
++    @Transactional(readOnly = true)
++    public boolean sheetExists(String sheetId) {
++        return sheets.findById(sheetId).isPresent();
++    }
++
++    /**
++     * Per grade, the due-totals of the people on it today on the sheet as the store holds it now (retired people left
++     * out, n/a skipped); empty for a sheet that does not exist.
++     */
++    @Transactional(readOnly = true)
++    public Map<String, BigDecimal> gradeDueTotals(String sheetId) {
++        if (sheets.findById(sheetId).isEmpty()) {
++            return new TreeMap<>();
++        }
++        return sheetFigures(sheetId).gradeDueTotals();
++    }
++
+     /** One sheet's figures as {@link Consolidated} adds them up, as the store holds them (or as of a date, inside one). */
+     private Consolidated sheetFigures(String sheetId) {
+         Snapshot s = snapshot(sheetId);
