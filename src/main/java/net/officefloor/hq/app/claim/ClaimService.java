@@ -123,7 +123,7 @@ public class ClaimService {
         refuseInClosedPeriod(sheetId, dueBy);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseAfterRetirement(person, on);
-        String corrected = correctedNumber(sheetId, personId, amount, corrects);
+        String corrected = correctedNumber(sheetId, personId, amount, corrects, null);
         String reference = refOf(sheetId, ref, null);
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, noteOf(note));
         claim.setRef(reference);
@@ -167,7 +167,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim with lines has the sum of its lines as its amount.");
         }
-        String corrected = correctedNumber(sheetId, claim.getPersonId(), amount, corrects);
+        String corrected = correctedNumber(sheetId, claim.getPersonId(), amount, corrects, claim.getId());
         String reference = refOf(sheetId, ref, claim.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(scaled(amount));
@@ -284,6 +284,10 @@ public class ClaimService {
         }
         if (next == ClaimStatus.SETTLED && by.equals(claim.getEditedBy())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who last edited a claim cannot settle it.");
+        }
+        if (next == ClaimStatus.DRAFT && claim.getCorrects() != null) {
+            // a restored correction counts against its claim again
+            refuseOverCorrection(sheetId, claim.getPersonId(), claim.getAmount(), claim.getCorrects(), claim.getId());
         }
         if (next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
             refuseVoidOfSettled(by, sheetId, claim);
@@ -1061,9 +1065,11 @@ public class ClaimService {
 
     /**
      * The number a claim with the amount corrects: for a correction (a negative amount), the number of a settled
-     * claim of the person, else refused; null for any other claim.
+     * claim of the person, else refused; null for any other claim. Refused too when it exceeds what remains of that
+     * claim: its amount less the corrections already made against it (VOID or DELETED ones, and the claim being
+     * edited, left out).
      */
-    private String correctedNumber(String sheetId, Long personId, BigDecimal amount, String corrects) {
+    private String correctedNumber(String sheetId, Long personId, BigDecimal amount, String corrects, Long editing) {
         if (amount.signum() >= 0) {
             return null;
         }
@@ -1073,7 +1079,26 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A negative amount must correct a settled claim of the person, named by its number.");
         }
+        refuseOverCorrection(sheetId, personId, scaled(amount), corrects, editing);
         return corrects;
+    }
+
+    /** Refuses a correction of the amount that exceeds what remains of the claim with the number it corrects. */
+    private void refuseOverCorrection(String sheetId, Long personId, BigDecimal amount, String corrects, Long editing) {
+        List<Claim> all = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        BigDecimal remains = all.stream().filter(c -> corrects.equals(c.getNumber())).map(Claim::getAmount)
+                .findFirst().orElse(BigDecimal.ZERO);
+        for (Claim c : all) {
+            if (corrects.equals(c.getCorrects()) && !c.getId().equals(editing) && c.getStatus() != ClaimStatus.VOID
+                    && c.getStatus() != ClaimStatus.DELETED) {
+                remains = remains.add(c.getAmount());
+            }
+        }
+        if (amount.negate().compareTo(remains) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A correction may not exceed what remains of the claim it corrects ("
+                            + scaled(remains.max(BigDecimal.ZERO)) + ").");
+        }
     }
 
     /**
