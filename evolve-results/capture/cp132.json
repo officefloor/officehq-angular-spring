@@ -1,0 +1,74 @@
+{
+  "checkpoint": 132,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp132_tree-numbering",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    112,
+    123,
+    128,
+    130
+  ],
+  "replaced_tests": [
+    "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1",
+    "cp123_bulk-retire.spec.ts::bulk retire scenario 1",
+    "cp128_transfer-merges.spec.ts::transfer merges scenario 2",
+    "cp130_period-comparison.spec.ts::period comparison scenario 2"
+  ],
+  "request": {
+    "spec": "The sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6ecad8187ed4425ccf2051b54b7754c537d48e7f",
+  "reset_sha": "",
+  "preagent_sha": "ede10f76ee9b7e576416c5f7a72f2b4311de9dee",
+  "prev_sha": "ede10f76ee9b7e576416c5f7a72f2b4311de9dee",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7094311999999999,
+    "input_tokens": 40,
+    "output_tokens": 8439,
+    "cache_read_tokens": 766016,
+    "cache_creation_tokens": 48411,
+    "num_turns": 20,
+    "duration_ms": 470870,
+    "duration_api_ms": 86553,
+    "model": "claude-opus-5-5",
+    "session_id": "e6853475-eb4f-4db3-9dc7-57d86114d5fd",
+    "stop_reason": "success",
+    "result_text": "Sheets in a tree now share one claim-number sequence. `bin/e2e` passes all 4 tests in the spec: the main tree-numbering test and scenarios 1\u20133.\n\n**What changed** (server only; no database migration and no front-end change were needed):\n- **`SheetService.nextClaimNumber`**: when a claim is opened, the app finds the top of the sheet's tree by following parent links up. It then collects that top sheet and every sheet below it, at any depth. The new number is one more than the highest number given on any of those sheets, and it's recorded on the sheet the claim was opened on. Numbers given before this change stay as they are.\n- **`SheetRepository`**: the old `incrementClaimNumber` / `lastClaimNumber` queries are replaced by `lastClaimNumberOf(ids)`, which reads the highest number across the given sheets, and `setClaimNumber(id, n)`.\n- **Per-period numbering** (e.g. `P1-1`) is untouched and stays per sheet.\n\n**Two-users-at-once safety:** the top sheet of the tree is locked while the number is taken, so two people opening claims on different sheets of the same tree can't get the same number.\n\n**A behaviour to know about:** a sheet's sequence covers its whole tree, so it includes sibling sheets as well as parents and children. Sheet ids that are named as a parent but were never loaded are ignored.\n\nMy first run failed because the tree walk skipped the children of the sheet the claim was opened on. I fixed that and removed the temporary debug logging I'd added to find it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7094311999999999,
+        "num_turns": 20,
+        "duration_ms": 470870,
+        "duration_api_ms": 86553,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp132.agent.jsonl",
+  "agent_diff_file": "cp132.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
