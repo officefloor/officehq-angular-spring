@@ -31,11 +31,12 @@ public class RateController {
 
     /**
      * A grade's rate as the screen shows it; the percent always carries two decimals, and the from-date is null for a
-     * rate that applies from the beginning of time; the to-date is null for a rate with no end.
+     * rate that applies from the beginning of time; the to-date is null for a rate with no end. The version is the
+     * number of versions the rate has (its newest, the one shown, counting from 1).
      */
-    public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int version) {
         static RateView of(Rate r) {
-            return new RateView(r.getGrade(), r.getPct().toPlainString(), r.getFrom(), r.getTo());
+            return new RateView(r.getGrade(), r.getPct().toPlainString(), r.getFrom(), r.getTo(), r.getVersion());
         }
     }
 

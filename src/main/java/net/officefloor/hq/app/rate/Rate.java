@@ -42,6 +42,10 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate to;
 
+    /** The number of this, the newest version, counting from 1; the older ones are kept as {@link RateVersion}s. */
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -81,6 +85,17 @@ public class Rate {
     }
 
     public void setTo(LocalDate to) {
+        this.to = to;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    /** Replaces this version with a newer one of the percent and to-date; the caller keeps the one replaced. */
+    public void newVersion(BigDecimal pct, LocalDate to) {
+        this.version++;
+        this.pct = pct;
         this.to = to;
     }
 

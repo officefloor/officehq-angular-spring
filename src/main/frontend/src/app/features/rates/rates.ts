@@ -10,6 +10,8 @@ export interface RateView {
   from: string | null;
   // The date the rate applies through; null for a rate with no end.
   to: string | null;
+  // How many versions the rate has; the one shown is the newest, the one in force.
+  version: number;
 }
 
 export const GRADES = ['A', 'B', 'C'];
@@ -337,7 +339,7 @@ export class RateStore {
       <table>
         <caption>In force on {{ session.sheetToday() }}</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (g of grades; track g) {
@@ -352,7 +354,7 @@ export class RateStore {
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (r of store.list(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -361,6 +363,7 @@ export class RateStore {
               <td data-testid="rate-from">{{ r.from ?? 'the start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-version">{{ r.version }}</td>
             </tr>
           }
         </tbody>

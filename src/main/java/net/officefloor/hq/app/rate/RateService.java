@@ -19,15 +19,18 @@ public class RateService {
 
     private final RateRepository rates;
     private final RateChangeRepository changes;
+    private final RateVersionRepository versions;
     private final RateChain chain;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, RateChangeRepository changes, RateChain chain, SheetService sheets,
+    public RateService(RateRepository rates, RateChangeRepository changes,
+            RateVersionRepository versions, RateChain chain, SheetService sheets,
             RollupService rollup, Audit audit) {
         this.rates = rates;
         this.changes = changes;
+        this.versions = versions;
         this.chain = chain;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -48,16 +51,21 @@ public class RateService {
 
     /**
      * Sets the grade's rate from the date (null: from the beginning of time) through the to-date (null: with no end),
-     * replacing any rate it had for that from-date.
+     * as a new version of any rate it had for that from-date, the one it replaces kept as an older version.
      */
     @Transactional
     public Rate set(String by, String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pct.setScale(2, RoundingMode.UNNECESSARY);
-        Rate rate = rates.findExact(sheetId, grade, from).orElseGet(() -> new Rate(sheetId, grade, from, scaled));
-        rate.setPct(scaled);
-        rate.setTo(to);
+        Rate rate = rates.findExact(sheetId, grade, from).orElse(null);
+        if (rate == null) {
+            rate = new Rate(sheetId, grade, from, scaled);
+            rate.setTo(to);
+        } else {
+            versions.save(new RateVersion(rate));
+            rate.newVersion(scaled, to);
+        }
         Rate saved;
         try {
             saved = rates.saveAndFlush(rate);
