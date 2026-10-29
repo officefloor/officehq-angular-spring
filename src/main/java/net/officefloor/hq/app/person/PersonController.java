@@ -40,7 +40,7 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
             List<String> aliases, boolean clashing, String originSheet, List<RetirementView> pastRetirements,
-            List<String> tags, List<SnapshotView> snapshots, String flag) {
+            List<String> tags, List<SnapshotView> snapshots, String flag, String approver) {
         public static PersonView of(Person p, LocalDate today, Set<Long> clashing,
                 Map<Long, List<SnapshotView>> snapshots) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
@@ -49,7 +49,7 @@ public class PersonController {
                     p.getContact(), p.getAliases(), clashing.contains(p.getId()),
                     p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList(),
                     ClaimService.tagList(p.getTags()), snapshots.getOrDefault(p.getId(), List.of()),
-                    p.flagOn(today));
+                    p.flagOn(today), p.getApprover());
         }
     }
 
@@ -137,6 +137,10 @@ public class PersonController {
 
     /** A flag: its reason and the last day it is in force (missing: the sheet's today). */
     public record FlagForm(String reason, LocalDate until) {
+    }
+
+    /** An approver: the user name who may approve or reject the person's PENDING claims. */
+    public record ApproverForm(String user) {
     }
 
     /** A grade to give the people with the ids together, from its from-date (missing: the sheet's today). */
@@ -335,6 +339,15 @@ public class PersonController {
             @PathVariable Long id, @RequestBody FlagForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId, service.flag(user, sheetId, id, form.reason(), form.until()));
+    }
+
+    /** Sets the user who may approve or reject the person's PENDING claims as a steward may. */
+    @PostMapping("/{id}/approver")
+    public PersonView approver(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @RequestBody ApproverForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return view(sheetId, service.setApprover(user, sheetId, id, form.user()));
     }
 
     /**

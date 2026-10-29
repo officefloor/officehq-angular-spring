@@ -1032,7 +1032,7 @@ export class Claims {
           : action === 'review' && c.status !== 'REVIEW'
           ? `A ${c.status} claim cannot be reviewed; only one in REVIEW can.`
           : (action === 'approve' || action === 'reject') && forbidden
-            ? 'Only a steward can approve or reject a pending claim.'
+            ? 'Only a steward or the person\'s approver can approve or reject a pending claim.'
             : action === 'resettle' && forbidden
               ? 'Only a steward can re-settle a claim.'
               : action === 'approve' && opener

@@ -94,6 +94,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject the person's PENDING claims as a steward may; null: none. */
+    @Column(name = "approver")
+    private String approver;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedHold> holds = new ArrayList<>();
@@ -317,6 +321,14 @@ public class Person {
     /** The sheet the person was transferred from; null: not transferred. */
     public String getOriginSheet() {
         return originSheet;
+    }
+
+    public String getApprover() {
+        return approver;
+    }
+
+    public void setApprover(String approver) {
+        this.approver = approver;
     }
 
     /** Flags the person with the reason until the date, replacing any flag before it. */

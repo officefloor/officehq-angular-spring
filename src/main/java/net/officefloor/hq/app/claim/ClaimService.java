@@ -1040,13 +1040,13 @@ public class ClaimService {
         claim.logStatus(by, sheets.load(sheetId).getToday(), due(sheetId, person, claim));
     }
 
-    /** The pending claim, locked, for a steward to decide; refused otherwise. */
+    /** The pending claim, locked, for a steward or the person's approver to decide; refused otherwise. */
     private Claim pendingClaim(String by, String sheetId, Long id) {
         Claim claim = lockedClaim(sheetId, id);
         if (claim.getStatus() != ClaimStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a PENDING claim can be approved or rejected.");
         }
-        if (!settings.isSteward(sheetId, by)) {
+        if (!settings.isSteward(sheetId, by) && !by.equals(person(sheetId, claim.getPersonId()).getApprover())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can approve or reject a claim.");
         }
         return claim;

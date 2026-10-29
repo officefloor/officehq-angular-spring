@@ -409,6 +409,25 @@ public class PersonService {
     }
 
     /**
+     * Sets the user who may approve or reject the person's PENDING claims as a steward may (still not one they opened
+     * or last edited). Refused for a blank user name.
+     */
+    @Transactional
+    public Person setApprover(String by, String sheetId, Long id, String user) {
+        String name = user == null ? "" : user.strip();
+        if (name.isEmpty() || name.length() > 100 || name.chars().anyMatch(Character::isWhitespace)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a user name for the approver.");
+        }
+        Person person = people.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        person.setApprover(name);
+        Person saved = save(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + by + " name=" + saved.getName()
+                + " user=" + name);
+        return saved;
+    }
+
+    /**
      * Gives the person the alias, without surrounding spaces; refused when blank, or when it equals, ignoring case,
      * any name or alias on the sheet or on another sheet of its tree.
      */

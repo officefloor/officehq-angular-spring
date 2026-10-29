@@ -49,6 +49,8 @@ interface Person {
   holds: DatedHold[];
   // The reason of the steward's flag on the person while it is in force on the sheet's today; null for none.
   flag: string | null;
+  // The user who may approve or reject the person's PENDING claims as a steward may; null for none.
+  approver: string | null;
 }
 
 // A hold on a person from its from-date to its to-date (null: with no end), both included. Their open claims dated
@@ -474,7 +476,7 @@ interface StatementView {
             @if (columns.shown('overdue-count')) {<th scope="col">Overdue</th>}@if (columns.shown('overdue-total')) {<th scope="col">Overdue total</th>}
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
             @if (columns.shown('statement-count')) {<th scope="col">Statements</th>}@if (columns.shown('stated-total')) {<th scope="col">Last stated total</th>}@if (columns.shown('statement-date')) {<th scope="col">Last statement</th>}
-            @if (columns.shown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columns.shown('hold')) {<th scope="col">On hold</th>}<th scope="col">Flag</th><th scope="col">Active</th>
+            @if (columns.shown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columns.shown('hold')) {<th scope="col">On hold</th>}<th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Active</th>
             @if (columns.shown('patrons')) {<th scope="col">Patrons</th>}@if (columns.shown('backing')) {<th scope="col">Backing</th>}@if (columns.shown('excess')) {<th scope="col">Excess</th>}<th scope="col">Watched</th>
             @for (pd of periods.list(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
@@ -544,6 +546,7 @@ interface StatementView {
                 <td data-testid="person-hold">{{ (p.held ? 'yes' : 'no') | fig }}</td>
               }
               <td data-testid="person-flag-shown">{{ (p.flag ?? '') | fig }}</td>
+              <td data-testid="person-approver">{{ (p.approver ?? '') | fig }}</td>
               <td data-testid="person-active">{{ (activeIds().has(p.id) ? 'yes' : 'no') | fig }}</td>
               @if (columns.shown('patrons')) {
                 <td data-testid="person-patrons">{{ (patronNamesBy().get(p.id) ?? '') | fig }}</td>
@@ -691,6 +694,17 @@ interface StatementView {
                 <button type="button" data-testid="person-flag" (click)="flag(p)">
                   Flag<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'approver-' + p.id">Approver<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  type="text"
+                  [id]="'approver-' + p.id"
+                  data-testid="person-approver-input"
+                  [value]="approverInputs()[p.id] ?? ''"
+                  (input)="setApproverInput(p.id, value($event))"
+                />
+                <button type="button" data-testid="person-approver-save" (click)="setApprover(p)">
+                  Set approver<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 <label [for]="'alias-' + p.id">Alias<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   type="text"
@@ -837,6 +851,8 @@ export class People {
   // Each row's flag reason and until-date as typed, by person id; a blank until-date takes the sheet's today.
   protected readonly flagReasons = signal<Record<number, string>>({});
   protected readonly flagUntils = signal<Record<number, string>>({});
+  // Each row's approver user name as typed, by person id.
+  protected readonly approverInputs = signal<Record<number, string>>({});
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   // The date the form's grade applies from; blank takes the sheet's today.
@@ -1328,6 +1344,7 @@ export class People {
         this.holdTos.set({});
         this.flagReasons.set({});
         this.flagUntils.set({});
+        this.approverInputs.set({});
         this.reset();
         this.quickName.set('');
         this.quickAmount.set('');
@@ -1761,6 +1778,34 @@ export class People {
       if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
     } catch (e) {
       refuse(e instanceof HttpErrorResponse && e.status === 403 ? 'Only a steward can flag a person.' : 'Could not flag this person.');
+    }
+  }
+
+  protected setApproverInput(id: number, user: string): void {
+    this.approverInputs.update((d) => ({ ...d, [id]: user }));
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+  }
+
+  /** Sets the typed user as the person's approver, who may approve or reject their PENDING claims. */
+  protected async setApprover(p: Person): Promise<void> {
+    this.clearRowErrors(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const user = (this.approverInputs()[p.id] ?? '').trim();
+    const refuse = (message: string) => this.rowErrors.update((e) => ({ ...e, [p.id]: message }));
+    if (!user || /\s/.test(user)) {
+      refuse('Enter a user name for the approver.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/approver`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { user }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      this.approverInputs.update(({ [p.id]: _, ...rest }) => rest);
+      if (this.editingId() === saved.id) this.editingVersion.set(saved.version);
+    } catch (e) {
+      refuse(e instanceof HttpErrorResponse && e.status === 403 ? 'You cannot set the approver on this sheet.' : 'Could not set the approver.');
     }
   }
 
