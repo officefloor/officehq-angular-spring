@@ -1055,8 +1055,8 @@ public class ClaimService {
         return stored == null || stored.isEmpty() ? List.of() : List.of(stored.split(","));
     }
 
-    /** The tags a claim is to carry: each trimmed and lower-cased, repeats and blanks dropped, sorted and comma separated; null for none. */
-    private static String tagsOf(String tagged) {
+    /** The tags a claim or person is to carry: each trimmed and lower-cased, repeats and blanks dropped, sorted and comma separated; null for none. */
+    public static String tagsOf(String tagged) {
         if (tagged == null) {
             return null;
         }

@@ -124,8 +124,8 @@ public class SheetCloneService {
                 Long.class, sheetId);
         for (Long id : people) {
             Long copy = insert("INSERT INTO person (sheet_id, name, retired_from, terms, added_on, retired_on, contact,"
-                    + " list_position, origin_sheet) SELECT ?, name, retired_from, terms, added_on, retired_on,"
-                    + " contact, list_position, origin_sheet FROM person WHERE id = ?", toSheetId, id);
+                    + " list_position, origin_sheet, tags) SELECT ?, name, retired_from, terms, added_on, retired_on,"
+                    + " contact, list_position, origin_sheet, tags FROM person WHERE id = ?", toSheetId, id);
             ids.put(id, copy);
             jdbc.update("INSERT INTO person_grade (person_id, grade, from_date, made_on) SELECT ?, grade, from_date,"
                     + " made_on FROM person_grade WHERE person_id = ?", copy, id);

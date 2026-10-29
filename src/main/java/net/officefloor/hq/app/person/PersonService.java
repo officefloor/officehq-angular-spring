@@ -10,6 +10,9 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimTag;
+import net.officefloor.hq.app.claim.ClaimTagRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -31,9 +34,11 @@ public class PersonService {
     private final SheetRepository sheetRepository;
     private final RollupService rollup;
     private final Audit audit;
+    private final ClaimTagRepository tags;
 
     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
-            SheetRepository sheetRepository, RollupService rollup, Audit audit) {
+            SheetRepository sheetRepository, RollupService rollup, Audit audit, ClaimTagRepository tags) {
+        this.tags = tags;
         this.people = people;
         this.patrons = patrons;
         this.sheets = sheets;
@@ -74,6 +79,17 @@ public class PersonService {
      */
     @Transactional
     public Person add(String by, String sheetId, String name, String grade, Integer terms, String contact) {
+        return add(by, sheetId, name, grade, terms, contact, null);
+    }
+
+    /**
+     * Adds the person as {@link #add(String, String, String, String, Integer, String)} does, carrying the tags
+     * (comma separated; blank or null: none), which are kept as used on the sheet.
+     */
+    @Transactional
+    public Person add(String by, String sheetId, String name, String grade, Integer terms, String contact,
+            String tagged) {
+        String personTags = ClaimService.tagsOf(tagged);
         LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.strip();
@@ -87,6 +103,8 @@ public class PersonService {
         Person person = new Person(sheetId, trimmed, grade, today);
         person.setTerms(terms);
         person.setContact(key);
+        person.setTags(personTags);
+        keepTags(sheetId, personTags);
         // the new person goes to the end of the list
         sheets.lock(sheetId);
         person.setPosition(people.nextPosition(sheetId));
@@ -108,7 +126,17 @@ public class PersonService {
     @Transactional
     public Person update(String by, String sheetId, Long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
-        return update(by, sheetId, id, version, name, grade, gradeFrom, terms, contact, true);
+        return update(by, sheetId, id, version, name, grade, gradeFrom, terms, contact, null, true);
+    }
+
+    /**
+     * Saves the edit as {@link #update(String, String, Long, long, String, String, LocalDate, Integer, String)} does,
+     * setting the person's tags to the given ones (comma separated; blank: none; null: kept as they are).
+     */
+    @Transactional
+    public Person update(String by, String sheetId, Long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tagged) {
+        return update(by, sheetId, id, version, name, grade, gradeFrom, terms, contact, tagged, true);
     }
 
     /**
@@ -117,7 +145,8 @@ public class PersonService {
      * sheet of the sheet's tree.
      */
     private Person update(String by, String sheetId, Long id, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, boolean checkTree) {
+            LocalDate gradeFrom, Integer terms, String contact, String tagged, boolean checkTree) {
+        String personTags = ClaimService.tagsOf(tagged);
         LocalDate today = today(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -148,6 +177,10 @@ public class PersonService {
         person.setTerms(terms);
         boolean contactChanged = !Objects.equals(key, person.getContact());
         person.setContact(key);
+        if (tagged != null) {
+            person.setTags(personTags);
+            keepTags(sheetId, personTags);
+        }
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", by, saved, today)
                 + (termsChanged ? " terms=" + (terms != null ? terms : "") : "")
@@ -171,7 +204,7 @@ public class PersonService {
         List<Person> saved = new ArrayList<>();
         for (Person p : chosen) {
             saved.add(update(by, sheetId, p.getId(), p.getVersion(), p.getName(), grade, from, p.getTerms(),
-                    p.getContact(), false));
+                    p.getContact(), null, false));
         }
         return saved;
     }
@@ -409,6 +442,15 @@ public class PersonService {
 
     private boolean inUseOn(Set<String> sheetIds, String nameOrAlias) {
         return !sheetIds.isEmpty() && people.nameOrAliasInUseOn(sheetIds, nameOrAlias);
+    }
+
+    /** Keeps each of the tags as used on the sheet. */
+    private void keepTags(String sheetId, String stored) {
+        for (String tag : ClaimService.tagList(stored)) {
+            if (!tags.existsBySheetIdAndTag(sheetId, tag)) {
+                tags.saveAndFlush(new ClaimTag(sheetId, tag));
+            }
+        }
     }
 
     /** A contact as stored: without surrounding spaces and lower-cased; null when blank. */

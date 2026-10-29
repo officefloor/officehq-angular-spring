@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.asof.AsOfService;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -36,13 +37,15 @@ public class PersonController {
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String originSheet, List<RetirementView> pastRetirements) {
+            List<String> aliases, boolean clashing, String originSheet, List<RetirementView> pastRetirements,
+            List<String> tags) {
         public static PersonView of(Person p, LocalDate today, Set<Long> clashing) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.getTerms(),
                     p.getContact(), p.getAliases(), clashing.contains(p.getId()),
-                    p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList());
+                    p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList(),
+                    ClaimService.tagList(p.getTags()));
         }
     }
 
@@ -70,20 +73,20 @@ public class PersonController {
     /**
      * A person's fields as the form submits them; the name is stored without surrounding spaces, the terms are whole
      * days, 0 or more, or null for none; the contact is stored without surrounding spaces, lower-cased, blank or
-     * null for none.
+     * null for none; the tags are comma separated, blank or null for none.
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) @Max(99999) Integer terms,
-            @Size(max = 200) String contact) {
+            @Size(max = 200) String contact, @Size(max = 1000) String tags) {
     }
 
     /**
      * An edit of a person: its fields, the date its grade applies from (missing: the sheet's today) and the version
-     * of the person the editor loaded, their own terms (null: none) and their contact (blank or null: none).
+     * of the person the editor loaded, their own terms (null: none) and their contact (blank or null: none) and their tags, comma separated (blank: none; null: kept as they are).
      */
     public record PersonEdit(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
-            @Min(0) @Max(99999) Integer terms, @Size(max = 200) String contact) {
+            @Min(0) @Max(99999) Integer terms, @Size(max = 200) String contact, @Size(max = 1000) String tags) {
     }
 
     /** One person named as another's patron. */
@@ -188,7 +191,7 @@ public class PersonController {
             @Valid @RequestBody PersonForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId, service.add(user, sheetId, form.name(), form.grade(), form.terms(),
-                form.contact()));
+                form.contact(), form.tags()));
     }
 
     /**
@@ -214,7 +217,7 @@ public class PersonController {
             @SessionAttribute(SessionController.USER) String user) {
         return view(sheetId,
                 service.update(user, sheetId, id, form.version(), form.name(), form.grade(), form.gradeFrom(),
-                        form.terms(), form.contact()));
+                        form.terms(), form.contact(), form.tags()));
     }
 
     /** Gives the person an alias; refused when blank or when it is a name or alias on the sheet. */

@@ -22,6 +22,8 @@ interface Person {
   terms: number | null;
   // The person's contact, without surrounding spaces and lower-cased; null for none.
   contact: string | null;
+  // The person's tags, trimmed, lower-cased, without repeats and sorted; none for a person with none.
+  tags: string[];
   // The person's aliases, sorted as names are compared: ignoring case.
   aliases: string[];
   // Whether the person's name or an alias is a name or alias on another sheet of the sheet's tree; every edit of
@@ -138,6 +140,13 @@ interface StatementView {
           data-testid="person-form-contact"
           [value]="contact()"
           (input)="contact.set(value($event)); error.set(null)"
+        />
+        <label for="person-tags">Tags (comma separated)</label>
+        <input
+          id="person-tags"
+          data-testid="person-form-tags"
+          [value]="tags()"
+          (input)="tags.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save' }}
@@ -365,7 +374,7 @@ interface StatementView {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Settled total</th><th scope="col">Open total</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
@@ -394,6 +403,7 @@ interface StatementView {
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-origin">{{ p.originSheet ?? '' }}</td>
@@ -620,6 +630,8 @@ export class People {
   protected readonly terms = signal('');
   // The person's contact as typed; blank for none.
   protected readonly contact = signal('');
+  // The person's tags as typed, comma separated; blank for none.
+  protected readonly tags = signal('');
   protected readonly editingId = signal<number | null>(null);
   // The version of the person the open editor loaded.
   private readonly editingVersion = signal(0);
@@ -671,22 +683,29 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  // Every tag ever used on a claim of the sheet, as the store last told it.
+  // Every tag ever used on a claim or person of the sheet, as the store last told it.
   protected readonly usedTags = signal<string[]>([]);
-  // For every tag ever used on the sheet (those the store keeps and those on the claims now), sorted: the due of
-  // the claims counted live that carry it, skipping n/a; a claim with two tags counts in both.
+  // For every tag ever used on the sheet (those the store keeps and those on the claims and people now), sorted: the
+  // due of the claims counted live that carry it, or whose person carries it, once each, skipping n/a; a claim with
+  // two tags counts in both.
   protected readonly tagDueTotals = computed(() => {
-    const all = new Set([...this.usedTags(), ...this.claims().flatMap((c) => c.tags)]);
+    const all = new Set([
+      ...this.usedTags(),
+      ...this.claims().flatMap((c) => c.tags),
+      ...this.people().flatMap((p) => p.tags),
+    ]);
+    const personTags = new Map(this.people().map((p) => [p.id, p.tags]));
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const rates = this.rates.rates();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
     const dues = new Map<string, (string | null)[]>();
     for (const c of this.liveClaims()) {
-      if (c.tags.length === 0) continue;
+      const carried = new Set([...c.tags, ...(personTags.get(c.personId) ?? [])]);
+      if (carried.size === 0) continue;
       const own = grades.get(c.personId) ?? [];
       const due = dueOf(c, rates.get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
-      for (const t of c.tags) dues.set(t, [...(dues.get(t) ?? []), due]);
+      for (const t of carried) dues.set(t, [...(dues.get(t) ?? []), due]);
     }
     return [...all]
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
@@ -1474,6 +1493,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set(p.terms === null ? '' : String(p.terms));
     this.contact.set(p.contact ?? '');
+    this.tags.set(p.tags.join(', '));
     this.error.set(null);
   }
 
@@ -1710,6 +1730,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set('');
     this.contact.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -1732,6 +1753,7 @@ export class People {
       grade: this.grade(),
       terms: termsText === '' ? null : Number(termsText),
       contact: contactText === '' ? null : contactText,
+      tags: this.tags(),
     };
     if (!form.name) {
       this.error.set('Enter a name.');
@@ -1924,6 +1946,7 @@ export class People {
         this.grade.set(this.gradeToday(current));
         this.terms.set(current.terms === null ? '' : String(current.terms));
         this.contact.set(current.contact ?? '');
+        this.tags.set(current.tags.join(', '));
       }
     } catch {
       // the error below still tells the person the save was refused

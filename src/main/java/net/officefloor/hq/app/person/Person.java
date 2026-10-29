@@ -53,6 +53,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags, sorted and comma separated; null for a person with none. */
+    @Column(name = "tags")
+    private String tags;
+
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
@@ -200,6 +204,14 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     /** The date the person is retired from; null while they are not retired. */
