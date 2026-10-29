@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolStanding;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -36,10 +37,13 @@ public class PeriodService {
     private final PersonRepository people;
     private final ClaimService claimService;
     private final SettingsService settings;
+    private final PoolStanding pools;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
-            PersonRepository people, ClaimService claimService, SettingsService settings, Audit audit) {
+            PersonRepository people, ClaimService claimService, SettingsService settings, PoolStanding pools,
+            Audit audit) {
+        this.pools = pools;
         this.settings = settings;
         this.periods = periods;
         this.sheets = sheets;
@@ -238,7 +242,8 @@ public class PeriodService {
         }
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period, today);
         BigDecimal total = sum(personTotals);
-        period.softClose(total, personTotals, personCarried(sheetId, period, today));
+        period.softClose(total, personTotals, personCarried(sheetId, period, today),
+                pools.fix(sheetId, period.getName()));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
                 + " total=" + total.toPlainString());
@@ -271,7 +276,7 @@ public class PeriodService {
     private Period close(String by, String sheetId, Period period, LocalDate today, String auditSuffix) {
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period, today);
         BigDecimal total = sum(personTotals);
-        period.close(total, personTotals, personCarried(sheetId, period, today));
+        period.close(total, personTotals, personCarried(sheetId, period, today), pools.fix(sheetId, period.getName()));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + by + " period=" + saved.getName()
                 + " total=" + total.toPlainString() + auditSuffix);

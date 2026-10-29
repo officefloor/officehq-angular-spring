@@ -224,8 +224,9 @@ function shownPools(
   });
 }
 
-// The pools as they stood at the end of a period (on its to-date, the day), as the server reads them then: the
-// stored pools, the crews, the people and the pot (null: none).
+// The pools as they stood for a period, as the server reads them then: the stored pools, the crews, the people and the
+// pot (null: none). Fixed: as they stood when the period was closed or soft-closed, on the sheet's today then (the day),
+// whatever its dates; else at the end of it (on its to-date, the day).
 export interface PeriodPools {
   period: string;
   day: string;
@@ -233,6 +234,7 @@ export interface PeriodPools {
   crews: CrewView[];
   people: RosterPerson[];
   pot: string | null;
+  fixed: boolean;
 }
 
 // The active sheet's pools as last read from the store, and what they work out to: each member's cut, and each
@@ -258,18 +260,18 @@ export class PoolStore {
     shownPools(this.all(), this.roster.people(), this.settings.pot(), this.session.sheetToday()),
   );
 
-  // The pools as they stood at the end of each period whose to-date is on or before the sheet's today, as last read
-  // from the store.
+  // The pools as they stood for each closed or soft-closed period, and at the end of each other period whose to-date
+  // is on or before the sheet's today, as last read from the store.
   readonly history = signal<readonly PeriodPools[]>([]);
-  // For each such period, by name, each member's cut as it stood at the end of it, by pool id then member key ('' for
-  // none). A period ending on the sheet's today stands as the sheet does now.
+  // For each such period, by name, each member's cut as it stood (fixed at its close, else at the end of it), by pool
+  // id then member key ('' for none). An open period ending on the sheet's today stands as the sheet does now.
   readonly cutHistory = computed(() => {
     const today = this.session.sheetToday();
     const result: { period: string; cuts: Map<number, Map<string, string>> }[] = [];
     for (const h of this.history()) {
-      if (today !== null && h.day > today) continue;
+      if (!h.fixed && today !== null && h.day > today) continue;
       let shown: readonly ShownPool[];
-      if (h.day === today) {
+      if (!h.fixed && h.day === today) {
         shown = this.shown();
       } else {
         const names = new Map(h.people.map((p) => [p.id, p.name]));
