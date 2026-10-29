@@ -1,0 +1,64 @@
+{
+  "checkpoint": 189,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp189_default-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2e83ba62fe8ee0a1d91469151b65f5f3c322437b",
+  "reset_sha": "",
+  "preagent_sha": "aef0d5d3afaa058b6b12957addb35b1caea5bde6",
+  "prev_sha": "aef0d5d3afaa058b6b12957addb35b1caea5bde6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6863112,
+    "input_tokens": 40,
+    "output_tokens": 8728,
+    "cache_read_tokens": 757316,
+    "cache_creation_tokens": 45016,
+    "num_turns": 20,
+    "duration_ms": 399173,
+    "duration_api_ms": 117147,
+    "model": "claude-opus-5-5",
+    "session_id": "4917d83d-cb9d-46fa-8ba8-84624621c37d",
+    "stop_reason": "success",
+    "result_text": "I added the sheet's default grade setting, and all 4 tests in `bin/e2e` pass.\n\n**How it behaves**\n- The settings form has a new \"Default grade\" field (`setting-default-grade`), and the grade in force shows in `setting-default-grade-current`.\n- A, B or C is accepted, and blank means A. Anything else (such as `D`) shows `settings-error` and nothing is stored or written to the audit file.\n- Each save writes `SETTING_CHANGED sheet=<id> by=<user> key=default-grade value=<grade>` to the audit file, with an empty value when blank. The setting is not dated.\n- The quick-add bar gives a new person the default grade. A person who already exists is left as they are.\n- An import line with a blank grade (e.g. `Ben,`) uses the default grade. Before this change, such a line was refused.\n- Changing the setting doesn't change anyone already on the sheet.\n\n**Your call:** a blank-grade import line uses the default grade whether it adds a new person or updates an existing one. So a line like `Ada,` sets an existing Ada's grade to the current default. If blank should leave an existing person's grade alone, that's a small change in `PersonImportService`.\n\n**Where the changes are**\n- **Stored data:** a new migration, `V102__default_grade.sql`, adds a nullable `default_grade` column to `sheet`. `Sheet.java` has the matching field and copies it into as-of views.\n- **Server:**\n  - A new `PUT /settings/default-grade` endpoint in `SettingsController`, and `defaultGrade` added to the settings the screen reads.\n  - The check and audit record are in `SettingsService.setDefaultGrade`.\n  - `QuickAddService` and `PersonImportService` now read the sheet's default grade.\n- **Front end:** `settings.ts` has the new field, its check, the save call and the value shown.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6863112,
+        "num_turns": 20,
+        "duration_ms": 399173,
+        "duration_api_ms": 117147,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp189.agent.jsonl",
+  "agent_diff_file": "cp189.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

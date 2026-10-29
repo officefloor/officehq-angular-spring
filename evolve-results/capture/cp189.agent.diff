@@ -1,0 +1,364 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index dd2ed3fa..5aaeabf1 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -31,6 +31,8 @@ interface SettingsView {
+   // The proof kinds (receipt, photo) a claim above its proof threshold needs one proof of each of, comma separated;
+   // null when blank: none.
+   proofKinds: string | null;
++  // The grade the quick-add bar gives a new person and an import line with a blank grade uses; null when blank: A.
++  defaultGrade: string | null;
+   cap: string | null;
+   // The pot shared among the members of each balanced pool by their shares, two decimals; null when blank: none.
+   pot: string | null;
+@@ -179,6 +181,8 @@ export class SettingsStore {
+   readonly reviewSla = signal<number | null>(null);
+   /** The proof kinds as set, comma separated; null when blank (none). */
+   readonly proofKinds = signal<string | null>(null);
++  /** The default grade as set; null when blank (A). */
++  readonly defaultGrade = signal<string | null>(null);
+   /** The pot as set; null when blank (none). */
+   readonly pot = signal<string | null>(null);
+   /** The alert threshold as set; null when blank (off). */
+@@ -212,6 +216,7 @@ export class SettingsStore {
+     this.escalateAfter.set(null);
+     this.reviewSla.set(null);
+     this.proofKinds.set(null);
++    this.defaultGrade.set(null);
+     this.pot.set(null);
+     this.alertThreshold.set(null);
+     this.parent.set(null);
+@@ -237,6 +242,7 @@ export class SettingsStore {
+     this.escalateAfter.set(s.escalateAfter ?? null);
+     this.reviewSla.set(s.reviewSla ?? null);
+     this.proofKinds.set(s.proofKinds ?? null);
++    this.defaultGrade.set(s.defaultGrade ?? null);
+     this.pot.set(s.pot ?? null);
+     this.alertThreshold.set(s.alertThreshold ?? null);
+     this.parent.set(s.parent ?? null);
+@@ -347,6 +353,13 @@ export class SettingsStore {
+     if (this.session.sheetId() === sheet) this.show(s);
+   }
+ 
++  async setDefaultGrade(sheet: string, value: string | null): Promise<void> {
++    const s = await firstValueFrom(
++      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/default-grade`, { value }),
++    );
++    if (this.session.sheetId() === sheet) this.show(s);
++  }
++
+   async setProofKinds(sheet: string, value: string | null): Promise<void> {
+     const s = await firstValueFrom(
+       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/proof-kinds`, { value }),
+@@ -583,6 +596,15 @@ export class SettingsStore {
+           (keydown.delete)="proofKindsChanged = true; settingsError.set(null)"
+           (keydown.backspace)="proofKindsChanged = true; settingsError.set(null)"
+         />
++        <label for="setting-default-grade">Default grade (A, B or C: the grade the quick-add bar and an import line with a blank grade give a new person; blank for A)</label>
++        <input
++          id="setting-default-grade"
++          data-testid="setting-default-grade"
++          [value]="defaultGrade()"
++          (input)="defaultGrade.set(value($event)); defaultGradeChanged = true; settingsError.set(null)"
++          (keydown.delete)="defaultGradeChanged = true; settingsError.set(null)"
++          (keydown.backspace)="defaultGradeChanged = true; settingsError.set(null)"
++        />
+         <label for="setting-pot">Pot (shared among the members of each balanced pool by their shares; blank for none)</label>
+         <input
+           id="setting-pot"
+@@ -782,6 +804,7 @@ export class SettingsStore {
+       <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ (store.escalateAfter() ?? '') | fig }}</strong></p>
+       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ (store.reviewSla() ?? '') | fig }}</strong></p>
+       <p>Proof kinds: <strong data-testid="setting-proof-kinds-current">{{ (store.proofKinds() ?? '') | fig }}</strong></p>
++      <p>Default grade: <strong data-testid="setting-default-grade-current">{{ (store.defaultGrade() ?? '') | fig }}</strong></p>
+       <p>Pot: <strong data-testid="setting-pot-current">{{ (store.pot() ?? '') | fig }}</strong></p>
+       <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ (store.alertThreshold() ?? '') | fig }}</strong></p>
+       <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() | fig }}</strong></p>
+@@ -884,6 +907,7 @@ export class Settings {
+   protected readonly escalateAfter = signal('');
+   protected readonly reviewSla = signal('');
+   protected readonly proofKinds = signal('');
++  protected readonly defaultGrade = signal('');
+   protected readonly pot = signal('');
+   protected readonly alertThreshold = signal('');
+   protected readonly fiscalStartMonth = signal('');
+@@ -912,6 +936,7 @@ export class Settings {
+   protected escalateAfterChanged = false;
+   protected reviewSlaChanged = false;
+   protected proofKindsChanged = false;
++  protected defaultGradeChanged = false;
+   protected alertThresholdChanged = false;
+   protected fiscalStartMonthChanged = false;
+   protected parentChanged = false;
+@@ -1122,6 +1147,11 @@ export class Settings {
+       this.settingsError.set('Enter proof kinds as receipt or photo, comma separated, or leave it blank for none.');
+       return;
+     }
++    const defaultGrade = this.defaultGrade().trim();
++    if (this.defaultGradeChanged && defaultGrade && !/^[ABC]$/.test(defaultGrade)) {
++      this.settingsError.set('Enter the default grade as A, B or C, or leave it blank for A.');
++      return;
++    }
+     const pot = this.pot().trim();
+     if (this.potChanged && pot && !LIMIT.test(pot)) {
+       this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
+@@ -1261,6 +1291,10 @@ export class Settings {
+         await this.store.setProofKinds(sheet, proofKinds || null);
+         this.proofKindsChanged = this.proofKinds().trim() !== proofKindsTyped;
+       }
++      if (this.defaultGradeChanged) {
++        await this.store.setDefaultGrade(sheet, defaultGrade || null);
++        this.defaultGradeChanged = this.defaultGrade().trim() !== defaultGrade;
++      }
+       if (this.potChanged) {
+         await this.store.setPot(sheet, pot || null);
+         this.potChanged = this.pot().trim() !== pot;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+index 85b4626f..56e34e2c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+@@ -5,6 +5,7 @@ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Set;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -12,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Adds a person for each pasted line of name,grade,terms,contact (the last two may be absent or blank), or updates the
+- * person on the sheet the line names, all of them or none.
++ * person on the sheet the line names, all of them or none. A blank grade is the sheet's default grade.
+  */
+ @Service
+ public class PersonImportService {
+@@ -27,10 +28,12 @@ public class PersonImportService {
+ 
+     private final PersonService people;
+     private final PersonRepository repository;
++    private final SheetService sheets;
+ 
+-    public PersonImportService(PersonService people, PersonRepository repository) {
++    public PersonImportService(PersonService people, PersonRepository repository, SheetService sheets) {
+         this.people = people;
+         this.repository = repository;
++        this.sheets = sheets;
+     }
+ 
+     /**
+@@ -47,13 +50,14 @@ public class PersonImportService {
+         Set<String> names = new HashSet<>();
+         Set<Long> matched = new HashSet<>();
+         Set<String> contacts = new HashSet<>();
++        String defaultGrade = sheets.load(sheetId).defaultGradeOrA();
+         int n = 0;
+         for (String raw : text.split("\\r?\\n")) {
+             n++;
+             if (raw.isBlank()) {
+                 continue;
+             }
+-            Line line = read(n, raw);
++            Line line = read(n, raw, defaultGrade);
+             if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
+                 throw refused("Line " + n + " repeats the name " + line.name() + ".");
+             }
+@@ -94,7 +98,7 @@ public class PersonImportService {
+         return new Result(added, updated);
+     }
+ 
+-    private Line read(int n, String raw) {
++    private Line read(int n, String raw, String defaultGrade) {
+         String[] f = raw.split(",", 4);
+         if (f.length < 2) {
+             throw refused("Line " + n + " needs at least a name and a grade.");
+@@ -107,6 +111,9 @@ public class PersonImportService {
+             throw refused("Line " + n + " has a name longer than 200 characters.");
+         }
+         String grade = f[1].strip();
++        if (grade.isEmpty()) {
++            grade = defaultGrade;
++        }
+         if (!grade.matches("[ABC]")) {
+             throw refused("Line " + n + " has a grade that is not A, B or C.");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+index 7522770e..d3e5d53a 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+@@ -6,6 +6,7 @@ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.person.PersonService;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -20,19 +21,23 @@ public class QuickAddService {
+     private final PersonRepository people;
+     private final PersonService personService;
+     private final ClaimService claimService;
++    private final SheetService sheets;
+ 
+-    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService) {
++    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService,
++            SheetService sheets) {
+         this.people = people;
+         this.personService = personService;
+         this.claimService = claimService;
++        this.sheets = sheets;
+     }
+ 
+-    /** One change: a refused claim rolls back the person added for it, and its audit records with it. */
++    /** A new person gets the sheet's default grade. One change: a refused claim rolls back the person added for it, and its audit records with it. */
+     @Transactional
+     public Added add(String by, String sheetId, String name, BigDecimal amount) {
+         String trimmed = name.strip();
+         Person found = people.findBySheetIdAndNameOrAlias(sheetId, trimmed).orElse(null);
+-        Person person = found != null ? found : personService.add(by, sheetId, trimmed, "A");
++        Person person = found != null ? found : personService.add(by, sheetId, trimmed,
++                sheets.load(sheetId).defaultGradeOrA());
+         Claim claim = claimService.add(by, sheetId, person.getId(), amount, null, "", null);
+         return new Added(person, found == null, claim);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 00b5cd52..f3dd8447 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -39,13 +39,13 @@ public class SettingsController {
+      * cap in force on the sheet's today (the clerk limit carries two decimals, or is null for none, the floor carries
+      * two decimals, the terms are whole days, the late percent carries two decimals, and the cap carries two decimals,
+      * or is null for none); the policy date, null when blank (the sheet's today), and the period numbering from, null
+-     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the proof kinds, comma separated, null when blank (none); and every value recorded for the dated settings, from which the screen works out the one in
++     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); and every value recorded for the dated settings, from which the screen works out the one in
+      * force on any date; and the permission matrix as set, by action (an action not listed keeps the standing rule).
+      */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, LocalDate entryDate, Integer graceDays, String cap, List<DatedSettingView> dated, Map<String, String> permissions,
+             String pot, String alertThreshold, String parent, int fiscalStartMonth,
+-            Integer escalateAfter, Integer reviewSla, String proofKinds) {
++            Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade) {
+         static SettingsView of(Sheet sheet) {
+             LocalDate today = sheet.getToday();
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -58,7 +58,7 @@ public class SettingsController {
+                     sheet.getPermissions(), sheet.getPot() == null ? null : sheet.getPot().toPlainString(),
+                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
+                     sheet.getParentId(), sheet.getFiscalStartMonth(), sheet.getEscalateAfter(),
+-                    sheet.getReviewSla(), sheet.getProofKinds());
++                    sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade());
+         }
+     }
+ 
+@@ -176,6 +176,10 @@ public class SettingsController {
+     public record ProofKindsForm(@Size(max = 100) String value) {
+     }
+ 
++    /** The default grade as the form submits it: one of the grades, or null (blank) for A. */
++    public record DefaultGradeForm(@Size(max = 100) String value) {
++    }
++
+     /** The review SLA as the form submits it: a whole number of days, 0 or more, or null for blank (none). */
+     public record ReviewSlaForm(@Min(0) @Max(99999) Integer value) {
+     }
+@@ -337,6 +341,13 @@ public class SettingsController {
+         return SettingsView.of(service.setProofKinds(user, sheetId, form.value()));
+     }
+ 
++    @PutMapping("/settings/default-grade")
++    public SettingsView setDefaultGrade(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @Valid @RequestBody DefaultGradeForm form, @SessionAttribute(SessionController.USER) String user) {
++        return SettingsView.of(service.setDefaultGrade(user, sheetId, form.value()));
++    }
++
+     @PutMapping("/settings/review-sla")
+     public SettingsView setReviewSla(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 54b9e901..8f834a2e 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -352,6 +352,25 @@ public class SettingsService implements Audit.OnBehalf {
+         return saved;
+     }
+ 
++    /**
++     * Sets the sheet's default grade (null for blank: A), one of the grades: the grade the quick-add bar gives a new
++     * person and an import line with a blank grade uses. Refused for anything else. Changing it changes no one. Not
++     * dated.
++     */
++    @Transactional
++    public Sheet setDefaultGrade(String by, String sheetId, String grade) {
++        String value = grade == null || grade.isBlank() ? null : grade.strip();
++        if (value != null && !value.matches("[ABC]")) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The default grade must be A, B or C.");
++        }
++        Sheet sheet = sheets.lock(sheetId);
++        sheet.setDefaultGrade(value);
++        Sheet saved = sheetRepository.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=default-grade value="
++                + (value == null ? "" : value));
++        return saved;
++    }
++
+     /**
+      * Sets the sheet's escalation gap (null for blank: off): reminding a claim whose previous reminder was at least
+      * these many days before the sheet's today escalates it. Not dated.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 903fbe6f..6b719d15 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -148,6 +148,13 @@ public class Sheet {
+     @Column(name = "proof_kinds")
+     private String proofKinds;
+ 
++    /**
++     * The default grade: the grade the quick-add bar gives a new person and an import line with a blank grade uses.
++     * Null (blank) for A. Not dated.
++     */
++    @Column(name = "default_grade")
++    private String defaultGrade;
++
+     /** Whether a steward has archived the sheet: it stays visible and every change on it is refused. */
+     @Column(name = "archived", nullable = false)
+     private boolean archived;
+@@ -215,6 +222,7 @@ public class Sheet {
+         then.escalateAfter = escalateAfter;
+         then.reviewSla = reviewSla;
+         then.proofKinds = proofKinds;
++        then.defaultGrade = defaultGrade;
+         then.pot = pot;
+         then.alertThreshold = alertThreshold;
+         then.fiscalStartMonth = fiscalStartMonth;
+@@ -408,6 +416,20 @@ public class Sheet {
+         this.proofKinds = proofKinds;
+     }
+ 
++    /** The default grade as set; null for blank (A). */
++    public String getDefaultGrade() {
++        return defaultGrade;
++    }
++
++    /** The grade a new person gets when none is given: the default grade, A when blank. */
++    public String defaultGradeOrA() {
++        return defaultGrade == null ? "A" : defaultGrade;
++    }
++
++    public void setDefaultGrade(String defaultGrade) {
++        this.defaultGrade = defaultGrade;
++    }
++
+     public BigDecimal getPot() {
+         return pot;
+     }
+diff --git a/src/main/resources/db/migration/V102__default_grade.sql b/src/main/resources/db/migration/V102__default_grade.sql
+new file mode 100644
+index 00000000..11eb52e9
+--- /dev/null
++++ b/src/main/resources/db/migration/V102__default_grade.sql
+@@ -0,0 +1,3 @@
++-- The sheet's default grade: the grade the quick-add bar gives a new person and an import line with a blank grade
++-- uses; null (blank) for A. Not dated.
++ALTER TABLE sheet ADD COLUMN default_grade VARCHAR(1);
