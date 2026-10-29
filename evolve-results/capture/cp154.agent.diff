@@ -1,0 +1,125 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index c0d766d1..3ddb6542 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -35,12 +35,24 @@ export interface DatedFigure {
+   log: ClaimLogLine[];
+ }
+ 
++/** Whether a claim with the status counts: open, pending or settled. */
++function countingStatus(status: ClaimStatus | null | undefined): boolean {
++  return status === 'OPEN' || status === 'PENDING' || status === 'SETTLED';
++}
++
+ /** Whether the claim counted at the end of the day: its status then is open, pending or settled. */
+ function countedAtEndOf(f: DatedFigure, day: string): boolean {
+-  const then = statusAtEndOf(f, day);
+-  return then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
++  return countingStatus(statusAtEndOf(f, day));
++}
++
++/** Whether the claim counts by its status now (open, pending or settled), whatever it was at the end of the day. */
++function countedNow(f: DatedFigure): boolean {
++  return countingStatus(f.status);
+ }
+ 
++/** How a period's due-total decides whether a claim counts: given the claim and the period's last day. */
++export type PeriodCounting = (f: DatedFigure, lastDay: string) => boolean;
++
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ /**
+@@ -72,13 +84,14 @@ export function personPeriodDueTotals(
+   periods: readonly PeriodView[],
+   personId: number,
+   figures: readonly DatedFigure[],
++  counted: PeriodCounting = countedAtEndOf,
+ ): Map<number, string> {
+   const by = new Map<number, (string | null)[]>();
+   for (const p of periods) by.set(p.id, []);
+   for (const f of figures) {
+     if (f.personId !== personId) continue;
+     const p = periodOn(periods, f.dueBy);
+-    if (p && countedAtEndOf(f, p.to)) by.get(p.id)?.push(f.figure);
++    if (p && counted(f, p.to)) by.get(p.id)?.push(f.figure);
+   }
+   return new Map(
+     periods.map((p) => [
+@@ -92,14 +105,26 @@ export function personPeriodDueTotals(
+ export function periodDueTotals(
+   periods: readonly PeriodView[],
+   figures: readonly DatedFigure[],
++  counted: PeriodCounting = countedAtEndOf,
+ ): Map<number, string> {
+   // everyone with a figure for some period: a counted claim, or one fixed when a period closed
+   const people = new Set(figures.map((f) => f.personId));
+   for (const p of periods) for (const id of Object.keys(p.closedPersonTotals)) people.add(Number(id));
+-  const each = [...people].map((id) => personPeriodDueTotals(periods, id, figures));
++  const each = [...people].map((id) => personPeriodDueTotals(periods, id, figures, counted));
+   return new Map(periods.map((p) => [p.id, sumSkippingNa(each.map((m) => m.get(p.id) ?? null))]));
+ }
+ 
++/**
++ * Each period's classic due-total, by period id: as periodDueTotals, but each claim counted by its status now (open,
++ * pending or settled) rather than at the end of the period; a closed period still shows the figure fixed when it closed.
++ */
++export function classicPeriodDueTotals(
++  periods: readonly PeriodView[],
++  figures: readonly DatedFigure[],
++): Map<number, string> {
++  return periodDueTotals(periods, figures, countedNow);
++}
++
+ // The periods of the active sheet, by from-date.
+ @Injectable({ providedIn: 'root' })
+ export class PeriodStore {
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 0727670e..dd3456b5 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,5 +1,5 @@
+ import { Component, computed, inject, input } from '@angular/core';
+-import { DatedFigure, PeriodStore, periodDueTotals } from '../periods/periods';
++import { DatedFigure, PeriodStore, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
+ import { GRADES, difference, sumSkippingNa } from '../rates/rates';
+ import { VoidReasonStore } from '../void-reasons/void-reasons';
+ 
+@@ -83,6 +83,24 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+         </tbody>
+       </table>
+     </section>
++    <section aria-label="Classic summary">
++      <h2>Classic summary</h2>
++      <table>
++        <caption>By period, counting each claim by its status now</caption>
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (p of classicByPeriod(); track p.name) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <p>Due in total, not trimmed: <strong data-testid="classic-due-total">{{ classicDueTotal() }}</strong></p>
++    </section>
+   `,
+ })
+ export class Summary {
+@@ -127,6 +145,13 @@ export class Summary {
+       change: changes.get(p.id) ?? '',
+     }));
+   });
++  // Per period: its due-total with each claim counted by its status now; a closed period keeps its fixed figure.
++  protected readonly classicByPeriod = computed(() => {
++    const totals = classicPeriodDueTotals(this.periods.list(), this.figures());
++    return this.periods.list().map((p) => ({ name: p.name, dueTotal: totals.get(p.id) ?? '' }));
++  });
++  // The sheet's due-total with no trimming: everyone's due-total added up, skipping n/a.
++  protected readonly classicDueTotal = computed(() => sumSkippingNa(this.people().map((p) => p.dueTotal)));
+   protected readonly byStatus = computed(() =>
+     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),
+   );
