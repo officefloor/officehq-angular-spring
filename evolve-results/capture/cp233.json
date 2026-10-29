@@ -1,0 +1,64 @@
+{
+  "checkpoint": 233,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp233_due-by-override",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can set a claim's due-by directly (a date entry and a button on a DRAFT, OPEN or PENDING\nclaim; CLAIM_DUE_BY_SET naming the claim and ending old=<old due-by> new=<new>; anyone else or any\nother status is refused). A due-by set this way stays as set: a holiday added later does not move\nit. Overdue, the late charge, grace and the period the claim belongs to follow the set date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can set a claim's due-by directly (a date entry and a button on a DRAFT, OPEN or PENDING\nclaim; CLAIM_DUE_BY_SET naming the claim and ending old=<old due-by> new=<new>; anyone else or any\nother status is refused). A due-by set this way stays as set: a holiday added later does not move\nit. Overdue, the late charge, grace and the period the claim belongs to follow the set date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "773a7aff4634b38fcb4c0a1fd9acc4b03fa256b6",
+  "reset_sha": "",
+  "preagent_sha": "5fceecaa190afb51d5153f87a8e7c5e24265d46f",
+  "prev_sha": "5fceecaa190afb51d5153f87a8e7c5e24265d46f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6980658000000001,
+    "input_tokens": 40,
+    "output_tokens": 8227,
+    "cache_read_tokens": 777109,
+    "cache_creation_tokens": 47243,
+    "num_turns": 21,
+    "duration_ms": 283181,
+    "duration_api_ms": 82008,
+    "model": "claude-opus-5-5",
+    "session_id": "8d86a1b3-620b-4187-b54f-53a95fd199fd",
+    "stop_reason": "success",
+    "result_text": "A steward can now set a claim's due-by directly. I ran `bin/e2e` and all 4 tests pass, including the main due-by test and its three scenario tests.\n\n**How it works**\n- Each claim row has a date field and a **Set due-by** button.\n- It only works for a steward, and only on a DRAFT, OPEN or PENDING claim. Anyone else, or any other status, gets the row's error message and nothing is saved.\n- A successful set writes one audit line: `CLAIM_DUE_BY_SET sheet=\u2026 by=\u2026 person=\u2026 amount=\u2026 date=\u2026 old=<old> new=<new>`.\n- The claim remembers that its due-by was set by hand (a new column added by migration `V119__claim_due_by_set.sql`). When a holiday is added, its due-by is not recalculated.\n- Overdue, the late charge, grace and which period the claim falls in all already work from the stored due-by, so they follow the set date with no further changes.\n- The sheet-cloning code copies the new column, so cloned sheets keep a set due-by fixed too.\n\n**Two choices the request didn't cover:**\n- **Closed periods:** setting a due-by is refused if either the old or the new date falls in a closed period. Other claim actions work the same way.\n- **Claim numbers:** when an open claim's due-by moves into another period, its number stays the same and is not reissued in the new period's sequence.\n\nThe server changes are in `ClaimService.setDueBy`, a new `POST /claims/{id}/due-by` endpoint in `ClaimController`, and the holiday skip in `HolidayService.add`. The front-end change is in `features/claims/claims.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6980658000000001,
+        "num_turns": 21,
+        "duration_ms": 283181,
+        "duration_api_ms": 82008,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp233.agent.jsonl",
+  "agent_diff_file": "cp233.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
