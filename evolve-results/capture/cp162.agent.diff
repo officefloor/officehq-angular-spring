@@ -1,0 +1,161 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index fb84cacd..80ba7fd7 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -359,7 +359,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
+       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
+       <thead>
+         <tr>
+-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th>
++          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
+           <th scope="col"><span class="visually-hidden">Actions</span></th>
+         </tr>
+       </thead>
+@@ -453,6 +453,16 @@ export function claimedTotal(claims: readonly Claim[]): string {
+                 Add line<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
+             </td>
++            <td>
++              <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)">
++                Timeline<span class="visually-hidden"> of claim of {{ c.amount }} on {{ c.date }}</span>
++              </button>
++              <ol class="claim-timeline" [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
++                @for (line of timelines()[c.id] ?? []; track $index) {
++                  <li data-testid="claim-timeline-line">{{ line | fig }}</li>
++                }
++              </ol>
++            </td>
+             <td>
+               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
+                 Open<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+@@ -641,6 +651,10 @@ export class Claims {
+   protected readonly reassignTo = signal<Record<number, string>>({});
+   // The comment typed for each claim, by claim id.
+   protected readonly commentTexts = signal<Record<number, string>>({});
++  // The timeline shown for each claim, by claim id: its audit lines, newest first.
++  protected readonly timelines = signal<Record<number, readonly string[]>>({});
++  // Each timeline press is numbered, so only the latest one's answer shows.
++  private timelinePress = 0;
+   // The line typed for each claim, by claim id.
+   protected readonly lineFields = signal<Record<number, LineFields>>({});
+   // The amount typed in each draft's own row, by claim id.
+@@ -1003,6 +1017,22 @@ export class Claims {
+     }
+   }
+ 
++  /** Shows the claim's timeline: the audit lines about it, newest first, as the file holds them. */
++  protected async showTimeline(c: Claim): Promise<void> {
++    this.clearRowError(c.id);
++    this.timelines.update(({ [c.id]: _, ...rest }) => rest);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const press = ++this.timelinePress;
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/timeline`;
++    try {
++      const lines = await firstValueFrom(this.http.get<string[]>(url));
++      if (press === this.timelinePress) this.timelines.update((t) => ({ ...t, [c.id]: lines }));
++    } catch {
++      if (press === this.timelinePress) this.setRowError(c.id, 'The timeline of this claim could not be read.');
++    }
++  }
++
+   protected setLineField(id: number, field: keyof LineFields, text: string): void {
+     this.lineFields.update((l) => ({ ...l, [id]: { ...(l[id] ?? { label: '', qty: '', unit: '' }), [field]: text } }));
+     this.clearRowError(id);
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 80b1c0ac..74fd118c 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -8,8 +8,10 @@ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
+ import java.util.ArrayList;
+ import java.util.Collections;
++import java.util.HashMap;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.Optional;
+ import java.util.Set;
+ import java.util.regex.Matcher;
+@@ -133,6 +135,38 @@ public class Audit {
+         return found;
+     }
+ 
++    /**
++     * The records of a sheet about one claim, exactly as the file holds them, newest first: with a number, those
++     * carrying number= that number; without one, those carrying no number but naming the person (compared as names
++     * are), the amount and the date together.
++     */
++    public synchronized List<String> claimLines(String sheetId, String number, String person, String amount,
++            String date) {
++        String key = person.strip().toLowerCase(Locale.ROOT);
++        List<String> found = new ArrayList<>();
++        for (String line : lines(sheetId, null)) {
++            Map<String, String> f = fields(line);
++            boolean about = number != null ? number.equals(f.get("number"))
++                    : !f.containsKey("number") && f.containsKey("person")
++                            && f.get("person").strip().toLowerCase(Locale.ROOT).equals(key)
++                            && amount.equals(f.get("amount")) && date.equals(f.get("date"));
++            if (about) {
++                found.add(line);
++            }
++        }
++        return found;
++    }
++
++    /** A record's fields by key; the first of a key repeated. */
++    private static Map<String, String> fields(String line) {
++        Map<String, String> found = new HashMap<>();
++        Matcher f = FIELD.matcher(line);
++        while (f.find()) {
++            found.putIfAbsent(f.group(1), f.group(2));
++        }
++        return found;
++    }
++
+     /** Whether a record carries name= or person= the given name key. */
+     private static boolean about(String line, String key) {
+         Matcher f = FIELD.matcher(line);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 8c245b89..7258efb9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -124,6 +124,14 @@ public class ClaimController {
+                 form.corrects(), form.ref(), form.tags()));
+     }
+ 
++    /** The claim's timeline: the audit lines about it, newest first. */
++    @GetMapping("/claims/{id}/timeline")
++    public List<String> timeline(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable Long id) {
++        return service.timeline(sheetId, id);
++    }
++
+     /** Every tag ever used on a claim of the sheet, sorted. */
+     @GetMapping("/claim-tags")
+     public List<String> tags(
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 32e4e6d9..fdb58c67 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -75,6 +75,19 @@ public class ClaimService {
+         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+     }
+ 
++    /**
++     * The claim's timeline: the audit lines about it, newest first, as the file holds them (see
++     * {@link Audit#claimLines}).
++     */
++    @Transactional(readOnly = true)
++    public List<String> timeline(String sheetId, Long id) {
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
++        Person person = person(sheetId, claim.getPersonId());
++        return audit.claimLines(sheetId, claim.getNumber(), person.getName(), claim.getAmount().toPlainString(),
++                claim.getDate().toString());
++    }
++
+     /**
+      * Adds a claim for the person; a missing date takes the sheet's entry date, or its today when that is blank. Its
+      * due-by is fixed as the terms-th business day after its date, skipping weekends and the sheet's holidays then, and its period is the one its due-by falls in: one whose
