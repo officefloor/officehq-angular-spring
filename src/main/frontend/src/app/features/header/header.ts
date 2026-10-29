@@ -4,7 +4,8 @@ import { STATUSES } from '../summary/summary';
 
 // The sheet's counters, shown at all times: each repeats a figure shown elsewhere — the status counts those of the
 // summary, the two totals the sheet's totals, the signed-in user's own figures those of their person's row,
-// and their crew total those of the crews their person leads.
+// their crew total those of the crews their person leads,
+// and their watched total those of the people they watch.
 @Component({
   selector: 'app-header',
   imports: [FigPipe],
@@ -29,6 +30,8 @@ import { STATUSES } from '../summary/summary';
         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | fig }}</dd>
         <dt>My reviews</dt>
         <dd data-testid="my-reviews-count">{{ myReviewsCount() | fig }}</dd>
+        <dt>Watched due</dt>
+        <dd data-testid="watched-due-total">{{ watchedDueTotal() | fig }}</dd>
       </dl>
     </header>
   `,
@@ -47,6 +50,8 @@ export class Header {
   readonly myCrewDueTotal = input('');
   // The REVIEW claims assigned to the signed-in user.
   readonly myReviewsCount = input(0);
+  // The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one.
+  readonly watchedDueTotal = input('0.00');
 
   protected readonly byStatus = computed(() =>
     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),

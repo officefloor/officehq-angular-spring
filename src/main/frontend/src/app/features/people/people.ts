@@ -103,6 +103,7 @@ interface StatementView {
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDueTotal()"
       [myReviewsCount]="myReviewsCount()"
+      [watchedDueTotal]="watchedDueTotal()"
     />
     <app-dashboard [statuses]="claimStatuses()" [overdueCount]="overdueClaims().length" />
     <app-consolidated
@@ -1426,6 +1427,12 @@ export class People {
     if (led.length === 0) return '';
     const due = this.dueBy();
     return sumSkippingNa(led.map((c) => crewDueTotal(c, due)));
+  });
+
+  // The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one.
+  protected readonly watchedDueTotal = computed(() => {
+    const due = this.dueBy();
+    return sumSkippingNa([...this.watched()].map((id) => due.get(id) ?? null));
   });
 
   constructor() {
