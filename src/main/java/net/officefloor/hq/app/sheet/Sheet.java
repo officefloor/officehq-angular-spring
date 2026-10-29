@@ -148,6 +148,13 @@ public class Sheet {
     @Column(name = "proof_kinds")
     private String proofKinds;
 
+    /**
+     * The default grade: the grade the quick-add bar gives a new person and an import line with a blank grade uses.
+     * Null (blank) for A. Not dated.
+     */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /** Whether a steward has archived the sheet: it stays visible and every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -215,6 +222,7 @@ public class Sheet {
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
         then.proofKinds = proofKinds;
+        then.defaultGrade = defaultGrade;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -406,6 +414,20 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    /** The default grade as set; null for blank (A). */
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    /** The grade a new person gets when none is given: the default grade, A when blank. */
+    public String defaultGradeOrA() {
+        return defaultGrade == null ? "A" : defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
     }
 
     public BigDecimal getPot() {

@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Adds a person for each pasted line of name,grade,terms,contact (the last two may be absent or blank), or updates the
- * person on the sheet the line names, all of them or none.
+ * person on the sheet the line names, all of them or none. A blank grade is the sheet's default grade.
  */
 @Service
 public class PersonImportService {
@@ -27,10 +28,12 @@ public class PersonImportService {
 
     private final PersonService people;
     private final PersonRepository repository;
+    private final SheetService sheets;
 
-    public PersonImportService(PersonService people, PersonRepository repository) {
+    public PersonImportService(PersonService people, PersonRepository repository, SheetService sheets) {
         this.people = people;
         this.repository = repository;
+        this.sheets = sheets;
     }
 
     /**
@@ -47,13 +50,14 @@ public class PersonImportService {
         Set<String> names = new HashSet<>();
         Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
+        String defaultGrade = sheets.load(sheetId).defaultGradeOrA();
         int n = 0;
         for (String raw : text.split("\\r?\\n")) {
             n++;
             if (raw.isBlank()) {
                 continue;
             }
-            Line line = read(n, raw);
+            Line line = read(n, raw, defaultGrade);
             if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
                 throw refused("Line " + n + " repeats the name " + line.name() + ".");
             }
@@ -94,7 +98,7 @@ public class PersonImportService {
         return new Result(added, updated);
     }
 
-    private Line read(int n, String raw) {
+    private Line read(int n, String raw, String defaultGrade) {
         String[] f = raw.split(",", 4);
         if (f.length < 2) {
             throw refused("Line " + n + " needs at least a name and a grade.");
@@ -107,6 +111,9 @@ public class PersonImportService {
             throw refused("Line " + n + " has a name longer than 200 characters.");
         }
         String grade = f[1].strip();
+        if (grade.isEmpty()) {
+            grade = defaultGrade;
+        }
         if (!grade.matches("[ABC]")) {
             throw refused("Line " + n + " has a grade that is not A, B or C.");
         }

@@ -353,6 +353,25 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Sets the sheet's default grade (null for blank: A), one of the grades: the grade the quick-add bar gives a new
+     * person and an import line with a blank grade uses. Refused for anything else. Changing it changes no one. Not
+     * dated.
+     */
+    @Transactional
+    public Sheet setDefaultGrade(String by, String sheetId, String grade) {
+        String value = grade == null || grade.isBlank() ? null : grade.strip();
+        if (value != null && !value.matches("[ABC]")) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The default grade must be A, B or C.");
+        }
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setDefaultGrade(value);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=default-grade value="
+                + (value == null ? "" : value));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's escalation gap (null for blank: off): reminding a claim whose previous reminder was at least
      * these many days before the sheet's today escalates it. Not dated.
      */
