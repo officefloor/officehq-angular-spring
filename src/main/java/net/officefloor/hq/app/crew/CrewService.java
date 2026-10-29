@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -13,7 +14,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The sheet's crews and their members. A crew has a name (trimmed, not blank, at most once on the sheet) and a lead
  * chosen from the sheet's people; its members are other people of the sheet, each at most once, never its lead. A
- * person may lead or be in several crews.
+ * person may lead or be in several crews. A crew is also a pool under its name (its lead and members at equal shares),
+ * so a crew cannot take a pool's name.
  */
 @Service
 public class CrewService {
@@ -21,12 +23,14 @@ public class CrewService {
     private final CrewRepository crews;
     private final CrewMemberRepository members;
     private final PersonRepository people;
+    private final PoolRepository pools;
     private final SheetService sheets;
     private final Audit audit;
 
     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            PoolRepository pools, SheetService sheets, Audit audit) {
         this.crews = crews;
+        this.pools = pools;
         this.members = members;
         this.people = people;
         this.sheets = sheets;
@@ -45,7 +49,10 @@ public class CrewService {
         return members.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Adds a crew under its name, trimmed, led by the person; refused when blank, already a crew's name, or no lead. */
+    /**
+     * Adds a crew under its name, trimmed, led by the person; refused when blank, already a crew's name or a pool's, or
+     * no lead.
+     */
     @Transactional
     public Crew add(String by, String sheetId, String name, Long leadId) {
         String key = name == null ? "" : name.strip();
@@ -56,6 +63,9 @@ public class CrewService {
         Person lead = person(sheetId, leadId, "Choose a lead.");
         if (crews.existsBySheetIdAndName(sheetId, key)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, key + " is already a crew.");
+        }
+        if (pools.existsBySheetIdAndName(sheetId, key)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, key + " is already a pool.");
         }
         Crew added = crews.saveAndFlush(new Crew(sheetId, key, lead.getId()));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + by + " name=" + key + " lead=" + lead.getName());

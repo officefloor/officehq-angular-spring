@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -33,12 +34,14 @@ public class PoolService {
     private final PoolRepository pools;
     private final PoolMemberRepository members;
     private final PersonRepository people;
+    private final CrewRepository crews;
     private final SheetService sheets;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            CrewRepository crews, SheetService sheets, Audit audit) {
         this.pools = pools;
+        this.crews = crews;
         this.members = members;
         this.people = people;
         this.sheets = sheets;
@@ -57,7 +60,10 @@ public class PoolService {
         return members.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Adds a pool under its name, trimmed; refused when blank or already a pool's name. */
+    /**
+     * Adds a pool under its name, trimmed; refused when blank or already a pool's name or a crew's (a crew is also a
+     * pool, under its name).
+     */
     @Transactional
     public Pool add(String by, String sheetId, String name) {
         String key = name == null ? "" : name.strip();
@@ -67,6 +73,9 @@ public class PoolService {
         sheets.lock(sheetId);
         if (pools.existsBySheetIdAndName(sheetId, key)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, key + " is already a pool.");
+        }
+        if (crews.existsBySheetIdAndName(sheetId, key)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, key + " is already a crew.");
         }
         Pool added = pools.saveAndFlush(new Pool(sheetId, key));
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + by + " name=" + key);

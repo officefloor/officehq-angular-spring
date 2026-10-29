@@ -4,6 +4,7 @@ import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { sumSkippingNa } from '../rates/rates';
+import { PoolStore } from '../pools/pools';
 
 export interface CrewMemberView {
   personId: number;
@@ -110,6 +111,7 @@ export class Crews {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   protected readonly roster = inject(CrewRoster);
+  private readonly pools = inject(PoolStore);
 
   protected readonly crews = this.roster.crews;
   // Each crew with its lead's and members' names as the people list has them now, and its due-total.
@@ -187,8 +189,8 @@ export class Crews {
       this.error.set('Enter a crew name.');
       return;
     }
-    if (this.crews().some((c) => c.name === name)) {
-      this.error.set(`${name} is already a crew.`);
+    if (this.pools.names().has(name)) {
+      this.error.set(`${name} is already a crew or a pool.`);
       return;
     }
     const leadId = Number(this.lead());
@@ -202,7 +204,7 @@ export class Crews {
       if (this.session.sheetId() === sheet) this.crews.update((l) => [...l, added]);
     } catch (err) {
       this.error.set(
-        err instanceof HttpErrorResponse && err.status === 409 ? `${name} is already a crew.` : 'Could not add the crew.',
+        err instanceof HttpErrorResponse && err.status === 409 ? `${name} is already a crew or a pool.` : 'Could not add the crew.',
       );
     } finally {
       this.submitting = false;

@@ -4,6 +4,8 @@ import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { SettingsStore } from '../settings/settings';
+import { CrewRoster, CrewView } from '../crews/crews';
+import { equalShares } from '../rates/rates';
 
 // A member is a person, or another pool (with a null personId); a pool member is never retired.
 export interface PoolMemberView {
@@ -35,6 +37,36 @@ export interface PoolView {
   members: PoolMemberView[];
   totalShare: string;
   balanced: boolean;
+  // Set on a crew's pool: the crew it stands for (its members are the crew's, and none are added here).
+  crewId?: number;
+}
+
+/**
+ * A crew as a pool, under the crew's name (keyed by the negated crew id, apart from the stored pools): its lead and
+ * members, in that order, at equal shares of 100.00 split as patrons' shares are, the remainder on the lead.
+ */
+function crewPool(crew: CrewView, names: ReadonlyMap<number, string>): PoolView {
+  const people = [
+    { personId: crew.leadId, name: crew.leadName },
+    ...crew.members.map((m) => ({ personId: m.personId, name: m.name })),
+  ];
+  const shares = equalShares(people.length);
+  return {
+    id: -crew.id,
+    name: crew.name,
+    members: people.map((p, i) => ({
+      personId: p.personId,
+      poolId: null,
+      name: names.get(p.personId) ?? p.name,
+      share: shares[i],
+      retired: false,
+      from: null,
+      to: null,
+    })),
+    totalShare: '100.00',
+    balanced: true,
+    crewId: crew.id,
+  };
 }
 
 // A person as the pools see them: who may be chosen as a member, whether they are retired, and their holds (each
@@ -140,8 +172,16 @@ export class PoolStore {
   private readonly roster = inject(PoolRoster);
   private readonly settings = inject(SettingsStore);
   private readonly session = inject(Session);
+  private readonly crews = inject(CrewRoster);
 
   readonly pools = signal<readonly PoolView[]>([]);
+  // The stored pools, then each crew as a pool, in the order the crews were added.
+  readonly all = computed(() => {
+    const names = new Map(this.roster.people().map((p) => [p.id, p.name]));
+    return [...this.pools(), ...this.crews.crews().map((c) => crewPool(c, names))];
+  });
+  // Every name a pool or a crew goes by: a pool cannot take a crew's name, nor a crew a pool's.
+  readonly names = computed(() => new Set(this.all().map((p) => p.name)));
   // The pools with each member counted retired as the people list has them now, the totals to match, and each
   // member's cut of the pool's pot while the pool is balanced: the sheet's pot for a pool that is a member of none,
   // else its cut in the pool above. A member retired, or held on the sheet's today, counts toward the total but has no
@@ -155,7 +195,7 @@ export class PoolStore {
         .filter((p) => today !== null && p.holds.some((h) => h.from <= today && (h.to === null || today <= h.to)))
         .map((p) => p.id),
     );
-    const pools = this.pools();
+    const pools = this.all();
     const parent = parents(pools);
     const counted = new Map(
       pools.map((pool) => {
@@ -217,7 +257,8 @@ export class PoolStore {
 }
 
 // The active sheet's pools: each with its members and their shares, its total share and whether it is balanced
-// (the shares total exactly 100.00). A blank pool name, or one already a pool's, is refused; so is a person already
+// (the shares total exactly 100.00), each crew following as a pool of its own. A blank pool name, or one already a
+// pool's or a crew's, is refused; so is a person already
 // in the pool, or a share not more than 0.00 and at most 100.00 with up to two decimals. A member may be another pool
 // (chosen as pool:<name>): of at most one pool, never containing itself through any chain, in a chain at most three
 // deep. A pool that is a member of another has no pot of its own: its pot is its cut in the pool above; the sheet's
@@ -268,6 +309,7 @@ export class PoolStore {
               <td data-testid="pool-total-share">{{ p.totalShare | fig }}</td>
               <td data-testid="pool-balanced">{{ (p.balanced ? 'yes' : 'no') | fig }}</td>
               <td>
+                @if (p.crewId === undefined) {
                 <form (submit)="addMember($event, p)" [attr.aria-label]="'Add a member to ' + p.name">
                   <label [for]="'pool-member-select-' + p.id">Member<span class="visually-hidden"> for {{ p.name }}</span></label>
                   <select
@@ -312,6 +354,9 @@ export class PoolStore {
                     <p role="alert" data-testid="pool-error">{{ err | fig }}</p>
                   }
                 </form>
+                } @else {
+                  Members of crew {{ p.name }}
+                }
               </td>
             </tr>
           }
@@ -444,8 +489,8 @@ export class Pools {
       this.error.set('Enter a pool name.');
       return;
     }
-    if (this.pools().some((p) => p.name === name)) {
-      this.error.set(`${name} is already a pool.`);
+    if (this.store.names().has(name)) {
+      this.error.set(`${name} is already a pool or a crew.`);
       return;
     }
     this.submitting = true;
@@ -454,7 +499,7 @@ export class Pools {
       if (this.session.sheetId() === sheet) this.pools.update((l) => [...l, added]);
     } catch (err) {
       this.error.set(
-        err instanceof HttpErrorResponse && err.status === 409 ? `${name} is already a pool.` : 'Could not add the pool.',
+        err instanceof HttpErrorResponse && err.status === 409 ? `${name} is already a pool or a crew.` : 'Could not add the pool.',
       );
     } finally {
       this.submitting = false;
