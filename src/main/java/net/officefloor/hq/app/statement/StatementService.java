@@ -171,8 +171,7 @@ public class StatementService {
             ClaimStatus status = c.statusAtEndOf(asOf);
             boolean bound = bindingCounts && c.isStated();
             boolean counts = status != null && status.counts() && !c.isDeferredAsOf(asOf)
-                    && !(status.isOpen() && !bound && (c.isHeld() || person.getHolds().stream().anyMatch(h -> h.covers(c.getDate()))
-                    || person.isRetiredOn(asOf)));
+                    && !(status.isOpen() && !bound && person.isRetiredOn(asOf));
             if (!counts) {
                 c.unbind();
                 continue;

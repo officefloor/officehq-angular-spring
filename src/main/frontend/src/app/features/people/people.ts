@@ -1000,50 +1000,36 @@ export class People {
   private bulkRetiring = false;
   private bulkGrading = false;
   // The claims that count in the live totals: open, pending and settled ones, leaving out the open and pending ones
-  // held, or dated within one of their person's holds, or whose person's retirement date today has reached, that no statement
-  // binds, and the deferred ones.
+  // whose person's retirement date today has reached, that no statement binds, and the deferred ones. A hold (the
+  // person's or the claim's) leaves nothing out; it only takes the person's cut from the pools.
   protected readonly liveClaims = computed(() => {
     const leftOut = this.leftOut();
     return this.claims().filter((c) => counts(c) && !leftOut(c));
   });
   // Whether the live rules leave the claim out whatever its status: deferred, or open, bound by no statement and
-  // held or dated within one of its person's holds or with its person's retirement date reached today.
+  // with its person's retirement date reached today.
   private readonly leftOut = computed(() => {
-    const today = this.session.sheetToday();
-    const holds = new Map(this.people().map((p) => [p.id, p.holds]));
-    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
-    // a person whose retirement date the sheet's today has reached holds every claim, as a hold would
-    const held = (c: Claim) => {
-      const from = retiredFrom.get(c.personId) ?? null;
-      return (from !== null && today !== null && today >= from)
-        || (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
-    };
-    return (c: Claim) => deferred(c, today) || (isOpen(c) && !isBound(c) && (c.held || held(c)));
-  });
-  protected readonly liveBy = computed(() => {
-    const by = new Map<number, Claim[]>();
-    for (const c of this.liveClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
-    return by;
-  });
-  // The claims whose amounts count toward what is claimed: the live ones, plus those left out only for being held
-  // (the claim's own hold or one of its person's) — a hold takes only the due out of the totals.
-  private readonly claimedClaims = computed(() => {
     const today = this.session.sheetToday();
     const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
     const retired = (c: Claim) => {
       const from = retiredFrom.get(c.personId) ?? null;
       return from !== null && today !== null && today >= from;
     };
-    return this.claims().filter((c) => counts(c) && !deferred(c, today) && !(isOpen(c) && !isBound(c) && retired(c)));
+    return (c: Claim) => deferred(c, today) || (isOpen(c) && !isBound(c) && retired(c));
+  });
+  protected readonly liveBy = computed(() => {
+    const by = new Map<number, Claim[]>();
+    for (const c of this.liveClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+    return by;
   });
   protected readonly claimedBy = computed(() => {
     const lists = new Map<number, Claim[]>();
-    for (const c of this.claimedClaims()) lists.set(c.personId, [...(lists.get(c.personId) ?? []), c]);
+    for (const c of this.liveClaims()) lists.set(c.personId, [...(lists.get(c.personId) ?? []), c]);
     const by = new Map<number, string>();
     for (const [id, list] of lists) by.set(id, claimedTotal(list));
     return by;
   });
-  protected readonly claimedTotal = computed(() => claimedTotal(this.claimedClaims()));
+  protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
   // today nor for the grade of any counted claim's date it is null (n/a), unless a counted claim has a figure (a

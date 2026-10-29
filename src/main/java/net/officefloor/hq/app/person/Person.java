@@ -387,19 +387,18 @@ public class Person {
     }
 
     /**
-     * Whether the claim counts toward the person's live totals: one whose status counts, except an open one dated
-     * held, or within a hold, that no statement binds, or once the person's retirement date is reached on the sheet's today, and
-     * one deferred on the sheet's today.
+     * Whether the claim counts toward the person's live totals: one whose status counts, except an open one that no
+     * statement binds once the person's retirement date is reached on the sheet's today, and one deferred on the sheet's
+     * today. A hold (the person's or the claim's) leaves nothing out; it only takes the person's cut from the pools.
      */
     public boolean countsLive(Claim claim, LocalDate today) {
         return claim.getStatus().counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isBound()
-                && (claim.isHeld() || holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
+                && isRetiredOn(today));
     }
 
     /**
-     * Whether the claim's amount counts toward what the person has claimed: as the live rules say, except that a hold
-     * (the person's or the claim's) does not leave it out; only its due leaves the totals while held.
+     * Whether the claim's amount counts toward what the person has claimed: as the live rules say.
      */
     public boolean countsClaimed(Claim claim, LocalDate today) {
         return claim.getStatus().counts() && !claim.isDeferredOn(today)
@@ -408,13 +407,13 @@ public class Person {
 
     /**
      * Whether the claim counts toward the person's figure for a period ending on the day: one whose status at the end
-     * of that day counts, left out as the live rules say when deferred on the sheet's today or held.
+     * of that day counts, left out as the live rules say when deferred on the sheet's today or retired.
      */
     public boolean countsAtEndOf(Claim claim, LocalDate end, LocalDate today) {
         ClaimStatus then = claim.statusAtEndOf(end);
         return then != null && then.counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isBound()
-                && (claim.isHeld() || holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
+                && isRetiredOn(today));
     }
 
     /** The version of the person as stored, raised on each save. */

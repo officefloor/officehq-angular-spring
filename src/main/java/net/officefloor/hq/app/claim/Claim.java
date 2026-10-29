@@ -155,7 +155,7 @@ public class Claim {
     @Column(name = "waived_on")
     private LocalDate waivedOn;
 
-    /** Whether the claim is held: while held, an open one no statement binds counts in no live due, though its amount is still claimed. */
+    /** Whether the claim is held; a held claim still counts in every total. */
     @Column(name = "held", nullable = false)
     private boolean held;
 

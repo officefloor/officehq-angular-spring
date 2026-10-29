@@ -98,11 +98,11 @@ public class RollupService {
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
         for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
-            // an open claim dated within one of the person's holds counts in no live total, unless a statement binds it;
-            // nor does one deferred on the sheet's today
+            // an open claim of a retired person counts in no live total, unless a statement binds it; nor does one
+            // deferred on the sheet's today; a hold leaves nothing out
             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
                     .filter(c -> p.countsLive(c, today)).toList();
-            // a held claim's amount still counts toward what is claimed; a claim correcting another does not
+            // a claim correcting another does not count toward what is claimed
             BigDecimal claimed = claimsBy.getOrDefault(p.getId(), List.of()).stream()
                     .filter(c -> p.countsClaimed(c, today) && c.getCorrects() == null)
                     .map(Claim::getAmount).reduce(ZERO, BigDecimal::add);

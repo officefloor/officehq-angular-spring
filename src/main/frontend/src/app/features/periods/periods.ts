@@ -31,7 +31,7 @@ export interface PeriodView {
 }
 
 /**
- * A claim the live rules do not leave out (deferred or held): its person, its due-by (which decides its period), the
+ * A claim the live rules do not leave out (deferred or retired): its person, its due-by (which decides its period), the
  * figure it totals now (null for n/a), and its status and log, which decide whether it counted at the end of a period.
  */
 export interface DatedFigure {
