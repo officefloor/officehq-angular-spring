@@ -55,16 +55,17 @@ public class SheetService {
     }
 
     /**
-     * Takes the sheet's next claim number: the one after the last given on any sheet of its tree, which share one
-     * number sequence. The tree's root is locked, so two callers on the tree at once never get the same one.
+     * Takes the sheet's next claim number in the fiscal year: the one after the last given in that year on any sheet of
+     * its tree, which share one sequence per fiscal year. The tree's root is locked, so two callers on the tree at once
+     * never get the same one.
      */
     @Transactional
-    public long nextClaimNumber(String id) {
+    public long nextFiscalClaimNumber(String id, int fiscalYear) {
         load(id);
         Set<String> tree = tree(id);
         sheets.findWithLockById(root(id)).orElseThrow();
-        long next = sheets.lastClaimNumberOf(tree) + 1;
-        sheets.setClaimNumber(id, next);
+        long next = sheets.lastFiscalClaimNumberOf(tree, fiscalYear) + 1;
+        sheets.setFiscalClaimNumber(id, fiscalYear, next);
         return next;
     }
 

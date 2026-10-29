@@ -787,12 +787,15 @@ public class ClaimService {
 
     /**
      * Gives the claim being opened its number: while the sheet's period numbering from is set and its today is on or
-     * after it, the next in the sequence of the period the claim's due-by falls in (X for none), else the sheet's next.
+     * after it, the next in the sequence of the period the claim's due-by falls in (X for none), else FY<year>-n, the
+     * next in the fiscal year the due-by falls in, counted across the sheet's tree.
      * The sheet is locked, so two claims opened at once never get the same one.
      */
     private void number(String sheetId, Claim claim) {
         if (!numbersByPeriod(sheetId)) {
-            claim.setNumber(String.valueOf(sheets.nextClaimNumber(sheetId)));
+            LocalDate placedOn = claim.getDueBy() != null ? claim.getDueBy() : claim.getDate();
+            int year = sheets.load(sheetId).fiscalYearOf(placedOn);
+            claim.setNumber("FY" + year + "-" + sheets.nextFiscalClaimNumber(sheetId, year));
             return;
         }
         String sequence = sequenceOn(sheetId, claim.getDueBy());
@@ -822,7 +825,7 @@ public class ClaimService {
 
     /**
      * Gives a numbered claim the next number in the sequence it would be numbered in now; its old one is retired, so it
-     * is never given again (a sheet number never is: the sheet's count only rises).
+     * is never given again (a fiscal year number never is: the tree's count for the year only rises).
      */
     private void renumber(String sheetId, Claim claim) {
         if (claim.getNumberSequence() != null) {

@@ -64,9 +64,9 @@ public class Claim {
     private ClaimStatus status = ClaimStatus.DRAFT;
 
     /**
-     * The number given when the claim is opened: the sheet's next (1, 2, ...), or while the sheet numbers by period
-     * its period's next (P1-1, X-1 for no period); kept when it is voided, never reused; null for a claim never
-     * opened.
+     * The number given when the claim is opened: the next in the fiscal year of its due-by across the sheet's tree
+     * (FY2026-1, FY2026-2, ...; plain 1, 2, ... given before), or while the sheet numbers by period its period's next
+     * (P1-1, X-1 for no period); kept when it is voided, never reused; null for a claim never opened.
      */
     @Column(name = "claim_number")
     private String number;

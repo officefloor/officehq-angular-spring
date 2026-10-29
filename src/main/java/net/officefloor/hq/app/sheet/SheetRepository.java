@@ -19,14 +19,16 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Sheet> findWithLockById(String id);
 
-    /** The last claim number given on any of the sheets; 0 for none. */
-    @Query(value = "SELECT COALESCE(MAX(last_claim_number), 0) FROM sheet WHERE id IN (:ids)", nativeQuery = true)
-    long lastClaimNumberOf(@Param("ids") Collection<String> ids);
+    /** The last claim number given in the fiscal year on any of the sheets; 0 for none. */
+    @Query(value = "SELECT COALESCE(MAX(last_claim_number), 0) FROM sheet_fiscal_claim_number"
+            + " WHERE sheet_id IN (:ids) AND fiscal_year = :year", nativeQuery = true)
+    long lastFiscalClaimNumberOf(@Param("ids") Collection<String> ids, @Param("year") int year);
 
-    /** Sets the sheet's last claim number. */
+    /** Sets the sheet's last claim number in the fiscal year. */
     @Modifying(flushAutomatically = true)
-    @Query(value = "UPDATE sheet SET last_claim_number = :number WHERE id = :id", nativeQuery = true)
-    int setClaimNumber(@Param("id") String id, @Param("number") long number);
+    @Query(value = "MERGE INTO sheet_fiscal_claim_number (sheet_id, fiscal_year, last_claim_number)"
+            + " KEY (sheet_id, fiscal_year) VALUES (:id, :year, :number)", nativeQuery = true)
+    int setFiscalClaimNumber(@Param("id") String id, @Param("year") int year, @Param("number") long number);
 
     /** Moves the sheet's last settle batch number on by one; the row stays locked until the transaction ends. */
     @Modifying(flushAutomatically = true)

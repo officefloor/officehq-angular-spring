@@ -338,6 +338,11 @@ public class Sheet {
         return fiscalStartMonth;
     }
 
+    /** The fiscal year FY<year> the date falls in: the one starting on the first of the fiscal start month in that year. */
+    public int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= fiscalStartMonth ? date.getYear() : date.getYear() - 1;
+    }
+
     public void setFiscalStartMonth(int fiscalStartMonth) {
         this.fiscalStartMonth = fiscalStartMonth;
     }
