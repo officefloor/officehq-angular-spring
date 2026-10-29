@@ -473,7 +473,10 @@ public class ClaimService {
      */
     @Transactional
     public Claim waive(String by, String sheetId, Long id) {
-        Claim claim = lockedClaim(sheetId, id);
+        // a late charge may be waived whatever period the claim's due-by falls in, closed or not
+        sheets.lock(sheetId);
+        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         if (!settings.isSteward(sheetId, by)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can waive a late charge.");
         }
@@ -493,7 +496,7 @@ public class ClaimService {
     }
 
     /**
-     * Holds an OPEN or PENDING claim, or releases a held one: while held it counts in no live total unless a statement
+     * Holds an OPEN or PENDING claim, or releases a held one: while held its due counts in no live total (its amount is still claimed) unless a statement
      * binds it, as a held person's claims do. Refused for a claim in any other status.
      */
     @Transactional

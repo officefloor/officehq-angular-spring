@@ -43,7 +43,7 @@ export interface Claim {
   remindedOn: string | null;
   // The sheet's today a steward waived the claim's late charge; null for one never waived. See waivedOn().
   waivedOn: string | null;
-  // Whether the claim is held: while held, an open or pending one no statement binds counts in no live total.
+  // Whether the claim is held: while held, an open or pending one no statement binds counts in no live due (its amount is still claimed).
   held: boolean;
   // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
   // settled or approved while it has none, nor while it lacks one of each of the sheet's proof kinds.

@@ -386,6 +386,15 @@ public class Person {
     }
 
     /**
+     * Whether the claim's amount counts toward what the person has claimed: as the live rules say, except that a hold
+     * (the person's or the claim's) does not leave it out; only its due leaves the totals while held.
+     */
+    public boolean countsClaimed(Claim claim, LocalDate today) {
+        return claim.getStatus().counts() && !claim.isDeferredOn(today)
+                && !(claim.getStatus().isOpen() && !claim.isBound() && isRetiredOn(today));
+    }
+
+    /**
      * Whether the claim counts toward the person's figure for a period ending on the day: one whose status at the end
      * of that day counts, left out as the live rules say when deferred on the sheet's today or held.
      */

@@ -102,7 +102,10 @@ public class RollupService {
             // nor does one deferred on the sheet's today
             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
                     .filter(c -> p.countsLive(c, today)).toList();
-            BigDecimal claimed = ZERO;
+            // a held claim's amount still counts toward what is claimed; a claim correcting another does not
+            BigDecimal claimed = claimsBy.getOrDefault(p.getId(), List.of()).stream()
+                    .filter(c -> p.countsClaimed(c, today) && c.getCorrects() == null)
+                    .map(Claim::getAmount).reduce(ZERO, BigDecimal::add);
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
             boolean kept = false;
@@ -111,10 +114,6 @@ public class RollupService {
             grades.add(p.gradeOn(today));
             for (Claim c : counted) {
                 grades.add(p.gradeOn(c.getDate()));
-                // a claim correcting another counts toward due but not toward what is claimed
-                if (c.getCorrects() == null) {
-                    claimed = claimed.add(c.getAmount());
-                }
                 kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
                 // the claim's rate is the one its person's grade in force on its date has
                 Map<String, List<Rate>> claimRates = byTier.get(tiers.stream()

@@ -973,12 +973,25 @@ export class People {
     for (const c of this.liveClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
+  // The claims whose amounts count toward what is claimed: the live ones, plus those left out only for being held
+  // (the claim's own hold or one of its person's) — a hold takes only the due out of the totals.
+  private readonly claimedClaims = computed(() => {
+    const today = this.session.sheetToday();
+    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
+    const retired = (c: Claim) => {
+      const from = retiredFrom.get(c.personId) ?? null;
+      return from !== null && today !== null && today >= from;
+    };
+    return this.claims().filter((c) => counts(c) && !deferred(c, today) && !(isOpen(c) && !isBound(c) && retired(c)));
+  });
   protected readonly claimedBy = computed(() => {
+    const lists = new Map<number, Claim[]>();
+    for (const c of this.claimedClaims()) lists.set(c.personId, [...(lists.get(c.personId) ?? []), c]);
     const by = new Map<number, string>();
-    for (const [id, list] of this.liveBy()) by.set(id, claimedTotal(list));
+    for (const [id, list] of lists) by.set(id, claimedTotal(list));
     return by;
   });
-  protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
+  protected readonly claimedTotal = computed(() => claimedTotal(this.claimedClaims()));
   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
   // today nor for the grade of any counted claim's date it is null (n/a), unless a counted claim has a figure (a
