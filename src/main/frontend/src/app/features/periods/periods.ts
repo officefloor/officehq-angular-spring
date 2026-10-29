@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { ClaimLogLine, ClaimStatus, statusAtEndOf } from '../claims/claims';
 import { sumSkippingNa } from '../rates/rates';
+import { SettingsStore } from '../settings/settings';
 
 export interface PeriodView {
   id: number;
@@ -39,6 +40,16 @@ function countedAtEndOf(f: DatedFigure, day: string): boolean {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The fiscal year the date falls in, named FY<yyyy> by the calendar year its first day falls in: fiscal years start on
+ * the first of the start month (1 to 12).
+ */
+export function fiscalYearOf(date: string, startMonth: number): string {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  return `FY${month >= startMonth ? year : year - 1}`;
+}
 
 /** The period whose dates contain the date; undefined when none does. */
 export function periodOn(periods: readonly PeriodView[], date: string): PeriodView | undefined {
@@ -113,6 +124,15 @@ export class PeriodStore {
   async generate(sheet: string, from: string, to: string): Promise<number> {
     const made = await firstValueFrom(
       this.http.post<PeriodView[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, { from, to }),
+    );
+    for (const p of made) this.put(sheet, p);
+    return made.length;
+  }
+
+  /** Generate the fiscal year FY<year>'s twelve monthly periods as generate does; answers how many were made. */
+  async generateFiscalYear(sheet: string, year: number): Promise<number> {
+    const made = await firstValueFrom(
+      this.http.post<PeriodView[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate-fy`, { year }),
     );
     for (const p of made) this.put(sheet, p);
     return made.length;
@@ -208,9 +228,21 @@ export class PeriodStore {
         }
       </form>
 
+      <form (submit)="generateFiscalYear($event)" aria-label="Generate a fiscal year's monthly periods">
+        <label for="period-generate-fy-year">Fiscal year (yyyy)</label>
+        <input
+          id="period-generate-fy-year"
+          data-testid="period-generate-fy-year"
+          inputmode="numeric"
+          [value]="fyYear()"
+          (input)="fyYear.set(value($event)); genError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
+
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
@@ -221,6 +253,7 @@ export class PeriodStore {
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueBy().get(p.id) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+              <td data-testid="period-fy">{{ fiscalYear(p) }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
@@ -245,6 +278,7 @@ export class PeriodStore {
 export class Periods {
   private readonly session = inject(Session);
   protected readonly store = inject(PeriodStore);
+  private readonly settings = inject(SettingsStore);
 
   // The claims of the sheet the live rules do not leave out: each one's date, figure and log.
   readonly figures = input<readonly DatedFigure[]>([]);
@@ -258,6 +292,7 @@ export class Periods {
   protected readonly genFrom = signal('');
   protected readonly genTo = signal('');
   protected readonly genError = signal<string | null>(null);
+  protected readonly fyYear = signal('');
   // How many periods the last generate made; null while one runs or before any.
   protected readonly generated = signal<number | null>(null);
   private generating = false;
@@ -267,6 +302,11 @@ export class Periods {
   // Each period's due-total: a closed or soft-closed one's fixed total, else the figures of the claims due by a date in it that counted at
   // the end of its last day, skipping n/a.
   protected readonly dueBy = computed(() => periodDueTotals(this.store.list(), this.figures()));
+
+  /** The fiscal year the period's from-date falls in. */
+  protected fiscalYear(p: PeriodView): string {
+    return fiscalYearOf(p.from, this.settings.fiscalStartMonth());
+  }
 
   protected async close(p: PeriodView): Promise<void> {
     this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
@@ -362,6 +402,31 @@ export class Periods {
       this.generated.set(made);
     } catch {
       this.genError.set('Could not generate those periods.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Generates the fiscal year's twelve monthly periods as generate does; shows how many were made. */
+  protected async generateFiscalYear(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.generating) return;
+    this.generated.set(null);
+    this.genError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const year = this.fyYear().trim();
+    if (!/^\d{4}$/.test(year) || year === '0000' || year === '9999') {
+      this.genError.set('Enter a fiscal year as yyyy.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.store.generateFiscalYear(sheet, Number(year));
+      if (this.session.sheetId() !== sheet) return;
+      this.generated.set(made);
+    } catch {
+      this.genError.set('Could not generate that fiscal year\'s periods.');
     } finally {
       this.generating = false;
     }

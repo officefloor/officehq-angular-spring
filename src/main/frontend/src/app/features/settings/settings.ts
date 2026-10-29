@@ -28,6 +28,8 @@ interface SettingsView {
   pot: string | null;
   // The id of the parent sheet, whose rates fill in for a grade with none in force on a date here; null for none.
   parent: string | null;
+  // The month (1 to 12) the sheet's fiscal years start in.
+  fiscalStartMonth: number;
   // Every value recorded for the dated settings, each from its from-date.
   dated: DatedSetting[];
   // The permission matrix as set, by action: the roles that may take it, comma separated; an action not listed keeps
@@ -85,6 +87,8 @@ export const DEFAULT_LATE_PCT = '0.00';
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A month number, 1 to 12. */
+const MONTH = /^(0?[1-9]|1[0-2])$/;
 /** A sheet id: letters, digits, dots, dashes and underscores. */
 const SHEET_ID = /^[A-Za-z0-9_.-]{1,100}$/;
 
@@ -146,6 +150,8 @@ export class SettingsStore {
   readonly pot = signal<string | null>(null);
   /** The parent sheet's id; null when blank (none). */
   readonly parent = signal<string | null>(null);
+  /** The month (1 to 12) the sheet's fiscal years start in. */
+  readonly fiscalStartMonth = signal(1);
   /** The permission matrix as set, by action; an action not listed keeps the standing rule. */
   readonly permissions = signal<Readonly<Record<string, string>>>({});
   /**
@@ -169,6 +175,7 @@ export class SettingsStore {
     this.graceDays.set(null);
     this.pot.set(null);
     this.parent.set(null);
+    this.fiscalStartMonth.set(1);
     this.permissions.set({});
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [roles, settings] = await Promise.all([
@@ -189,6 +196,7 @@ export class SettingsStore {
     this.graceDays.set(s.graceDays);
     this.pot.set(s.pot ?? null);
     this.parent.set(s.parent ?? null);
+    this.fiscalStartMonth.set(s.fiscalStartMonth ?? 1);
     this.permissions.set(s.permissions ?? {});
   }
 
@@ -284,6 +292,13 @@ export class SettingsStore {
   async setParent(sheet: string, value: string | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/parent`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setFiscalStartMonth(sheet: string, value: number): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/fiscal-start-month`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -476,6 +491,16 @@ export class SettingsStore {
           (keydown.delete)="potChanged = true; settingsError.set(null)"
           (keydown.backspace)="potChanged = true; settingsError.set(null)"
         />
+        <label for="setting-fiscal-start-month">Fiscal start month (1 to 12; fiscal years start on its first day)</label>
+        <input
+          id="setting-fiscal-start-month"
+          data-testid="setting-fiscal-start-month"
+          inputmode="numeric"
+          [value]="fiscalStartMonth()"
+          (input)="fiscalStartMonth.set(value($event)); fiscalStartMonthChanged = true; settingsError.set(null)"
+          (keydown.delete)="fiscalStartMonthChanged = true; settingsError.set(null)"
+          (keydown.backspace)="fiscalStartMonthChanged = true; settingsError.set(null)"
+        />
         <label for="setting-parent">Parent sheet (its rates fill in for a grade with none in force here; blank for none)</label>
         <input
           id="setting-parent"
@@ -606,6 +631,7 @@ export class SettingsStore {
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ store.entryDate() ?? '' }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ store.graceDays() ?? '' }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ store.pot() ?? '' }}</strong></p>
+      <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong></p>
       <p>Parent sheet: <strong data-testid="setting-parent-current">{{ store.parent() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ store.cap() ?? '' }}</strong></p>
       <p>
@@ -698,6 +724,7 @@ export class Settings {
   protected readonly entryDate = signal('');
   protected readonly graceDays = signal('');
   protected readonly pot = signal('');
+  protected readonly fiscalStartMonth = signal('');
   protected readonly parent = signal('');
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
@@ -718,6 +745,7 @@ export class Settings {
   protected entryDateChanged = false;
   protected graceDaysChanged = false;
   protected potChanged = false;
+  protected fiscalStartMonthChanged = false;
   protected parentChanged = false;
   protected capChanged = false;
   protected proofThresholdChanged = false;
@@ -903,6 +931,11 @@ export class Settings {
       this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const fiscalStartMonth = this.fiscalStartMonth().trim();
+    if (this.fiscalStartMonthChanged && !MONTH.test(fiscalStartMonth)) {
+      this.settingsError.set('Enter a fiscal start month from 1 to 12.');
+      return;
+    }
     const parent = this.parent().trim();
     if (this.parentChanged && parent && !SHEET_ID.test(parent)) {
       this.settingsError.set('Enter a parent sheet id of letters, digits, dots, dashes or underscores, or leave it blank for none.');
@@ -1006,6 +1039,10 @@ export class Settings {
       if (this.potChanged) {
         await this.store.setPot(sheet, pot || null);
         this.potChanged = this.pot().trim() !== pot;
+      }
+      if (this.fiscalStartMonthChanged) {
+        await this.store.setFiscalStartMonth(sheet, Number(fiscalStartMonth));
+        this.fiscalStartMonthChanged = this.fiscalStartMonth().trim() !== fiscalStartMonth;
       }
       if (this.parentChanged) {
         await this.store.setParent(sheet, parent || null);

@@ -321,6 +321,17 @@ public class SettingsService implements Audit.OnBehalf {
         return saved;
     }
 
+    /** Sets the month (1 to 12) the sheet's fiscal years start in. Not dated. */
+    @Transactional
+    public Sheet setFiscalStartMonth(String by, String sheetId, int month) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setFiscalStartMonth(month);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=fiscal-start-month value="
+                + month);
+        return saved;
+    }
+
     /**
      * Sets the sheet's parent sheet (null for blank: none), whose rates apply to a grade with no rate in force on a
      * date on this sheet. Refused for the sheet itself, for a sheet never loaded, and for a sheet that has this sheet

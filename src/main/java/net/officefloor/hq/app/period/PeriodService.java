@@ -114,6 +114,16 @@ public class PeriodService {
     }
 
     /**
+     * Adds the twelve monthly periods of the fiscal year FY<year>, the one starting on the first of the sheet's fiscal
+     * start month in that year, exactly as {@link #generate} does for its first through its last day.
+     */
+    @Transactional
+    public List<Period> generateFiscalYear(String by, String sheetId, int year) {
+        LocalDate first = YearMonth.of(year, sheets.lock(sheetId).getFiscalStartMonth()).atDay(1);
+        return generate(by, sheetId, first, first.plusYears(1).minusDays(1));
+    }
+
+    /**
      * Closes the period, fixing each person's due-total for it now (the figures of their claims due by a date in it that
      * counted at the end of its last day, skipping n/a) and its own, the sum of those.
      * Refused unless the user's role may close, and when it is already closed.

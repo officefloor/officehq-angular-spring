@@ -98,6 +98,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The month (1 to 12) the sheet's fiscal years start in; 1 unless set. Not dated. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /**
      * The id of the sheet's parent sheet, whose rates apply to a grade with no rate in force on a date on this sheet;
      * null for none. Not dated.
@@ -170,6 +174,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.pot = pot;
+        then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
         then.archived = archived;
         then.lastSettleBatch = lastSettleBatch;
@@ -327,6 +332,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
     }
 
     public String getParentId() {
