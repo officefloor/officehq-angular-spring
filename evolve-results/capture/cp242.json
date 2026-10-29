@@ -1,0 +1,64 @@
+{
+  "checkpoint": 242,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp242_person-timeline",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their timeline: one line per dated thing about them in date order (a date's\ngrade changes, then claims, then holds, then retirements, then unretirements), as\n<date> claim <amount> <status>, <date> grade <grade>, <date> hold [to <date>], <date> retired,\n<date> unretired.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their timeline: one line per dated thing about them in date order (a date's\ngrade changes, then claims, then holds, then retirements, then unretirements), as\n<date> claim <amount> <status>, <date> grade <grade>, <date> hold [to <date>], <date> retired,\n<date> unretired.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "86595c5187af7f0b518c20c8ca75a32fd7489a53",
+  "reset_sha": "",
+  "preagent_sha": "675ff37a54cd454e5ffa33197dbce58e301645ee",
+  "prev_sha": "675ff37a54cd454e5ffa33197dbce58e301645ee",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.0145646000000004,
+    "input_tokens": 96,
+    "output_tokens": 26925,
+    "cache_read_tokens": 3402723,
+    "cache_creation_tokens": 99392,
+    "num_turns": 49,
+    "duration_ms": 1406737,
+    "duration_api_ms": 283590,
+    "model": "claude-opus-5-5",
+    "session_id": "e2b78e8e-4e9d-4cce-99a4-5e9d3170844d",
+    "stop_reason": "success",
+    "result_text": "Each person now shows a timeline, but `bin/e2e` is not fully green: 3 of the 4 tests pass and \"scenario 2\" still fails at line 633, before it reaches any timeline check.\n\n**Why scenario 2 fails.** The cause is how the claim editor already works, not the timeline:\n- Line 632 saves an open claim editor and expects the save to be refused. The refusal leaves the editor open, which is what AGENTS.md says should happen (\"the test cancels it before its next action\").\n- Line 633 adds a claim without cancelling first. Because the editor is still open, the shared form saves the edit again instead of adding a claim, so it is refused.\n\nTo check the timeline anyway, I ran a temporary copy of the spec with one cancel step added after line 632. That copy passed all of scenario 2, including its timeline check at line 905. I deleted the copy; the real spec is unchanged.\n\nTo get scenario 2 to pass, the app would have to close the editor (and release its lock) when a save is refused. That contradicts AGENTS.md, so I didn't do it. If you want it anyway, it's a small change in `claims.ts` \u2014 say if you'd like me to make it.\n\n**What I changed:**\n- **Server:** each person's details now include a `timeline` list of lines. `Person.timeline(...)` builds it from:\n  - grade changes that have a from-date: `grade <g>`\n  - all their claims, whatever the status, including DELETED and VOID: `claim <amount> <status>`\n  - holds: `hold` or `hold to <date>`\n  - retirements, current and past: `retired`\n  - unretirements: `unretired`\n- **Ordering:** lines go by date, then grade, claim, hold, retired, unretired. When two lines of the same kind share a date, they are sorted by their text. The spec expects this: it lists \"10.25 DELETED\" before \"3.33 DRAFT\", which is neither amount nor creation order.\n- **No line for the starting grade:** the grade a person is added with has no date, so it doesn't appear.\n- **Claims lookup:** `PersonService.claimsByPerson` supplies each person's claims to every place the person details are built, using a new `findBySheetIdOrderByIdAsc` in `ClaimRepository`.\n- **Front end:** `people.ts` lists the lines as `person-timeline-line`.\n\nSomething else was already running on port 3000, so I ran the tests with `PORT=3917 bin/e2e` and left that process alone.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.0145646000000004,
+        "num_turns": 49,
+        "duration_ms": 1406737,
+        "duration_api_ms": 283590,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp242.agent.jsonl",
+  "agent_diff_file": "cp242.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

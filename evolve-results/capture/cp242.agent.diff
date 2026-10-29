@@ -1,0 +1,240 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 84333e4a..ec0ee57d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -51,6 +51,9 @@ interface Person {
+   flag: string | null;
+   // The user who may approve or reject the person's PENDING claims as a steward may; null for none.
+   approver: string | null;
++  // One line per dated thing about the person, in date order: <date> grade <grade>, <date> claim <amount> <status>,
++  // <date> hold [to <date>], <date> retired, <date> unretired.
++  timeline: string[];
+ }
+ 
+ // A hold on a person from its from-date to its to-date (null: with no end), both included. Their open claims dated
+@@ -698,6 +701,13 @@ interface TreePerson {
+                     }
+                   </ul>
+                 }
++                @if (p.timeline.length > 0) {
++                  <ul aria-label="Timeline">
++                    @for (l of p.timeline; track $index) {
++                      <li data-testid="person-timeline-line">{{ l }}</li>
++                    }
++                  </ul>
++                }
+                 @if (p.snapshots.length > 0) {
+                   <ul aria-label="Snapshots">
+                     @for (s of p.snapshots; track $index) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index ceb224f7..0a30e990 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -13,6 +13,8 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+ 
+     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
+ 
++    List<Claim> findBySheetIdOrderByIdAsc(String sheetId);
++
+     /** The sheet's claims in list order: newest listed first. */
+     List<Claim> findBySheetIdOrderByListedDescIdDesc(String sheetId);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 9e1deb41..a5eac294 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+@@ -430,6 +431,32 @@ public class Person {
+                 && isRetiredOn(today));
+     }
+ 
++    /**
++     * One line per dated thing about the person, in date order, and on a date their grade changes, then their claims,
++     * then their holds, then their retirements, then their unretirements: {@code <date> grade <grade>},
++     * {@code <date> claim <amount> <status>}, {@code <date> hold [to <date>]}, {@code <date> retired} and
++     * {@code <date> unretired}. The grade given from the beginning of time has no date, so no line.
++     */
++    public List<String> timeline(List<Claim> claims) {
++        record Line(LocalDate date, int kind, String text) {
++        }
++        List<Line> lines = new ArrayList<>();
++        grades.stream().filter(g -> g.getFrom() != null)
++                .forEach(g -> lines.add(new Line(g.getFrom(), 0, "grade " + g.getGrade())));
++        claims.stream().filter(c -> c.getDate() != null).forEach(c -> lines.add(new Line(c.getDate(), 1,
++                "claim " + c.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString() + " " + c.getStatus())));
++        holds.forEach(h -> lines.add(new Line(h.getFrom(), 2, h.getTo() == null ? "hold" : "hold to " + h.getTo())));
++        pastRetirements.forEach(r -> lines.add(new Line(r.getFrom(), 3, "retired")));
++        if (retiredFrom != null) {
++            lines.add(new Line(retiredFrom, 3, "retired"));
++        }
++        pastRetirements.forEach(r -> lines.add(new Line(r.getTo(), 4, "unretired")));
++        // same-dated lines of a kind in the order of their text
++        return lines.stream().sorted(Comparator.comparing(Line::date).thenComparingInt(Line::kind)
++                .thenComparing(Line::text))
++                .map(l -> l.date() + " " + l.text()).toList();
++    }
++
+     /** The version of the person as stored, raised on each save. */
+     public long getVersion() {
+         return version;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 29e8c543..1dff2052 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.claim.Claim;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+@@ -41,16 +42,16 @@ public class PersonController {
+     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+             LocalDate retiredFrom, boolean held, List<HoldView> holds, Integer terms, String contact,
+             List<String> aliases, boolean clashing, String originSheet, List<RetirementView> pastRetirements,
+-            List<String> tags, List<SnapshotView> snapshots, String flag, String approver) {
++            List<String> tags, List<SnapshotView> snapshots, String flag, String approver, List<String> timeline) {
+         public static PersonView of(Person p, LocalDate today, Set<Long> clashing,
+-                Map<Long, List<SnapshotView>> snapshots) {
++                Map<Long, List<SnapshotView>> snapshots, Map<Long, List<Claim>> claims) {
+             return new PersonView(p.getId(), p.getName(), p.gradeOn(today),
+                     p.getGrades().stream().map(GradeView::of).toList(), p.getVersion(), p.getRetiredFrom(),
+                     p.isHeld(), p.getHolds().stream().map(HoldView::of).toList(), p.termsOn(today),
+                     p.getContact(), p.getAliases(), clashing.contains(p.getId()),
+                     p.getOriginSheet(), p.getPastRetirements().stream().map(RetirementView::of).toList(),
+                     ClaimService.tagList(p.getTags()), snapshots.getOrDefault(p.getId(), List.of()),
+-                    p.flagOn(today), p.getApprover());
++                    p.flagOn(today), p.getApprover(), p.timeline(claims.getOrDefault(p.getId(), List.of())));
+         }
+     }
+ 
+@@ -217,7 +218,8 @@ public class PersonController {
+         LocalDate today = service.today(sheetId);
+         Set<Long> clashing = service.clashing(sheetId);
+         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+-        return service.list(sheetId).stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList();
++        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
++        return service.list(sheetId).stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList();
+     }
+ 
+     /** Each person's snapshot lines on the sheet, by person id, oldest first, as the store holds them now. */
+@@ -249,8 +251,9 @@ public class PersonController {
+         LocalDate today = service.today(sheetId);
+         Set<Long> clashing = service.clashing(sheetId);
+         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+-        return new ImportView(result.added().stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList(),
+-                result.updated().stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
++        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
++        return new ImportView(result.added().stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList(),
++                result.updated().stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
+     }
+ 
+     @PutMapping("/{id}")
+@@ -401,7 +404,8 @@ public class PersonController {
+         LocalDate today = service.today(sheetId);
+         Set<Long> clashing = service.clashing(sheetId);
+         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+-        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
++        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
++        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
+     }
+ 
+     /**
+@@ -417,7 +421,8 @@ public class PersonController {
+         LocalDate today = service.today(sheetId);
+         Set<Long> clashing = service.clashing(sheetId);
+         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+-        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
++        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
++        return new BulkGradeView(graded.stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
+     }
+ 
+     /**
+@@ -437,7 +442,8 @@ public class PersonController {
+         LocalDate today = service.today(sheetId);
+         Set<Long> clashing = service.clashing(sheetId);
+         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+-        return new BulkRetireView(retired.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
++        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
++        return new BulkRetireView(retired.stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
+     }
+ 
+     /**
+@@ -457,12 +463,14 @@ public class PersonController {
+         LocalDate today = service.today(sheetId);
+         Set<Long> clashing = service.clashing(sheetId);
+         Map<Long, List<SnapshotView>> snapshots = service.snapshotLines(sheetId);
+-        return new BulkHoldView(held.stream().map(p -> PersonView.of(p, today, clashing, snapshots)).toList());
++        Map<Long, List<Claim>> claims = service.claimsByPerson(sheetId);
++        return new BulkHoldView(held.stream().map(p -> PersonView.of(p, today, clashing, snapshots, claims)).toList());
+     }
+ 
+     /** The person as listed on the sheet's today. */
+     private PersonView view(String sheetId, Person person) {
+-        return PersonView.of(person, service.today(sheetId), service.clashing(sheetId), service.snapshotLines(sheetId));
++        return PersonView.of(person, service.today(sheetId), service.clashing(sheetId), service.snapshotLines(sheetId),
++                service.claimsByPerson(sheetId));
+     }
+ 
+     /** The ids of the people on the sheet the signed-in user watches, in the order they started watching. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9c5c6801..59841699 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -13,6 +13,8 @@ import java.util.Objects;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.claim.ClaimTag;
+ import net.officefloor.hq.app.claim.ClaimTagRepository;
+@@ -41,10 +43,12 @@ public class PersonService {
+     private final ClaimTagRepository tags;
+     private final PersonSnapshotRepository snapshotLines;
+     private final SettingsService settings;
++    private final ClaimRepository claims;
+ 
+     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
+             SheetRepository sheetRepository, RollupService rollup, Audit audit, ClaimTagRepository tags,
+-            PersonSnapshotRepository snapshotLines, SettingsService settings) {
++            PersonSnapshotRepository snapshotLines, SettingsService settings, ClaimRepository claims) {
++        this.claims = claims;
+         this.settings = settings;
+         this.snapshotLines = snapshotLines;
+         this.tags = tags;
+@@ -61,6 +65,13 @@ public class PersonService {
+         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+     }
+ 
++    /** Each person's claims on the sheet, by person id, earliest added first. */
++    @Transactional(readOnly = true)
++    public Map<Long, List<Claim>> claimsByPerson(String sheetId) {
++        return claims.findBySheetIdOrderByIdAsc(sheetId).stream().filter(c -> c.getPersonId() != null)
++                .collect(Collectors.groupingBy(Claim::getPersonId));
++    }
++
+     /** Each person's snapshot lines on the sheet, by person id, oldest first. */
+     @Transactional(readOnly = true)
+     public Map<Long, List<PersonController.SnapshotView>> snapshotLines(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+index 1ce7b36c..08747c48 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+@@ -48,6 +48,6 @@ public class QuickAddController {
+             @Valid @RequestBody QuickAddForm form,
+             @SessionAttribute(SessionController.USER) String user) {
+         QuickAddService.Added added = service.add(user, sheetId, form.name(), form.amount());
+-        return new QuickAddView(PersonView.of(added.person(), people.today(sheetId), people.clashing(sheetId), people.snapshotLines(sheetId)), added.personAdded(), ClaimView.of(added.claim()));
++        return new QuickAddView(PersonView.of(added.person(), people.today(sheetId), people.clashing(sheetId), people.snapshotLines(sheetId), people.claimsByPerson(sheetId)), added.personAdded(), ClaimView.of(added.claim()));
+     }
+ }
