@@ -307,6 +307,20 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Sets the sheet's review SLA (null for blank: none): a REVIEW claim whose review day (the sheet's today when it
+     * went to REVIEW) plus these many days is before the sheet's today is late. Not dated.
+     */
+    @Transactional
+    public Sheet setReviewSla(String by, String sheetId, Integer days) {
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setReviewSla(days);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=review-sla value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
+    /**
      * Sets the sheet's escalation gap (null for blank: off): reminding a claim whose previous reminder was at least
      * these many days before the sheet's today escalates it. Not dated.
      */

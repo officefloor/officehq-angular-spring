@@ -105,6 +105,13 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /**
+     * The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null for
+     * none. Not dated.
+     */
+    @Column(name = "review_sla")
+    private Integer reviewSla;
+
     /** The pot shared among the members of each balanced pool by their shares. Null (blank) for none. Not dated. */
     @Column(name = "pot")
     private BigDecimal pot;
@@ -192,6 +199,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.escalateAfter = escalateAfter;
+        then.reviewSla = reviewSla;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -360,6 +368,14 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    public Integer getReviewSla() {
+        return reviewSla;
+    }
+
+    public void setReviewSla(Integer reviewSla) {
+        this.reviewSla = reviewSla;
     }
 
     public BigDecimal getPot() {

@@ -4,7 +4,7 @@ import { FigPipe } from '../../core/locale';
 import { COLUMNS, UserColumns } from '../../core/columns';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays } from '../claims/claims';
+import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, plusDays, reviewLate } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
 import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
@@ -108,6 +108,7 @@ interface StatementView {
       [figures]="countedFigures()"
       [statuses]="claimStatuses()"
       [voidedWith]="voidedWith()"
+      [reviewLateCount]="reviewLateCount()"
     />
 
     <section aria-label="People">
@@ -1055,6 +1056,12 @@ export class People {
     }));
   });
   protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));
+  // The REVIEW claims late against the review SLA.
+  protected readonly reviewLateCount = computed(() => {
+    const today = this.session.sheetToday();
+    const sla = this.settings.reviewSla();
+    return this.claims().filter((c) => reviewLate(c, today, sla)).length;
+  });
   protected readonly voidedWith = computed(() =>
     this.claims()
       .filter((c) => c.status === 'VOID')

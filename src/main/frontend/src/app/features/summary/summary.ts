@@ -70,6 +70,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
           }
         </tbody>
       </table>
+      <p>Late in review: <strong data-testid="summary-review-late-count">{{ reviewLateCount() | fig }}</strong></p>
       <table>
         <caption>By void reason</caption>
         <thead>
@@ -116,6 +117,8 @@ export class Summary {
   readonly statuses = input<readonly string[]>([]);
   // The reason each VOID claim on the sheet was voided with (null for none).
   readonly voidedWith = input<readonly (string | null)[]>([]);
+  // How many REVIEW claims on the sheet are late against the review SLA.
+  readonly reviewLateCount = input(0);
 
   // Per grade: the people on it today, leaving out retired ones, their due-totals added up, skipping n/a, and how
   // many of them are active.

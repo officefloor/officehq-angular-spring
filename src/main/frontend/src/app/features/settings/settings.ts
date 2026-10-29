@@ -26,6 +26,8 @@ interface SettingsView {
   graceDays: number | null;
   // The escalation gap: reminding a claim reminded at least this many days before escalates it; null when blank: off.
   escalateAfter: number | null;
+  // The review SLA: a REVIEW claim whose review day plus this many days is before today is late; null when blank: none.
+  reviewSla: number | null;
   cap: string | null;
   // The pot shared among the members of each balanced pool by their shares, two decimals; null when blank: none.
   pot: string | null;
@@ -170,6 +172,8 @@ export class SettingsStore {
   readonly graceDays = signal<number | null>(null);
   /** The escalation gap in days as set; null when blank (off). */
   readonly escalateAfter = signal<number | null>(null);
+  /** The review SLA in days as set; null when blank (none). */
+  readonly reviewSla = signal<number | null>(null);
   /** The pot as set; null when blank (none). */
   readonly pot = signal<string | null>(null);
   /** The alert threshold as set; null when blank (off). */
@@ -201,6 +205,7 @@ export class SettingsStore {
     this.entryDate.set(null);
     this.graceDays.set(null);
     this.escalateAfter.set(null);
+    this.reviewSla.set(null);
     this.pot.set(null);
     this.alertThreshold.set(null);
     this.parent.set(null);
@@ -224,6 +229,7 @@ export class SettingsStore {
     this.entryDate.set(s.entryDate);
     this.graceDays.set(s.graceDays);
     this.escalateAfter.set(s.escalateAfter ?? null);
+    this.reviewSla.set(s.reviewSla ?? null);
     this.pot.set(s.pot ?? null);
     this.alertThreshold.set(s.alertThreshold ?? null);
     this.parent.set(s.parent ?? null);
@@ -323,6 +329,13 @@ export class SettingsStore {
   async setEscalateAfter(sheet: string, value: number | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/escalate-after`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setReviewSla(sheet: string, value: number | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/review-sla`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -537,6 +550,16 @@ export class SettingsStore {
           (keydown.delete)="escalateAfterChanged = true; settingsError.set(null)"
           (keydown.backspace)="escalateAfterChanged = true; settingsError.set(null)"
         />
+        <label for="setting-review-sla">Review SLA (a REVIEW claim this many days past the day it went to review is late; blank for none)</label>
+        <input
+          id="setting-review-sla"
+          data-testid="setting-review-sla"
+          inputmode="numeric"
+          [value]="reviewSla()"
+          (input)="reviewSla.set(value($event)); reviewSlaChanged = true; settingsError.set(null)"
+          (keydown.delete)="reviewSlaChanged = true; settingsError.set(null)"
+          (keydown.backspace)="reviewSlaChanged = true; settingsError.set(null)"
+        />
         <label for="setting-pot">Pot (shared among the members of each balanced pool by their shares; blank for none)</label>
         <input
           id="setting-pot"
@@ -734,6 +757,7 @@ export class SettingsStore {
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ (store.entryDate() ?? '') | fig }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ (store.graceDays() ?? '') | fig }}</strong></p>
       <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ (store.escalateAfter() ?? '') | fig }}</strong></p>
+      <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ (store.reviewSla() ?? '') | fig }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ (store.pot() ?? '') | fig }}</strong></p>
       <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ (store.alertThreshold() ?? '') | fig }}</strong></p>
       <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() | fig }}</strong></p>
@@ -834,6 +858,7 @@ export class Settings {
   protected readonly entryDate = signal('');
   protected readonly graceDays = signal('');
   protected readonly escalateAfter = signal('');
+  protected readonly reviewSla = signal('');
   protected readonly pot = signal('');
   protected readonly alertThreshold = signal('');
   protected readonly fiscalStartMonth = signal('');
@@ -860,6 +885,7 @@ export class Settings {
   protected graceDaysChanged = false;
   protected potChanged = false;
   protected escalateAfterChanged = false;
+  protected reviewSlaChanged = false;
   protected alertThresholdChanged = false;
   protected fiscalStartMonthChanged = false;
   protected parentChanged = false;
@@ -1055,6 +1081,11 @@ export class Settings {
       this.settingsError.set('Enter the escalation gap as a whole number of days, 0 or more, or leave it blank for off.');
       return;
     }
+    const reviewSla = this.reviewSla().trim();
+    if (this.reviewSlaChanged && reviewSla && !DAYS.test(reviewSla)) {
+      this.settingsError.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
+      return;
+    }
     const pot = this.pot().trim();
     if (this.potChanged && pot && !LIMIT.test(pot)) {
       this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
@@ -1185,6 +1216,10 @@ export class Settings {
       if (this.escalateAfterChanged) {
         await this.store.setEscalateAfter(sheet, escalateAfter ? Number(escalateAfter) : null);
         this.escalateAfterChanged = this.escalateAfter().trim() !== escalateAfter;
+      }
+      if (this.reviewSlaChanged) {
+        await this.store.setReviewSla(sheet, reviewSla ? Number(reviewSla) : null);
+        this.reviewSlaChanged = this.reviewSla().trim() !== reviewSla;
       }
       if (this.potChanged) {
         await this.store.setPot(sheet, pot || null);

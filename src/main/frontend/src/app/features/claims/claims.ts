@@ -186,6 +186,16 @@ export function overdue(c: Claim, today: string | null, grace = 0): boolean {
   return isOpen(c) && today !== null && !deferred(c, today) && lateFrom(c, grace) < today;
 }
 
+/**
+ * Whether a claim is late in review: REVIEW, with a review SLA set, and its review day (the sheet's today when it
+ * last went to REVIEW) plus the SLA days is before the sheet's today.
+ */
+export function reviewLate(c: Claim, today: string | null, sla: number | null): boolean {
+  if (c.status !== 'REVIEW' || today === null || sla === null) return false;
+  const on = [...c.log].reverse().find((l) => l.status === 'REVIEW')?.on ?? null;
+  return on !== null && plusDays(on, sla) < today;
+}
+
 /** The grace days of the claim: those its person's grade in force on its date has in force on that date. */
 export function graceOf(c: Claim, grades: readonly DatedGrade[], late: Lateness): number {
   return late.grace(gradeOn(grades, c.date), c.date);
@@ -359,7 +369,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -388,6 +398,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-deferred-until">{{ (c.deferredUntil ?? '') | fig }}</td>
             <td data-testid="claim-reminded">{{ (c.remindedOn ?? '') | fig }}</td>
             <td data-testid="claim-status">{{ c.status | fig }}</td>
+            <td data-testid="claim-review-late">{{ (reviewLate(c, session.sheetToday(), settings.reviewSla()) ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-batch">{{ (c.batch ?? '') | fig }}</td>
             <td data-testid="claim-opened-by">{{ (c.openedBy ?? '') | fig }}</td>
             <td data-testid="claim-stated">{{ (c.stated ? 'yes' : 'no') | fig }}</td>
@@ -695,6 +706,7 @@ export class Claims {
     return graceOf(c, this.grades(), this.settings.lateness());
   }
   protected readonly overdue = overdue;
+  protected readonly reviewLate = reviewLate;
   protected readonly deferred = deferred;
   protected readonly deferredUntilAfter = deferredUntilAfter;
 
