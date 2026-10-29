@@ -10,6 +10,7 @@ import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { PoolRoster, PoolStore } from '../pools/pools';
+import { PersonPlans, PlanStore } from '../plans/plans';
 
 interface Person {
   id: number;
@@ -70,7 +71,7 @@ interface StatementView {
 // The people on the active sheet: one form adds a person or, with an editor open, saves one.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Consolidated, Header, Periods, Summary],
+  imports: [Claims, Consolidated, Header, Periods, PersonPlans, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -209,6 +210,16 @@ interface StatementView {
           <p role="alert" data-testid="paste-error">{{ err }}</p>
         }
       </form>
+
+      <div role="group" aria-label="Generate the plans' claims">
+        <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+        @if (plansGenerated() !== null) {
+          <p role="status">Made: <strong data-testid="plan-generated-count">{{ plansGenerated() }}</strong></p>
+        }
+        @if (planGenerateError(); as err) {
+          <p role="alert" data-testid="plan-generate-error">{{ err }}</p>
+        }
+      </div>
 
       <label>
         <input
@@ -364,7 +375,7 @@ interface StatementView {
             @for (pd of periods.list(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
             }
-            <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Plans</th><th scope="col">Claims</th>
           </tr>
         </thead>
         <tbody>
@@ -551,6 +562,9 @@ interface StatementView {
                 </button>
               </td>
               <td>
+                <app-person-plans [personId]="p.id" [personName]="p.name" />
+              </td>
+              <td>
                 <app-claims
                   [personId]="p.id"
                   [personName]="p.name"
@@ -581,6 +595,7 @@ export class People {
   protected readonly periods = inject(PeriodStore);
   private readonly poolRoster = inject(PoolRoster);
   protected readonly poolStore = inject(PoolStore);
+  private readonly planStore = inject(PlanStore);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -621,6 +636,10 @@ export class People {
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteError = signal<string | null>(null);
   private pasting = false;
+  // How many claims the last generate made, or null while none has answered since it was pressed.
+  protected readonly plansGenerated = signal<number | null>(null);
+  protected readonly planGenerateError = signal<string | null>(null);
+  private generating = false;
   // The import box: lines of name,grade,terms,contact add a person each, all or none; and how many it added.
   protected readonly importText = signal('');
   protected readonly importAdded = signal<number | null>(null);
@@ -1010,6 +1029,9 @@ export class People {
         this.pasteText.set('');
         this.pasteAdded.set(null);
         this.pasteError.set(null);
+        this.planStore.list.set([]);
+        this.plansGenerated.set(null);
+        this.planGenerateError.set(null);
         this.importText.set('');
         this.importAdded.set(null);
         this.importError.set(null);
@@ -1824,6 +1846,34 @@ export class People {
   }
 
   /**
+   * Makes, for every plan in the order they were added, a draft claim on each plan date up to its end and the sheet's
+   * today that has none yet; a date the claim form refuses is skipped and tried again next time. Shows how many were
+   * made.
+   */
+  protected async generatePlans(): Promise<void> {
+    if (this.generating) return;
+    this.plansGenerated.set(null);
+    this.planGenerateError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.generating = true;
+    try {
+      const made = await this.planStore.generate(sheet);
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of made) this.claimSaved(c);
+      this.plansGenerated.set(made.length);
+    } catch (err) {
+      this.planGenerateError.set(
+        err instanceof HttpErrorResponse && err.status === 403
+          ? 'Your role may not generate the plans\' claims on this sheet.'
+          : 'Could not generate the plans\' claims.',
+      );
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /**
    * Adds a person for each line of the import box, or updates the person on the sheet it names, in order; the store
    * checks every line by the person form's rules first and changes none when any is refused. Shows how many were
    * added and how many updated.
@@ -1893,6 +1943,7 @@ export class People {
         firstValueFrom(this.http.get<number[]>(`${base}/people/watched`)),
         this.rates.load(sheet),
         this.periods.load(sheet),
+        this.planStore.load(sheet),
       ]);
       // a later load may have moved to another sheet while this one was in flight
       if (this.session.sheetId() === sheet) {

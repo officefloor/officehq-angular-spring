@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.pool.PoolMember;
+import net.officefloor.hq.app.plan.PlanRepository;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -31,6 +32,7 @@ public class PersonTransferService {
     private final ClaimService claimService;
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
+    private final PlanRepository plans;
     private final SheetService sheets;
     private final SettingsService settings;
     private final RollupService rollup;
@@ -39,7 +41,7 @@ public class PersonTransferService {
 
     public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, ClaimService claimService, StatementRepository statements,
-            PoolMemberRepository poolMembers, SheetService sheets, SettingsService settings, RollupService rollup,
+            PoolMemberRepository poolMembers, PlanRepository plans, SheetService sheets, SettingsService settings, RollupService rollup,
             PersonMergeService mergeService, Audit audit) {
         this.people = people;
         this.patrons = patrons;
@@ -48,6 +50,7 @@ public class PersonTransferService {
         this.claimService = claimService;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.plans = plans;
         this.sheets = sheets;
         this.settings = settings;
         this.rollup = rollup;
@@ -122,6 +125,8 @@ public class PersonTransferService {
         poolMembers.deleteAll(memberships);
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(id));
         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id));
+        plans.deleteAll(plans.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id));
+        plans.flush();
         patrons.flush();
         poolMembers.flush();
         watches.flush();

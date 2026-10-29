@@ -9,6 +9,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.plan.PlanRepository;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -34,13 +35,15 @@ public class PersonMergeService {
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
     private final PeriodRepository periods;
+    private final PlanRepository plans;
     private final SettingsService settings;
     private final RollupService rollup;
     private final Audit audit;
 
     public PersonMergeService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, StatementRepository statements, PoolMemberRepository poolMembers,
-            PeriodRepository periods, SettingsService settings, RollupService rollup, Audit audit) {
+            PeriodRepository periods, PlanRepository plans, SettingsService settings, RollupService rollup,
+            Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -48,6 +51,7 @@ public class PersonMergeService {
         this.statements = statements;
         this.poolMembers = poolMembers;
         this.periods = periods;
+        this.plans = plans;
         this.settings = settings;
         this.rollup = rollup;
         this.audit = audit;
@@ -58,7 +62,7 @@ public class PersonMergeService {
      * (numbers and dates kept), listed after the other's in the order they were added, each losing any figure a
      * statement bound; their name and aliases become the other's aliases; their patrons are added to the other's (not
      * the other themselves, no repeats), anyone naming them as patron names the other instead (no repeats), and their
-     * pool memberships move to the other (shares added, at most 100.00, where the other is already a member); a
+     * pool memberships and plans move to the other (shares added, at most 100.00, where the other is already a member); a
      * closed period's figure fixed for them is added to the other's. Their statements, holds, watchers and contact
      * are dropped, and they leave the sheet. Refused unless the user is a steward, for the same person, and when
      * either of them is retired. The person merged into, as saved.
@@ -99,6 +103,7 @@ public class PersonMergeService {
             claims.relist(c.getId());
         }
 
+        plans.movePlans(sheetId, from.getId(), into.getId());
         mergePatrons(sheetId, from.getId(), into.getId());
         mergePools(sheetId, from.getId(), into.getId());
         for (Period p : periods.findBySheetIdOrderByFromAsc(sheetId)) {
