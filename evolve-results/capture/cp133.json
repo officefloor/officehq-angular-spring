@@ -1,0 +1,64 @@
+{
+  "checkpoint": 133,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp133_person-tags",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may carry tags on the person form (comma separated, trimmed, lower-cased, repeats dropped;\nshown sorted, comma and space separated). The tag totals count a claim for a tag when the claim or\nits person carries it, once.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may carry tags on the person form (comma separated, trimmed, lower-cased, repeats dropped;\nshown sorted, comma and space separated). The tag totals count a claim for a tag when the claim or\nits person carries it, once.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cc315c2544b059f9b23658164a063d6f929cacb9",
+  "reset_sha": "",
+  "preagent_sha": "bdef44c84f4323a313fc3ccb4721d44f81756ef2",
+  "prev_sha": "bdef44c84f4323a313fc3ccb4721d44f81756ef2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8315901999999998,
+    "input_tokens": 34,
+    "output_tokens": 10322,
+    "cache_read_tokens": 759071,
+    "cache_creation_tokens": 59150,
+    "num_turns": 18,
+    "duration_ms": 255461,
+    "duration_api_ms": 91193,
+    "model": "claude-opus-5-5",
+    "session_id": "473b9257-6654-4429-80a3-023e22ac13fb",
+    "stop_reason": "success",
+    "result_text": "People can now carry tags on the person form, and the tag totals count them. `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- **Saving tags:** the person form has a new tags field (`person-form-tags`). Tags are trimmed, lower-cased and repeats are dropped, using the same rules claims already use. A person's row shows them sorted and comma-space separated (`person-tags`).\n- **Totals:** a claim counts toward a tag if the claim or its person carries it, and only once when both do. A tag that only a person carries still gets its own total.\n- **Remembered tags:** person tags go into the sheet's list of tags ever used, as claim tags already did. So a tag's total row stays after it is removed from the person. The test doesn't check this.\n- **Other screens:** bulk grade changes and person imports leave a person's tags as they are. Cloning a sheet copies them.\n- **Audit:** nothing new is written to the audit file for tags, which matches what the test expects.\n\n**Where the changes are**\n- **Stored data:** a new migration, `V74__person_tags.sql`, adds the tags column to the person table.\n- **Server:** the `Person` entity has a tags field. `PersonController` reads tags from the form and returns them as a list. `PersonService` saves them on add and edit; an edit that sends no tags keeps the old ones. To share the tag rules I made `ClaimService.tagsOf` public, and cloning in `SheetCloneService` now copies the column.\n- **Front end:** `people.ts` has the form field, the row column, and the new rule for the tag totals.\n\n**Not checked by the tests:** I didn't add tags to the person import format (it's still name, grade, terms, contact) or to the person audit records. Transfer and merge weren't checked either. My reading of the transfer code is that it moves the person's own record, so their tags should go with them, but I haven't confirmed it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8315901999999998,
+        "num_turns": 18,
+        "duration_ms": 255461,
+        "duration_api_ms": 91193,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp133.agent.jsonl",
+  "agent_diff_file": "cp133.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
