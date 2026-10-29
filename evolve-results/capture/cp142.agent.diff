@@ -1,0 +1,153 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 4d83807d..9b48bfe4 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -9,6 +9,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+ import { ClaimTemplates } from '../claim-templates/claim-templates';
+ import { Pools } from '../pools/pools';
+ import { AuditViewer } from '../audit-viewer/audit-viewer';
++import { PlanStore } from '../plans/plans';
+ 
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+@@ -113,6 +114,7 @@ import { AuditViewer } from '../audit-viewer/audit-viewer';
+ export class Home {
+   protected readonly session = inject(Session);
+   protected readonly settings = inject(SettingsStore);
++  private readonly plans = inject(PlanStore);
+   protected readonly nameInput = signal('');
+   protected readonly sheetInput = signal('');
+   protected readonly signinError = signal<string | null>(null);
+@@ -174,7 +176,11 @@ export class Home {
+       await this.session.setToday(today);
+     } catch {
+       this.todayError.set('Could not change the date.');
++      return;
+     }
++    // the plans' next dates follow the sheet's today
++    const sheet = this.session.sheetId();
++    if (sheet) await this.plans.load(sheet).catch(() => undefined);
+   }
+ 
+   protected async setAsOf(e: Event): Promise<void> {
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 813ac4e5..9a874cd7 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -15,6 +15,8 @@ export interface PlanView {
+   end: string;
+   // How many claims the plan has made so far.
+   generated: number;
++  // The first five plan dates after the sheet's today and on or before the end.
++  nextDates: string[];
+ }
+ 
+ // The plans of the active sheet, in the order they were added.
+@@ -61,6 +63,7 @@ export class PlanStore {
+         <tr>
+           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
+           <th scope="col">Day of month</th><th scope="col">End</th><th scope="col">Claims made</th>
++          <th scope="col">Next dates</th>
+         </tr>
+       </thead>
+       <tbody>
+@@ -72,6 +75,7 @@ export class PlanStore {
+             <td data-testid="plan-day">{{ pl.day ?? '' }}</td>
+             <td data-testid="plan-end">{{ pl.end }}</td>
+             <td data-testid="plan-generated">{{ pl.generated }}</td>
++            <td data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</td>
+           </tr>
+         }
+       </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 52fbbbe3..e993d26e 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -126,6 +126,11 @@ public class Plan {
+         return dates;
+     }
+ 
++    /** The first plan dates after the day and on or before the end, at most so many of them. */
++    public List<LocalDate> nextDates(LocalDate after, int count) {
++        return datesUpTo(end).stream().filter(on -> on.isAfter(after)).limit(count).toList();
++    }
++
+     public LocalDate getEnd() {
+         return end;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index c64c0f43..d0dc3117 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -10,6 +10,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+ import net.officefloor.hq.app.session.SessionController;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -24,12 +25,15 @@ import org.springframework.web.bind.annotation.SessionAttribute;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class PlanController {
+ 
+-    /** A plan as the screen shows it, with how many claims it has made so far. */
++    /**
++     * A plan as the screen shows it, with how many claims it has made so far and its next five plan dates after the
++     * sheet's today.
++     */
+     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated) {
+-        static PlanView of(Plan p) {
++            LocalDate end, int generated, List<LocalDate> nextDates) {
++        static PlanView of(Plan p, LocalDate today) {
+             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(),
+-                    p.getEvery(), p.getDay(), p.getEnd(), p.getGenerated());
++                    p.getEvery(), p.getDay(), p.getEnd(), p.getGenerated(), p.nextDates(today, 5));
+         }
+     }
+ 
+@@ -42,16 +46,19 @@ public class PlanController {
+     }
+ 
+     private final PlanService service;
++    private final SheetService sheets;
+ 
+-    public PlanController(PlanService service) {
++    public PlanController(PlanService service, SheetService sheets) {
+         this.service = service;
++        this.sheets = sheets;
+     }
+ 
+     /** The sheet's plans in the order they were added. */
+     @GetMapping("/plans")
+     public List<PlanView> list(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+-        return service.list(sheetId).stream().map(PlanView::of).toList();
++        LocalDate today = sheets.load(sheetId).getToday();
++        return service.list(sheetId).stream().map(p -> PlanView.of(p, today)).toList();
+     }
+ 
+     @PostMapping("/people/{personId}/plans")
+@@ -59,8 +66,9 @@ public class PlanController {
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+             @PathVariable Long personId, @Valid @RequestBody PlanForm form,
+             @SessionAttribute(SessionController.USER) String user) {
+-        return PlanView.of(service.add(user, sheetId, personId, form.amount(), form.start(), form.every(),
+-                form.day(), form.end()));
++        Plan added = service.add(user, sheetId, personId, form.amount(), form.start(), form.every(), form.day(),
++                form.end());
++        return PlanView.of(added, sheets.load(sheetId).getToday());
+     }
+ 
+     /** Makes the plans' claims up to the sheet's today. */
+@@ -69,7 +77,8 @@ public class PlanController {
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+             @SessionAttribute(SessionController.USER) String user) {
+         PlanService.Generated g = service.generate(user, sheetId);
++        LocalDate today = sheets.load(sheetId).getToday();
+         return new GeneratedView(g.claims().stream().map(ClaimView::of).toList(),
+-                g.plans().stream().map(PlanView::of).toList());
++                g.plans().stream().map(p -> PlanView.of(p, today)).toList());
+     }
+ }
