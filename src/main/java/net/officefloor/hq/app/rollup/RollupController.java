@@ -22,29 +22,36 @@ import org.springframework.web.bind.annotation.RestController;
 public class RollupController {
 
     /**
-     * The descendants' figures added up: the number of people (each once), the due-totals and overdue-totals trimmed
+     * The descendants' figures added up: the number of people (each once), the due-totals, overdue-totals,
+     * settled-totals, open-totals and cut totals trimmed
      * once over all of them, per grade the due-totals of its people (two decimals), per status the count of claims, and
      * each person with their names and figures, for the screen to work the totals out again with the sheet's own; and
      * the count of overdue claims that count live.
      */
     public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal,
             Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> people,
-            int overdueCount) {
+            int overdueCount, String settledTotal, String openTotal, String cutTotal) {
         static ConsolidatedView of(RollupService.Consolidated c) {
             Map<String, String> grades = new TreeMap<>();
             c.gradeDueTotals().forEach((g, d) -> grades.put(g, d.toPlainString()));
             Map<String, Integer> statuses = new TreeMap<>();
             c.statusCounts().forEach((s, n) -> statuses.put(s.name(), n));
             return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString(),
-                    grades, statuses, c.members().stream().map(MemberView::of).toList(), c.overdueCount());
+                    grades, statuses, c.members().stream().map(MemberView::of).toList(), c.overdueCount(),
+                    c.settledTotal().toPlainString(), c.openTotal().toPlainString(), c.cutTotal().toPlainString());
         }
     }
 
-    /** One person of the tree: their name and aliases, their due-total (null for n/a) and overdue-total. */
-    public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
+    /**
+     * One person of the tree: their name and aliases, their due-total (null for n/a), overdue-total, settled-total,
+     * open-total and cut total.
+     */
+    public record MemberView(List<String> names, String dueTotal, String overdueTotal, String settledTotal,
+            String openTotal, String cutTotal) {
         static MemberView of(RollupService.Member m) {
             return new MemberView(m.names(), m.dueTotal() == null ? null : m.dueTotal().toPlainString(),
-                    m.overdueTotal().toPlainString());
+                    m.overdueTotal().toPlainString(), m.settledTotal().toPlainString(), m.openTotal().toPlainString(),
+                    m.cutTotal().toPlainString());
         }
     }
 

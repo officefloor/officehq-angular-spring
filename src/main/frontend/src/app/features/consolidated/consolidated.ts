@@ -8,11 +8,15 @@ import { sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { STATUSES, SummaryPerson } from '../summary/summary';
 
-// One person of a sheet of the tree: their name and aliases, due-total (null for n/a) and overdue-total.
+// One person of a sheet of the tree: their name and aliases, due-total (null for n/a), overdue-total, settled-total,
+// open-total and cut total.
 export interface TreeMember {
   names: string[];
   dueTotal: string | null;
   overdueTotal: string;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 // The figures of the sheet's descendants (the sheets naming it as parent, theirs, and so on), added up by the store.
@@ -28,6 +32,9 @@ export interface DescendantFigures {
   people: TreeMember[];
   // The count of overdue claims that count live.
   overdueCount: number;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 // The people over the tree, each once: those whose names or aliases match, ignoring case, are one.
@@ -54,6 +61,9 @@ export const NONE: DescendantFigures = {
   statusCounts: {},
   people: [],
   overdueCount: 0,
+  settledTotal: '0.00',
+  openTotal: '0.00',
+  cutTotal: '0.00',
 };
 
 // The figures over the sheet and all its descendants: the sheet's own, as it shows them, plus each descendant's. While
@@ -72,6 +82,12 @@ export const NONE: DescendantFigures = {
         <dd data-testid="consolidated-due-total">{{ dueTotal() | fig }}</dd>
         <dt>Overdue</dt>
         <dd data-testid="consolidated-overdue-total">{{ overdueTotal() | fig }}</dd>
+        <dt>Settled</dt>
+        <dd data-testid="consolidated-settled-total">{{ settledTotal() | fig }}</dd>
+        <dt>Open</dt>
+        <dd data-testid="consolidated-open-total">{{ openTotal() | fig }}</dd>
+        <dt>Cut</dt>
+        <dd data-testid="consolidated-cut-total">{{ cutTotal() | fig }}</dd>
       </dl>
       <table>
         <caption>By grade</caption>
@@ -123,7 +139,8 @@ export class Consolidated {
   // Every person over the tree: the sheet's own and each descendant's.
   private readonly members = computed(() => [...this.ownMembers(), ...(this.descendants().people ?? [])]);
 
-  // Each person counted once; the due-total and overdue-total trimmed once over all of the tree's people.
+  // Each person counted once; the due-total, overdue-total, settled-total, open-total and cut total trimmed once over
+  // all of the tree's people.
   protected readonly peopleCount = computed(
     () => this.asOfFigures()?.peopleCount ?? distinctPeople(this.members()),
   );
@@ -132,6 +149,15 @@ export class Consolidated {
   );
   protected readonly overdueTotal = computed(
     () => this.asOfFigures()?.overdueTotal ?? trimmedSum(this.members().map((m) => m.overdueTotal)),
+  );
+  protected readonly settledTotal = computed(
+    () => this.asOfFigures()?.settledTotal ?? trimmedSum(this.members().map((m) => m.settledTotal)),
+  );
+  protected readonly openTotal = computed(
+    () => this.asOfFigures()?.openTotal ?? trimmedSum(this.members().map((m) => m.openTotal)),
+  );
+  protected readonly cutTotal = computed(
+    () => this.asOfFigures()?.cutTotal ?? trimmedSum(this.members().map((m) => m.cutTotal)),
   );
 
   // Per grade: the due-totals of the people on it today, retired ones left out and n/a skipped, over the tree.

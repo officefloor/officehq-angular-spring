@@ -48,10 +48,13 @@ public class RollupService {
      * One person's figures; a null due-total is n/a. The overdue-total sums their overdue claims' dues. The
      * settled-total sums the figures of their counted settled claims that correct nothing, and the overdue count is how many of their counted
      * claims are overdue (whether or not they have a figure). The held-total sums the parts they hold of others'
-     * shared claims (null when they hold none), which their due-total counts.
+     * shared claims (null when they hold none), which their due-total counts. The split settled-total and open-total
+     * are the figures of their counted settled claims (corrections included) and of their counted open and pending
+     * ones, before the cap, as their row shows them; the cut total is their cuts of the pools' pots.
      */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
-            BigDecimal settledTotal, int overdueCount, BigDecimal heldTotal) {
+            BigDecimal settledTotal, int overdueCount, BigDecimal heldTotal, BigDecimal splitSettledTotal,
+            BigDecimal openTotal, BigDecimal cutTotal) {
 
         /**
          * The person's score: their settled-total divided by 100, minus 5 for each of their overdue claims, rounded
@@ -69,10 +72,11 @@ public class RollupService {
     }
 
     /**
-     * One person of a sheet as the tree counts them: their name and aliases, their due-total (null for n/a) and their
-     * overdue-total.
+     * One person of a sheet as the tree counts them: their name and aliases, their due-total (null for n/a), their
+     * overdue-total, settled-total, open-total and cut total.
      */
-    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settledTotal,
+            BigDecimal openTotal, BigDecimal cutTotal) {
     }
 
     /**
@@ -135,6 +139,21 @@ public class RollupService {
         /** The people's overdue-totals, trimmed once over the tree. */
         public BigDecimal overdueTotal() {
             return trimmedSum(members.stream().map(Member::overdueTotal).toList());
+        }
+
+        /** The people's settled-totals, trimmed once over the tree. */
+        public BigDecimal settledTotal() {
+            return trimmedSum(members.stream().map(Member::settledTotal).toList());
+        }
+
+        /** The people's open-totals, trimmed once over the tree. */
+        public BigDecimal openTotal() {
+            return trimmedSum(members.stream().map(Member::openTotal).toList());
+        }
+
+        /** The people's cut totals, trimmed once over the tree. */
+        public BigDecimal cutTotal() {
+            return trimmedSum(members.stream().map(Member::cutTotal).toList());
         }
     }
 
@@ -214,8 +233,7 @@ public class RollupService {
             }
         }
         // each person's cut total, which the cap covers along with their due-total
-        Map<Long, BigDecimal> cutTotals = sheet != null && sheet.getCap() != null
-                ? poolCuts.getObject().totals(sheetId, today) : Map.of();
+        Map<Long, BigDecimal> cutTotals = sheet != null ? poolCuts.getObject().totals(sheetId, today) : Map.of();
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
@@ -232,6 +250,8 @@ public class RollupService {
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
             BigDecimal settled = ZERO;
+            BigDecimal splitSettled = ZERO;
+            BigDecimal open = ZERO;
             int overdueCount = 0;
             boolean kept = false;
             // the grades whose rate today decides n/a: the one in force today and each counted claim's
@@ -257,6 +277,11 @@ public class RollupService {
                     if (c.getStatus() == ClaimStatus.SETTLED && c.getCorrects() == null) {
                         settled = settled.add(own);
                     }
+                    if (c.getStatus() == ClaimStatus.SETTLED) {
+                        splitSettled = splitSettled.add(own);
+                    } else if (c.getStatus().isOpen()) {
+                        open = open.add(own);
+                    }
                 }
             }
             // the parts the person holds of others' claims count as figures of theirs
@@ -268,6 +293,11 @@ public class RollupService {
                 if (part.claim().getStatus() == ClaimStatus.SETTLED && part.claim().getCorrects() == null) {
                     settled = settled.add(part.figure());
                 }
+                if (part.claim().getStatus() == ClaimStatus.SETTLED) {
+                    splitSettled = splitSettled.add(part.figure());
+                } else if (part.claim().getStatus().isOpen()) {
+                    open = open.add(part.figure());
+                }
             }
             // with no rate in force today for any of those grades and no claim with a figure (kept, or live at a
             // rate that has since ended), the due-total is n/a
@@ -276,10 +306,12 @@ public class RollupService {
                 due = null;
             }
             // the due-total is at most the sheet's cap less the person's cut total
-            if (sheet != null) {
+            if (sheet != null && sheet.getCap() != null) {
                 due = sheet.capped(due, cutTotals.get(p.getId()));
             }
-            figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount, held));
+            BigDecimal cut = cutTotals.getOrDefault(p.getId(), ZERO).setScale(2);
+            figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount, held,
+                    splitSettled, open, cut));
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
             if (due != null) {
@@ -345,7 +377,8 @@ public class RollupService {
                 overdueCount += f.overdueCount();
                 List<String> names = new ArrayList<>(List.of(p.getName()));
                 names.addAll(p.getAliases());
-                members.add(new Member(names, f.dueTotal(), f.overdueTotal()));
+                members.add(new Member(names, f.dueTotal(), f.overdueTotal(), f.splitSettledTotal(), f.openTotal(),
+                        f.cutTotal()));
             }
         }
         return new Consolidated(members, grades, statuses, overdueCount);

@@ -335,7 +335,7 @@ interface TreePerson {
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() | fig }}</strong></p>
       <p>Settled in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | fig }}</strong></p>
       <p>Open in total: <strong data-testid="rollup-open-total">{{ openTotal() | fig }}</strong></p>
-      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ poolStore.cutTotal() | fig }}</strong></p>
+      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ cutTotal() | fig }}</strong></p>
       <p>Due aged 0 to 30 days: <strong data-testid="rollup-aged-0-30">{{ agedTotal()[0] | fig }}</strong></p>
       <p>Due aged 31 to 60 days: <strong data-testid="rollup-aged-31-60">{{ agedTotal()[1] | fig }}</strong></p>
       <p>Due aged 61 or more days: <strong data-testid="rollup-aged-61">{{ agedTotal()[2] | fig }}</strong></p>
@@ -1244,9 +1244,20 @@ export class People {
     }
     return by;
   });
-  // The sheet's settled-total and open-total: everyone's figure added up, not trimmed.
-  protected readonly settledTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.settled)));
-  protected readonly openTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.open)));
+  // The sheet's settled-total, open-total and cut total: every person has a figure (0.00 with none), trimmed like the
+  // due-total.
+  protected readonly settledTotal = computed(() => {
+    const by = this.splitBy();
+    return trimmedSum(this.people().map((p) => by.get(p.id)?.settled ?? '0.00'));
+  });
+  protected readonly openTotal = computed(() => {
+    const by = this.splitBy();
+    return trimmedSum(this.people().map((p) => by.get(p.id)?.open ?? '0.00'));
+  });
+  protected readonly cutTotal = computed(() => {
+    const cuts = this.poolStore.cutTotals();
+    return trimmedSum(this.people().map((p) => cuts.get(p.id) ?? '0.00'));
+  });
   // Each person's due-total held to the sheet's cap less their cut total (not below 0.00); everything that adds up
   // due-totals uses it. n/a is not capped.
   protected readonly dueBy = computed(() => {
@@ -1316,14 +1327,20 @@ export class People {
       active: active.has(p.id),
     }));
   });
-  // Each person as the consolidated figures count them: name and aliases, due-total and overdue-total.
+  // Each person as the consolidated figures count them: name and aliases, due-total, overdue-total, settled-total,
+  // open-total and cut total.
   protected readonly members = computed<TreeMember[]>(() => {
     const due = this.dueBy();
     const overdue = this.overdueTotalBy();
+    const split = this.splitBy();
+    const cuts = this.poolStore.cutTotals();
     return this.people().map((p) => ({
       names: [p.name, ...p.aliases],
       dueTotal: due.get(p.id) ?? null,
       overdueTotal: overdue.get(p.id) ?? '0.00',
+      settledTotal: split.get(p.id)?.settled ?? '0.00',
+      openTotal: split.get(p.id)?.open ?? '0.00',
+      cutTotal: cuts.get(p.id) ?? '0.00',
     }));
   });
   protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));
