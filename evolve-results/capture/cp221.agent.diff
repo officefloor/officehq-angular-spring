@@ -1,0 +1,57 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 49382b22..297830c1 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -4,7 +4,8 @@ import { STATUSES } from '../summary/summary';
+ 
+ // The sheet's counters, shown at all times: each repeats a figure shown elsewhere — the status counts those of the
+ // summary, the two totals the sheet's totals, the signed-in user's own figures those of their person's row,
+-// and their crew total those of the crews their person leads.
++// their crew total those of the crews their person leads,
++// and their watched total those of the people they watch.
+ @Component({
+   selector: 'app-header',
+   imports: [FigPipe],
+@@ -29,6 +30,8 @@ import { STATUSES } from '../summary/summary';
+         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | fig }}</dd>
+         <dt>My reviews</dt>
+         <dd data-testid="my-reviews-count">{{ myReviewsCount() | fig }}</dd>
++        <dt>Watched due</dt>
++        <dd data-testid="watched-due-total">{{ watchedDueTotal() | fig }}</dd>
+       </dl>
+     </header>
+   `,
+@@ -47,6 +50,8 @@ export class Header {
+   readonly myCrewDueTotal = input('');
+   // The REVIEW claims assigned to the signed-in user.
+   readonly myReviewsCount = input(0);
++  // The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one.
++  readonly watchedDueTotal = input('0.00');
+ 
+   protected readonly byStatus = computed(() =>
+     STATUSES.map((status) => ({ status, count: this.statuses().filter((s) => s === status).length })),
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2bacede4..4cfe3928 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -103,6 +103,7 @@ interface StatementView {
+       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+       [myCrewDueTotal]="myCrewDueTotal()"
+       [myReviewsCount]="myReviewsCount()"
++      [watchedDueTotal]="watchedDueTotal()"
+     />
+     <app-dashboard [statuses]="claimStatuses()" [overdueCount]="overdueClaims().length" />
+     <app-consolidated
+@@ -1428,6 +1429,12 @@ export class People {
+     return sumSkippingNa(led.map((c) => crewDueTotal(c, due)));
+   });
+ 
++  // The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one.
++  protected readonly watchedDueTotal = computed(() => {
++    const due = this.dueBy();
++    return sumSkippingNa([...this.watched()].map((id) => due.get(id) ?? null));
++  });
++
+   constructor() {
+     // The pools offer these people, and count a member retired, or held, as soon as they are.
+     effect(() => {
