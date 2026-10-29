@@ -177,6 +177,13 @@ public class Sheet {
     @Column(name = "default_grade")
     private String defaultGrade;
 
+    /**
+     * The retired grades, comma separated in the order retired: none can be given to a new person or chosen in an
+     * edit. Null (blank) for none. Not dated.
+     */
+    @Column(name = "retired_grades")
+    private String retiredGrades;
+
     /** Whether a steward has archived the sheet: it stays visible and every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -249,6 +256,7 @@ public class Sheet {
         then.scoreLog = scoreLog;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
+        then.retiredGrades = retiredGrades;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -493,9 +501,24 @@ public class Sheet {
         return defaultGrade;
     }
 
-    /** The grade a new person gets when none is given: the default grade, A when blank. */
+    /** The grade a new person gets when none is given: the default grade, A when blank or retired. */
     public String defaultGradeOrA() {
-        return defaultGrade == null ? "A" : defaultGrade;
+        return defaultGrade == null || isGradeRetired(defaultGrade) ? "A" : defaultGrade;
+    }
+
+    /** The retired grades, each once in the order retired; none when blank. */
+    public List<String> retiredGradeList() {
+        return retiredGrades == null ? List.of() : List.of(retiredGrades.split(","));
+    }
+
+    /** Whether the grade is retired on the sheet. */
+    public boolean isGradeRetired(String grade) {
+        return retiredGradeList().contains(grade);
+    }
+
+    /** Retires the grade, kept after those already retired. */
+    public void retireGrade(String grade) {
+        retiredGrades = retiredGrades == null ? grade : retiredGrades + "," + grade;
     }
 
     public void setDefaultGrade(String defaultGrade) {

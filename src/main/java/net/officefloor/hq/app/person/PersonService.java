@@ -118,6 +118,9 @@ public class PersonService {
         String personTags = ClaimService.tagsOf(tagged);
         LocalDate today = sheets.load(sheetId).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        if (sheets.load(sheetId).isGradeRetired(grade)) {
+            throw gradeRetired(grade);
+        }
         String trimmed = name.strip();
         if (nameOrAliasInUse(sheetId, trimmed)) {
             throw nameInUse();
@@ -205,6 +208,11 @@ public class PersonService {
         if (person.getVersion() != version) {
             throw stale();
         }
+        // keeping a retired grade as it is, with no from-date, is not a choice of it
+        boolean gradeChosen = gradeFrom != null || !grade.equals(person.gradeOn(today));
+        if (gradeChosen && sheets.load(sheetId).isGradeRetired(grade)) {
+            throw gradeRetired(grade);
+        }
         String trimmed = name.strip();
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)
                 || people.findBySheetIdAndAlias(sheetId, trimmed).isPresent()) {
@@ -221,7 +229,7 @@ public class PersonService {
             throw contactInUse();
         }
         person.setName(trimmed);
-        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+        if (gradeChosen) {
             person.recordGrade(grade, gradeFrom != null ? gradeFrom : today, today);
         }
         boolean termsChanged;
@@ -627,6 +635,10 @@ public class PersonService {
     private static ResponseStatusException nameOrContactInUse() {
         return new ResponseStatusException(HttpStatus.CONFLICT,
                 "That name or contact is already in use on this sheet.");
+    }
+
+    private static ResponseStatusException gradeRetired(String grade) {
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Grade " + grade + " is retired.");
     }
 
     private static ResponseStatusException nameInUse() {

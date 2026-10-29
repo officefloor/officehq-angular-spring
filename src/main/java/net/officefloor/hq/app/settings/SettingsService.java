@@ -397,6 +397,26 @@ public class SettingsService implements Audit.OnBehalf {
     }
 
     /**
+     * Retires the grade, one of the grades not yet retired: it can no longer be given to a new person or chosen in an
+     * edit, while the people on it keep it. Refused for anything else. Not dated.
+     */
+    @Transactional
+    public Sheet retireGrade(String by, String sheetId, String grade) {
+        String value = grade == null ? "" : grade.strip();
+        if (!value.matches("[ABC]")) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The grade must be A, B or C.");
+        }
+        Sheet sheet = sheets.lock(sheetId);
+        if (sheet.isGradeRetired(value)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + value + " is already retired.");
+        }
+        sheet.retireGrade(value);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("GRADE_RETIRED sheet=" + sheetId + " by=" + by + " grade=" + value);
+        return saved;
+    }
+
+    /**
      * Sets the sheet's escalation gap (null for blank: off): reminding a claim whose previous reminder was at least
      * these many days before the sheet's today escalates it. Not dated.
      */

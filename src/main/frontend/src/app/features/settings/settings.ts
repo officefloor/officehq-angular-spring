@@ -41,6 +41,7 @@ interface SettingsView {
   proofKinds: string | null;
   // The grade the quick-add bar gives a new person and an import line with a blank grade uses; null when blank: A.
   defaultGrade: string | null;
+  retiredGrades: string[] | null;
   cap: string | null;
   // The pot shared among the members of each balanced pool by their shares, two decimals; null when blank: none.
   pot: string | null;
@@ -201,6 +202,8 @@ export class SettingsStore {
   readonly proofKinds = signal<string | null>(null);
   /** The default grade as set; null when blank (A). */
   readonly defaultGrade = signal<string | null>(null);
+  /** The grades retired on the sheet: none can be given to a new person or chosen in an edit. */
+  readonly retiredGrades = signal<readonly string[]>([]);
   /** The pot as set; null when blank (none). */
   readonly pot = signal<string | null>(null);
   /** The alert threshold as set; null when blank (off). */
@@ -239,6 +242,7 @@ export class SettingsStore {
     this.scoreLog.set(null);
     this.proofKinds.set(null);
     this.defaultGrade.set(null);
+    this.retiredGrades.set([]);
     this.pot.set(null);
     this.alertThreshold.set(null);
     this.parent.set(null);
@@ -269,6 +273,7 @@ export class SettingsStore {
     this.scoreLog.set(s.scoreLog ?? null);
     this.proofKinds.set(s.proofKinds ?? null);
     this.defaultGrade.set(s.defaultGrade ?? null);
+    this.retiredGrades.set(s.retiredGrades ?? []);
     this.pot.set(s.pot ?? null);
     this.alertThreshold.set(s.alertThreshold ?? null);
     this.parent.set(s.parent ?? null);
@@ -417,6 +422,16 @@ export class SettingsStore {
   async setDefaultGrade(sheet: string, value: string | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/default-grade`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async retireGrade(sheet: string, grade: string): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.post<SettingsView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/grades/${encodeURIComponent(grade)}/retire`,
+        {},
+      ),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }

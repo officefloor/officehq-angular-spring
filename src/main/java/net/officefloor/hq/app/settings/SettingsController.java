@@ -39,14 +39,14 @@ public class SettingsController {
      * cap in force on the sheet's today (the clerk limit carries two decimals, or is null for none, the floor carries
      * two decimals, the terms are whole days, the late percent carries two decimals, and the cap carries two decimals,
      * or is null for none); the policy date, null when blank (the sheet's today), and the period numbering from, null
-     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the maximum of open claims per person, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); the mid and high score thresholds, null when blank (none); the score log switch, "on" or null when blank (off); and every value recorded for the dated settings, from which the screen works out the one in
+     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the maximum of open claims per person, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); the mid and high score thresholds, null when blank (none); the score log switch, "on" or null when blank (off); the retired grades, in the order retired; and every value recorded for the dated settings, from which the screen works out the one in
      * force on any date; and the permission matrix as set, by action (an action not listed keeps the standing rule).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, LocalDate entryDate, Integer graceDays, String cap, List<DatedSettingView> dated, Map<String, String> permissions,
             String pot, String alertThreshold, String parent, int fiscalStartMonth,
             Integer escalateAfter, Integer reviewSla, Integer maxOpen, String proofKinds, String defaultGrade,
-            Integer scoreMid, Integer scoreHigh, String scoreLog) {
+            Integer scoreMid, Integer scoreHigh, String scoreLog, List<String> retiredGrades) {
         static SettingsView of(Sheet sheet) {
             LocalDate today = sheet.getToday();
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -60,7 +60,8 @@ public class SettingsController {
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getParentId(), sheet.getFiscalStartMonth(), sheet.getEscalateAfter(),
                     sheet.getReviewSla(), sheet.getMaxOpen(), sheet.getProofKinds(), sheet.getDefaultGrade(),
-                    sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog() ? "on" : null);
+                    sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog() ? "on" : null,
+                    sheet.retiredGradeList());
         }
     }
 
@@ -361,6 +362,14 @@ public class SettingsController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
             @Valid @RequestBody ProofKindsForm form, @SessionAttribute(SessionController.USER) String user) {
         return SettingsView.of(service.setProofKinds(user, sheetId, form.value()));
+    }
+
+    /** Retires the grade: it can no longer be given to a new person or chosen in an edit. */
+    @PostMapping("/grades/{grade}/retire")
+    public SettingsView retireGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable @Size(max = 10) String grade, @SessionAttribute(SessionController.USER) String user) {
+        return SettingsView.of(service.retireGrade(user, sheetId, grade));
     }
 
     @PutMapping("/settings/default-grade")
