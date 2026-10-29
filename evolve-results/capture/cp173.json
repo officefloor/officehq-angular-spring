@@ -1,0 +1,64 @@
+{
+  "checkpoint": 173,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp173_opening-balances",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Opening balances can be pasted as lines of name,period,amount (a person on the sheet by name or\nalias, a period on the sheet, an amount of two decimals, 0.00 or more). All lines are checked\nfirst; any error refuses the whole paste. Each line adds its amount to the person's carried figure\nfor that period (OPENING_SET name=<name> period=<period> amount=<amount>). Show how many lines went\nthrough.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nOpening balances can be pasted as lines of name,period,amount (a person on the sheet by name or\nalias, a period on the sheet, an amount of two decimals, 0.00 or more). All lines are checked\nfirst; any error refuses the whole paste. Each line adds its amount to the person's carried figure\nfor that period (OPENING_SET name=<name> period=<period> amount=<amount>). Show how many lines went\nthrough.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5de9051488cfa9d4acec1e46e3c3dfe99bd831a7",
+  "reset_sha": "",
+  "preagent_sha": "1cc5c20aa6f6e55f1e41ed79552e5b1f78deb9a6",
+  "prev_sha": "1cc5c20aa6f6e55f1e41ed79552e5b1f78deb9a6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9963931999999999,
+    "input_tokens": 36,
+    "output_tokens": 10899,
+    "cache_read_tokens": 981306,
+    "cache_creation_tokens": 72751,
+    "num_turns": 19,
+    "duration_ms": 554176,
+    "duration_api_ms": 140827,
+    "model": "claude-opus-5-5",
+    "session_id": "c1dc5794-f911-47ca-b761-afcedfd0c0fe",
+    "stop_reason": "success",
+    "result_text": "You can now paste opening balances as `name,period,amount` lines, and `bin/e2e` passes all 4 tests. If any line is bad, the whole paste is refused: the error shows and nothing is stored or audited. Otherwise each line adds its amount to the person's carried figure for that period, writes `OPENING_SET ... name=<name> period=<period> amount=<amount>` to the audit file, and the screen shows how many lines went through.\n\n**Stored data:** a new migration, `V93__period_person_opening.sql`, adds a table holding each person's running opening total per period. Pasting the same person and period again adds to it rather than replacing it.\n\n**Server** (`period/` package):\n- A new `POST /api/sheets/{id}/periods/openings` endpoint checks every line first. A person must be on the sheet by name or alias (ignoring case), and a period must exist by name. An amount must be 0.00 or more with at most two decimals.\n- The openings come back with each period, so the screen can show them.\n- When a period is closed or soft-closed, the carried figure fixed for each person now includes their opening.\n- Merging two people combines their openings, as it already did their closed figures.\n\n**Front end** (`periods.ts`): a paste box in the Periods section (`opening-import`, `opening-import-submit`, `opening-import-done`, `opening-error`). It checks the lines in the browser before sending, and while it runs the old count is cleared. For an open period, the carried figure is now the claims carried in plus the person's opening.\n\n**Pasting into a closed period:** the paste is accepted and audited, but the figure shown doesn't change. A closed period shows the figure fixed when it closed, and the test expects exactly this (Ada's P2 stays at 5.50 after 9.00 is pasted into the closed P2). The amount is still stored, so if the period is reopened its live carried figure will include it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9963931999999999,
+        "num_turns": 19,
+        "duration_ms": 554176,
+        "duration_api_ms": 140827,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp173.agent.jsonl",
+  "agent_diff_file": "cp173.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
