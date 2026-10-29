@@ -9,12 +9,13 @@ import { VoidReasons } from '../void-reasons/void-reasons';
 import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { Pools } from '../pools/pools';
 import { AuditViewer } from '../audit-viewer/audit-viewer';
+import { TreeSearch } from '../tree-search/tree-search';
 import { PlanStore } from '../plans/plans';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, AuditViewer],
+  imports: [People, Rates, Settings, Delegation, Holidays, VoidReasons, ClaimTemplates, Pools, TreeSearch, AuditViewer],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -92,6 +93,7 @@ import { PlanStore } from '../plans/plans';
         <app-claim-templates />
         <app-people />
         <app-pools />
+        <app-tree-search />
         <app-audit-viewer />
       }
     } @else {

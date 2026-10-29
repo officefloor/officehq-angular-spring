@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -418,6 +419,33 @@ public class PersonService {
             }
         }
         return clashing;
+    }
+
+    /** A person found by a tree search: their sheet, their name and their due-total (null: n/a). */
+    public record Found(String sheetId, String name, BigDecimal dueTotal) {
+    }
+
+    /**
+     * Every person on the sheet or another sheet of its tree whose name or an alias contains the text, ignoring case:
+     * the sheet's own people first in list order, then the other sheets' by sheet id, each sheet's in list order.
+     */
+    @Transactional(readOnly = true)
+    public List<Found> searchTree(String sheetId, String text) {
+        String wanted = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        List<String> sheetIds = new ArrayList<>(List.of(sheetId));
+        sheetIds.addAll(tree(sheetId).stream().sorted().toList());
+        List<Found> found = new ArrayList<>();
+        for (String id : sheetIds) {
+            Map<Long, RollupService.Figures> figures = rollup.snapshot(id).people();
+            for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                if (p.getName().toLowerCase(Locale.ROOT).contains(wanted)
+                        || p.getAliases().stream().anyMatch(a -> a.toLowerCase(Locale.ROOT).contains(wanted))) {
+                    RollupService.Figures f = figures.get(p.getId());
+                    found.add(new Found(id, p.getName(), f == null ? null : f.dueTotal()));
+                }
+            }
+        }
+        return found;
     }
 
     /**

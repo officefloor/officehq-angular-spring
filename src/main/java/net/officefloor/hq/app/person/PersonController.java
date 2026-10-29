@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.SessionAttribute;
 
@@ -352,6 +353,21 @@ public class PersonController {
     }
 
     /** The ids of the people on the sheet the signed-in user watches, in the order they started watching. */
+    /** A person found by a tree search: their sheet, name and due-total (two decimals, or n/a). */
+    public record FoundView(String sheetId, String name, String dueTotal) {
+        static FoundView of(PersonService.Found f) {
+            return new FoundView(f.sheetId(), f.name(), f.dueTotal() == null ? "n/a" : f.dueTotal().toPlainString());
+        }
+    }
+
+    /** Every person on the sheet or its tree whose name or an alias contains the text, ignoring case. */
+    @GetMapping("/search")
+    public List<FoundView> search(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @RequestParam(defaultValue = "") @Size(max = 200) String text) {
+        return service.searchTree(sheetId, text).stream().map(FoundView::of).toList();
+    }
+
     @GetMapping("/watched")
     public List<Long> watched(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
