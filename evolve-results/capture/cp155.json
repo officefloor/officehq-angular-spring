@@ -1,0 +1,64 @@
+{
+  "checkpoint": 155,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp155_review-state",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a review threshold (settings, dated like the floor; SETTING_CHANGED\nkey=review-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date goes to REVIEW when opened instead of OPEN (CLAIM_REVIEW naming the claim, no\nnumber yet), recording who opened it. A steward's review button on it makes it OPEN (CLAIM_REVIEWED\nthen CLAIM_OPENED, with its number then); anyone else is refused. A REVIEW claim counts in no total,\ncannot be edited, settled or split, and can be voided; it is counted in the header and summary\nstatus counts as REVIEW. The bulk open button counts a claim that went to REVIEW as opened.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a review threshold (settings, dated like the floor; SETTING_CHANGED\nkey=review-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date goes to REVIEW when opened instead of OPEN (CLAIM_REVIEW naming the claim, no\nnumber yet), recording who opened it. A steward's review button on it makes it OPEN (CLAIM_REVIEWED\nthen CLAIM_OPENED, with its number then); anyone else is refused. A REVIEW claim counts in no total,\ncannot be edited, settled or split, and can be voided; it is counted in the header and summary\nstatus counts as REVIEW. The bulk open button counts a claim that went to REVIEW as opened.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "13571d4beabc6cb661652367652bef276b5f40b2",
+  "reset_sha": "",
+  "preagent_sha": "9de1ac14d8c8ac04ae9a69082356c5ae3ffba788",
+  "prev_sha": "9de1ac14d8c8ac04ae9a69082356c5ae3ffba788",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.7875290000000004,
+    "input_tokens": 68,
+    "output_tokens": 16625,
+    "cache_read_tokens": 2725785,
+    "cache_creation_tokens": 113700,
+    "num_turns": 35,
+    "duration_ms": 450985,
+    "duration_api_ms": 161348,
+    "model": "claude-opus-5-5",
+    "session_id": "2708a849-6abc-404c-845c-52bc706bc33a",
+    "stop_reason": "success",
+    "result_text": "The review threshold is in, and `bin/e2e` passes all 4 tests in the spec (the review test and scenarios 1\u20133).\n\n**How it works now**\n- **Setting:** `review-threshold` is a dated setting like the floor, with a from-date and blank meaning none. Saving it writes `SETTING_CHANGED key=review-threshold value=<amount>`, with `from=<date>` added only when a date was given.\n- **Opening:** if a claim's due is above the threshold in force on the claim's date, opening it sets it to `REVIEW` instead of `OPEN`. It gets no number yet, the opener is recorded, and the audit gets `CLAIM_REVIEW`. The claim's existing note and period-cap checks still run first.\n- **Reviewing:** a new Review button (`claim-review`) works only for a steward. It writes `CLAIM_REVIEWED`, numbers the claim, makes it `OPEN` and writes `CLAIM_OPENED` with the number. The opener stays as it was. Anyone who isn't a steward gets the row's error message.\n- **While in REVIEW:** the claim counts in no total. Editing, settling and splitting are refused, but voiding works. `REVIEW` is counted in the header and summary status counts, and the bulk open button counts a claim that went to review as opened.\n\n**Where the changes are**\n- **Server:** `ClaimStatus` (new `REVIEW` state), `ClaimService` (`changeStatus` plus a new `review` method), a `/claims/{id}/review` endpoint in `ClaimController`, and the setting in `Sheet`, `SettingsService` and `SettingsController`.\n- **Front end:** the Review button and its error messages in `claims.ts`, `REVIEW` added to the status list in `summary.ts`, and the field, from-date and \"in force\" value in `settings.ts`.\n- **Database:** no migration was needed. Dated settings already live in the `sheet_setting` table, and the status column has room for `REVIEW`.\n\n**Choice for you:** when a steward reviews a claim, the period cap is not checked again; it was already checked when the claim was first opened. If you'd rather it be re-checked at review time, that's a small change.\n\nI stopped an earlier test run that I'd started in the background before making any changes, because it was still holding port 3000.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.7875290000000004,
+        "num_turns": 35,
+        "duration_ms": 450985,
+        "duration_api_ms": 161348,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp155.agent.jsonl",
+  "agent_diff_file": "cp155.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
