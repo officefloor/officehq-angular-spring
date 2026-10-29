@@ -1,0 +1,120 @@
+diff --git a/src/main/frontend/src/app/features/audit-viewer/audit-viewer.ts b/src/main/frontend/src/app/features/audit-viewer/audit-viewer.ts
+index 6383678e..c5a00ff6 100644
+--- a/src/main/frontend/src/app/features/audit-viewer/audit-viewer.ts
++++ b/src/main/frontend/src/app/features/audit-viewer/audit-viewer.ts
+@@ -32,6 +32,17 @@ import { Session } from '../../core/session';
+           <li data-testid="audit-line">{{ line | fig }}</li>
+         }
+       </ol>
++
++      <h3>Activity</h3>
++      <button type="button" data-testid="activity-show" (click)="showActivity()">Show activity</button>
++      @if (activityError(); as err) {
++        <p role="alert" data-testid="activity-error">{{ err | fig }}</p>
++      }
++      <ol aria-label="Activity lines">
++        @for (line of activity(); track $index) {
++          <li data-testid="activity-line">{{ line | fig }}</li>
++        }
++      </ol>
+     </section>
+   `,
+ })
+@@ -42,8 +53,12 @@ export class AuditViewer {
+   protected readonly lines = signal<readonly string[]>([]);
+   protected readonly filter = signal('');
+   protected readonly error = signal<string | null>(null);
++  // The sheet's activity: one line "<user> <EVENT> <count>" per user and event, sorted by user then event.
++  protected readonly activity = signal<readonly string[]>([]);
++  protected readonly activityError = signal<string | null>(null);
+   // Each press is numbered, so only the latest one's answer shows.
+   private press = 0;
++  private activityPress = 0;
+ 
+   constructor() {
+     // A newly loaded sheet starts with the list empty.
+@@ -54,6 +69,9 @@ export class AuditViewer {
+         this.press++;
+         this.error.set(null);
+         this.lines.set([]);
++        this.activityPress++;
++        this.activityError.set(null);
++        this.activity.set([]);
+       });
+     });
+   }
+@@ -80,4 +98,20 @@ export class AuditViewer {
+       if (press === this.press) this.error.set('Could not read the audit.');
+     }
+   }
++
++  protected async showActivity(): Promise<void> {
++    this.activityError.set(null);
++    this.activity.set([]);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const press = ++this.activityPress;
++    try {
++      const l = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit/activity`),
++      );
++      if (press === this.activityPress) this.activity.set(l);
++    } catch {
++      if (press === this.activityPress) this.activityError.set('Could not read the activity.');
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 74fd118c..f8fbb849 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -14,6 +14,7 @@ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.Set;
++import java.util.TreeMap;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.asof.AsOfContext;
+@@ -135,6 +136,23 @@ public class Audit {
+         return found;
+     }
+ 
++    /**
++     * The sheet's activity: for every user and every event in its records, one line "<user> <EVENT> <count>", sorted
++     * by user then event.
++     */
++    public synchronized List<String> activity(String sheetId) {
++        Map<String, Map<String, Integer>> counts = new TreeMap<>();
++        for (String line : lines(sheetId, null)) {
++            Matcher m = HEAD.matcher(line);
++            if (m.find()) {
++                counts.computeIfAbsent(m.group(3), u -> new TreeMap<>()).merge(m.group(1), 1, Integer::sum);
++            }
++        }
++        List<String> found = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, n) -> found.add(user + " " + event + " " + n)));
++        return found;
++    }
++
+     /**
+      * The records of a sheet about one claim, exactly as the file holds them, newest first: with a number, those
+      * carrying number= that number; without one, those carrying no number but naming the person (compared as names
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index 187e5956..c48ea02e 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -55,6 +55,13 @@ public class AuditController {
+         return lines;
+     }
+ 
++    /** The sheet's activity: one line "<user> <EVENT> <count>" per user and event, sorted by user then event. */
++    @GetMapping("/activity")
++    public List<String> activity(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
++        return audit.activity(sheetId);
++    }
++
+     /** The sheet's descendants, by id: the sheets naming it as parent, the ones naming those, and so on. */
+     private TreeSet<String> descendants(String sheetId) {
+         TreeSet<String> found = new TreeSet<>();
