@@ -134,6 +134,13 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /**
+     * The proof kinds: the kinds a claim above its proof threshold needs at least one proof of each before it can be
+     * settled or approved, comma separated. Null (blank) for none. Not dated.
+     */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** Whether a steward has archived the sheet: it stays visible and every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -200,6 +207,7 @@ public class Sheet {
         then.graceDays = graceDays;
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
+        then.proofKinds = proofKinds;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -376,6 +384,20 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    /** The proof kinds as set, comma separated; null for none. */
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    /** The proof kinds, each once in the order set; none when blank. */
+    public List<String> proofKindList() {
+        return proofKinds == null ? List.of() : List.of(proofKinds.split(","));
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
     }
 
     public BigDecimal getPot() {

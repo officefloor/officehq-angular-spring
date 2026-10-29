@@ -28,6 +28,11 @@ import java.util.List;
 @Table(name = "claim")
 public class Claim {
 
+    /** The kinds a proof can be; a proof added with none chosen is a receipt. */
+    public static final String PROOF_RECEIPT = "receipt";
+    public static final String PROOF_PHOTO = "photo";
+    public static final List<String> PROOF_KINDS = List.of(PROOF_RECEIPT, PROOF_PHOTO);
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -162,6 +167,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of the claim's proofs are photos; the rest are receipts. */
+    @Column(name = "proof_photos", nullable = false)
+    private int proofPhotos;
+
     /**
      * The claim's place in the list, newest first: the next place when it is added or moved to another person. The
      * store gives it; a move takes the next through {@link ClaimRepository#relist}.
@@ -294,9 +303,27 @@ public class Claim {
         return proofs;
     }
 
-    /** Raises the claim's proofs count by one. */
-    public void addProof() {
+    /** How many of the claim's proofs are receipts. */
+    public int getProofReceipts() {
+        return proofs - proofPhotos;
+    }
+
+    /** How many of the claim's proofs are photos. */
+    public int getProofPhotos() {
+        return proofPhotos;
+    }
+
+    /** How many of the claim's proofs are of the kind (receipt or photo). */
+    public int proofsOf(String kind) {
+        return PROOF_PHOTO.equals(kind) ? getProofPhotos() : getProofReceipts();
+    }
+
+    /** Raises the claim's proofs count by one, of the kind (receipt or photo). */
+    public void addProof(String kind) {
         proofs++;
+        if (PROOF_PHOTO.equals(kind)) {
+            proofPhotos++;
+        }
     }
 
     public LocalDate getRoundsOn() {

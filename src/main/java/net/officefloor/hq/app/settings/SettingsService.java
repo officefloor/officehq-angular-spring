@@ -3,6 +3,7 @@ package net.officefloor.hq.app.settings;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -317,6 +319,36 @@ public class SettingsService implements Audit.OnBehalf {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=review-sla value="
                 + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
+    /**
+     * Sets the sheet's proof kinds (null for blank: none), each receipt or photo, comma separated: while set, a claim
+     * whose due is above its proof threshold needs at least one proof of each before it can be settled or approved.
+     * Refused for any other kind. Not dated.
+     */
+    @Transactional
+    public Sheet setProofKinds(String by, String sheetId, String kinds) {
+        String list = null;
+        if (kinds != null && !kinds.isBlank()) {
+            List<String> each = new ArrayList<>();
+            for (String k : kinds.split(",")) {
+                String kind = k.trim();
+                if (!Claim.PROOF_KINDS.contains(kind)) {
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                            "Each proof kind must be receipt or photo.");
+                }
+                if (!each.contains(kind)) {
+                    each.add(kind);
+                }
+            }
+            list = String.join(",", each);
+        }
+        Sheet sheet = sheets.lock(sheetId);
+        sheet.setProofKinds(list);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=proof-kinds value="
+                + (list == null ? "" : list));
         return saved;
     }
 

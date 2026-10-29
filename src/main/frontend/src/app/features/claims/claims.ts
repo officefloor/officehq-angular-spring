@@ -44,8 +44,11 @@ export interface Claim {
   // The sheet's today a steward waived the claim's late charge; null for one never waived. See waivedOn().
   waivedOn: string | null;
   // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
-  // settled or approved while it has none.
+  // settled or approved while it has none, nor while it lacks one of each of the sheet's proof kinds.
   proofs: number;
+  // How many of its proofs are receipts, and how many photos.
+  proofReceipts: number;
+  proofPhotos: number;
   // The number of the claim this one was split off; null for a claim not split off another.
   splitFrom: string | null;
   // The claim's status log, oldest first: a line for each status it has had, from its DRAFT on.
@@ -376,7 +379,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -414,6 +417,8 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-late-entry">{{ (c.lateEntry ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-corrects">{{ (c.corrects ?? '') | fig }}</td>
             <td data-testid="claim-proofs">{{ c.proofs | fig }}</td>
+            <td data-testid="claim-proofs-receipt">{{ c.proofReceipts | fig }}</td>
+            <td data-testid="claim-proofs-photo">{{ c.proofPhotos | fig }}</td>
             <td data-testid="claim-split-from">{{ (c.splitFrom ?? '') | fig }}</td>
             <td>
               <ol class="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
@@ -547,6 +552,16 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-waive" (click)="waive(c)">
                 Waive late charge<span class="visually-hidden"> of claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+              <select
+                [id]="'claim-proof-kind-' + c.id"
+                data-testid="claim-proof-kind"
+                (change)="setProofKind(c.id, value($event))"
+              >
+                <option value="" [selected]="!proofKindChoices()[c.id]">Receipt (default)</option>
+                <option value="receipt" [selected]="proofKindChoices()[c.id] === 'receipt'">Receipt</option>
+                <option value="photo" [selected]="proofKindChoices()[c.id] === 'photo'">Photo</option>
+              </select>
               <button type="button" data-testid="claim-proof" (click)="addProof(c)">
                 Add proof<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
@@ -663,6 +678,8 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   // The void reason chosen for each claim, by claim id.
   protected readonly voidReasonChoices = signal<Record<number, string>>({});
+  // The proof kind chosen for each claim's next proof, by claim id; none chosen (a receipt) when missing.
+  protected readonly proofKindChoices = signal<Record<number, string>>({});
   // The date typed to defer each claim until, by claim id.
   protected readonly deferDates = signal<Record<number, string>>({});
   // The new date typed for each claim, by claim id.
@@ -879,6 +896,11 @@ export class Claims {
     this.clearRowError(id);
   }
 
+  protected setProofKind(id: number, kind: string): void {
+    this.proofKindChoices.update((k) => ({ ...k, [id]: kind }));
+    this.clearRowError(id);
+  }
+
   protected setVoidReason(id: number, reason: string): void {
     this.voidReasonChoices.update((r) => ({ ...r, [id]: reason }));
     this.clearRowError(id);
@@ -965,6 +987,8 @@ export class Claims {
                 : ((action === 'settle' && c.status === 'OPEN') || (action === 'approve' && c.status === 'PENDING')) &&
                     c.proofs === 0
                   ? 'This claim\'s due is above the proof threshold, so it needs a proof first.'
+                  : (action === 'settle' && c.status === 'OPEN') || (action === 'approve' && c.status === 'PENDING')
+                    ? 'This claim cannot be settled or approved yet: its due may be above the proof threshold and it needs a proof of each of the sheet\'s proof kinds first.'
                   : action === 'open' && c.status === 'DRAFT' && e instanceof HttpErrorResponse && e.status === 409
                     ? 'This claim cannot be opened: its person may be at the open-claim cap of its period, or it needs a note first.'
                     : `A ${c.status} claim cannot be changed that way, or its period is closed.`;
@@ -972,7 +996,10 @@ export class Claims {
     }
   }
 
-  /** Raises the claim's proofs count by one; a SETTLED, VOID or DELETED claim, or one in a closed period, takes none. */
+  /**
+   * Raises the claim's proofs count by one, of the kind chosen (a receipt when none is); a SETTLED, VOID or DELETED
+   * claim, or one in a closed period, takes none.
+   */
   protected async addProof(c: Claim): Promise<void> {
     this.clearRowError(c.id);
     const sheet = this.session.sheetId();
@@ -986,8 +1013,10 @@ export class Claims {
       return;
     }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/proof`;
+    const kind = this.proofKindChoices()[c.id] || null;
     try {
-      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, { kind })));
+      this.proofKindChoices.update(({ [c.id]: _, ...rest }) => rest);
     } catch {
       this.setRowError(c.id, `This ${c.status} claim cannot take a proof.`);
     }

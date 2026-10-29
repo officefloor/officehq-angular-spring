@@ -28,6 +28,9 @@ interface SettingsView {
   escalateAfter: number | null;
   // The review SLA: a REVIEW claim whose review day plus this many days is before today is late; null when blank: none.
   reviewSla: number | null;
+  // The proof kinds (receipt, photo) a claim above its proof threshold needs one proof of each of, comma separated;
+  // null when blank: none.
+  proofKinds: string | null;
   cap: string | null;
   // The pot shared among the members of each balanced pool by their shares, two decimals; null when blank: none.
   pot: string | null;
@@ -174,6 +177,8 @@ export class SettingsStore {
   readonly escalateAfter = signal<number | null>(null);
   /** The review SLA in days as set; null when blank (none). */
   readonly reviewSla = signal<number | null>(null);
+  /** The proof kinds as set, comma separated; null when blank (none). */
+  readonly proofKinds = signal<string | null>(null);
   /** The pot as set; null when blank (none). */
   readonly pot = signal<string | null>(null);
   /** The alert threshold as set; null when blank (off). */
@@ -206,6 +211,7 @@ export class SettingsStore {
     this.graceDays.set(null);
     this.escalateAfter.set(null);
     this.reviewSla.set(null);
+    this.proofKinds.set(null);
     this.pot.set(null);
     this.alertThreshold.set(null);
     this.parent.set(null);
@@ -230,6 +236,7 @@ export class SettingsStore {
     this.graceDays.set(s.graceDays);
     this.escalateAfter.set(s.escalateAfter ?? null);
     this.reviewSla.set(s.reviewSla ?? null);
+    this.proofKinds.set(s.proofKinds ?? null);
     this.pot.set(s.pot ?? null);
     this.alertThreshold.set(s.alertThreshold ?? null);
     this.parent.set(s.parent ?? null);
@@ -336,6 +343,13 @@ export class SettingsStore {
   async setReviewSla(sheet: string, value: number | null): Promise<void> {
     const s = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/review-sla`, { value }),
+    );
+    if (this.session.sheetId() === sheet) this.show(s);
+  }
+
+  async setProofKinds(sheet: string, value: string | null): Promise<void> {
+    const s = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/proof-kinds`, { value }),
     );
     if (this.session.sheetId() === sheet) this.show(s);
   }
@@ -560,6 +574,15 @@ export class SettingsStore {
           (keydown.delete)="reviewSlaChanged = true; settingsError.set(null)"
           (keydown.backspace)="reviewSlaChanged = true; settingsError.set(null)"
         />
+        <label for="setting-proof-kinds">Proof kinds (receipt, photo, comma separated: a claim above its proof threshold needs a proof of each; blank for none)</label>
+        <input
+          id="setting-proof-kinds"
+          data-testid="setting-proof-kinds"
+          [value]="proofKinds()"
+          (input)="proofKinds.set(value($event)); proofKindsChanged = true; settingsError.set(null)"
+          (keydown.delete)="proofKindsChanged = true; settingsError.set(null)"
+          (keydown.backspace)="proofKindsChanged = true; settingsError.set(null)"
+        />
         <label for="setting-pot">Pot (shared among the members of each balanced pool by their shares; blank for none)</label>
         <input
           id="setting-pot"
@@ -758,6 +781,7 @@ export class SettingsStore {
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ (store.graceDays() ?? '') | fig }}</strong></p>
       <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ (store.escalateAfter() ?? '') | fig }}</strong></p>
       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ (store.reviewSla() ?? '') | fig }}</strong></p>
+      <p>Proof kinds: <strong data-testid="setting-proof-kinds-current">{{ (store.proofKinds() ?? '') | fig }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ (store.pot() ?? '') | fig }}</strong></p>
       <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ (store.alertThreshold() ?? '') | fig }}</strong></p>
       <p>Fiscal start month: <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() | fig }}</strong></p>
@@ -859,6 +883,7 @@ export class Settings {
   protected readonly graceDays = signal('');
   protected readonly escalateAfter = signal('');
   protected readonly reviewSla = signal('');
+  protected readonly proofKinds = signal('');
   protected readonly pot = signal('');
   protected readonly alertThreshold = signal('');
   protected readonly fiscalStartMonth = signal('');
@@ -886,6 +911,7 @@ export class Settings {
   protected potChanged = false;
   protected escalateAfterChanged = false;
   protected reviewSlaChanged = false;
+  protected proofKindsChanged = false;
   protected alertThresholdChanged = false;
   protected fiscalStartMonthChanged = false;
   protected parentChanged = false;
@@ -1086,6 +1112,16 @@ export class Settings {
       this.settingsError.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
       return;
     }
+    const proofKindsTyped = this.proofKinds().trim();
+    const proofKinds = proofKindsTyped
+      .split(',')
+      .map((k) => k.trim())
+      .filter((k, i, all) => k !== '' && all.indexOf(k) === i)
+      .join(',');
+    if (this.proofKindsChanged && proofKinds.split(',').some((k) => k !== '' && k !== 'receipt' && k !== 'photo')) {
+      this.settingsError.set('Enter proof kinds as receipt or photo, comma separated, or leave it blank for none.');
+      return;
+    }
     const pot = this.pot().trim();
     if (this.potChanged && pot && !LIMIT.test(pot)) {
       this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
@@ -1220,6 +1256,10 @@ export class Settings {
       if (this.reviewSlaChanged) {
         await this.store.setReviewSla(sheet, reviewSla ? Number(reviewSla) : null);
         this.reviewSlaChanged = this.reviewSla().trim() !== reviewSla;
+      }
+      if (this.proofKindsChanged) {
+        await this.store.setProofKinds(sheet, proofKinds || null);
+        this.proofKindsChanged = this.proofKinds().trim() !== proofKindsTyped;
       }
       if (this.potChanged) {
         await this.store.setPot(sheet, pot || null);

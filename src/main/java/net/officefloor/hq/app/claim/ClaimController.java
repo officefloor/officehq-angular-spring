@@ -35,7 +35,7 @@ public class ClaimController {
      * whether its person's last statement binds it, to the stated due (null for n/a). Corrects is the number of the
      * claim a correction corrects, or null. Rounds-on is the date its rounding follows: its own, or for a correction
      * the date of the claim it corrects. Deferred-until is the date it was deferred until, or null; it is deferred
-     * while it is OPEN and the sheet's today is before that date. Reminded-on is the last day a reminder was written, or null. Proofs is how many proofs it has. Split-from is the number of the claim it was split off, or null. Log is its status log, oldest first.
+     * while it is OPEN and the sheet's today is before that date. Reminded-on is the last day a reminder was written, or null. Proofs is how many proofs it has, of which proof-receipts are receipts and proof-photos photos. Split-from is the number of the claim it was split off, or null. Log is its status log, oldest first.
      * Locked-by is the user whose open editor holds it, or null. Late-entry is whether it was added while its period
      * was soft-closed. Ref is its external reference, or null. Tags are its tags, sorted (none for a claim with none).
      * Comments are its comments, in the order they were written. Lines are its lines, in the order they were added.
@@ -44,14 +44,14 @@ public class ClaimController {
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
             String number, String settledDue, String openedBy, String editedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
+            LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, int proofReceipts, int proofPhotos, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
             List<CommentView> comments, Integer batch, List<LineView> lines, Long mark, LocalDate waivedOn) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.getEditedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
-                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
+                    c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getProofReceipts(), c.getProofPhotos(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
                     c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason(),
                     c.getComments().stream().map(CommentView::of).toList(), c.getSettleBatch(),
                     c.getLines().stream().map(LineView::of).toList(),
@@ -373,11 +373,17 @@ public class ClaimController {
         return ClaimView.of(service.addLine(user, sheetId, id, form.label(), form.qty(), form.unit()));
     }
 
+    /** The kind of proof to add, receipt or photo; blank or missing for none chosen (a receipt). */
+    public record ProofForm(@Size(max = 20) String kind) {
+    }
+
     @PostMapping("/claims/{id}/proof")
     public ClaimView addProof(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
-            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
-        return ClaimView.of(service.addProof(user, sheetId, id));
+            @PathVariable Long id, @Valid @RequestBody(required = false) ProofForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        String kind = form == null || form.kind() == null || form.kind().isBlank() ? null : form.kind().trim();
+        return ClaimView.of(service.addProof(user, sheetId, id, kind));
     }
 
     /** The reason chosen from the sheet's list to void a claim with; blank or missing for none. */
