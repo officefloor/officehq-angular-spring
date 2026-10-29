@@ -1,0 +1,64 @@
+{
+  "checkpoint": 170,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp170_rate-calendar",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "dc0e5fa29d2205b423c161936e1cda1c4bffb61f",
+  "reset_sha": "",
+  "preagent_sha": "82dd8e6e90224a446817a6d361fb0d0732dff7d3",
+  "prev_sha": "82dd8e6e90224a446817a6d361fb0d0732dff7d3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9724995999999999,
+    "input_tokens": 54,
+    "output_tokens": 9364,
+    "cache_read_tokens": 1353498,
+    "cache_creation_tokens": 64288,
+    "num_turns": 28,
+    "duration_ms": 523161,
+    "duration_api_ms": 150917,
+    "model": "claude-opus-5-5",
+    "session_id": "1f8b7298-9ff9-4eaf-b5ad-7a0d50486a09",
+    "stop_reason": "success",
+    "result_text": "I added the rate calendar, and all 4 acceptance tests now pass with `bin/e2e`. To get the last test passing I also had to change how transfers treat crews, which is outside what you asked for.\n\n**Rate calendar** (`src/main/frontend/src/app/features/rates/rates.ts`)\n- A new table in the Rates panel shows one row per grade and one column per month of the sheet's today's year. Each cell has the test id `rate-month-<grade>-<yyyy-mm>`.\n- Each cell shows the rate in force on the 1st of that month, or `n/a` when there is none. It uses the same rule as the existing \"in force today\" figure, so parent-sheet rates and to-dates count the same way.\n- It updates when today changes, when the sheet is reloaded, when a rate is set and after an import. No server change was needed.\n\n**Crew change.** Scenario 3 transfers Cam, who leads crew C1, to another sheet. The test then expects C1 to still exist with a blank lead and Ada holding 100% of its pool. The existing code deleted any crew whose lead was transferred, which is the opposite. To match the test:\n- A new migration, `V91__crew_lead_optional.sql`, makes a crew's lead optional.\n- When a lead is transferred away, the crews they lead now stay and have no lead (`CrewService.left`); the person's own crew memberships are still dropped. I updated the comment in `PersonTransferService` to say so.\n- In the front end, a crew with no lead shows a blank lead. Its due-total and its share of the pool come from its members alone (`crews.ts`, `pools.ts`).\n\nThis changes how transfers behave beyond the rate calendar. If deleting the crew was the intended behaviour, the test expectation is the thing to look at.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9724995999999999,
+        "num_turns": 28,
+        "duration_ms": 523161,
+        "duration_api_ms": 150917,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp170.agent.jsonl",
+  "agent_diff_file": "cp170.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
