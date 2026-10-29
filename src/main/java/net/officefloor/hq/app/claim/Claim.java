@@ -510,7 +510,7 @@ public class Claim {
         return statedDue;
     }
 
-    /** Binds the claim to the figure (null for n/a) until the next statement. */
+    /** Binds the claim to its due as shown (null for n/a), late charge included, until the next statement. */
     public void bind(BigDecimal figure) {
         this.stated = true;
         this.statedDue = figure;

@@ -120,7 +120,8 @@ public class RollupService {
                 Map<String, List<Rate>> claimRates = byTier.get(tiers.stream()
                         .filter(t -> t.upTo() == null || c.getAddedMark() <= t.upTo()).findFirst().orElseThrow());
                 BigDecimal figure = figure(c, claimRates.getOrDefault(p.gradeOn(c.getDate()), List.of()), sheet);
-                if (c.getSettledDue() == null) {
+                // a settled or bound claim's figure is its due as fixed or as shown when stated
+                if (c.getSettledDue() == null && !c.isBound()) {
                     figure = ClaimService.liveDue(figure, c, p, sheet, c.getStatus().isOpen());
                 }
                 if (figure != null) {
@@ -302,7 +303,7 @@ public class RollupService {
     }
 
     /**
-     * The figure of a claim: its settled due, else the one a statement bound it to, else its rate figure (no floor),
+     * The figure of a claim: its settled due, else the due a statement bound it to, else its rate figure (no floor),
      * rounded as the sheet's policy date decides for it.
      */
     private static BigDecimal figure(Claim c, List<Rate> rates, Sheet sheet) {

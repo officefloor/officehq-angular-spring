@@ -89,7 +89,7 @@ public class StatementService {
 
     /**
      * Takes a statement for the person: records their due-total now (late charges included) and binds each of their claims that counts to
-     * the figure it has now; a claim that does not count (as an open one dated within a hold, or a deferred one) is freed (live again).
+     * the due it shows now, late charge included (one already bound keeps its bound due); a claim that does not count (as an open one dated within a hold, or a deferred one) is freed (live again).
      */
     @Transactional
     public Summary take(String by, String sheetId, Long personId) {
@@ -112,9 +112,9 @@ public class StatementService {
             // a settled or already bound claim keeps its figure even with no rate in force today
             grades.add(person.gradeOn(c.getDate()));
             kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
-            // the statement binds the rate figure under the late charge and the floor; both keep following the sheet
+            // the statement binds the due as shown, late charge and floor included; a bound one stays as it is
             BigDecimal due = claimService.due(sheetId, person, c);
-            c.bind(claimService.figure(sheetId, person, c));
+            c.bind(due);
             count++;
             if (due != null) {
                 kept = true;
@@ -186,10 +186,16 @@ public class StatementService {
                 due = figure;
                 kept = true;
             } else {
-                figure = bound ? c.getStatedDue() : rateFigure(RateChain.forMark(tiersThen, c.getAddedMark()), then,
-                        person.gradeOn(c.getDate()), c);
-                kept |= bound && figure != null;
-                due = ClaimService.liveDue(figure, c, person, then, status.isOpen());
+                if (bound) {
+                    // its due as bound, late charge included
+                    figure = c.getStatedDue();
+                    kept |= figure != null;
+                    due = figure;
+                } else {
+                    due = ClaimService.liveDue(rateFigure(RateChain.forMark(tiersThen, c.getAddedMark()), then,
+                            person.gradeOn(c.getDate()), c), c, person, then, status.isOpen());
+                    figure = due;
+                }
             }
             c.bind(figure);
             count++;

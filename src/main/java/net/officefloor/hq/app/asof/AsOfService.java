@@ -38,7 +38,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * A sheet as of a day is a store of its own (see {@link #storeAsOf}): the schema, holding the last state stored
  * while the sheet's today was on or before the day (an empty sheet when there is none), with the day as its today;
- * and the same for each of its parent sheets whose rates it can take, linked as they are now (a parent is not dated).
+ * and the same for each of its parent sheets whose rates it can take, each as it stood at the end of the day by its own
+ * today (as a statement as of the day takes their rates), linked as they are now.
  * The whole app reads it unchanged, so every figure on the screen is as of the day.
  */
 @Service
@@ -128,16 +129,15 @@ public class AsOfService {
     /**
      * The store holding the sheet as it stood at the end of the day: the last state stored while its today was on or
      * before the day (an empty sheet with none), with the day standing in for its today; each parent sheet as it was
-     * last stored. Only to be read.
+     * last stored while its own today was on or before the day (an empty sheet with none). Only to be read.
      */
     @Transactional(readOnly = true)
     public DataSource storeAsOf(String sheetId, LocalDate day) {
         Map<String, String> lineage = lineage(sheetId);
         List<Long> ids = new ArrayList<>();
         for (String id : lineage.keySet()) {
-            // a parent is not dated: its today is its own, so it stands as it was last stored
-            List<Long> made = id.equals(sheetId) ? snapshots.idsMadeBy(id, day, Limit.of(1))
-                    : snapshots.latestIds(id, Limit.of(1));
+            // a parent keeps its own today: it stands as last stored while that was on or before the day
+            List<Long> made = snapshots.idsMadeBy(id, day, Limit.of(1));
             ids.add(made.isEmpty() ? null : made.get(0));
         }
         String key = lineage + "|" + ids + "|" + day;

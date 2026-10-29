@@ -321,12 +321,11 @@ public class ClaimService {
             case DRAFT, PENDING, DELETED -> throw new IllegalStateException();
         };
         if (next == ClaimStatus.SETTLED) {
-            // the due is fixed at the figure a statement bound it to, else at the rate the person's grade has in
-            // force on the claim's date, with the late charge it has gained by today, and at least the floor in force
-            // on its date; with none it stays live
-            BigDecimal figure = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
-                    : rateFigure(sheetId, person, claim);
-            BigDecimal fixed = liveDue(figure, claim, person, sheets.load(sheetId), true);
+            // the due is fixed at the due a statement bound it to (late charge and floor included), else at the rate
+            // the person's grade has in force on the claim's date, with the late charge it has gained by today, and
+            // at least the floor in force on its date; with none it stays live
+            BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
+                    : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
             refuseWithoutProof(sheetId, claim, fixed);
             if (settings.aboveClerkLimit(sheetId, by, fixed)) {
                 next = ClaimStatus.PENDING;
@@ -1020,8 +1019,8 @@ public class ClaimService {
     }
 
     /**
-     * The figure of the claim: its settled due, else the one a statement bound it to, else
-     * its rate figure. A statement binds this figure, under the late charge and the floor.
+     * The figure of the claim: its settled due, else the due a statement bound it to (late charge and floor
+     * included), else its rate figure.
      */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
@@ -1031,12 +1030,13 @@ public class ClaimService {
     }
 
     /**
-     * The due the claim shows and totals: its settled due as frozen, else its live due on its figure (the late charge
-     * only while it is open or pending).
+     * The due the claim shows and totals: its settled due as frozen, else the due a statement bound it to as it
+     * showed then (its late charge no longer follows the sheet's today), else its live due on its figure (the late
+     * charge only while it is open or pending). A statement binds this due.
      */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figure(sheetId, person, claim);
-        return claim.getSettledDue() != null ? figure
+        return claim.getSettledDue() != null || claim.isBound() ? figure
                 : liveDue(figure, claim, person, sheets.load(sheetId), claim.getStatus().isOpen());
     }
 
@@ -1058,8 +1058,8 @@ public class ClaimService {
      * late-from: its due-by plus its grace) by the sheet's today: for each such boundary (its late-from plus 30, 60,
      * 90 ... days), the sheet's late
      * percent in force on that boundary date of the figure plus the charges of the boundaries before it (it
-     * compounds), rounded like its due; a boundary whose percent is 0.00 adds nothing. A deferred claim is not overdue; a waived one bears no charge. The charge is never bound by a statement: it keeps following the
-     * sheet's today and its policy date.
+     * compounds), rounded like its due; a boundary whose percent is 0.00 adds nothing. A deferred claim is not overdue; a waived one bears no charge. While a statement binds the
+     * claim, its due as shown then (this charge included) stands instead.
      */
     public static BigDecimal withLateCharge(BigDecimal figure, Claim claim, Person person, Sheet sheet) {
         if (figure == null || sheet == null || sheet.getToday() == null || claim.isDeferredOn(sheet.getToday())

@@ -142,7 +142,7 @@ export function roundsHalfUp(c: Claim, late: Rounding): boolean {
 }
 
 /**
- * The figure of a claim: its settled due, else the one a statement bound it to, else its
+ * The figure of a claim: its settled due, else the due a statement bound it to, else its
  * rate figure at the rate in force on its date (no floor), rounded as the rounding mode or the policy date decides
  * for it; null (n/a) with none.
  */
@@ -250,12 +250,12 @@ export function plusDays(date: string, days: number): string {
  * The due a claim shows and totals: a settled claim's frozen due; else its live due, the greater of the floor in
  * force on its date and its figure plus the late charge: for an overdue claim, for each full 30 days it is overdue,
  * the late percent in force on that boundary date (its due-by plus its grace, plus 30, 60, 90 ... days) of the figure
- * plus the charges of the boundaries before it (it compounds), rounded like the claim; a boundary whose percent is 0.00 adds nothing. Neither the charge nor the floor is bound by a
- * statement. A correction has neither; a waived claim bears no charge.
+ * plus the charges of the boundaries before it (it compounds), rounded like the claim; a boundary whose percent is 0.00 adds nothing. A claim a statement binds shows the due it
+ * bound, charge and floor included. A correction has neither; a waived claim bears no charge.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness, grace = 0): string | null {
   const figure = figureOf(c, rates, late);
-  if (figure === null || c.settledDue !== null || isCorrection(c)) return figure;
+  if (figure === null || c.settledDue !== null || isBound(c) || isCorrection(c)) return figure;
   if (!overdue(c, late.today, grace) || waivedOn(c, late.today)) return atLeast(figure, floor(c.date));
   const from = lateFrom(c, grace);
   const periods = Math.floor(daysBetween(from, late.today!) / 30);
