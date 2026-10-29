@@ -219,9 +219,9 @@ interface StatementView {
           [value]="pasteText()"
           (input)="pasteText.set(value($event)); pasteError.set(null)"
         ></textarea>
-        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        <button type="submit" data-testid="paste-submit">Open pasted claims</button>
         @if (pasteAdded() !== null) {
-          <p role="status">Added: <strong data-testid="paste-added">{{ pasteAdded() }}</strong></p>
+          <p role="status">Went through: <strong data-testid="paste-added">{{ pasteAdded() }}</strong></p>
         }
         @if (pasteError(); as err) {
           <p role="alert" data-testid="paste-error">{{ err }}</p>
@@ -719,7 +719,7 @@ export class People {
   protected readonly quickAmount = signal('');
   protected readonly quickError = signal<string | null>(null);
   private quickAdding = false;
-  // The paste box: lines of name,amount,date,note make a draft claim each, all or none; and how many it added.
+  // The paste box: lines of name,amount,date,note open a claim each, all or none; and how many went through.
   protected readonly pasteText = signal('');
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteError = signal<string | null>(null);
@@ -1999,8 +1999,8 @@ export class People {
   }
 
   /**
-   * Adds a draft claim for each pasted line, in order; the store checks every line by the claim form's rules first
-   * and adds none when any is refused. Shows how many were added.
+   * Adds and opens a claim for each pasted line, in order, or updates and opens the DRAFT it matches; the store
+   * checks every line first and takes none when any is refused. Shows how many lines went through.
    */
   protected async paste(e: Event): Promise<void> {
     e.preventDefault();

@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Set;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.http.HttpStatus;
@@ -18,14 +19,20 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Adds a draft claim for each pasted line of name,amount,date,note, all of them or none. A note ending in
- * " #reference" gives the claim that external reference, and the note is what comes before it.
+ * Adds and opens a claim for each pasted line of name,amount,date,note, all of them or none. A note ending in
+ * " #reference" gives the claim that external reference, and the note is what comes before it. A line naming a
+ * person, date and note that match one of their claims as it stood before the paste updates the newest such DRAFT
+ * to the line's amount and opens it instead.
  */
 @Service
 public class PasteService {
 
     /** A pasted line read into the claim form's fields, for a person on the sheet. */
-    private record Line(Person person, BigDecimal amount, LocalDate date, String note, String ref) {
+    private record Line(int n, Person person, BigDecimal amount, LocalDate date, String note, String ref) {
+    }
+
+    /** A claim as it stood before the paste: what a line matches it by. */
+    private record Before(Claim claim, Long personId, LocalDate date, String note, ClaimStatus status) {
     }
 
     private final PersonRepository people;
@@ -59,11 +66,33 @@ public class PasteService {
         if (lines.isEmpty()) {
             throw refused("Paste at least one line of name,amount,date,note.");
         }
-        List<Claim> added = new ArrayList<>();
+        // newest first, as the claims are listed; void and deleted claims match nothing
+        List<Before> before = claims.list(sheetId).stream()
+                .filter(c -> c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
+                .map(c -> new Before(c, c.getPersonId(), c.getDate(), c.getNote(), c.getStatus()))
+                .toList();
+        List<Claim> done = new ArrayList<>();
         for (Line l : lines) {
-            added.add(claims.add(by, sheetId, l.person().getId(), l.amount(), l.date(), l.note(), null, l.ref()));
+            LocalDate on = claims.addedOn(sheetId, l.date());
+            List<Before> matches = before.stream()
+                    .filter(b -> b.personId().equals(l.person().getId()) && b.date().equals(on)
+                            && l.note().equals(b.note() == null ? "" : b.note()))
+                    .toList();
+            Claim claim;
+            if (matches.isEmpty()) {
+                claim = claims.add(by, sheetId, l.person().getId(), l.amount(), l.date(), l.note(), null, l.ref());
+            } else {
+                Before draft = matches.stream().filter(b -> b.status() == ClaimStatus.DRAFT).findFirst()
+                        .orElseThrow(() -> refused("Line " + l.n() + " matches a claim that is not a draft."));
+                claim = draft.claim();
+                if (claim.getAmount().compareTo(l.amount()) != 0) {
+                    claim = claims.update(by, sheetId, claim.getId(), l.amount(), claim.getDate(), claim.getNote(),
+                            claim.getCorrects(), claim.getRef(), claim.getTags());
+                }
+            }
+            done.add(claims.changeStatus(by, sheetId, claim.getId(), ClaimStatus.OPEN));
         }
-        return added;
+        return done;
     }
 
     private Line read(String sheetId, int n, String raw) {
@@ -109,7 +138,7 @@ public class PasteService {
         if (ref != null && ref.length() > 140) {
             throw refused("Line " + n + " has a reference longer than 140 characters.");
         }
-        return new Line(person, amount, date, note, ref);
+        return new Line(n, person, amount, date, note, ref);
     }
 
     private static ResponseStatusException refused(String reason) {

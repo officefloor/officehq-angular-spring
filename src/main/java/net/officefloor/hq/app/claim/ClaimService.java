@@ -1072,6 +1072,12 @@ public class ClaimService {
         return date != null ? date : sheets.load(sheetId).getToday();
     }
 
+    /** The date a claim added with the date takes: the date, or for none the sheet's entry date, else its today. */
+    @Transactional(readOnly = true)
+    public LocalDate addedOn(String sheetId, LocalDate date) {
+        return dateOrEntryDate(sheetId, date);
+    }
+
     /** The date, or for none the sheet's entry date, or its today when that is blank. */
     private LocalDate dateOrEntryDate(String sheetId, LocalDate date) {
         if (date != null) {
