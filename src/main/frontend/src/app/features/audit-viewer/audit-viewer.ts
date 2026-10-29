@@ -32,6 +32,17 @@ import { Session } from '../../core/session';
           <li data-testid="audit-line">{{ line | fig }}</li>
         }
       </ol>
+
+      <h3>Activity</h3>
+      <button type="button" data-testid="activity-show" (click)="showActivity()">Show activity</button>
+      @if (activityError(); as err) {
+        <p role="alert" data-testid="activity-error">{{ err | fig }}</p>
+      }
+      <ol aria-label="Activity lines">
+        @for (line of activity(); track $index) {
+          <li data-testid="activity-line">{{ line | fig }}</li>
+        }
+      </ol>
     </section>
   `,
 })
@@ -42,8 +53,12 @@ export class AuditViewer {
   protected readonly lines = signal<readonly string[]>([]);
   protected readonly filter = signal('');
   protected readonly error = signal<string | null>(null);
+  // The sheet's activity: one line "<user> <EVENT> <count>" per user and event, sorted by user then event.
+  protected readonly activity = signal<readonly string[]>([]);
+  protected readonly activityError = signal<string | null>(null);
   // Each press is numbered, so only the latest one's answer shows.
   private press = 0;
+  private activityPress = 0;
 
   constructor() {
     // A newly loaded sheet starts with the list empty.
@@ -54,6 +69,9 @@ export class AuditViewer {
         this.press++;
         this.error.set(null);
         this.lines.set([]);
+        this.activityPress++;
+        this.activityError.set(null);
+        this.activity.set([]);
       });
     });
   }
@@ -78,6 +96,22 @@ export class AuditViewer {
       if (press === this.press) this.lines.set(l);
     } catch {
       if (press === this.press) this.error.set('Could not read the audit.');
+    }
+  }
+
+  protected async showActivity(): Promise<void> {
+    this.activityError.set(null);
+    this.activity.set([]);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const press = ++this.activityPress;
+    try {
+      const l = await firstValueFrom(
+        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit/activity`),
+      );
+      if (press === this.activityPress) this.activity.set(l);
+    } catch {
+      if (press === this.activityPress) this.activityError.set('Could not read the activity.');
     }
   }
 }

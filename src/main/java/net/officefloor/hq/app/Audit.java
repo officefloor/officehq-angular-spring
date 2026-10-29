@@ -14,6 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.asof.AsOfContext;
@@ -132,6 +133,23 @@ public class Audit {
             }
         }
         Collections.reverse(found);
+        return found;
+    }
+
+    /**
+     * The sheet's activity: for every user and every event in its records, one line "<user> <EVENT> <count>", sorted
+     * by user then event.
+     */
+    public synchronized List<String> activity(String sheetId) {
+        Map<String, Map<String, Integer>> counts = new TreeMap<>();
+        for (String line : lines(sheetId, null)) {
+            Matcher m = HEAD.matcher(line);
+            if (m.find()) {
+                counts.computeIfAbsent(m.group(3), u -> new TreeMap<>()).merge(m.group(1), 1, Integer::sum);
+            }
+        }
+        List<String> found = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, n) -> found.add(user + " " + event + " " + n)));
         return found;
     }
 
