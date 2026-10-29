@@ -76,6 +76,19 @@ public class ClaimService {
     }
 
     /**
+     * The claim's timeline: the audit lines about it, newest first, as the file holds them (see
+     * {@link Audit#claimLines}).
+     */
+    @Transactional(readOnly = true)
+    public List<String> timeline(String sheetId, Long id) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        Person person = person(sheetId, claim.getPersonId());
+        return audit.claimLines(sheetId, claim.getNumber(), person.getName(), claim.getAmount().toPlainString(),
+                claim.getDate().toString());
+    }
+
+    /**
      * Adds a claim for the person; a missing date takes the sheet's entry date, or its today when that is blank. Its
      * due-by is fixed as the terms-th business day after its date, skipping weekends and the sheet's holidays then, and its period is the one its due-by falls in: one whose
      * due-by falls in a soft-closed period is a late entry. Refused when its due-by falls in a closed period or when

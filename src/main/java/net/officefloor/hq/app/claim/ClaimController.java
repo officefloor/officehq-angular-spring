@@ -124,6 +124,14 @@ public class ClaimController {
                 form.corrects(), form.ref(), form.tags()));
     }
 
+    /** The claim's timeline: the audit lines about it, newest first. */
+    @GetMapping("/claims/{id}/timeline")
+    public List<String> timeline(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id) {
+        return service.timeline(sheetId, id);
+    }
+
     /** Every tag ever used on a claim of the sheet, sorted. */
     @GetMapping("/claim-tags")
     public List<String> tags(

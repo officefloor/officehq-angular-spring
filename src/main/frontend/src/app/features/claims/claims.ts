@@ -359,7 +359,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -452,6 +452,16 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-line-add" (click)="addLine(c)">
                 Add line<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+            </td>
+            <td>
+              <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)">
+                Timeline<span class="visually-hidden"> of claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <ol class="claim-timeline" [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+                @for (line of timelines()[c.id] ?? []; track $index) {
+                  <li data-testid="claim-timeline-line">{{ line | fig }}</li>
+                }
+              </ol>
             </td>
             <td>
               <button type="button" data-testid="claim-open" (click)="act(c, 'open')">
@@ -641,6 +651,10 @@ export class Claims {
   protected readonly reassignTo = signal<Record<number, string>>({});
   // The comment typed for each claim, by claim id.
   protected readonly commentTexts = signal<Record<number, string>>({});
+  // The timeline shown for each claim, by claim id: its audit lines, newest first.
+  protected readonly timelines = signal<Record<number, readonly string[]>>({});
+  // Each timeline press is numbered, so only the latest one's answer shows.
+  private timelinePress = 0;
   // The line typed for each claim, by claim id.
   protected readonly lineFields = signal<Record<number, LineFields>>({});
   // The amount typed in each draft's own row, by claim id.
@@ -1000,6 +1014,22 @@ export class Claims {
       this.saved.emit(saved);
     } catch {
       this.setRowError(c.id, 'This comment could not be added to the claim.');
+    }
+  }
+
+  /** Shows the claim's timeline: the audit lines about it, newest first, as the file holds them. */
+  protected async showTimeline(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    this.timelines.update(({ [c.id]: _, ...rest }) => rest);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const press = ++this.timelinePress;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/timeline`;
+    try {
+      const lines = await firstValueFrom(this.http.get<string[]>(url));
+      if (press === this.timelinePress) this.timelines.update((t) => ({ ...t, [c.id]: lines }));
+    } catch {
+      if (press === this.timelinePress) this.setRowError(c.id, 'The timeline of this claim could not be read.');
     }
   }
 

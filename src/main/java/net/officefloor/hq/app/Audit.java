@@ -8,8 +8,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -130,6 +132,38 @@ public class Audit {
             }
         }
         Collections.reverse(found);
+        return found;
+    }
+
+    /**
+     * The records of a sheet about one claim, exactly as the file holds them, newest first: with a number, those
+     * carrying number= that number; without one, those carrying no number but naming the person (compared as names
+     * are), the amount and the date together.
+     */
+    public synchronized List<String> claimLines(String sheetId, String number, String person, String amount,
+            String date) {
+        String key = person.strip().toLowerCase(Locale.ROOT);
+        List<String> found = new ArrayList<>();
+        for (String line : lines(sheetId, null)) {
+            Map<String, String> f = fields(line);
+            boolean about = number != null ? number.equals(f.get("number"))
+                    : !f.containsKey("number") && f.containsKey("person")
+                            && f.get("person").strip().toLowerCase(Locale.ROOT).equals(key)
+                            && amount.equals(f.get("amount")) && date.equals(f.get("date"));
+            if (about) {
+                found.add(line);
+            }
+        }
+        return found;
+    }
+
+    /** A record's fields by key; the first of a key repeated. */
+    private static Map<String, String> fields(String line) {
+        Map<String, String> found = new HashMap<>();
+        Matcher f = FIELD.matcher(line);
+        while (f.find()) {
+            found.putIfAbsent(f.group(1), f.group(2));
+        }
         return found;
     }
 
