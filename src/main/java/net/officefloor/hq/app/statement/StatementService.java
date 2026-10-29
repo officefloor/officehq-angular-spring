@@ -61,7 +61,7 @@ public class StatementService {
     @Transactional(readOnly = true)
     public List<Summary> list(String sheetId) {
         Map<Long, Summary> by = new LinkedHashMap<>();
-        for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Statement s : statements.findBySheetIdInOrder(sheetId)) {
             Summary was = by.get(s.getPersonId());
             by.put(s.getPersonId(), new Summary(s.getPersonId(), was == null ? 1 : was.count() + 1, s));
         }
@@ -121,7 +121,7 @@ public class StatementService {
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + by + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count);
         rollup.recordChanges(by, sheetId, before);
-        return new Summary(personId, statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).size(),
+        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId).size(),
                 taken);
     }
 
@@ -149,7 +149,7 @@ public class StatementService {
         Person person = current.asOf(asOf);
         List<Rate> ratesThen = rates.applyingAsOf(sheetId, asOf);
         // the binding of the person's last statement counts when it was taken while the sheet's today was on or before
-        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdInOrder(sheetId, personId);
         boolean bindingCounts = !theirs.isEmpty() && !theirs.get(theirs.size() - 1).getTakenOn().isAfter(asOf);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
@@ -195,7 +195,7 @@ public class StatementService {
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count
                 + " asof=" + asOf);
         rollup.recordChanges(by, sheetId, before);
-        return new Summary(personId, statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).size(),
+        return new Summary(personId, statements.findBySheetIdAndPersonIdInOrder(sheetId, personId).size(),
                 taken);
     }
 
@@ -226,7 +226,7 @@ public class StatementService {
         if (!settings.isSteward(sheetId, by)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can cancel a statement.");
         }
-        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdInOrder(sheetId, personId);
         if (theirs.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "There is no statement to cancel.");
         }

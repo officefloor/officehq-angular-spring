@@ -14,6 +14,7 @@ import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -59,12 +60,13 @@ public class PersonMergeService {
 
     /**
      * A steward merges the person into another person of the sheet. The merged person's claims move to the other
-     * (numbers and dates kept), listed after the other's in the order they were added, each losing any figure a
+     * (numbers and dates kept), listed after the other's in the order they were added, each keeping any figure a
      * statement bound; their name and aliases become the other's aliases; their patrons are added to the other's (not
      * the other themselves, no repeats), anyone naming them as patron names the other instead (no repeats), and their
      * pool memberships and plans move to the other (shares added, at most 100.00, where the other is already a member); a
-     * closed period's figure fixed for them is added to the other's. Their statements, holds, watchers and contact
-     * are dropped, and they leave the sheet. Refused unless the user is a steward, for the same person, and when
+     * closed period's figure fixed for them is added to the other's. Their statements pass to the other, standing
+     * before the other's own (the other's last statement stays theirs, or, having none, becomes the merged person's);
+     * their holds, watchers and contact are dropped, and they leave the sheet. Refused unless the user is a steward, for the same person, and when
      * either of them is retired. The person merged into, as saved.
      */
     @Transactional
@@ -98,7 +100,6 @@ public class PersonMergeService {
         moved.sort(Comparator.comparing(Claim::getId));
         for (Claim c : moved) {
             c.setPersonId(into.getId());
-            c.unbind();
             claims.saveAndFlush(c);
             claims.relist(c.getId());
         }
@@ -110,7 +111,7 @@ public class PersonMergeService {
             p.mergePersonTotal(from.getId(), into.getId());
         }
         periods.flush();
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+        mergeStatements(sheetId, from.getId(), into.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         statements.flush();
         watches.flush();
@@ -128,6 +129,19 @@ public class PersonMergeService {
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + by + " from=" + fromName + " into="
                 + saved.getName());
         return saved;
+    }
+
+    /**
+     * The merged person's statements pass to the other, in their order, standing before the other's own, so the
+     * other's last statement stays theirs (or, having none, becomes the merged person's).
+     */
+    private void mergeStatements(String sheetId, Long from, Long into) {
+        List<Statement> moved = statements.findBySheetIdAndPersonIdInOrder(sheetId, from);
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdInOrder(sheetId, into);
+        long place = theirs.isEmpty() ? 0 : theirs.get(0).getPlace() - moved.size();
+        for (Statement s : moved) {
+            s.moveTo(sheetId, into, theirs.isEmpty() ? s.getPlace() : place++);
+        }
     }
 
     /** The merged person's patrons pass to the other, and whoever named them names the other; never twice, nor self. */

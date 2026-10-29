@@ -307,7 +307,6 @@ public class Claim {
         this.ref = null;
         this.settleBatch = null;
         this.lockedBy = null;
-        unbind();
     }
 
     /** The sheet's today when the claim was first opened, as its status log records it; null when it does not. */

@@ -15,6 +15,7 @@ import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -63,7 +64,7 @@ public class PersonTransferService {
      * holds, terms, contact and aliases, and their claims with status, dates, notes, tags, frozen figures and logs,
      * listed newest first as they were; each claim that had a number takes the other sheet's next, in the order the
      * claims were opened (by the sheet's today when each was opened, then the order they were added). Figures a
-     * statement bound are lost, their statements dropped, and references are not carried. Their patron links, pool
+     * statement bound are kept, their statements go with them, and references are not carried. Their patron links, pool
      * memberships and watches are dropped, and they leave this sheet. Refused unless the user is a steward, for a
      * retired person, for this sheet's own id, for an archived sheet, and when their contact is already a contact on
      * the other sheet. When their name or an alias is already a name or alias of someone on the other sheet (compared
@@ -124,7 +125,10 @@ public class PersonTransferService {
                 .filter(m -> id.equals(m.getPersonId())).toList();
         poolMembers.deleteAll(memberships);
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(id));
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id));
+        // their statements go with them, in their order
+        for (Statement s : statements.findBySheetIdAndPersonIdInOrder(sheetId, id)) {
+            s.moveTo(toSheetId, id, s.getPlace());
+        }
         plans.deleteAll(plans.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id));
         plans.flush();
         patrons.flush();
@@ -132,10 +136,13 @@ public class PersonTransferService {
         watches.flush();
         statements.flush();
 
-        person.moveToSheet(toSheetId);
-        // they go to the end of the other sheet's list
-        person.setPosition(people.nextPosition(toSheetId));
-        people.saveAndFlush(person);
+        // one merged on arrival is never listed there: their name is already someone's on the other sheet
+        if (into == null) {
+            person.moveToSheet(toSheetId);
+            // they go to the end of the other sheet's list
+            person.setPosition(people.nextPosition(toSheetId));
+            people.saveAndFlush(person);
+        }
 
         List<Claim> moved = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, id));
         // numbered afresh in the order they were opened
@@ -170,12 +177,12 @@ public class PersonTransferService {
         String name = person.getName();
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + by + " name=" + name + " to="
                 + toSheetId);
-        rollup.recordChanges(by, sheetId, beforeHere);
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + by + " name=" + name + " from="
                 + sheetId);
         if (into != null) {
             mergeService.absorb(by, toSheetId, person, into);
         }
+        rollup.recordChanges(by, sheetId, beforeHere);
         rollup.recordChanges(by, toSheetId, beforeThere);
     }
 }

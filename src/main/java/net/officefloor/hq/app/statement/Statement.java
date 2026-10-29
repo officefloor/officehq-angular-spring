@@ -41,6 +41,10 @@ public class Statement {
     @Column(name = "as_of")
     private LocalDate asOf;
 
+    /** The place the statement stands at in its person's order; null for its own id. */
+    @Column(name = "place")
+    private Long place;
+
     protected Statement() {
     }
 
@@ -64,6 +68,18 @@ public class Statement {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    /** The place the statement stands at in its person's order: the one it was given, else its id. */
+    public long getPlace() {
+        return place != null ? place : id;
+    }
+
+    /** Moves the statement to the person on the sheet, standing at the place in their order. */
+    public void moveTo(String sheetId, Long personId, long place) {
+        this.sheetId = sheetId;
+        this.personId = personId;
+        this.place = place;
     }
 
     public BigDecimal getDueTotal() {
