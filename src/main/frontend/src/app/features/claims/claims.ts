@@ -580,6 +580,17 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-redate" (click)="redate(c)">
                 Re-date<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <label [for]="'claim-due-by-new-' + c.id">New due-by</label>
+              <input
+                [id]="'claim-due-by-new-' + c.id"
+                type="date"
+                data-testid="claim-due-by-new"
+                [value]="dueBys()[c.id] ?? ''"
+                (input)="setDueByInput(c.id, value($event))"
+              />
+              <button type="button" data-testid="claim-set-due-by" (click)="setDueBy(c)">
+                Set due-by<span class="visually-hidden"> of claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <label [for]="'claim-split-amount-' + c.id">Amount to split off</label>
               <input
                 [id]="'claim-split-amount-' + c.id"
@@ -770,6 +781,8 @@ export class Claims {
   // The new date typed for each claim, by claim id.
   protected readonly redates = signal<Record<number, string>>({});
   protected readonly reviewUsers = signal<Record<number, string>>({});
+  // The due-by typed for each claim, by claim id.
+  protected readonly dueBys = signal<Record<number, string>>({});
   // The amount typed to split off each claim, by claim id.
   protected readonly splitAmounts = signal<Record<number, string>>({});
   // The amount typed to part-settle each claim, by claim id.
@@ -1396,6 +1409,43 @@ export class Claims {
       this.saved.emit(saved);
     } catch {
       this.setRowError(c.id, `This ${c.status} claim cannot be re-dated to ${date}.`);
+    }
+  }
+
+  protected setDueByInput(id: number, date: string): void {
+    this.dueBys.update((d) => ({ ...d, [id]: date }));
+    this.clearRowError(id);
+  }
+
+  /**
+   * A steward sets the due-by of a DRAFT, OPEN or PENDING claim to the typed date; it stays as set when a holiday
+   * is added later. Refused when the old or the new due-by falls in a closed period.
+   */
+  protected async setDueBy(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const dueBy = (this.dueBys()[c.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueBy)) {
+      this.setRowError(c.id, 'Enter the new due-by of this claim.');
+      return;
+    }
+    if (c.status !== 'DRAFT' && c.status !== 'OPEN' && c.status !== 'PENDING') {
+      this.setRowError(c.id, `A ${c.status} claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can.`);
+      return;
+    }
+    const periods = this.periods.list();
+    if (inClosedPeriod(periods, c.dueBy) || inClosedPeriod(periods, dueBy)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/due-by`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { dueBy }));
+      this.dueBys.update(({ [c.id]: _, ...rest }) => rest);
+      this.saved.emit(saved);
+    } catch {
+      this.setRowError(c.id, `This ${c.status} claim's due-by cannot be set to ${dueBy}.`);
     }
   }
 

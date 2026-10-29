@@ -1008,6 +1008,34 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * A steward sets the due-by of a DRAFT, OPEN or PENDING claim directly. A due-by set so stays as set: a holiday
+     * added later does not move it; overdue, the late charge, grace and the claim's period follow it. Refused unless
+     * the user is a steward, for any other status, and when the old or the new due-by falls in a closed period.
+     */
+    @Transactional
+    public Claim setDueBy(String by, String sheetId, Long id, LocalDate dueBy) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can set a claim's due-by.");
+        }
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim's due-by cannot be set.");
+        }
+        refuseInClosedPeriod(sheetId, claim.getDueBy());
+        refuseInClosedPeriod(sheetId, dueBy);
+        Person person = person(sheetId, claim.getPersonId());
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDueBy();
+        claim.setDueBy(dueBy);
+        claim.setDueBySet(true);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_DUE_BY_SET", by, person, saved) + " old=" + old + " new=" + dueBy);
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
     /** An OPEN claim after a split, and the new OPEN claim split off it. */
     public record Split(Claim original, Claim split) {
     }

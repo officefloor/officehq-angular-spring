@@ -361,6 +361,18 @@ public class ClaimController {
         return ClaimView.of(service.redate(user, sheetId, id, form.date()));
     }
 
+    /** The due-by a steward sets on a draft, open or pending claim. */
+    public record DueByForm(@NotNull LocalDate dueBy) {
+    }
+
+    @PostMapping("/claims/{id}/due-by")
+    public ClaimView setDueBy(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody DueByForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.setDueBy(user, sheetId, id, form.dueBy()));
+    }
+
     /** The amount to split off an open claim. */
     public record SplitForm(@NotNull @Digits(integer = 12, fraction = 2) BigDecimal amount) {
     }
