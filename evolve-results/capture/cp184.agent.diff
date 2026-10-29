@@ -1,0 +1,130 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 1b493e2f..69a7c2a6 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -43,7 +43,7 @@ export interface Claim {
+   remindedOn: string | null;
+   // The sheet's today a steward waived the claim's late charge; null for one never waived. See waivedOn().
+   waivedOn: string | null;
+-  // Whether the claim is held: while held, an open or pending one no statement binds counts in no live total.
++  // Whether the claim is held: while held, an open or pending one no statement binds counts in no live due (its amount is still claimed).
+   held: boolean;
+   // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
+   // settled or approved while it has none, nor while it lacks one of each of the sheet's proof kinds.
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f22c728f..1cf8aa5b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -973,12 +973,25 @@ export class People {
+     for (const c of this.liveClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+     return by;
+   });
++  // The claims whose amounts count toward what is claimed: the live ones, plus those left out only for being held
++  // (the claim's own hold or one of its person's) — a hold takes only the due out of the totals.
++  private readonly claimedClaims = computed(() => {
++    const today = this.session.sheetToday();
++    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
++    const retired = (c: Claim) => {
++      const from = retiredFrom.get(c.personId) ?? null;
++      return from !== null && today !== null && today >= from;
++    };
++    return this.claims().filter((c) => counts(c) && !deferred(c, today) && !(isOpen(c) && !isBound(c) && retired(c)));
++  });
+   protected readonly claimedBy = computed(() => {
++    const lists = new Map<number, Claim[]>();
++    for (const c of this.claimedClaims()) lists.set(c.personId, [...(lists.get(c.personId) ?? []), c]);
+     const by = new Map<number, string>();
+-    for (const [id, list] of this.liveBy()) by.set(id, claimedTotal(list));
++    for (const [id, list] of lists) by.set(id, claimedTotal(list));
+     return by;
+   });
+-  protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
++  protected readonly claimedTotal = computed(() => claimedTotal(this.claimedClaims()));
+   // Each person's due-total: the sum of their counted claims' figures, each settled one's frozen figure or
+   // the one a statement bound it to, or its live due, skipping n/a. With no rate in force today for their grade
+   // today nor for the grade of any counted claim's date it is null (n/a), unless a counted claim has a figure (a
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 9d82135d..be0ac5c9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -155,7 +155,7 @@ public class Claim {
+     @Column(name = "waived_on")
+     private LocalDate waivedOn;
+ 
+-    /** Whether the claim is held: while held, an open one no statement binds counts in no live total. */
++    /** Whether the claim is held: while held, an open one no statement binds counts in no live due, though its amount is still claimed. */
+     @Column(name = "held", nullable = false)
+     private boolean held;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 53944af2..61b5012f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -473,7 +473,10 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim waive(String by, String sheetId, Long id) {
+-        Claim claim = lockedClaim(sheetId, id);
++        // a late charge may be waived whatever period the claim's due-by falls in, closed or not
++        sheets.lock(sheetId);
++        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+         if (!settings.isSteward(sheetId, by)) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can waive a late charge.");
+         }
+@@ -493,7 +496,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Holds an OPEN or PENDING claim, or releases a held one: while held it counts in no live total unless a statement
++     * Holds an OPEN or PENDING claim, or releases a held one: while held its due counts in no live total (its amount is still claimed) unless a statement
+      * binds it, as a held person's claims do. Refused for a claim in any other status.
+      */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 76e2439f..db8515fe 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -385,6 +385,15 @@ public class Person {
+                 && (claim.isHeld() || holds.stream().anyMatch(h -> h.covers(claim.getDate())) || isRetiredOn(today)));
+     }
+ 
++    /**
++     * Whether the claim's amount counts toward what the person has claimed: as the live rules say, except that a hold
++     * (the person's or the claim's) does not leave it out; only its due leaves the totals while held.
++     */
++    public boolean countsClaimed(Claim claim, LocalDate today) {
++        return claim.getStatus().counts() && !claim.isDeferredOn(today)
++                && !(claim.getStatus().isOpen() && !claim.isBound() && isRetiredOn(today));
++    }
++
+     /**
+      * Whether the claim counts toward the person's figure for a period ending on the day: one whose status at the end
+      * of that day counts, left out as the live rules say when deferred on the sheet's today or held.
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 1ff34d8d..0f18bba7 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -102,7 +102,10 @@ public class RollupService {
+             // nor does one deferred on the sheet's today
+             List<Claim> counted = claimsBy.getOrDefault(p.getId(), List.of()).stream()
+                     .filter(c -> p.countsLive(c, today)).toList();
+-            BigDecimal claimed = ZERO;
++            // a held claim's amount still counts toward what is claimed; a claim correcting another does not
++            BigDecimal claimed = claimsBy.getOrDefault(p.getId(), List.of()).stream()
++                    .filter(c -> p.countsClaimed(c, today) && c.getCorrects() == null)
++                    .map(Claim::getAmount).reduce(ZERO, BigDecimal::add);
+             BigDecimal due = ZERO;
+             BigDecimal overdue = ZERO;
+             boolean kept = false;
+@@ -111,10 +114,6 @@ public class RollupService {
+             grades.add(p.gradeOn(today));
+             for (Claim c : counted) {
+                 grades.add(p.gradeOn(c.getDate()));
+-                // a claim correcting another counts toward due but not toward what is claimed
+-                if (c.getCorrects() == null) {
+-                    claimed = claimed.add(c.getAmount());
+-                }
+                 kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
+                 // the claim's rate is the one its person's grade in force on its date has
+                 Map<String, List<Rate>> claimRates = byTier.get(tiers.stream()
