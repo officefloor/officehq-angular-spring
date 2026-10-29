@@ -482,11 +482,11 @@ public class Claim {
     }
 
     /**
-     * Whether the claim's figure is bound by its person's last statement: stated, and not pending (a pending claim
-     * shows its live figure; rejected, it is bound again).
+     * Whether the claim's figure is bound by its person's last statement: stated (a pending claim is bound like any
+     * other claim that counts).
      */
     public boolean isBound() {
-        return stated && status != ClaimStatus.PENDING;
+        return stated;
     }
 
     public BigDecimal getStatedDue() {

@@ -118,9 +118,9 @@ export function isOpen(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING';
 }
 
-/** Whether the person's last statement binds the claim's figure: not while it is pending, which shows it live. */
+/** Whether the person's last statement binds the claim's figure (a pending claim is bound like any other). */
 export function isBound(c: Claim): boolean {
-  return c.stated && c.status !== 'PENDING';
+  return c.stated;
 }
 
 /** Whether the claim is a correction: one with a negative amount. */
@@ -140,7 +140,7 @@ export function roundsHalfUp(c: Claim, late: Rounding): boolean {
 }
 
 /**
- * The figure of a claim: its settled due, else the one a statement bound it to (not while it is pending), else its
+ * The figure of a claim: its settled due, else the one a statement bound it to, else its
  * rate figure at the rate in force on its date (no floor), rounded as the rounding mode or the policy date decides
  * for it; null (n/a) with none.
  */

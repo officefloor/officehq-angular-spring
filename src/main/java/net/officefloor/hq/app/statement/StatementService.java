@@ -169,7 +169,7 @@ public class StatementService {
         int count = 0;
         for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
             ClaimStatus status = c.statusAtEndOf(asOf);
-            boolean bound = bindingCounts && c.isStated() && status != ClaimStatus.PENDING;
+            boolean bound = bindingCounts && c.isStated();
             boolean counts = status != null && status.counts() && !c.isDeferredAsOf(asOf)
                     && !(status.isOpen() && !bound && (person.getHolds().stream().anyMatch(h -> h.covers(c.getDate()))
                     || person.isRetiredOn(asOf)));

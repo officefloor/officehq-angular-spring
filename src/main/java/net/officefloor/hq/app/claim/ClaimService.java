@@ -995,7 +995,7 @@ public class ClaimService {
     }
 
     /**
-     * The figure of the claim: its settled due, else the one a statement bound it to (not while it is pending), else
+     * The figure of the claim: its settled due, else the one a statement bound it to, else
      * its rate figure. A statement binds this figure, under the late charge and the floor.
      */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
