@@ -4,8 +4,15 @@ import { FigPipe } from '../../core/locale';
 import { firstValueFrom } from 'rxjs';
 import { AsOf, LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
-import { GRADES, sumSkippingNa } from '../rates/rates';
+import { GRADES, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { STATUSES, SummaryPerson } from '../summary/summary';
+
+// One person of a sheet of the tree: their name and aliases, due-total (null for n/a) and overdue-total.
+export interface TreeMember {
+  names: string[];
+  dueTotal: string | null;
+  overdueTotal: string;
+}
 
 // The figures of the sheet's descendants (the sheets naming it as parent, theirs, and so on), added up by the store.
 interface DescendantFigures {
@@ -16,6 +23,24 @@ interface DescendantFigures {
   gradeDueTotals: Record<string, string>;
   // Per status, the count of claims in it; a status with none is missing.
   statusCounts: Record<string, number>;
+  // Each person of the descendants, for the totals to be worked out again with the sheet's own people.
+  people: TreeMember[];
+}
+
+// The people over the tree, each once: those whose names or aliases match, ignoring case, are one.
+function distinctPeople(members: readonly TreeMember[]): number {
+  const group = members.map((_, i) => i);
+  const root = (i: number): number => (group[i] === i ? i : (group[i] = root(group[i])));
+  const byName = new Map<string, number>();
+  members.forEach((m, i) => {
+    for (const n of m.names) {
+      const key = n.toLowerCase();
+      const j = byName.get(key);
+      if (j === undefined) byName.set(key, i);
+      else group[root(i)] = root(j);
+    }
+  });
+  return new Set(members.map((_, i) => root(i))).size;
 }
 
 const NONE: DescendantFigures = {
@@ -24,6 +49,7 @@ const NONE: DescendantFigures = {
   overdueTotal: '0.00',
   gradeDueTotals: {},
   statusCounts: {},
+  people: [],
 };
 
 // The figures over the sheet and all its descendants: the sheet's own, as it shows them, plus each descendant's. While
@@ -80,9 +106,7 @@ export class Consolidated {
   private readonly asOf = inject(AsOf);
 
   // The sheet's own figures, as it shows them.
-  readonly ownPeopleCount = input(0);
-  readonly ownDueTotal = input('0.00');
-  readonly ownOverdueTotal = input('0.00');
+  readonly ownMembers = input<readonly TreeMember[]>([]);
   readonly ownPeople = input<readonly SummaryPerson[]>([]);
   readonly ownStatuses = input<readonly string[]>([]);
 
@@ -91,14 +115,18 @@ export class Consolidated {
   // The sheet's and its descendants' figures as of the date the sheet is shown as of, read while it is.
   private readonly asOfFigures = signal<DescendantFigures | null>(null);
 
+  // Every person over the tree: the sheet's own and each descendant's.
+  private readonly members = computed(() => [...this.ownMembers(), ...(this.descendants().people ?? [])]);
+
+  // Each person counted once; the due-total and overdue-total trimmed once over all of the tree's people.
   protected readonly peopleCount = computed(
-    () => this.asOfFigures()?.peopleCount ?? this.ownPeopleCount() + this.descendants().peopleCount,
+    () => this.asOfFigures()?.peopleCount ?? distinctPeople(this.members()),
   );
   protected readonly dueTotal = computed(
-    () => this.asOfFigures()?.dueTotal ?? sumSkippingNa([this.ownDueTotal(), this.descendants().dueTotal]),
+    () => this.asOfFigures()?.dueTotal ?? trimmedSum(this.members().map((m) => m.dueTotal)),
   );
   protected readonly overdueTotal = computed(
-    () => this.asOfFigures()?.overdueTotal ?? sumSkippingNa([this.ownOverdueTotal(), this.descendants().overdueTotal]),
+    () => this.asOfFigures()?.overdueTotal ?? trimmedSum(this.members().map((m) => m.overdueTotal)),
   );
 
   // Per grade: the due-totals of the people on it today, retired ones left out and n/a skipped, over the tree.

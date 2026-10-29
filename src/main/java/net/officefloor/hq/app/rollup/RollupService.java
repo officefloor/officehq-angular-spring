@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -49,24 +50,71 @@ public class RollupService {
     }
 
     /**
-     * Figures added up over sheets: their people, each sheet's due-total and overdue-total, per grade the due-totals of
-     * the people on it today (retired people left out, n/a skipped), and per status the count of claims in it.
+     * One person of a sheet as the tree counts them: their name and aliases, their due-total (null for n/a) and their
+     * overdue-total.
      */
-    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
-            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts) {
+    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    }
+
+    /**
+     * Figures added up over sheets: their people (each person once, those whose names or aliases match being one),
+     * the people's due-totals and overdue-totals trimmed once over all of them, per grade the due-totals of the people
+     * on it today (retired people left out, n/a skipped), and per status the count of claims in it; with every
+     * sheet's people as members, for the totals to be worked out again with more of them.
+     */
+    public record Consolidated(List<Member> members, Map<String, BigDecimal> gradeDueTotals,
+            Map<ClaimStatus, Integer> statusCounts) {
 
         static Consolidated empty() {
-            return new Consolidated(0, ZERO, ZERO, new TreeMap<>(), new EnumMap<>(ClaimStatus.class));
+            return new Consolidated(List.of(), new TreeMap<>(), new EnumMap<>(ClaimStatus.class));
         }
 
         Consolidated plus(Consolidated o) {
+            List<Member> all = new ArrayList<>(members);
+            all.addAll(o.members);
             Map<String, BigDecimal> grades = new TreeMap<>(gradeDueTotals);
             o.gradeDueTotals.forEach((g, d) -> grades.merge(g, d, BigDecimal::add));
             Map<ClaimStatus, Integer> statuses = new EnumMap<>(ClaimStatus.class);
             statuses.putAll(statusCounts);
             o.statusCounts.forEach((s, n) -> statuses.merge(s, n, Integer::sum));
-            return new Consolidated(peopleCount + o.peopleCount, dueTotal.add(o.dueTotal),
-                    overdueTotal.add(o.overdueTotal), grades, statuses);
+            return new Consolidated(all, grades, statuses);
+        }
+
+        /** The people over the tree, each once: those whose names or aliases match, ignoring case, are one. */
+        public int peopleCount() {
+            int[] group = new int[members.size()];
+            Map<String, Integer> byName = new HashMap<>();
+            for (int i = 0; i < members.size(); i++) {
+                group[i] = i;
+                for (String n : members.get(i).names()) {
+                    Integer j = byName.putIfAbsent(n.toLowerCase(Locale.ROOT), i);
+                    if (j != null) {
+                        group[root(group, i)] = root(group, j);
+                    }
+                }
+            }
+            Set<Integer> roots = new HashSet<>();
+            for (int i = 0; i < members.size(); i++) {
+                roots.add(root(group, i));
+            }
+            return roots.size();
+        }
+
+        private static int root(int[] group, int i) {
+            while (group[i] != i) {
+                i = group[i] = group[group[i]];
+            }
+            return i;
+        }
+
+        /** The people's due-totals (n/a skipped), trimmed once over the tree. */
+        public BigDecimal dueTotal() {
+            return trimmedSum(members.stream().map(Member::dueTotal).filter(Objects::nonNull).toList());
+        }
+
+        /** The people's overdue-totals, trimmed once over the tree. */
+        public BigDecimal overdueTotal() {
+            return trimmedSum(members.stream().map(Member::overdueTotal).toList());
         }
     }
 
@@ -202,7 +250,16 @@ public class RollupService {
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             statuses.merge(c.getStatus(), 1, Integer::sum);
         }
-        return new Consolidated(s.people().size(), s.dueTotal(), s.overdueTotal(), grades, statuses);
+        List<Member> members = new ArrayList<>();
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            Figures f = s.people().get(p.getId());
+            if (f != null) {
+                List<String> names = new ArrayList<>(List.of(p.getName()));
+                names.addAll(p.getAliases());
+                members.add(new Member(names, f.dueTotal(), f.overdueTotal()));
+            }
+        }
+        return new Consolidated(members, grades, statuses);
     }
 
     /**

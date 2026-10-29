@@ -10,7 +10,7 @@ import { DatedGrade, GRADES, RateStore, atMost, equalShares, excessOver, gradeOn
 import { SettingsStore } from '../settings/settings';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
 import { Header } from '../header/header';
-import { Consolidated } from '../consolidated/consolidated';
+import { Consolidated, TreeMember } from '../consolidated/consolidated';
 import { Dashboard } from '../dashboard/dashboard';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { PoolRoster, PoolStore } from '../pools/pools';
@@ -105,9 +105,7 @@ interface StatementView {
     />
     <app-dashboard [statuses]="claimStatuses()" [overdueCount]="overdueClaims().length" />
     <app-consolidated
-      [ownPeopleCount]="people().length"
-      [ownDueTotal]="dueTotal()"
-      [ownOverdueTotal]="overdueTotal()"
+      [ownMembers]="members()"
       [ownPeople]="summaryPeople()"
       [ownStatuses]="claimStatuses()"
     />
@@ -1181,6 +1179,16 @@ export class People {
       dueTotal: due.get(p.id) ?? null,
       retired: p.retiredFrom !== null,
       active: active.has(p.id),
+    }));
+  });
+  // Each person as the consolidated figures count them: name and aliases, due-total and overdue-total.
+  protected readonly members = computed<TreeMember[]>(() => {
+    const due = this.dueBy();
+    const overdue = this.overdueTotalBy();
+    return this.people().map((p) => ({
+      names: [p.name, ...p.aliases],
+      dueTotal: due.get(p.id) ?? null,
+      overdueTotal: overdue.get(p.id) ?? '0.00',
     }));
   });
   protected readonly claimStatuses = computed(() => this.claims().map((c) => c.status));

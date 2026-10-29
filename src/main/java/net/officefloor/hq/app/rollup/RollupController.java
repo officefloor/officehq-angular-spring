@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -21,18 +22,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class RollupController {
 
     /**
-     * The descendants' figures added up: the number of people, the due-totals and overdue-totals, per grade the
-     * due-totals of its people (two decimals), and per status the count of claims.
+     * The descendants' figures added up: the number of people (each once), the due-totals and overdue-totals trimmed
+     * once over all of them, per grade the due-totals of its people (two decimals), per status the count of claims, and
+     * each person with their names and figures, for the screen to work the totals out again with the sheet's own.
      */
     public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal,
-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> people) {
         static ConsolidatedView of(RollupService.Consolidated c) {
             Map<String, String> grades = new TreeMap<>();
             c.gradeDueTotals().forEach((g, d) -> grades.put(g, d.toPlainString()));
             Map<String, Integer> statuses = new TreeMap<>();
             c.statusCounts().forEach((s, n) -> statuses.put(s.name(), n));
             return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString(),
-                    grades, statuses);
+                    grades, statuses, c.members().stream().map(MemberView::of).toList());
+        }
+    }
+
+    /** One person of the tree: their name and aliases, their due-total (null for n/a) and overdue-total. */
+    public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
+        static MemberView of(RollupService.Member m) {
+            return new MemberView(m.names(), m.dueTotal() == null ? null : m.dueTotal().toPlainString(),
+                    m.overdueTotal().toPlainString());
         }
     }
 
