@@ -1619,10 +1619,6 @@ export class Claims {
       this.setRowError(c.id, 'That person already holds a share of this claim.');
       return;
     }
-    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
-      this.setRowError(c.id, CLOSED);
-      return;
-    }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/share`;
     try {
       const shared = await firstValueFrom(this.http.post<Claim>(url, { personId: Number(to), share: pct }));

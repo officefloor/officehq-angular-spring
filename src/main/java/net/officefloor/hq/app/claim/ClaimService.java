@@ -567,9 +567,11 @@ public class ClaimService {
 
     /**
      * Shares the claim with another person of its sheet, who holds the share (two decimals, more than 0.00) of it:
-     * their due-total counts the claim's due times the share divided by 100, rounded half to even, and its own
-     * person's counts the rest. Refused for the claim's own person, a person already holding a share of it, shares
-     * totalling more than 100.00, and a SETTLED, VOID or DELETED claim.
+     * their due-total counts their part, the claim's amount times the share divided by 100 times the rate of their
+     * own grade in force on the claim's date divided by 100, rounded like the claim (0.00 when their grade has no
+     * rate), and its own person's counts the claim's due less those parts. A settled or bound claim keeps its parts as
+     * frozen: its due times each share divided by 100, rounded half to even.
+     * Refused for the claim's own person, a person already holding a share of it, shares totalling more than 100.00, and a SETTLED, VOID or DELETED claim.
      */
     @Transactional
     public Claim share(String by, String sheetId, Long id, Long personId, BigDecimal share) {
@@ -577,7 +579,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A share is more than 0.00, with up to two decimals.");
         }
-        Claim claim = lockedClaim(sheetId, id);
+        // a share leaves the claim itself as it is, so one due by a date in a closed period can still be shared
+        sheets.lock(sheetId);
+        Claim claim = claims.findWithLockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         ClaimStatus status = claim.getStatus();
         if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + status + " claim cannot be shared.");

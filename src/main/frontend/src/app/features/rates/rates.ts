@@ -74,6 +74,21 @@ export function dueOn(amount: string, pct: string | undefined, halfUp = false): 
   return formatCents(product < 0n ? -due : due);
 }
 
+/**
+ * A holder's part of a shared claim: the amount times the share divided by 100, times the rate divided by 100 (all
+ * two-decimal strings), rounded half to even (or half up, when asked) to two decimals; null (n/a) when there is no
+ * rate.
+ */
+export function partOn(amount: string, share: string, pct: string | undefined, halfUp = false): string | null {
+  if (pct === undefined) return null;
+  const product = cents(amount) * cents(share) * cents(pct);
+  const size = product < 0n ? -product : product;
+  let part = size / 100000000n;
+  const rest = size % 100000000n;
+  if (rest > 50000000n || (rest === 50000000n && (halfUp || part % 2n === 1n))) part += 1n;
+  return formatCents(product < 0n ? -part : part);
+}
+
 /** The two-decimal value, raised to the floor when it is below it. */
 export function atLeast(value: string, floor: string): string {
   return cents(value) < cents(floor) ? formatCents(cents(floor)) : value;

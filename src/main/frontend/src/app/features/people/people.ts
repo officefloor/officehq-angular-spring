@@ -4,9 +4,9 @@ import { FigPipe, UserLocale, formatFigure } from '../../core/locale';
 import { COLUMNS, UserColumns } from '../../core/columns';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, pendingLate, plusDays, reviewLate } from '../claims/claims';
+import { AMOUNT, Claim, Claims, activeOn, claimedTotal, counts, deferred, dueOf, graceOf, isBound, isOpen, overdue, pendingLate, plusDays, reviewLate, roundsHalfUp } from '../claims/claims';
 import { DatedFigure, PeriodStore, Periods, periodOn, personPeriodCarried, personPeriodDueTotals } from '../periods/periods';
-import { DatedGrade, RateStore, atMost, capLess, difference, dueOn, equalShares, excessOver, gradeOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
+import { DatedGrade, RateStore, atMost, capLess, difference, dueOn, equalShares, excessOver, gradeOn, partOn, rateOn, scoreOf, sharedSum, sumSkippingNa, trimmedSum } from '../rates/rates';
 import { SettingsStore } from '../settings/settings';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
 import { Header } from '../header/header';
@@ -1122,22 +1122,30 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => claimedTotal(this.liveClaims()));
-  // The parts of the shared claims counted live: for each holder, each claim they hold a share of and their part, its
-  // figure times their share divided by 100, rounded half to even; and for each such claim what its own person gives
-  // away, its holders' parts added up. A claim with no figure (n/a) has no parts.
+  // The parts of the shared claims counted live: for each holder, each claim they hold a share of and their part, the
+  // claim's amount times their share divided by 100 times the rate of the holder's own grade in force on the claim's
+  // date divided by 100, rounded like the claim (n/a for the holder, and 0.00 given away, when that grade has no rate);
+  // a settled or bound claim keeps its parts as frozen, its figure times the share divided by 100, rounded half to
+  // even. And for each such claim what its own person gives away, its holders' parts added up. A claim with no figure
+  // (n/a) has no parts.
   private readonly shareParts = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const rates = this.rates.byClaim();
     const floor = this.settings.floor();
     const late = this.settings.lateness();
-    const held = new Map<number, { claim: Claim; part: string }[]>();
+    const held = new Map<number, { claim: Claim; part: string | null }[]>();
     const given = new Map<number, string>();
     for (const c of this.liveClaims()) {
       if (c.shares.length === 0) continue;
       const own = grades.get(c.personId) ?? [];
       const due = dueOf(c, rates(c).get(gradeOn(own, c.date)) ?? [], floor, late, graceOf(c, own, late));
       if (due === null) continue;
-      const parts = c.shares.map((s) => dueOn(due, s.share) ?? '0.00');
+      const frozen = c.settledDue !== null || isBound(c);
+      const parts = c.shares.map((s) =>
+        frozen
+          ? (dueOn(due, s.share) ?? '0.00')
+          : partOn(c.amount, s.share, rateOn(rates(c).get(gradeOn(grades.get(s.personId) ?? [], c.date)) ?? [], c.date), roundsHalfUp(c, late)),
+      );
       c.shares.forEach((s, i) => held.set(s.personId, [...(held.get(s.personId) ?? []), { claim: c, part: parts[i] }]));
       given.set(c.id, sumSkippingNa(parts));
     }
@@ -1190,7 +1198,7 @@ export class People {
       // their own claims less the parts given away, and the parts they hold of others'
       const figures = [
         ...(this.liveBy().get(id) ?? []).map((c) => ({ claim: c, figure: due(c) })),
-        ...(held.get(id) ?? []).map((h) => ({ claim: h.claim, figure: h.part as string | null })),
+        ...(held.get(id) ?? []).map((h) => ({ claim: h.claim, figure: h.part })),
       ];
       const sum = (keep: (c: Claim) => boolean) => sumSkippingNa(figures.filter((f) => keep(f.claim)).map((f) => f.figure));
       by.set(id, {

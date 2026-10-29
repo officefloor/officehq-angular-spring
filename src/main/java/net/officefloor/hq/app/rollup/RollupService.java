@@ -185,8 +185,12 @@ public class RollupService {
             }
         }
         List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
-        // the parts of shared claims: what each holder's share of a counted claim's figure comes to, by holder, and
-        // what the claim's own person gives away of it, by claim
+        // the parts of shared claims: what each holder's part of a counted claim comes to, by holder, and what the
+        // claim's own person gives away of it, by claim
+        Map<Long, Person> byId = new HashMap<>();
+        for (Person p : listed) {
+            byId.put(p.getId(), p);
+        }
         Map<Long, List<Part>> partsBy = new HashMap<>();
         Map<Long, BigDecimal> givenBy = new HashMap<>();
         for (Person p : listed) {
@@ -199,8 +203,11 @@ public class RollupService {
                     continue;
                 }
                 for (ClaimShare share : c.getShares()) {
-                    BigDecimal part = figure.multiply(share.getShare()).movePointLeft(2)
-                            .setScale(2, RoundingMode.HALF_EVEN);
+                    BigDecimal part = part(c, figure, share, byId.get(share.getPersonId()), tiers, byTier, sheet);
+                    // a part at no rate is n/a for its holder and gives nothing away
+                    if (part == null) {
+                        continue;
+                    }
                     partsBy.computeIfAbsent(share.getPersonId(), id -> new ArrayList<>()).add(new Part(c, part));
                     givenBy.merge(c.getId(), part, BigDecimal::add);
                 }
@@ -511,8 +518,30 @@ public class RollupService {
         return f != null && f.dueTotal() != null && f.dueTotal().compareTo(threshold) > 0;
     }
 
-    /** A holder's part of a shared claim: the claim, and its figure times the holder's share divided by 100. */
+    /** A holder's part of a shared claim: the claim, and what the holder's part of it comes to. */
     private record Part(Claim claim, BigDecimal figure) {
+    }
+
+    /**
+     * A holder's part of a counted shared claim with the figure. A settled or bound claim keeps its parts as frozen: its
+     * figure times the share divided by 100, rounded half to even. Otherwise the claim's amount times the share divided
+     * by 100, times the rate the holder's own grade in force on the claim's date has (in the tier of its added mark)
+     * divided by 100, rounded like the claim; null (n/a) when that grade has no rate.
+     */
+    private static BigDecimal part(Claim c, BigDecimal figure, ClaimShare share, Person holder,
+            List<RateChain.Tier> tiers, Map<RateChain.Tier, Map<String, List<Rate>>> byTier, Sheet sheet) {
+        if (c.getSettledDue() != null || c.isBound()) {
+            return figure.multiply(share.getShare()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        }
+        Map<String, List<Rate>> claimRates = byTier.get(tiers.stream()
+                .filter(t -> t.upTo() == null || c.getAddedMark() <= t.upTo()).findFirst().orElseThrow());
+        String grade = holder == null ? null : holder.gradeOn(c.getDate());
+        Rate rate = grade == null ? null : Rate.inForce(claimRates.getOrDefault(grade, List.of()), c.getDate());
+        if (rate == null) {
+            return null;
+        }
+        return c.getAmount().multiply(share.getShare()).multiply(rate.getPct()).movePointLeft(4)
+                .setScale(2, sheet.roundingOn(c.getRoundsOn()));
     }
 
     /**
