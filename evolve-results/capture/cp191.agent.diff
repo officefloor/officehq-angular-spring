@@ -1,0 +1,266 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 5aaeabf1..ea34f7b4 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -51,7 +51,7 @@ interface SettingsView {
+ 
+ /**
+  * One value recorded for a dated setting, in force from its from-date until the next one recorded for its key:
+- * clerk-limit, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold, proof-threshold-<grade> or
++ * clerk-limit, clerk-limit-<grade>, floor, terms, terms-<grade>, grace-<grade>, late-pct, cap, proof-threshold, proof-threshold-<grade> or
+  * note-threshold, review-threshold or rounding. The value is null for none (a blank clerk limit, grace, cap, proof
+  * threshold, note threshold, review threshold or rounding mode).
+  */
+@@ -62,7 +62,7 @@ interface DatedSetting {
+ }
+ 
+ /** A dated setting's key as the form and its fields name it. */
+-export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | 'review-threshold' | 'rounding' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}`;
++export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | 'review-threshold' | 'rounding' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}` | `clerk-limit-${string}`;
+ 
+ export const ROLES = ['clerk', 'steward', 'viewer'];
+ /** The roles the permission matrix can list; a viewer may take no action. */
+@@ -270,7 +270,9 @@ export class SettingsStore {
+         ? `grade-grace/${encodeURIComponent(key.slice('grace-'.length))}`
+         : key.startsWith('proof-threshold-')
+           ? `grade-proof-threshold/${encodeURIComponent(key.slice('proof-threshold-'.length))}`
+-          : key;
++          : key.startsWith('clerk-limit-')
++            ? `grade-clerk-limit/${encodeURIComponent(key.slice('clerk-limit-'.length))}`
++            : key;
+     const s = await firstValueFrom(
+       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/${path}`, { value, from }),
+     );
+@@ -295,6 +297,11 @@ export class SettingsStore {
+     return valueOn(this.dated(), `grace-${grade}`, date) ?? '';
+   }
+ 
++  /** The clerk limit recorded for the grade in force on the date, as text; blank with none. */
++  clerkLimitShown(grade: string, date: string | null): string {
++    return valueOn(this.dated(), `clerk-limit-${grade}`, date) ?? '';
++  }
++
+   /** The proof threshold recorded for the grade in force on the date, as text; blank with none. */
+   proofThresholdShown(grade: string, date: string | null): string {
+     return valueOn(this.dated(), `proof-threshold-${grade}`, date) ?? '';
+@@ -425,6 +432,27 @@ export class SettingsStore {
+           (input)="setFrom('clerk-limit', value($event))"
+           (change)="setFrom('clerk-limit', value($event))"
+         />
++        @for (g of grades; track g) {
++          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (in place of the sheet's; blank for none)</label>
++          <input
++            [id]="'setting-clerk-limit-' + g"
++            [attr.data-testid]="'setting-clerk-limit-' + g"
++            inputmode="decimal"
++            [value]="gradeLimit()[g] ?? ''"
++            (input)="setGradeLimitField(g, value($event))"
++            (keydown.delete)="gradeLimitChanged.add(g); settingsError.set(null)"
++            (keydown.backspace)="gradeLimitChanged.add(g); settingsError.set(null)"
++          />
++          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} from (blank for the sheet's today)</label>
++          <input
++            [id]="'setting-clerk-limit-' + g + '-from'"
++            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
++            type="date"
++            [value]="from()[limitKey(g)] ?? ''"
++            (input)="setFrom(limitKey(g), value($event))"
++            (change)="setFrom(limitKey(g), value($event))"
++          />
++        }
+         <label for="setting-floor">Floor (the least a live due can be)</label>
+         <input
+           id="setting-floor"
+@@ -779,6 +807,12 @@ export class SettingsStore {
+         }
+       </form>
+       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ (store.clerkLimit() ?? '') | fig }}</strong></p>
++      @for (g of grades; track g) {
++        <p>
++          Clerk limit in force for grade {{ g }}:
++          <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (store.clerkLimitShown(g, session.sheetToday())) | fig }}</strong>
++        </p>
++      }
+       <p>Floor in force: <strong data-testid="setting-floor-current">{{ store.floorToday() | fig }}</strong></p>
+       <p>Terms in force: <strong data-testid="setting-terms-current">{{ store.termsToday() | fig }}</strong> days</p>
+       @for (g of grades; track g) {
+@@ -894,6 +928,7 @@ export class Settings {
+   // The roles typed for each action of the permission matrix, by action.
+   protected readonly perms = signal<Readonly<Record<string, string>>>({});
+   protected readonly limit = signal('');
++  protected readonly gradeLimit = signal<Readonly<Record<string, string>>>({});
+   protected readonly floor = signal('');
+   protected readonly terms = signal('');
+   protected readonly gradeTerms = signal<Readonly<Record<string, string>>>({});
+@@ -922,6 +957,7 @@ export class Settings {
+   // Which settings were typed into since the last save; a save stores only those. Erasing in a field counts, so
+   // clearing one that already shows blank (as the clerk limit, for none) still saves it.
+   protected limitChanged = false;
++  protected readonly gradeLimitChanged = new Set<string>();
+   protected floorChanged = false;
+   protected termsChanged = false;
+   protected readonly gradeTermsChanged = new Set<string>();
+@@ -985,6 +1021,12 @@ export class Settings {
+     this.settingsError.set(null);
+   }
+ 
++  protected setGradeLimitField(grade: string, v: string): void {
++    this.gradeLimit.update((t) => ({ ...t, [grade]: v }));
++    this.gradeLimitChanged.add(grade);
++    this.settingsError.set(null);
++  }
++
+   protected setGradeProofField(grade: string, v: string): void {
+     this.gradeProof.update((t) => ({ ...t, [grade]: v }));
+     this.gradeProofChanged.add(grade);
+@@ -1005,6 +1047,10 @@ export class Settings {
+     return `grace-${grade}`;
+   }
+ 
++  protected limitKey(grade: string): DatedKey {
++    return `clerk-limit-${grade}`;
++  }
++
+   protected proofKey(grade: string): DatedKey {
+     return `proof-threshold-${grade}`;
+   }
+@@ -1042,7 +1088,11 @@ export class Settings {
+         this.roundingChanged ||= this.rounding().trim() !== '';
+         break;
+       default:
+-        if (key.startsWith('proof-threshold-')) {
++        if (key.startsWith('clerk-limit-')) {
++          if ((this.gradeLimit()[key.slice('clerk-limit-'.length)] ?? '').trim() !== '') {
++            this.gradeLimitChanged.add(key.slice('clerk-limit-'.length));
++          }
++        } else if (key.startsWith('proof-threshold-')) {
+           if ((this.gradeProof()[key.slice('proof-threshold-'.length)] ?? '').trim() !== '') {
+             this.gradeProofChanged.add(key.slice('proof-threshold-'.length));
+           }
+@@ -1076,6 +1126,14 @@ export class Settings {
+       this.settingsError.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+     }
++    const gradeLimit = new Map<string, string>();
++    for (const g of this.gradeLimitChanged) gradeLimit.set(g, (this.gradeLimit()[g] ?? '').trim());
++    for (const [g, t] of gradeLimit) {
++      if (t && !LIMIT.test(t)) {
++        this.settingsError.set(`Enter a clerk limit for grade ${g} of 0.00 or more, with up to two decimals, or leave it blank for none.`);
++        return;
++      }
++    }
+     const floor = this.floor().trim();
+     if (this.floorChanged && !LIMIT.test(floor)) {
+       this.settingsError.set('Enter a floor of 0.00 or more, with up to two decimals.');
+@@ -1216,6 +1274,7 @@ export class Settings {
+     }
+     const keys: DatedKey[] = [];
+     if (this.limitChanged) keys.push('clerk-limit');
++    for (const g of gradeLimit.keys()) keys.push(`clerk-limit-${g}`);
+     if (this.floorChanged) keys.push('floor');
+     if (this.termsChanged) keys.push('terms');
+     for (const g of gradeTerms.keys()) keys.push(`terms-${g}`);
+@@ -1243,6 +1302,10 @@ export class Settings {
+         // a value typed while it was saving stays to be saved
+         this.limitChanged = this.limit().trim() !== limit;
+       }
++      for (const [g, t] of gradeLimit) {
++        await this.store.setDated(sheet, `clerk-limit-${g}`, t || null, from.get(`clerk-limit-${g}`) ?? null);
++        if ((this.gradeLimit()[g] ?? '').trim() === t) this.gradeLimitChanged.delete(g);
++      }
+       if (this.floorChanged) {
+         await this.store.setDated(sheet, 'floor', floor, from.get('floor') ?? null);
+         this.floorChanged = this.floor().trim() !== floor;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 405fdfe0..03cae675 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -340,7 +340,7 @@ public class ClaimService {
+             if (!part) {
+                 refuseWithoutProof(sheetId, claim, fixed);
+             }
+-            if (settings.aboveClerkLimit(sheetId, by, fixed)) {
++            if (settings.aboveClerkLimit(sheetId, by, person.gradeOn(sheets.load(sheetId).getToday()), fixed)) {
+                 next = ClaimStatus.PENDING;
+                 event = "CLAIM_PENDING";
+             } else {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index f3dd8447..d3bf4374 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -291,6 +291,14 @@ public class SettingsController {
+         return SettingsView.of(service.setGradeGrace(user, sheetId, grade, form.value(), form.from()));
+     }
+ 
++    @PutMapping("/settings/grade-clerk-limit/{grade}")
++    public SettingsView setGradeClerkLimit(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade, @Valid @RequestBody ClerkLimitForm form,
++            @SessionAttribute(SessionController.USER) String user) {
++        return SettingsView.of(service.setGradeClerkLimit(user, sheetId, grade, form.value(), form.from()));
++    }
++
+     @PutMapping("/settings/grade-proof-threshold/{grade}")
+     public SettingsView setGradeProofThreshold(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 8f834a2e..b592c455 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -210,6 +210,15 @@ public class SettingsService implements Audit.OnBehalf {
+         return record(by, sheetId, Sheet.CLERK_LIMIT, limit == null ? null : money(limit), from, false);
+     }
+ 
++    /**
++     * Records the clerk limit for one grade (null for none) from the date (null for the sheet's today): a claim whose
++     * person has the grade takes it in place of the sheet's while one is set.
++     */
++    @Transactional
++    public Sheet setGradeClerkLimit(String by, String sheetId, String grade, BigDecimal limit, LocalDate from) {
++        return record(by, sheetId, Sheet.CLERK_LIMIT + "-" + grade, limit == null ? null : money(limit), from, false);
++    }
++
+     /**
+      * Records the sheet's terms from the date (null for the sheet's today): the days after its date a claim dated on
+      * or after it is due by. Claims already added keep the due-by they were given.
+@@ -557,11 +566,12 @@ public class SettingsService implements Audit.OnBehalf {
+ 
+     /**
+      * Whether the user settling a claim with the due (null for n/a) needs a steward's approval: they are a clerk and
+-     * the due is above the sheet's clerk limit. A steward settles anything, and an n/a due is within any limit.
++     * the due is above the clerk limit in force for the grade (the person's grade's when one is set, else the
++     * sheet's). A steward settles anything, and an n/a due is within any limit.
+      */
+     @Transactional(readOnly = true)
+-    public boolean aboveClerkLimit(String sheetId, String user, BigDecimal due) {
+-        BigDecimal limit = sheets.load(sheetId).getClerkLimit();
++    public boolean aboveClerkLimit(String sheetId, String user, String grade, BigDecimal due) {
++        BigDecimal limit = sheets.load(sheetId).clerkLimitFor(grade);
+         if (limit == null || due == null || due.compareTo(limit) <= 0) {
+             return false;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 6b719d15..d3197cdc 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -258,6 +258,20 @@ public class Sheet {
+         return inForce(CLERK_LIMIT, today).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+     }
+ 
++    /**
++     * The clerk limit a claim has when its person has the grade: the grade's own in force on the sheet's today when
++     * one is set (not blank), else the sheet's; null means no limit.
++     */
++    public BigDecimal clerkLimitFor(String grade) {
++        if (grade != null) {
++            String own = inForce(CLERK_LIMIT + "-" + grade, today).map(DatedSetting::getValue).orElse(null);
++            if (own != null) {
++                return new BigDecimal(own);
++            }
++        }
++        return getClerkLimit();
++    }
++
+     /** The least a claim's live due can be, in force on the date; the starting 1.00 before any is recorded. */
+     public BigDecimal floorOn(LocalDate on) {
+         return inForce(FLOOR, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(DEFAULT_FLOOR);
