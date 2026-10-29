@@ -64,7 +64,7 @@ interface DatedSetting {
 /** A dated setting's key as the form and its fields name it. */
 export type DatedKey = 'clerk-limit' | 'floor' | 'terms' | 'late-pct' | 'cap' | 'proof-threshold' | 'note-threshold' | 'review-threshold' | 'rounding' | `terms-${string}` | `grace-${string}` | `proof-threshold-${string}` | `clerk-limit-${string}`;
 
-export const ROLES = ['clerk', 'steward', 'viewer'];
+export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
 /** The roles the permission matrix can list; a viewer may take no action. */
 export const PERMISSION_ROLES = ['clerk', 'steward'];
 
@@ -881,7 +881,7 @@ export class SettingsStore {
           [value]="user()"
           (input)="user.set(value($event)); roleError.set(null)"
         />
-        <label for="role-role">Role (clerk, steward or viewer)</label>
+        <label for="role-role">Role (clerk, steward, viewer or restricted)</label>
         <input
           id="role-role"
           data-testid="role-form-role"
@@ -1430,7 +1430,7 @@ export class Settings {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.roleError.set('Choose a role of clerk, steward or viewer.');
+      this.roleError.set('Choose a role of clerk, steward, viewer or restricted.');
       return;
     }
     this.submitting = true;

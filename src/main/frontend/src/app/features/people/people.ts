@@ -859,7 +859,9 @@ export class People {
     });
   });
   protected readonly shownPeople = computed(() => {
-    const shown = this.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null);
+    const visible = this.visibleIds();
+    const listed = visible === null ? this.people() : this.people().filter((p) => visible.has(p.id));
+    const shown = this.showRetired() ? listed : listed.filter((p) => p.retiredFrom === null);
     const key = this.sortKey();
     if (key === 'added') return shown;
     const due = this.dueBy();
@@ -1327,6 +1329,24 @@ export class People {
       overdueTotal: this.overdueTotalBy().get(me.id) ?? '0.00',
     };
   });
+  // The role the signed-in user acts in on the sheet, as the store last told it; null until it answers.
+  private readonly myRole = signal<string | null>(null);
+  private roleSheet: string | null = null;
+  // The people a restricted user may see on the list: their person, and everyone in the crews that person leads or
+  // belongs to; null when the list shows everyone. Every other figure is still over everyone on the sheet.
+  private readonly visibleIds = computed<ReadonlySet<number> | null>(() => {
+    const role = this.myRole();
+    if (role !== null && role !== 'restricted') return null;
+    const me = this.me();
+    if (role === null || me === undefined) return new Set();
+    const ids = new Set([me.id]);
+    for (const c of this.crewRoster.crews()) {
+      if (c.leadId !== me.id && !c.members.some((m) => m.personId === me.id)) continue;
+      if (c.leadId !== null) ids.add(c.leadId);
+      for (const m of c.members) ids.add(m.personId);
+    }
+    return ids;
+  });
   // The signed-in user's crew total: the due-totals of the crews their person leads, added up; blank when they lead
   // none, or there is no such person.
   protected readonly myCrewDueTotal = computed(() => {
@@ -1351,6 +1371,18 @@ export class People {
       untracked(() => {
         this.crewRoster.people.set(list);
         this.crewRoster.dueBy.set(due);
+      });
+    });
+    // Re-read the user's role from the store each time a sheet is loaded; a re-load keeps the old one until it answers.
+    effect(() => {
+      const id = this.session.sheetId();
+      const user = this.session.user();
+      this.session.loads();
+      untracked(() => {
+        const key = `${id} ${user}`;
+        if (key !== this.roleSheet) this.myRole.set(null);
+        this.roleSheet = key;
+        if (id) void this.loadRole(id);
       });
     });
     // Re-read the people from the store each time a sheet is loaded.
@@ -2546,6 +2578,17 @@ export class People {
       // the error below still tells the person the save was refused
     }
     if (this.editingId() === id) this.error.set(message);
+  }
+
+  private async loadRole(id: string): Promise<void> {
+    try {
+      const r = await firstValueFrom(
+        this.http.get<{ user: string; role: string }>(`/api/sheets/${encodeURIComponent(id)}/my-role`),
+      );
+      if (this.session.sheetId() === id) this.myRole.set(r.role);
+    } catch {
+      // with no role read, the list keeps what it showed
+    }
   }
 
   private async fetch(sheet: string): Promise<void> {

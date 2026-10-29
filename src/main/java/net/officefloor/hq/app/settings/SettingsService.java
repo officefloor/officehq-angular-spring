@@ -144,11 +144,13 @@ public class SettingsService implements Audit.OnBehalf {
         return saved;
     }
 
-    /** Sets the user's role on the sheet; refused unless it is clerk, steward or viewer. */
+    /** Sets the user's role on the sheet; refused unless it is clerk, steward, viewer or restricted. */
     @Transactional
     public SheetRole setRole(String by, String sheetId, String user, String role) {
-        if (!SheetRole.CLERK.equals(role) && !SheetRole.STEWARD.equals(role) && !SheetRole.VIEWER.equals(role)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A role is clerk, steward or viewer.");
+        if (!SheetRole.CLERK.equals(role) && !SheetRole.STEWARD.equals(role) && !SheetRole.VIEWER.equals(role)
+                && !SheetRole.RESTRICTED.equals(role)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A role is clerk, steward, viewer or restricted.");
         }
         sheets.lock(sheetId);
         SheetRole r = roles.findBySheetIdAndUser(sheetId, user).orElseGet(() -> new SheetRole(sheetId, user, role));
