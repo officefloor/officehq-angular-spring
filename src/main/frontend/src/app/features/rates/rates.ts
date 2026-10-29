@@ -122,6 +122,19 @@ export function sharedSum(parts: readonly { figure: string; share: string }[]): 
 }
 
 /**
+ * A score: the two-decimal figure divided by 100, minus 5 for each of the count, rounded half to even to a whole
+ * number, with a minus sign when negative.
+ */
+export function scoreOf(figure: string, minusFives: number): string {
+  const value = cents(figure) - BigInt(minusFives) * 50000n;
+  const size = value < 0n ? -value : value;
+  let score = size / 10000n;
+  const rest = size % 10000n;
+  if (rest > 5000n || (rest === 5000n && score % 2n === 1n)) score += 1n;
+  return (value < 0n && score > 0n ? '-' : '') + score.toString();
+}
+
+/**
  * The sheet-total of two-decimal figures, skipping n/a: with three or more figures, the single highest and the
  * single lowest are left out.
  */
