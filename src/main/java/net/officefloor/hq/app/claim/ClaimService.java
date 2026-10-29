@@ -4,9 +4,14 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.asof.AsOfService;
@@ -77,6 +82,29 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+    }
+
+    /**
+     * The sheet's duplicate claims: for each person, date and amount with two or more claims (VOID and DELETED ones
+     * left out), one line {@code <name> <date> <amount> x<count>}; people in list order, then by date, then by amount.
+     */
+    @Transactional(readOnly = true)
+    public List<String> duplicates(String sheetId) {
+        record Key(LocalDate date, BigDecimal amount) {}
+        Map<Long, Map<Key, Integer>> counts = new HashMap<>();
+        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (c.getStatus() == ClaimStatus.VOID || c.getStatus() == ClaimStatus.DELETED) continue;
+            counts.computeIfAbsent(c.getPersonId(), k -> new TreeMap<>(
+                    Comparator.comparing(Key::date).thenComparing(Key::amount)))
+                    .merge(new Key(c.getDate(), c.getAmount().setScale(2, RoundingMode.HALF_UP)), 1, Integer::sum);
+        }
+        List<String> lines = new ArrayList<>();
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            counts.getOrDefault(p.getId(), Map.of()).forEach((k, n) -> {
+                if (n >= 2) lines.add(p.getName() + " " + k.date() + " " + k.amount().toPlainString() + " x" + n);
+            });
+        }
+        return lines;
     }
 
     /**

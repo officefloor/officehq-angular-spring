@@ -126,6 +126,13 @@ public class ClaimController {
     }
 
     /** The claim's timeline: the audit lines about it, newest first. */
+    /** The sheet's duplicate claims, one line per person, date and amount claimed two or more times. */
+    @GetMapping("/claims/duplicates")
+    public List<String> duplicates(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.duplicates(sheetId);
+    }
+
     @GetMapping("/claims/{id}/timeline")
     public List<String> timeline(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
