@@ -1,0 +1,381 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 426f3ea6..fce21db4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -490,7 +490,7 @@ interface StatementView {
+         <thead>
+           <tr>
+             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shown('terms')) {<th scope="col">Terms</th>}@if (columns.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columns.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th>@if (columns.shown('claimed')) {<th scope="col">Claimed</th>}@if (columns.shown('due-total')) {<th scope="col">Due</th>}
+-            <th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Score</th>
++            <th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Score</th><th scope="col">Band</th>
+             @if (columns.shown('overdue-count')) {<th scope="col">Overdue</th>}@if (columns.shown('overdue-total')) {<th scope="col">Overdue total</th>}
+             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
+             @if (columns.shown('statement-count')) {<th scope="col">Statements</th>}@if (columns.shown('stated-total')) {<th scope="col">Last stated total</th>}@if (columns.shown('statement-date')) {<th scope="col">Last statement</th>}
+@@ -539,6 +539,7 @@ interface StatementView {
+               <td data-testid="person-settled-total">{{ (splitBy().get(p.id)?.settled ?? '0.00') | fig }}</td>
+               <td data-testid="person-open-total">{{ (splitBy().get(p.id)?.open ?? '0.00') | fig }}</td>
+               <td data-testid="person-score">{{ (scoreBy().get(p.id) ?? '0') | fig }}</td>
++              <td data-testid="person-band">{{ bandBy().get(p.id) ?? '' }}</td>
+               @if (columns.shown('overdue-count')) {
+                 <td data-testid="person-overdue-count">{{ (overdueBy().get(p.id)?.length ?? 0) | fig }}</td>
+               }
+@@ -1125,6 +1126,19 @@ export class People {
+     for (const p of this.people()) by.set(p.id, scoreOf(split.get(p.id)?.settled ?? '0.00', overdue.get(p.id)?.length ?? 0));
+     return by;
+   });
++  // Each person's band while both score thresholds are set: HIGH at or above the high one, MID at or above the mid
++  // one, else LOW; none while either is blank.
++  protected readonly bandBy = computed(() => {
++    const mid = this.settings.scoreMid();
++    const high = this.settings.scoreHigh();
++    const by = new Map<number, string>();
++    if (mid === null || high === null) return by;
++    for (const [id, score] of this.scoreBy()) {
++      const n = Number(score);
++      by.set(id, n >= high ? 'HIGH' : n >= mid ? 'MID' : 'LOW');
++    }
++    return by;
++  });
+   // The sheet's settled-total and open-total: everyone's figure added up, not trimmed.
+   protected readonly settledTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.settled)));
+   protected readonly openTotal = computed(() => sumSkippingNa([...this.splitBy().values()].map((s) => s.open)));
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index b6068955..9ba1117d 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -28,6 +28,10 @@ interface SettingsView {
+   escalateAfter: number | null;
+   // The review SLA: a REVIEW claim whose review day plus this many days is before today is late; null when blank: none.
+   reviewSla: number | null;
++  // The score thresholds: while both are set, a person at or above the high one is HIGH, at or above the mid one MID,
++  // else LOW; null when blank: none.
++  scoreMid: number | null;
++  scoreHigh: number | null;
+   // The proof kinds (receipt, photo) a claim above its proof threshold needs one proof of each of, comma separated;
+   // null when blank: none.
+   proofKinds: string | null;
+@@ -93,6 +97,8 @@ export const DEFAULT_FLOOR = '1.00';
+ export const DEFAULT_TERMS = 14;
+ 
+ const DAYS = /^\d{1,5}$/;
++// A score threshold: a whole number, which may be below zero.
++const SCORE = /^-?\d{1,9}$/;
+ 
+ /** The late percent a sheet starts with: in force before any is recorded. */
+ export const DEFAULT_LATE_PCT = '0.00';
+@@ -179,6 +185,10 @@ export class SettingsStore {
+   readonly escalateAfter = signal<number | null>(null);
+   /** The review SLA in days as set; null when blank (none). */
+   readonly reviewSla = signal<number | null>(null);
++  /** The mid score threshold as set; null when blank (none). */
++  readonly scoreMid = signal<number | null>(null);
++  /** The high score threshold as set; null when blank (none). */
++  readonly scoreHigh = signal<number | null>(null);
+   /** The proof kinds as set, comma separated; null when blank (none). */
+   readonly proofKinds = signal<string | null>(null);
+   /** The default grade as set; null when blank (A). */
+@@ -215,6 +225,8 @@ export class SettingsStore {
+     this.graceDays.set(null);
+     this.escalateAfter.set(null);
+     this.reviewSla.set(null);
++    this.scoreMid.set(null);
++    this.scoreHigh.set(null);
+     this.proofKinds.set(null);
+     this.defaultGrade.set(null);
+     this.pot.set(null);
+@@ -241,6 +253,8 @@ export class SettingsStore {
+     this.graceDays.set(s.graceDays);
+     this.escalateAfter.set(s.escalateAfter ?? null);
+     this.reviewSla.set(s.reviewSla ?? null);
++    this.scoreMid.set(s.scoreMid ?? null);
++    this.scoreHigh.set(s.scoreHigh ?? null);
+     this.proofKinds.set(s.proofKinds ?? null);
+     this.defaultGrade.set(s.defaultGrade ?? null);
+     this.pot.set(s.pot ?? null);
+@@ -353,6 +367,20 @@ export class SettingsStore {
+     if (this.session.sheetId() === sheet) this.show(s);
+   }
+ 
++  async setScoreMid(sheet: string, value: number | null): Promise<void> {
++    const s = await firstValueFrom(
++      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/score-mid`, { value }),
++    );
++    if (this.session.sheetId() === sheet) this.show(s);
++  }
++
++  async setScoreHigh(sheet: string, value: number | null): Promise<void> {
++    const s = await firstValueFrom(
++      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/score-high`, { value }),
++    );
++    if (this.session.sheetId() === sheet) this.show(s);
++  }
++
+   async setReviewSla(sheet: string, value: number | null): Promise<void> {
+     const s = await firstValueFrom(
+       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/review-sla`, { value }),
+@@ -605,6 +633,26 @@ export class SettingsStore {
+           (keydown.delete)="escalateAfterChanged = true; settingsError.set(null)"
+           (keydown.backspace)="escalateAfterChanged = true; settingsError.set(null)"
+         />
++        <label for="setting-score-mid">Score mid (a person scoring at least this is MID while the high one is set too; blank for none)</label>
++        <input
++          id="setting-score-mid"
++          data-testid="setting-score-mid"
++          inputmode="numeric"
++          [value]="scoreMid()"
++          (input)="scoreMid.set(value($event)); scoreMidChanged = true; settingsError.set(null)"
++          (keydown.delete)="scoreMidChanged = true; settingsError.set(null)"
++          (keydown.backspace)="scoreMidChanged = true; settingsError.set(null)"
++        />
++        <label for="setting-score-high">Score high (a person scoring at least this is HIGH while the mid one is set too; blank for none)</label>
++        <input
++          id="setting-score-high"
++          data-testid="setting-score-high"
++          inputmode="numeric"
++          [value]="scoreHigh()"
++          (input)="scoreHigh.set(value($event)); scoreHighChanged = true; settingsError.set(null)"
++          (keydown.delete)="scoreHighChanged = true; settingsError.set(null)"
++          (keydown.backspace)="scoreHighChanged = true; settingsError.set(null)"
++        />
+         <label for="setting-review-sla">Review SLA (a REVIEW claim this many days past the day it went to review is late; blank for none)</label>
+         <input
+           id="setting-review-sla"
+@@ -836,6 +884,8 @@ export class SettingsStore {
+       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ (store.entryDate() ?? '') | fig }}</strong></p>
+       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ (store.graceDays() ?? '') | fig }}</strong></p>
+       <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ (store.escalateAfter() ?? '') | fig }}</strong></p>
++      <p>Score mid: <strong data-testid="setting-score-mid-current">{{ (store.scoreMid() ?? '') | fig }}</strong></p>
++      <p>Score high: <strong data-testid="setting-score-high-current">{{ (store.scoreHigh() ?? '') | fig }}</strong></p>
+       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ (store.reviewSla() ?? '') | fig }}</strong></p>
+       <p>Proof kinds: <strong data-testid="setting-proof-kinds-current">{{ (store.proofKinds() ?? '') | fig }}</strong></p>
+       <p>Default grade: <strong data-testid="setting-default-grade-current">{{ (store.defaultGrade() ?? '') | fig }}</strong></p>
+@@ -941,6 +991,8 @@ export class Settings {
+   protected readonly graceDays = signal('');
+   protected readonly escalateAfter = signal('');
+   protected readonly reviewSla = signal('');
++  protected readonly scoreMid = signal('');
++  protected readonly scoreHigh = signal('');
+   protected readonly proofKinds = signal('');
+   protected readonly defaultGrade = signal('');
+   protected readonly pot = signal('');
+@@ -971,6 +1023,8 @@ export class Settings {
+   protected potChanged = false;
+   protected escalateAfterChanged = false;
+   protected reviewSlaChanged = false;
++  protected scoreMidChanged = false;
++  protected scoreHighChanged = false;
+   protected proofKindsChanged = false;
+   protected defaultGradeChanged = false;
+   protected alertThresholdChanged = false;
+@@ -1190,6 +1244,16 @@ export class Settings {
+       this.settingsError.set('Enter the escalation gap as a whole number of days, 0 or more, or leave it blank for off.');
+       return;
+     }
++    const scoreMid = this.scoreMid().trim();
++    if (this.scoreMidChanged && scoreMid && !SCORE.test(scoreMid)) {
++      this.settingsError.set('Enter the mid score as a whole number, or leave it blank for none.');
++      return;
++    }
++    const scoreHigh = this.scoreHigh().trim();
++    if (this.scoreHighChanged && scoreHigh && !SCORE.test(scoreHigh)) {
++      this.settingsError.set('Enter the high score as a whole number, or leave it blank for none.');
++      return;
++    }
+     const reviewSla = this.reviewSla().trim();
+     if (this.reviewSlaChanged && reviewSla && !DAYS.test(reviewSla)) {
+       this.settingsError.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
+@@ -1346,6 +1410,14 @@ export class Settings {
+         await this.store.setEscalateAfter(sheet, escalateAfter ? Number(escalateAfter) : null);
+         this.escalateAfterChanged = this.escalateAfter().trim() !== escalateAfter;
+       }
++      if (this.scoreMidChanged) {
++        await this.store.setScoreMid(sheet, scoreMid ? Number(scoreMid) : null);
++        this.scoreMidChanged = this.scoreMid().trim() !== scoreMid;
++      }
++      if (this.scoreHighChanged) {
++        await this.store.setScoreHigh(sheet, scoreHigh ? Number(scoreHigh) : null);
++        this.scoreHighChanged = this.scoreHigh().trim() !== scoreHigh;
++      }
+       if (this.reviewSlaChanged) {
+         await this.store.setReviewSla(sheet, reviewSla ? Number(reviewSla) : null);
+         this.reviewSlaChanged = this.reviewSla().trim() !== reviewSla;
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index d3bf4374..c834c8f9 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -39,13 +39,14 @@ public class SettingsController {
+      * cap in force on the sheet's today (the clerk limit carries two decimals, or is null for none, the floor carries
+      * two decimals, the terms are whole days, the late percent carries two decimals, and the cap carries two decimals,
+      * or is null for none); the policy date, null when blank (the sheet's today), and the period numbering from, null
+-     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); and every value recorded for the dated settings, from which the screen works out the one in
++     * when blank (off); the entry date, null when blank (off); the grace days, null when blank (off); the pot, two decimals or null for none; the alert threshold, two decimals or null for off; the parent sheet's id, null for none; the fiscal start month, 1 to 12; the escalation gap in days, null when blank (off); the review SLA in days, null when blank (none); the proof kinds, comma separated, null when blank (none); the default grade, null when blank (A); the mid and high score thresholds, null when blank (none); and every value recorded for the dated settings, from which the screen works out the one in
+      * force on any date; and the permission matrix as set, by action (an action not listed keeps the standing rule).
+      */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, LocalDate entryDate, Integer graceDays, String cap, List<DatedSettingView> dated, Map<String, String> permissions,
+             String pot, String alertThreshold, String parent, int fiscalStartMonth,
+-            Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade) {
++            Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
++            Integer scoreMid, Integer scoreHigh) {
+         static SettingsView of(Sheet sheet) {
+             LocalDate today = sheet.getToday();
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -58,7 +59,8 @@ public class SettingsController {
+                     sheet.getPermissions(), sheet.getPot() == null ? null : sheet.getPot().toPlainString(),
+                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
+                     sheet.getParentId(), sheet.getFiscalStartMonth(), sheet.getEscalateAfter(),
+-                    sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade());
++                    sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade(),
++                    sheet.getScoreMid(), sheet.getScoreHigh());
+         }
+     }
+ 
+@@ -184,6 +186,10 @@ public class SettingsController {
+     public record ReviewSlaForm(@Min(0) @Max(99999) Integer value) {
+     }
+ 
++    /** A score threshold as the form submits it: a whole number, or null for blank (none). */
++    public record ScoreThresholdForm(@Min(-999999999) @Max(999999999) Integer value) {
++    }
++
+     /** The escalation gap as the form submits it: a whole number of days, 0 or more, or null for blank (off). */
+     public record EscalateAfterForm(@Min(0) @Max(99999) Integer value) {
+     }
+@@ -370,6 +376,20 @@ public class SettingsController {
+         return SettingsView.of(service.setEscalateAfter(user, sheetId, form.value()));
+     }
+ 
++    @PutMapping("/settings/score-mid")
++    public SettingsView setScoreMid(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @Valid @RequestBody ScoreThresholdForm form, @SessionAttribute(SessionController.USER) String user) {
++        return SettingsView.of(service.setScoreMid(user, sheetId, form.value()));
++    }
++
++    @PutMapping("/settings/score-high")
++    public SettingsView setScoreHigh(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @Valid @RequestBody ScoreThresholdForm form, @SessionAttribute(SessionController.USER) String user) {
++        return SettingsView.of(service.setScoreHigh(user, sheetId, form.value()));
++    }
++
+     @PutMapping("/settings/pot")
+     public SettingsView setPot(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index c4b2049f..75ad0977 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -396,6 +396,34 @@ public class SettingsService implements Audit.OnBehalf {
+         return saved;
+     }
+ 
++    /**
++     * Sets the sheet's mid score threshold (null for blank: none): while the high one is set too, a person whose score
++     * is at or above it is MID. Not dated.
++     */
++    @Transactional
++    public Sheet setScoreMid(String by, String sheetId, Integer score) {
++        Sheet sheet = sheets.lock(sheetId);
++        sheet.setScoreMid(score);
++        Sheet saved = sheetRepository.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-mid value="
++                + (score == null ? "" : score.toString()));
++        return saved;
++    }
++
++    /**
++     * Sets the sheet's high score threshold (null for blank: none): while the mid one is set too, a person whose score
++     * is at or above it is HIGH. Not dated.
++     */
++    @Transactional
++    public Sheet setScoreHigh(String by, String sheetId, Integer score) {
++        Sheet sheet = sheets.lock(sheetId);
++        sheet.setScoreHigh(score);
++        Sheet saved = sheetRepository.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-high value="
++                + (score == null ? "" : score.toString()));
++        return saved;
++    }
++
+     /**
+      * Sets the sheet's pot (null for blank: none): shared among the members of each balanced pool by their shares.
+      * Not dated.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index d3197cdc..2da9829f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -112,6 +112,14 @@ public class Sheet {
+     @Column(name = "review_sla")
+     private Integer reviewSla;
+ 
++    /** The score at or above which a person is MID, while the high one is set too. Null (blank) for none. Not dated. */
++    @Column(name = "score_mid")
++    private Integer scoreMid;
++
++    /** The score at or above which a person is HIGH, while the mid one is set too. Null (blank) for none. Not dated. */
++    @Column(name = "score_high")
++    private Integer scoreHigh;
++
+     /** The pot shared among the members of each balanced pool by their shares. Null (blank) for none. Not dated. */
+     @Column(name = "pot")
+     private BigDecimal pot;
+@@ -221,6 +229,8 @@ public class Sheet {
+         then.graceDays = graceDays;
+         then.escalateAfter = escalateAfter;
+         then.reviewSla = reviewSla;
++        then.scoreMid = scoreMid;
++        then.scoreHigh = scoreHigh;
+         then.proofKinds = proofKinds;
+         then.defaultGrade = defaultGrade;
+         then.pot = pot;
+@@ -408,6 +418,22 @@ public class Sheet {
+         this.escalateAfter = escalateAfter;
+     }
+ 
++    public Integer getScoreMid() {
++        return scoreMid;
++    }
++
++    public void setScoreMid(Integer scoreMid) {
++        this.scoreMid = scoreMid;
++    }
++
++    public Integer getScoreHigh() {
++        return scoreHigh;
++    }
++
++    public void setScoreHigh(Integer scoreHigh) {
++        this.scoreHigh = scoreHigh;
++    }
++
+     public Integer getReviewSla() {
+         return reviewSla;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 8ae64b27..2dfcd258 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -72,9 +72,10 @@ public class SheetCloneService {
+         claims.flush();
+         try {
+             jdbc.update("INSERT INTO sheet (id, created_at, today, policy_date, period_numbering_from, entry_date,"
+-                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds, cloned_from)"
++                    + " grace_days, pot, alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds,"
++                    + " score_mid, score_high, cloned_from)"
+                     + " SELECT ?, CURRENT_TIMESTAMP, today, policy_date, period_numbering_from, entry_date, grace_days, pot,"
+-                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds, id"
++                    + " alert_threshold, parent_id, fiscal_start_month, escalate_after, review_sla, proof_kinds, score_mid, score_high, id"
+                     + " FROM sheet WHERE id = ?",
+                     toSheetId, sheetId);
+         } catch (DataIntegrityViolationException e) {
+diff --git a/src/main/resources/db/migration/V107__score_bands.sql b/src/main/resources/db/migration/V107__score_bands.sql
+new file mode 100644
+index 00000000..d0428b80
+--- /dev/null
++++ b/src/main/resources/db/migration/V107__score_bands.sql
+@@ -0,0 +1,4 @@
++-- The sheet's score thresholds: while both are set, a person whose score is at or above the high one is HIGH, at or
++-- above the mid one MID, else LOW; null (blank) for none. Whole numbers, not dated.
++ALTER TABLE sheet ADD COLUMN score_mid INTEGER;
++ALTER TABLE sheet ADD COLUMN score_high INTEGER;

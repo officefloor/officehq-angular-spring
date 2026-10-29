@@ -1,0 +1,64 @@
+{
+  "checkpoint": 210,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp210_score-bands",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ad7cba9820157109bd81ea1b14bb9c584ceebb73",
+  "reset_sha": "",
+  "preagent_sha": "99353f3169246a355f9995328f1d26f447286050",
+  "prev_sha": "99353f3169246a355f9995328f1d26f447286050",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7308373999999999,
+    "input_tokens": 36,
+    "output_tokens": 9084,
+    "cache_read_tokens": 713427,
+    "cache_creation_tokens": 50791,
+    "num_turns": 19,
+    "duration_ms": 470925,
+    "duration_api_ms": 127973,
+    "model": "claude-opus-5-5",
+    "session_id": "5bee0375-856e-4f3c-b3f9-4e7c6bfa6401",
+    "stop_reason": "success",
+    "result_text": "Score bands are in, and all 4 tests in `bin/e2e` pass.\n\n**What it does:** the sheet has two new settings, `score-mid` and `score-high`. They're whole numbers, can be negative (scores like -5 occur), and aren't dated. While both are set, each person's row shows a band next to their score: HIGH when the score is at or above the high threshold, MID when at or above the mid one, else LOW. While either is blank, the band is empty. Saving either setting writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=score-mid value=\u2026` (or `key=score-high`) to the audit file; a blank value is written as `value=`.\n\n**Changes:**\n- **Stored data:** a new migration, `V107__score_bands.sql`, adds `score_mid` and `score_high` columns to the sheet. They're also carried into the sheet's as-of-a-date view and copied when a sheet is cloned.\n- **Server:** two new endpoints, `PUT \u2026/settings/score-mid` and `PUT \u2026/settings/score-high`, follow the existing escalate-after setting. The settings the screen loads now include both values. The server accepts any whole number up to \u00b1999,999,999 and refuses anything outside that.\n- **Front end:**\n  - The settings form has two new inputs and their current values (`setting-score-mid`, `setting-score-high`, each with a `-current` readout). Anything that isn't a whole number is refused with the usual settings error.\n  - The people table has a new Band column (`person-band`), worked out on screen from the score it already shows.\n\nThe table shows the Band column all the time; there's no option to hide it like some other columns have.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7308373999999999,
+        "num_turns": 19,
+        "duration_ms": 470925,
+        "duration_api_ms": 127973,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp210.agent.jsonl",
+  "agent_diff_file": "cp210.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
