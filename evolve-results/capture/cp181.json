@@ -1,0 +1,64 @@
+{
+  "checkpoint": 181,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp181_sheet-notes",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2a7f2975768f4a241422e1ca4e478fbc204f9001",
+  "reset_sha": "",
+  "preagent_sha": "670b1fcb79ebbe8caf5c2e8dd09a7248f5e17ab7",
+  "prev_sha": "670b1fcb79ebbe8caf5c2e8dd09a7248f5e17ab7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7722506,
+    "input_tokens": 34,
+    "output_tokens": 9037,
+    "cache_read_tokens": 700393,
+    "cache_creation_tokens": 56412,
+    "num_turns": 18,
+    "duration_ms": 334649,
+    "duration_api_ms": 83421,
+    "model": "claude-opus-5-5",
+    "session_id": "aa9e48ad-bf09-43ea-9102-05df0e8659ea",
+    "stop_reason": "success",
+    "result_text": "Sheet notes are in, and `bin/e2e` passes all 4 tests (the main \"sheet notes\" test plus the three longer scenarios) on the first run.\n\n**What it does:**\n- **Adding a note:** there's a note entry and an Add button. A blank or spaces-only note is refused with an error next to the entry. Each note saves its trimmed text, who added it and the sheet's today at that moment, and writes `NOTE_ADDED sheet=\u2026 by=\u2026 text=\u2026` to the audit file.\n- **Showing notes:** they're listed newest first, as `<sheet's today when added> <user>: <text>`.\n- **Who can add:** I didn't write any checks for viewers or archived sheets. The app's existing guards already refuse those. The audit file's existing logic also adds `for=vic` when someone adds a note under a delegation from vic, which the test expects.\n- **As-of dates:** under an as-of date, the list only shows notes whose saved today is on or before that date. The as-of view is rebuilt from saved copies of the sheet, so you'd mostly get this anyway. The explicit date check is still needed when the sheet's today was moved backwards after a note was added; without it, that note could show up when it shouldn't.\n\n**Changes:**\n- A new table, `src/main/resources/db/migration/V98__sheet_note.sql`. The text column is called `note_text` rather than `text`, to stay clear of SQL keywords.\n- A new server package `net.officefloor.hq.app.note` with the entity, repository, service and controller, at `/api/sheets/{sheetId}/notes`.\n- A new `app-notes` component in `src/main/frontend/src/app/features/notes/notes.ts`, added to the home screen after void reasons.\n\nCopying a sheet doesn't bring its notes along. The request didn't say either way, so tell me if notes should be copied too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7722506,
+        "num_turns": 18,
+        "duration_ms": 334649,
+        "duration_api_ms": 83421,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp181.agent.jsonl",
+  "agent_diff_file": "cp181.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
