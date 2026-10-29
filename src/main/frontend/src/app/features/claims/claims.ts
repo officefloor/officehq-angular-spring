@@ -41,6 +41,8 @@ export interface Claim {
   deferredUntil: string | null;
   // The last sheet's today a reminder was written for the claim; null for one never reminded.
   remindedOn: string | null;
+  // The sheet's today a steward waived the claim's late charge; null for one never waived. See waivedOn().
+  waivedOn: string | null;
   // How many proofs the claim has. One whose due is above the proof threshold in force on its date cannot be
   // settled or approved while it has none.
   proofs: number;
@@ -168,6 +170,11 @@ export function deferred(c: Claim, today: string | null): boolean {
   return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
 }
 
+/** Whether a claim's late charge is waived on the date: waived on or before it, so it bears no late charge. */
+export function waivedOn(c: Claim, today: string | null): boolean {
+  return c.waivedOn !== null && today !== null && c.waivedOn <= today;
+}
+
 /** Whether a claim makes its person active: open (or pending) and dated within the 30 days up to and including today. */
 export function activeOn(c: Claim, today: string | null): boolean {
   return isOpen(c) && today !== null && plusDays(today, -29) <= c.date && c.date <= today;
@@ -244,12 +251,12 @@ export function plusDays(date: string, days: number): string {
  * force on its date and its figure plus the late charge: for an overdue claim, for each full 30 days it is overdue,
  * the late percent in force on that boundary date (its due-by plus its grace, plus 30, 60, 90 ... days) of the figure
  * plus the charges of the boundaries before it (it compounds), rounded like the claim; a boundary whose percent is 0.00 adds nothing. Neither the charge nor the floor is bound by a
- * statement. A correction has neither.
+ * statement. A correction has neither; a waived claim bears no charge.
  */
 export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late: Lateness, grace = 0): string | null {
   const figure = figureOf(c, rates, late);
   if (figure === null || c.settledDue !== null || isCorrection(c)) return figure;
-  if (!overdue(c, late.today, grace)) return atLeast(figure, floor(c.date));
+  if (!overdue(c, late.today, grace) || waivedOn(c, late.today)) return atLeast(figure, floor(c.date));
   const from = lateFrom(c, grace);
   const periods = Math.floor(daysBetween(from, late.today!) / 30);
   const halfUp = roundsHalfUp(c, late);
@@ -369,7 +376,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Status</th><th scope="col">Review late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -397,6 +404,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-deferred">{{ (deferredUntilAfter(c, session.sheetToday()) ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-deferred-until">{{ (c.deferredUntil ?? '') | fig }}</td>
             <td data-testid="claim-reminded">{{ (c.remindedOn ?? '') | fig }}</td>
+            <td data-testid="claim-waived">{{ (c.waivedOn !== null ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-status">{{ c.status | fig }}</td>
             <td data-testid="claim-review-late">{{ (reviewLate(c, session.sheetToday(), settings.reviewSla()) ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-batch">{{ (c.batch ?? '') | fig }}</td>
@@ -535,6 +543,9 @@ export function claimedTotal(claims: readonly Claim[]): string {
               </button>
               <button type="button" data-testid="claim-remind" (click)="remind(c)">
                 Remind<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+              <button type="button" data-testid="claim-waive" (click)="waive(c)">
+                Waive late charge<span class="visually-hidden"> of claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
               <button type="button" data-testid="claim-proof" (click)="addProof(c)">
                 Add proof<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
@@ -1001,6 +1012,27 @@ export class Claims {
       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
     } catch {
       this.setRowError(c.id, `This ${c.status} claim cannot be reminded.`);
+    }
+  }
+
+  /** A steward waives an OPEN or PENDING claim's late charge, once. */
+  protected async waive(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (!isOpen(c)) {
+      this.setRowError(c.id, `A ${c.status} claim's late charge cannot be waived; only an OPEN or PENDING one's can.`);
+      return;
+    }
+    if (c.waivedOn !== null) {
+      this.setRowError(c.id, `This claim's late charge was already waived on ${c.waivedOn}.`);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/waive`;
+    try {
+      this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, null)));
+    } catch {
+      this.setRowError(c.id, 'Only a steward can waive a late charge.');
     }
   }
 

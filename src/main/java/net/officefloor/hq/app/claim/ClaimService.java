@@ -458,6 +458,31 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * A steward waives an OPEN or PENDING claim's late charge: from the sheet's today on it bears none, whatever its
+     * overdue state. Refused unless the user is a steward, for a claim in any other status, and for one already waived.
+     */
+    @Transactional
+    public Claim waive(String by, String sheetId, Long id) {
+        Claim claim = lockedClaim(sheetId, id);
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can waive a late charge.");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim's late charge cannot be waived.");
+        }
+        if (claim.getWaivedOn() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge is already waived.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setWaivedOn(sheets.load(sheetId).getToday());
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_WAIVED", by, person(sheetId, saved.getPersonId()), saved));
+        rollup.recordChanges(by, sheetId, before);
+        return saved;
+    }
+
     /** Adds a comment to the claim, by the user on the sheet's today. Refused for a blank comment. */
     @Transactional
     public Claim comment(String by, String sheetId, Long id, String text) {
@@ -1033,11 +1058,12 @@ public class ClaimService {
      * late-from: its due-by plus its grace) by the sheet's today: for each such boundary (its late-from plus 30, 60,
      * 90 ... days), the sheet's late
      * percent in force on that boundary date of the figure plus the charges of the boundaries before it (it
-     * compounds), rounded like its due; a boundary whose percent is 0.00 adds nothing. A deferred claim is not overdue. The charge is never bound by a statement: it keeps following the
+     * compounds), rounded like its due; a boundary whose percent is 0.00 adds nothing. A deferred claim is not overdue; a waived one bears no charge. The charge is never bound by a statement: it keeps following the
      * sheet's today and its policy date.
      */
     public static BigDecimal withLateCharge(BigDecimal figure, Claim claim, Person person, Sheet sheet) {
-        if (figure == null || sheet == null || sheet.getToday() == null || claim.isDeferredOn(sheet.getToday())) {
+        if (figure == null || sheet == null || sheet.getToday() == null || claim.isDeferredOn(sheet.getToday())
+                || claim.isWaivedOn(sheet.getToday())) {
             return figure;
         }
         LocalDate lateFrom = lateFrom(claim, person, sheet);

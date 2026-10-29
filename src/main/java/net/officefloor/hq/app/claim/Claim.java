@@ -146,6 +146,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** The sheet's today when a steward waived the claim's late charge; null for one never waived. */
+    @Column(name = "waived_on")
+    private LocalDate waivedOn;
+
     /** Whether the claim was ever escalated by a reminder; a claim is escalated once at most. */
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
@@ -227,6 +231,19 @@ public class Claim {
 
     public void setRemindedOn(LocalDate remindedOn) {
         this.remindedOn = remindedOn;
+    }
+
+    public LocalDate getWaivedOn() {
+        return waivedOn;
+    }
+
+    public void setWaivedOn(LocalDate waivedOn) {
+        this.waivedOn = waivedOn;
+    }
+
+    /** Whether the claim's late charge is waived on the date: waived on or before it. */
+    public boolean isWaivedOn(LocalDate day) {
+        return waivedOn != null && day != null && !waivedOn.isAfter(day);
     }
 
     public boolean isEscalated() {
