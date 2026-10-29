@@ -234,6 +234,23 @@ public class ClaimController {
         return new BulkRedateView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
     }
 
+    /** The claims a bulk void is to void, by id, and the reason chosen from the sheet's list (blank or missing for none). */
+    public record BulkVoidForm(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @Size(max = 140) String reason) {
+    }
+
+    /** The claims a bulk void voided, in the order it took them, and how many it refused. */
+    public record BulkVoidView(List<ClaimView> voided, int refused) {
+    }
+
+    @PostMapping("/claims/bulk-void")
+    @ViewerPasses
+    public BulkVoidView bulkVoid(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @Valid @RequestBody BulkVoidForm form, @SessionAttribute(SessionController.USER) String user) {
+        ClaimBulkService.Result result = bulk.voidAll(user, sheetId, form.ids(), form.reason());
+        return new BulkVoidView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
+    }
+
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

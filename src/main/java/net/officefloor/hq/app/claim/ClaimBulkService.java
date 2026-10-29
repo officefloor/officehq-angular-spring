@@ -19,7 +19,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Status changes made to several claims together: opens and moves each one on its own, a settle all or nothing. */
+/** Status changes made to several claims together: opens, moves, re-dates and voids each one on its own, a settle all or nothing. */
 @Service
 public class ClaimBulkService {
 
@@ -112,6 +112,15 @@ public class ClaimBulkService {
      */
     public Result redate(String by, String sheetId, Set<Long> ids, LocalDate date) {
         return each(by, sheetId, ids, id -> claims.redate(by, sheetId, id, date));
+    }
+
+    /**
+     * Voids each of the claims that can be voided with the reason, in list order, by the rules of voiding one claim.
+     * Each is voided in its own transaction: one that is refused, or is not a claim of the sheet, is left as it is and
+     * counted as refused.
+     */
+    public Result voidAll(String by, String sheetId, Set<Long> ids, String reason) {
+        return each(by, sheetId, ids, id -> claims.voidClaim(by, sheetId, id, reason));
     }
 
     /**
