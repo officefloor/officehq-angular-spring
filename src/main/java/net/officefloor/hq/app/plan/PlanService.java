@@ -89,6 +89,31 @@ public class PlanService {
         return saved;
     }
 
+    /**
+     * Pauses (true) or resumes (false) the plan from the sheet's today. Refused when pausing a paused plan or resuming
+     * a running one.
+     */
+    @Transactional
+    public Plan setPaused(String by, String sheetId, Long planId, boolean paused) {
+        sheets.lock(sheetId);
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan."));
+        if (plan.isPaused() == paused) {
+            throw refused(paused ? "The plan is already paused." : "The plan is not paused.");
+        }
+        LocalDate today = sheets.load(sheetId).getToday();
+        if (paused) {
+            plan.pause(today);
+        } else {
+            plan.resume(today);
+        }
+        Plan saved = plans.saveAndFlush(plan);
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
+        audit.recordOnCommit((paused ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + by + " name="
+                + person.getName() + " start=" + plan.getStart());
+        return saved;
+    }
+
     /** What a generate made: the claims, in the order they were made, and every plan of the sheet as it stands. */
     public record Generated(List<Claim> claims, List<Plan> plans) {
     }
@@ -106,14 +131,14 @@ public class PlanService {
         for (Plan plan : tx.execute(s -> plans.findBySheetIdOrderByIdAsc(sheetId))) {
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
             for (LocalDate on : plan.datesUpTo(last)) {
-                if (plan.hasMade(on)) {
+                if (plan.hasMade(on) || plan.isSkipped(on)) {
                     continue;
                 }
                 LocalDate date = on;
                 try {
                     made.add(tx.execute(s -> {
                         Plan current = plans.findById(plan.getId()).orElseThrow();
-                        if (current.hasMade(date)) {
+                        if (current.hasMade(date) || current.isSkipped(date)) {
                             return null;
                         }
                         Claim claim = claims.add(by, sheetId, current.getPersonId(), current.getAmount(), date, "",

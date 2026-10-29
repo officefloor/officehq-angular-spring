@@ -18,6 +18,8 @@ export interface PlanView {
   generated: number;
   // The first five plan dates after the sheet's today and on or before the end.
   nextDates: string[];
+  // Whether the plan is paused and not resumed yet.
+  paused: boolean;
 }
 
 // The plans of the active sheet, in the order they were added.
@@ -40,6 +42,17 @@ export class PlanStore {
       this.http.post<PlanView>(`/api/sheets/${encodeURIComponent(sheet)}/people/${personId}/plans`, form),
     );
     if (this.session.sheetId() === sheet) this.list.update((l) => [...l.filter((x) => x.id !== p.id), p]);
+  }
+
+  /** Pauses (true) or resumes (false) the plan from the sheet's today. */
+  async setPaused(sheet: string, planId: number, paused: boolean): Promise<void> {
+    const p = await firstValueFrom(
+      this.http.post<PlanView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/${paused ? 'pause' : 'resume'}`,
+        null,
+      ),
+    );
+    if (this.session.sheetId() === sheet) this.list.update((l) => l.map((x) => (x.id === p.id ? p : x)));
   }
 
   /** Makes the plans' claims up to the sheet's today: the claims made, in the order they were made. */
@@ -65,7 +78,7 @@ export class PlanStore {
         <tr>
           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
           <th scope="col">Day of month</th><th scope="col">End</th><th scope="col">Claims made</th>
-          <th scope="col">Next dates</th>
+          <th scope="col">Next dates</th><th scope="col">Paused</th><th scope="col">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -78,6 +91,18 @@ export class PlanStore {
             <td data-testid="plan-end">{{ pl.end | fig }}</td>
             <td data-testid="plan-generated">{{ pl.generated | fig }}</td>
             <td data-testid="plan-next-dates">{{ (pl.nextDates.join(', ')) | fig }}</td>
+            <td data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</td>
+            <td>
+              <button type="button" data-testid="plan-pause" (click)="setPaused(pl.id, true)">
+                Pause<span class="visually-hidden"> plan starting {{ pl.start }}</span>
+              </button>
+              <button type="button" data-testid="plan-resume" (click)="setPaused(pl.id, false)">
+                Resume<span class="visually-hidden"> plan starting {{ pl.start }}</span>
+              </button>
+              @if (rowError()?.id === pl.id) {
+                <p role="alert" data-testid="plan-error">{{ rowError()?.message | fig }}</p>
+              }
+            </td>
           </tr>
         }
       </tbody>
@@ -146,6 +171,8 @@ export class PersonPlans {
   protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
+  // The refusal of the last action taken on a plan's row.
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   // A submit in flight: a second one before it answers is ignored.
   private submitting = false;
 
@@ -153,10 +180,29 @@ export class PersonPlans {
     return (e.target as HTMLInputElement).value;
   }
 
+  protected async setPaused(planId: number, paused: boolean): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      await this.store.setPaused(sheet, planId, paused);
+    } catch (err) {
+      const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
+      this.rowError.set({
+        id: planId,
+        message:
+          err instanceof HttpErrorResponse && err.status === 403
+            ? 'Your role may not change a plan on this sheet.'
+            : reason || (paused ? 'Could not pause the plan.' : 'Could not resume the plan.'),
+      });
+    }
+  }
+
   protected async add(e: Event): Promise<void> {
     e.preventDefault();
     if (this.submitting) return;
     this.error.set(null);
+    this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const amount = this.amount().trim();

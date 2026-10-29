@@ -31,10 +31,11 @@ public class PlanController {
      * sheet's today.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates) {
+            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(),
-                    p.getEvery(), p.getDay(), p.getEnd(), p.getGenerated(), p.nextDates(today, 5));
+                    p.getEvery(), p.getDay(), p.getEnd(), p.getGenerated(), p.nextDates(today, 5),
+                    p.isPaused());
         }
     }
 
@@ -70,6 +71,16 @@ public class PlanController {
         Plan added = service.add(user, sheetId, personId, form.amount(), form.start(), form.every(), form.day(),
                 form.end());
         return PlanView.of(added, sheets.load(sheetId).getToday());
+    }
+
+    /** Pauses or resumes the plan from the sheet's today. */
+    @PostMapping("/plans/{planId}/{action:pause|resume}")
+    public PlanView pause(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long planId, @PathVariable String action,
+            @SessionAttribute(SessionController.USER) String user) {
+        Plan plan = service.setPaused(user, sheetId, planId, action.equals("pause"));
+        return PlanView.of(plan, sheets.load(sheetId).getToday());
     }
 
     /** Makes the plans' claims up to the sheet's today. */
