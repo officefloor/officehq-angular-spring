@@ -1,0 +1,64 @@
+{
+  "checkpoint": 194,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp194_settle-as-of-date",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be settled as of a date: a date entry beside the settle button. With a date on or\nbefore the sheet's today, the frozen figure is the claim's due as it stood at the end of that day\n(every change made while the sheet's today was on or before that date, with that date as today, as\nthe as-of view works it out), and CLAIM_SETTLED gains on=<date> at its end; a date after today, or\na claim that did not exist then, is refused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be settled as of a date: a date entry beside the settle button. With a date on or\nbefore the sheet's today, the frozen figure is the claim's due as it stood at the end of that day\n(every change made while the sheet's today was on or before that date, with that date as today, as\nthe as-of view works it out), and CLAIM_SETTLED gains on=<date> at its end; a date after today, or\na claim that did not exist then, is refused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2e481c22d35e6f114434312689b0025cbafaa742",
+  "reset_sha": "",
+  "preagent_sha": "054bf4d7688531d1929ee7c3939e359e189fbdbb",
+  "prev_sha": "054bf4d7688531d1929ee7c3939e359e189fbdbb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0078582000000003,
+    "input_tokens": 50,
+    "output_tokens": 11491,
+    "cache_read_tokens": 1237231,
+    "cache_creation_tokens": 66299,
+    "num_turns": 25,
+    "duration_ms": 359023,
+    "duration_api_ms": 119431,
+    "model": "claude-opus-5-5",
+    "session_id": "190d471f-0a26-4ab1-ba86-9ee544bbbc0e",
+    "stop_reason": "success",
+    "result_text": "A claim can now be settled as of a date, and all 4 tests in `bin/e2e` pass, including the first-try runs of the scenario tests.\n\n**How it works**\n- **Screen:** each claim row has a \"Settle as of\" date box (`claim-settle-date`) beside the Settle button. If the box is blank, Settle works exactly as before.\n- **With a date on or before the sheet's today:** the server finds the claim and its person in the sheet as it stood at the end of that day, using the same machinery as the as-of view. It freezes the due that view would have shown: the rates, floor and late charge of that day, and a draft claim's due without a late charge. The `CLAIM_SETTLED` audit record then ends with `on=<date>`.\n- **Refusals:** each one shows the claim's error and writes nothing.\n  - A date after today is refused, both by the screen and by the server.\n  - A claim the sheet didn't hold on that date is refused with \"did not exist on \u2026\". The server sends a distinct status code (422) for this so the screen can show that message.\n  - The existing settle rules (status, four-eyes, deferral, proofs) still apply.\n\nThe changes are in `ClaimService.java` (a new `settle(..., on)` and `dueAsOf` helper), `ClaimController.java` (the settle request takes an optional `{ on }` body) and `claims.ts` (the date input and its errors).\n\n**Things to know**\n- If a clerk settles as of a date and the frozen figure is over the clerk limit, the claim still becomes PENDING. That record carries no `on=`, and approving it later uses the claim's live due, not the as-of figure. The request didn't cover this case.\n- For a claim bound by a statement, a dated settle takes the due as the as-of view shows it on that date. It does not automatically take today's bound figure.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0078582000000003,
+        "num_turns": 25,
+        "duration_ms": 359023,
+        "duration_api_ms": 119431,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp194.agent.jsonl",
+  "agent_diff_file": "cp194.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

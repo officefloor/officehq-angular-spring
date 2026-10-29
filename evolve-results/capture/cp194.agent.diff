@@ -1,0 +1,237 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 4943f815..5acafbbd 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -497,6 +497,14 @@ export function claimedTotal(claims: readonly Claim[]): string {
+               <button type="button" data-testid="claim-review" (click)="act(c, 'review')">
+                 Review<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
++              <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
++              <input
++                [id]="'claim-settle-date-' + c.id"
++                type="date"
++                data-testid="claim-settle-date"
++                [value]="settleDates()[c.id] ?? ''"
++                (input)="setSettleDate(c.id, value($event))"
++              />
+               <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">
+                 Settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+               </button>
+@@ -693,6 +701,8 @@ export class Claims {
+   protected readonly rowErrors = signal<Record<number, string>>({});
+   // The reason typed to reject each pending claim, by claim id.
+   protected readonly rejectReasons = signal<Record<number, string>>({});
++  // The date typed to settle each claim as of, by claim id; blank settles it as it stands now.
++  protected readonly settleDates = signal<Record<number, string>>({});
+   // The void reason chosen for each claim, by claim id.
+   protected readonly voidReasonChoices = signal<Record<number, string>>({});
+   // The proof kind chosen for each claim's next proof, by claim id; none chosen (a receipt) when missing.
+@@ -910,6 +920,11 @@ export class Claims {
+     this.error.set(null);
+   }
+ 
++  protected setSettleDate(id: number, date: string): void {
++    this.settleDates.update((d) => ({ ...d, [id]: date }));
++    this.clearRowError(id);
++  }
++
+   protected setRejectReason(id: number, reason: string): void {
+     this.rejectReasons.update((r) => ({ ...r, [id]: reason }));
+     this.clearRowError(id);
+@@ -957,6 +972,16 @@ export class Claims {
+       this.setRowError(c.id, 'Enter a reason to reject this claim.');
+       return;
+     }
++    const settleOn = (this.settleDates()[c.id] ?? '').trim();
++    const today = this.session.sheetToday();
++    if (
++      action === 'settle' &&
++      settleOn !== '' &&
++      (!/^\d{4}-\d{2}-\d{2}$/.test(settleOn) || (today !== null && settleOn > today))
++    ) {
++      this.setRowError(c.id, `Enter a date on or before ${today ?? 'today'} to settle this claim as of.`);
++      return;
++    }
+     const voidReason = this.voidReasonChoices()[c.id] ?? '';
+     const listed = this.voidReasons.list();
+     if (action === 'void' && listed.length > 0 && !listed.some((r) => r.reason === voidReason)) {
+@@ -964,8 +989,16 @@ export class Claims {
+       return;
+     }
+     try {
+-      const body = action === 'reject' ? { reason } : action === 'void' ? { reason: voidReason || null } : null;
++      const body =
++        action === 'reject'
++          ? { reason }
++          : action === 'void'
++            ? { reason: voidReason || null }
++            : action === 'settle'
++              ? { on: settleOn || null }
++              : null;
+       this.saved.emit(await firstValueFrom(this.http.post<Claim>(url, body)));
++      if (action === 'settle') this.settleDates.update(({ [c.id]: _, ...rest }) => rest);
+       if (action === 'reject') this.rejectReasons.update(({ [c.id]: _, ...rest }) => rest);
+       if (action === 'void') this.voidReasonChoices.update(({ [c.id]: _, ...rest }) => rest);
+     } catch (e) {
+@@ -979,6 +1012,8 @@ export class Claims {
+           ? 'A deleted claim can only be restored on the day it was deleted.'
+           : action === 'restore'
+           ? `A ${c.status} claim cannot be restored; only a deleted one can.`
++          : action === 'settle' && settleOn !== '' && e instanceof HttpErrorResponse && e.status === 422
++          ? `This claim did not exist on ${settleOn}, so it cannot be settled as of then.`
+           : action === 'settle' && deferred(c, this.session.sheetToday())
+           ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled yet.`
+           : action === 'void' && e instanceof HttpErrorResponse && e.status === 422
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index f5f14099..ead3447b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -251,11 +251,16 @@ public class ClaimController {
+         return new BulkVoidView(result.changed().stream().map(ClaimView::of).toList(), result.refused());
+     }
+ 
++    /** The date a claim is settled as of; none settles it as it stands now. */
++    public record SettleForm(LocalDate on) {
++    }
++
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+-            @PathVariable Long id, @SessionAttribute(SessionController.USER) String user) {
+-        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
++            @PathVariable Long id, @RequestBody(required = false) SettleForm form,
++            @SessionAttribute(SessionController.USER) String user) {
++        return ClaimView.of(service.settle(user, sheetId, id, form == null ? null : form.on()));
+     }
+ 
+     @PostMapping("/claims/{id}/resettle")
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 03cae675..275bc3eb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -9,6 +9,7 @@ import java.util.List;
+ import java.util.Locale;
+ import java.util.TreeSet;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.asof.AsOfService;
+ import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodRepository;
+@@ -50,11 +51,13 @@ public class ClaimService {
+     private final WatchService watches;
+     private final HolidayService holidays;
+     private final VoidReasonService voidReasons;
++    private final AsOfService asOf;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, ClaimTagRepository tags, PersonRepository people, RateChain rates,
+             PeriodRepository periods, SheetService sheets, RollupService rollup, SettingsService settings,
+-            WatchService watches, HolidayService holidays, VoidReasonService voidReasons, Audit audit) {
++            WatchService watches, HolidayService holidays, VoidReasonService voidReasons, AsOfService asOf,
++            Audit audit) {
+         this.claims = claims;
+         this.tags = tags;
+         this.people = people;
+@@ -66,6 +69,7 @@ public class ClaimService {
+         this.watches = watches;
+         this.holidays = holidays;
+         this.voidReasons = voidReasons;
++        this.asOf = asOf;
+         this.audit = audit;
+     }
+ 
+@@ -254,7 +258,17 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
+-        return changeStatus(by, sheetId, id, next, null, false);
++        return changeStatus(by, sheetId, id, next, null, false, null);
++    }
++
++    /**
++     * Settles the claim as of a date (none: as the settle button does): its due is frozen at the due it had at the
++     * end of that day, as the sheet as of that day shows it (see {@link AsOfService#storeAsOf}), and the settle record
++     * ends with the date. Refused for a date after the sheet's today, and for a claim the sheet did not hold then.
++     */
++    @Transactional
++    public Claim settle(String by, String sheetId, Long id, LocalDate on) {
++        return changeStatus(by, sheetId, id, ClaimStatus.SETTLED, null, false, on);
+     }
+ 
+     /**
+@@ -263,14 +277,15 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim voidClaim(String by, String sheetId, Long id, String reason) {
+-        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason, false);
++        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason, false, null);
+     }
+ 
+     /**
+      * Moves the claim to its next status. A part being settled was judged by the four-eyes rules and the proof rule
+      * on the claim it was split off, so they are not judged on it again.
+      */
+-    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason, boolean part) {
++    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason, boolean part,
++            LocalDate on) {
+         Claim claim = lockedClaim(sheetId, id);
+         switch (next) {
+             case OPEN -> settings.refuseUnlessMay(sheetId, by, "open");
+@@ -335,7 +350,8 @@ public class ClaimService {
+             // the due is fixed at the due a statement bound it to (late charge and floor included), else at the rate
+             // the person's grade has in force on the claim's date, with the late charge it has gained by today, and
+             // at least the floor in force on its date; with none it stays live
+-            BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
++            BigDecimal fixed = on != null ? dueAsOf(sheetId, id, on)
++                    : claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
+                     : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
+             if (!part) {
+                 refuseWithoutProof(sheetId, claim, fixed);
+@@ -345,7 +361,8 @@ public class ClaimService {
+                 event = "CLAIM_PENDING";
+             } else {
+                 claim.setSettledDue(fixed);
+-                tail = " due=" + (fixed == null ? "n/a" : fixed.toPlainString());
++                tail = " due=" + (fixed == null ? "n/a" : fixed.toPlainString())
++                        + (on == null ? "" : " on=" + on);
+             }
+         }
+         claim.setStatus(next);
+@@ -359,6 +376,28 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * The due the claim showed at the end of the day, as the sheet as of that day works it out. Refused for a day after
++     * the sheet's today, and for a claim the sheet did not hold then.
++     */
++    private BigDecimal dueAsOf(String sheetId, Long id, LocalDate on) {
++        LocalDate today = sheets.load(sheetId).getToday();
++        if (today != null && on.isAfter(today)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A claim cannot be settled as of " + on + ", after the sheet's today " + today + ".");
++        }
++        record Then(boolean held, BigDecimal due) {
++        }
++        Then then = asOf.readAsOf(sheetId, on, () -> claims.findByIdAndSheetId(id, sheetId)
++                .flatMap(c -> people.findByIdAndSheetId(c.getPersonId(), sheetId)
++                        .map(p -> new Then(true, due(sheetId, p, c))))
++                .orElse(new Then(false, null)));
++        if (!then.held()) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The claim did not exist on " + on + ".");
++        }
++        return then.due();
++    }
++
+     /**
+      * Deletes a DRAFT claim: it is DELETED, counts nowhere and can no longer be edited, opened or voided. Refused
+      * for a claim in any other status, one another user's editor holds, and in a closed period.
+@@ -937,7 +976,7 @@ public class ClaimService {
+                 : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
+         refuseWithoutProof(sheetId, claim, fixed);
+         Split split = split(by, sheetId, id, amount);
+-        Claim settled = changeStatus(by, sheetId, split.split().getId(), ClaimStatus.SETTLED, null, true);
++        Claim settled = changeStatus(by, sheetId, split.split().getId(), ClaimStatus.SETTLED, null, true, null);
+         return new PartSettle(split.original(), settled);
+     }
+ 
