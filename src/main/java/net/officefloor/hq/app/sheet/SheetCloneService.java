@@ -162,7 +162,7 @@ public class SheetCloneService {
     }
 
     /**
-     * The sheet's claims, by person in list order and as listed, with their logs and comments; then numbered afresh
+     * The sheet's claims, by person in list order and as listed, with their logs, comments and lines; then numbered afresh
      * and listed as they were.
      */
     private void copyClaims(String sheetId, String toSheetId, Map<Long, Long> people) {
@@ -186,6 +186,8 @@ public class SheetCloneService {
                         + " by_user, on_date, due FROM claim_log WHERE claim_id = ? ORDER BY id", copy, c.getId());
                 jdbc.update("INSERT INTO claim_comment (claim_id, by_user, on_date, text) SELECT ?, by_user,"
                         + " on_date, text FROM claim_comment WHERE claim_id = ? ORDER BY id", copy, c.getId());
+                jdbc.update("INSERT INTO claim_line (claim_id, label, qty, unit) SELECT ?, label, qty, unit"
+                        + " FROM claim_line WHERE claim_id = ? ORDER BY id", copy, c.getId());
             }
         }
 

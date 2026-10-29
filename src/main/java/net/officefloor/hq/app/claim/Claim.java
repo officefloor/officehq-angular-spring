@@ -174,6 +174,13 @@ public class Claim {
     @OrderBy("id ASC")
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** The claim's lines, in the order they were added; while it has any, its amount is the sum of theirs. */
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @JoinColumn(name = "claim_id", nullable = false)
+    @OrderBy("id ASC")
+    private List<ClaimLine> lines = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -484,6 +491,16 @@ public class Claim {
     /** Adds a comment: by the user, on the sheet's today. */
     public void comment(String by, LocalDate on, String text) {
         comments.add(new ClaimComment(by, on, text));
+    }
+
+    public List<ClaimLine> getLines() {
+        return lines;
+    }
+
+    /** Adds a line; the claim's amount becomes the sum of its lines' quantities times unit amounts. */
+    public void addLine(String label, int qty, BigDecimal unit) {
+        lines.add(new ClaimLine(label, qty, unit));
+        amount = lines.stream().map(ClaimLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
     }
 
     /**

@@ -135,8 +135,8 @@ public class ClaimService {
     }
 
     /**
-     * Edits a claim; its due-by, and so its period, stay as they were fixed. Refused unless it is a draft, and when
-     * its due-by falls in a closed period. An open claim is changed by voiding it and adding a new one.
+     * Edits a claim; its due-by, and so its period, stay as they were fixed. Refused unless it is a draft, when its
+     * due-by falls in a closed period, and for a claim with lines when the amount is not the one its lines make. An open claim is changed by voiding it and adding a new one.
      */
     @Transactional
     public Claim update(String by, String sheetId, Long id, BigDecimal amount, LocalDate date, String note,
@@ -150,6 +150,10 @@ public class ClaimService {
         refuseLockedByOther(by, claim);
         refuseInClosedPeriod(sheetId, claim.getDueBy());
         refuseAfterRetirement(person(sheetId, claim.getPersonId()), on);
+        if (!claim.getLines().isEmpty() && scaled(amount).compareTo(claim.getAmount()) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim with lines has the sum of its lines as its amount.");
+        }
         String corrected = correctedNumber(sheetId, claim.getPersonId(), amount, corrects);
         String reference = refOf(sheetId, ref, claim.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -429,6 +433,41 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("COMMENT_ADDED", by, person(sheetId, saved.getPersonId()), saved) + " text="
                 + stripped);
+        return saved;
+    }
+
+    /**
+     * Adds a line to a DRAFT claim: its amount becomes the sum of its lines' quantities times unit amounts. Adding a
+     * line edits the claim. Refused for a blank label, a quantity below 1, a unit amount below 0.00 or with more than
+     * two decimals, a claim that is not a DRAFT, one another user's editor holds, and in a closed period.
+     */
+    @Transactional
+    public Claim addLine(String by, String sheetId, Long id, String label, Integer qty, BigDecimal unit) {
+        String stripped = label == null ? "" : label.strip();
+        if (stripped.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A line needs a label.");
+        }
+        if (qty == null || qty < 1) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A line's quantity is a whole number of at least 1.");
+        }
+        if (unit == null || unit.signum() < 0 || unit.stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A line's unit amount is 0.00 or more, with up to two decimals.");
+        }
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can take a line.");
+        }
+        refuseLockedByOther(by, claim);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal scaledUnit = unit.setScale(2, RoundingMode.UNNECESSARY);
+        claim.addLine(stripped, qty, scaledUnit);
+        claim.setEditedBy(by);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_LINE_ADDED", by, person(sheetId, saved.getPersonId()), saved) + " label="
+                + stripped + " qty=" + qty + " unit=" + scaledUnit.toPlainString());
+        rollup.recordChanges(by, sheetId, before);
         return saved;
     }
 

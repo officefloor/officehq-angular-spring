@@ -57,6 +57,15 @@ export interface Claim {
   comments: ClaimComment[];
   // The number of the bulk settle batch that settled the claim (or made it PENDING); null for none.
   batch: number | null;
+  // The claim's lines, in the order they were added; while it has any, its amount is the sum of theirs.
+  lines: ClaimLine[];
+}
+
+// A line of a claim: its label, a whole quantity of at least 1 and a unit amount (two decimals).
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
 }
 
 // A comment on a claim: who wrote it, the sheet's today then, and its text.
@@ -226,6 +235,19 @@ export function dueOf(c: Claim, rates: readonly RateView[], floor: FloorOn, late
 
 const CLOSED = 'That claim is due by a date in a closed period, so it cannot change.';
 const LOCKED = 'Another user is editing this claim; try again once they are done.';
+const LINED = 'This claim has lines, so its amount is the sum of its lines and cannot be typed.';
+
+// The line being typed for a claim, as typed.
+interface LineFields {
+  label: string;
+  qty: string;
+  unit: string;
+}
+
+/** Whether two amounts with up to two decimals are the same amount. */
+function sameAmount(a: string, b: string): boolean {
+  return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
+}
 
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
@@ -316,7 +338,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -375,6 +397,39 @@ export function claimedTotal(claims: readonly Claim[]): string {
               />
               <button type="button" data-testid="claim-comment-add" (click)="comment(c)">
                 Add comment<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
+            </td>
+            <td>
+              <ol class="claim-lines" [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+                @for (l of c.lines; track $index) {
+                  <li data-testid="claim-lines-line">{{ l.label }} {{ l.qty }} x {{ l.unit }}</li>
+                }
+              </ol>
+              <label [for]="'claim-line-label-' + c.id">Line label</label>
+              <input
+                [id]="'claim-line-label-' + c.id"
+                data-testid="claim-line-label"
+                [value]="lineFields()[c.id]?.label ?? ''"
+                (input)="setLineField(c.id, 'label', value($event))"
+              />
+              <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+              <input
+                [id]="'claim-line-qty-' + c.id"
+                inputmode="numeric"
+                data-testid="claim-line-qty"
+                [value]="lineFields()[c.id]?.qty ?? ''"
+                (input)="setLineField(c.id, 'qty', value($event))"
+              />
+              <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+              <input
+                [id]="'claim-line-unit-' + c.id"
+                inputmode="decimal"
+                data-testid="claim-line-unit"
+                [value]="lineFields()[c.id]?.unit ?? ''"
+                (input)="setLineField(c.id, 'unit', value($event))"
+              />
+              <button type="button" data-testid="claim-line-add" (click)="addLine(c)">
+                Add line<span class="visually-hidden"> to claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
             </td>
             <td>
@@ -562,6 +617,8 @@ export class Claims {
   protected readonly reassignTo = signal<Record<number, string>>({});
   // The comment typed for each claim, by claim id.
   protected readonly commentTexts = signal<Record<number, string>>({});
+  // The line typed for each claim, by claim id.
+  protected readonly lineFields = signal<Record<number, LineFields>>({});
   // The amount typed in each draft's own row, by claim id.
   protected readonly inlineAmounts = signal<Record<number, string>>({});
 
@@ -689,6 +746,10 @@ export class Claims {
     }
     if (c.status !== 'DRAFT') {
       this.setRowError(c.id, `A ${c.status} claim cannot be edited; only a draft can. Void it and add a new one.`);
+      return;
+    }
+    if (c.lines.length > 0 && !sameAmount(amount, c.amount)) {
+      this.setRowError(c.id, LINED);
       return;
     }
     if (inClosedPeriod(this.periods.list(), c.dueBy)) {
@@ -891,6 +952,66 @@ export class Claims {
       this.saved.emit(saved);
     } catch {
       this.setRowError(c.id, 'This comment could not be added to the claim.');
+    }
+  }
+
+  protected setLineField(id: number, field: keyof LineFields, text: string): void {
+    this.lineFields.update((l) => ({ ...l, [id]: { ...(l[id] ?? { label: '', qty: '', unit: '' }), [field]: text } }));
+    this.clearRowError(id);
+  }
+
+  /**
+   * Adds the typed line to a DRAFT claim, whose amount becomes the sum of its lines; adding a line edits the claim.
+   * Refused for a blank label, a quantity that is not a whole number of at least 1, a unit amount without up to two
+   * decimals, a claim that is not a draft, one in a closed period, and one another user is editing.
+   */
+  protected async addLine(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const typed = this.lineFields()[c.id] ?? { label: '', qty: '', unit: '' };
+    const label = typed.label.trim();
+    const qty = typed.qty.trim();
+    const unit = typed.unit.trim();
+    if (label === '') {
+      this.setRowError(c.id, 'Enter a label for the line.');
+      return;
+    }
+    if (!/^\d+$/.test(qty) || Number(qty) < 1) {
+      this.setRowError(c.id, 'Enter a whole quantity of at least 1.');
+      return;
+    }
+    if (!AMOUNT.test(unit)) {
+      this.setRowError(c.id, 'Enter a unit amount with up to two decimals.');
+      return;
+    }
+    if (c.status !== 'DRAFT') {
+      this.setRowError(c.id, `A ${c.status} claim cannot take a line; only a draft can.`);
+      return;
+    }
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    if (c.lockedBy !== null && c.lockedBy !== this.session.user()) {
+      this.setRowError(c.id, LOCKED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/lines`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { label, qty: Number(qty), unit }));
+      this.lineFields.update(({ [c.id]: _, ...rest }) => rest);
+      this.saved.emit(saved);
+    } catch (e) {
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.setRowError(
+        c.id,
+        status === 403
+          ? 'Your role may not edit a claim on this sheet.'
+          : status === 423
+            ? LOCKED
+            : `This ${c.status} claim cannot take a line, or its period is closed.`,
+      );
     }
   }
 
@@ -1143,6 +1264,10 @@ export class Claims {
     // a claim's period is the one its due-by falls in: an edit leaves it as fixed, and the store judges a new claim's
     if (was && inClosedPeriod(this.periods.list(), was.dueBy)) {
       this.error.set(CLOSED);
+      return;
+    }
+    if (was && was.lines.length > 0 && !sameAmount(amount, was.amount)) {
+      this.error.set(LINED);
       return;
     }
     const retiredFrom = this.retiredFrom();

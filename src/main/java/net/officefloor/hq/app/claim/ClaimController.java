@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.claim;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -36,20 +38,21 @@ public class ClaimController {
      * while it is OPEN and the sheet's today is before that date. Reminded-on is the last day a reminder was written, or null. Proofs is how many proofs it has. Split-from is the number of the claim it was split off, or null. Log is its status log, oldest first.
      * Locked-by is the user whose open editor holds it, or null. Late-entry is whether it was added while its period
      * was soft-closed. Ref is its external reference, or null. Tags are its tags, sorted (none for a claim with none).
-     * Comments are its comments, in the order they were written.
+     * Comments are its comments, in the order they were written. Lines are its lines, in the order they were added.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, String ref, ClaimStatus status,
             String number, String settledDue, String openedBy, String editedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundsOn, LocalDate dueBy, LocalDate deferredUntil, LocalDate remindedOn, int proofs, String splitFrom, List<LogLineView> log,
             String lockedBy, boolean lateEntry, List<String> tags, String voidReason,
-            List<CommentView> comments, Integer batch) {
+            List<CommentView> comments, Integer batch, List<LineView> lines) {
         public static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().toPlainString(), c.getDate(), c.getNote(),
                     c.getRef(), c.getStatus(), c.getNumber(), c.getSettledDue() == null ? null : c.getSettledDue().toPlainString(),
                     c.getOpenedBy(), c.getEditedBy(), c.isStated(), c.getStatedDue() == null ? null : c.getStatedDue().toPlainString(),
                     c.getCorrects(), c.getRoundsOn(), c.getDueBy(), c.getDeferredUntil(), c.getRemindedOn(), c.getProofs(), c.getSplitFrom(), c.getLog().stream().map(LogLineView::of).toList(),
                     c.getLockedBy(), c.isLateEntry(), ClaimService.tagList(c.getTags()), c.getVoidReason(),
-                    c.getComments().stream().map(CommentView::of).toList(), c.getSettleBatch());
+                    c.getComments().stream().map(CommentView::of).toList(), c.getSettleBatch(),
+                    c.getLines().stream().map(LineView::of).toList());
         }
     }
 
@@ -277,6 +280,13 @@ public class ClaimController {
     }
 
     /** An open claim after a split, and the new open claim split off it. */
+    /** A line of a claim: its label, quantity and unit amount (two decimals). */
+    public record LineView(String label, int qty, String unit) {
+        public static LineView of(ClaimLine l) {
+            return new LineView(l.getLabel(), l.getQty(), l.getUnit().toPlainString());
+        }
+    }
+
     public record SplitView(ClaimView original, ClaimView split) {
     }
 
@@ -306,6 +316,19 @@ public class ClaimController {
             @PathVariable Long id, @Valid @RequestBody CommentForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return ClaimView.of(service.comment(user, sheetId, id, form.text()));
+    }
+
+    /** A line to add to a draft claim: its label, a whole quantity of at least 1 and a unit amount (two decimals). */
+    public record LineForm(@Size(max = 140) String label, @NotNull @Min(1) Integer qty,
+            @NotNull @DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal unit) {
+    }
+
+    @PostMapping("/claims/{id}/lines")
+    public ClaimView addLine(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody LineForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        return ClaimView.of(service.addLine(user, sheetId, id, form.label(), form.qty(), form.unit()));
     }
 
     @PostMapping("/claims/{id}/proof")
