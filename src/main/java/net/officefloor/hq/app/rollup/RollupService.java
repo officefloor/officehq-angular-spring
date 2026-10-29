@@ -75,14 +75,15 @@ public class RollupService {
     /**
      * Figures added up over sheets: their people (each person once, those whose names or aliases match being one),
      * the people's due-totals and overdue-totals trimmed once over all of them, per grade the due-totals of the people
-     * on it today (retired people left out, n/a skipped), and per status the count of claims in it; with every
+     * on it today (retired people left out, n/a skipped), per status the count of claims in it, and the count of
+     * overdue claims that count live; with every
      * sheet's people as members, for the totals to be worked out again with more of them.
      */
     public record Consolidated(List<Member> members, Map<String, BigDecimal> gradeDueTotals,
-            Map<ClaimStatus, Integer> statusCounts) {
+            Map<ClaimStatus, Integer> statusCounts, int overdueCount) {
 
         static Consolidated empty() {
-            return new Consolidated(List.of(), new TreeMap<>(), new EnumMap<>(ClaimStatus.class));
+            return new Consolidated(List.of(), new TreeMap<>(), new EnumMap<>(ClaimStatus.class), 0);
         }
 
         Consolidated plus(Consolidated o) {
@@ -93,7 +94,7 @@ public class RollupService {
             Map<ClaimStatus, Integer> statuses = new EnumMap<>(ClaimStatus.class);
             statuses.putAll(statusCounts);
             o.statusCounts.forEach((s, n) -> statuses.merge(s, n, Integer::sum));
-            return new Consolidated(all, grades, statuses);
+            return new Consolidated(all, grades, statuses, overdueCount + o.overdueCount);
         }
 
         /** The people over the tree, each once: those whose names or aliases match, ignoring case, are one. */
@@ -320,15 +321,17 @@ public class RollupService {
             statuses.merge(c.getStatus(), 1, Integer::sum);
         }
         List<Member> members = new ArrayList<>();
+        int overdueCount = 0;
         for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             Figures f = s.people().get(p.getId());
             if (f != null) {
+                overdueCount += f.overdueCount();
                 List<String> names = new ArrayList<>(List.of(p.getName()));
                 names.addAll(p.getAliases());
                 members.add(new Member(names, f.dueTotal(), f.overdueTotal()));
             }
         }
-        return new Consolidated(members, grades, statuses);
+        return new Consolidated(members, grades, statuses, overdueCount);
     }
 
     /**

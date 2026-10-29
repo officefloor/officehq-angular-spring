@@ -15,7 +15,7 @@ export interface TreeMember {
 }
 
 // The figures of the sheet's descendants (the sheets naming it as parent, theirs, and so on), added up by the store.
-interface DescendantFigures {
+export interface DescendantFigures {
   peopleCount: number;
   dueTotal: string;
   overdueTotal: string;
@@ -25,6 +25,8 @@ interface DescendantFigures {
   statusCounts: Record<string, number>;
   // Each person of the descendants, for the totals to be worked out again with the sheet's own people.
   people: TreeMember[];
+  // The count of overdue claims that count live.
+  overdueCount: number;
 }
 
 // The people over the tree, each once: those whose names or aliases match, ignoring case, are one.
@@ -43,13 +45,14 @@ function distinctPeople(members: readonly TreeMember[]): number {
   return new Set(members.map((_, i) => root(i))).size;
 }
 
-const NONE: DescendantFigures = {
+export const NONE: DescendantFigures = {
   peopleCount: 0,
   dueTotal: '0.00',
   overdueTotal: '0.00',
   gradeDueTotals: {},
   statusCounts: {},
   people: [],
+  overdueCount: 0,
 };
 
 // The figures over the sheet and all its descendants: the sheet's own, as it shows them, plus each descendant's. While
