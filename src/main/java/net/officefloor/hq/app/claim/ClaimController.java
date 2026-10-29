@@ -334,6 +334,19 @@ public class ClaimController {
         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
+    /** An open claim after a part-settle, and the part split off it, now settled or pending. */
+    public record PartSettleView(ClaimView original, ClaimView settled) {
+    }
+
+    @PostMapping("/claims/{id}/settle-part")
+    public PartSettleView settlePart(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable Long id, @Valid @RequestBody SplitForm form,
+            @SessionAttribute(SessionController.USER) String user) {
+        ClaimService.PartSettle result = service.settlePart(user, sheetId, id, form.amount());
+        return new PartSettleView(ClaimView.of(result.original()), ClaimView.of(result.settled()));
+    }
+
     @PostMapping("/claims/{id}/waive")
     public ClaimView waive(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,

@@ -549,6 +549,17 @@ export function claimedTotal(claims: readonly Claim[]): string {
               <button type="button" data-testid="claim-split" (click)="split(c)">
                 Split<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
+              <label [for]="'claim-settle-part-amount-' + c.id">Amount to settle</label>
+              <input
+                [id]="'claim-settle-part-amount-' + c.id"
+                inputmode="decimal"
+                data-testid="claim-settle-part-amount"
+                [value]="settlePartAmounts()[c.id] ?? ''"
+                (input)="setSettlePartAmount(c.id, value($event))"
+              />
+              <button type="button" data-testid="claim-settle-part" (click)="settlePart(c)">
+                Part-settle<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+              </button>
               <button type="button" data-testid="claim-remind" (click)="remind(c)">
                 Remind<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
               </button>
@@ -692,6 +703,8 @@ export class Claims {
   protected readonly redates = signal<Record<number, string>>({});
   // The amount typed to split off each claim, by claim id.
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  // The amount typed to part-settle each claim, by claim id.
+  protected readonly settlePartAmounts = signal<Record<number, string>>({});
   // The person (by id) chosen to move each claim to, by claim id.
   protected readonly reassignTo = signal<Record<number, string>>({});
   // The comment typed for each claim, by claim id.
@@ -1296,6 +1309,47 @@ export class Claims {
       this.setRowError(
         c.id,
         forbidden ? 'Your role may not open a claim, so it may not split one.' : `This ${c.status} claim cannot be split.`,
+      );
+    }
+  }
+
+  protected setSettlePartAmount(id: number, amount: string): void {
+    this.settlePartAmounts.update((a) => ({ ...a, [id]: amount }));
+    this.clearRowError(id);
+  }
+
+  /**
+   * Splits the typed amount off an OPEN claim as the split button does, and settles the new claim at once as the
+   * settle button does (PENDING above the clerk limit); a refused split or settle refuses the whole.
+   */
+  protected async settlePart(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const amount = (this.settlePartAmounts()[c.id] ?? '').trim();
+    if (!AMOUNT.test(amount) || Number(amount) <= 0 || Number(amount) >= Number(c.amount)) {
+      this.setRowError(c.id, `Enter an amount more than 0.00 and less than ${c.amount} to settle off this claim.`);
+      return;
+    }
+    if (c.status !== 'OPEN' || deferred(c, this.session.sheetToday())) {
+      this.setRowError(c.id, `Only an OPEN claim that is not deferred can be part-settled.`);
+      return;
+    }
+    if (inClosedPeriod(this.periods.list(), c.dueBy)) {
+      this.setRowError(c.id, CLOSED);
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/settle-part`;
+    try {
+      const result = await firstValueFrom(this.http.post<{ original: Claim; settled: Claim }>(url, { amount }));
+      this.settlePartAmounts.update(({ [c.id]: _, ...rest }) => rest);
+      this.saved.emit(result.original);
+      this.saved.emit(result.settled);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.setRowError(
+        c.id,
+        forbidden ? 'Your role may not split and settle this claim.' : `This ${c.status} claim cannot be part-settled.`,
       );
     }
   }

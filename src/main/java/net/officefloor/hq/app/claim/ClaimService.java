@@ -254,7 +254,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next) {
-        return changeStatus(by, sheetId, id, next, null);
+        return changeStatus(by, sheetId, id, next, null, false);
     }
 
     /**
@@ -263,10 +263,14 @@ public class ClaimService {
      */
     @Transactional
     public Claim voidClaim(String by, String sheetId, Long id, String reason) {
-        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason);
+        return changeStatus(by, sheetId, id, ClaimStatus.VOID, reason, false);
     }
 
-    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason) {
+    /**
+     * Moves the claim to its next status. A part being settled was judged by the four-eyes rules and the proof rule
+     * on the claim it was split off, so they are not judged on it again.
+     */
+    private Claim changeStatus(String by, String sheetId, Long id, ClaimStatus next, String reason, boolean part) {
         Claim claim = lockedClaim(sheetId, id);
         switch (next) {
             case OPEN -> settings.refuseUnlessMay(sheetId, by, "open");
@@ -288,11 +292,8 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim is deferred until " + claim.getDeferredUntil() + ".");
         }
-        if (next == ClaimStatus.SETTLED && by.equals(claim.getOpenedBy())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot settle it.");
-        }
-        if (next == ClaimStatus.SETTLED && by.equals(claim.getEditedBy())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who last edited a claim cannot settle it.");
+        if (next == ClaimStatus.SETTLED && !part) {
+            refuseFourEyes(by, claim);
         }
         if (next == ClaimStatus.DRAFT && claim.getCorrects() != null) {
             // a restored correction counts against its claim again
@@ -336,7 +337,9 @@ public class ClaimService {
             // at least the floor in force on its date; with none it stays live
             BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
                     : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
-            refuseWithoutProof(sheetId, claim, fixed);
+            if (!part) {
+                refuseWithoutProof(sheetId, claim, fixed);
+            }
             if (settings.aboveClerkLimit(sheetId, by, fixed)) {
                 next = ClaimStatus.PENDING;
                 event = "CLAIM_PENDING";
@@ -910,6 +913,42 @@ public class ClaimService {
         audit.recordOnCommit(record("CLAIM_OPENED", by, person, added));
         rollup.recordChanges(by, sheetId, before);
         return new Split(original, added);
+    }
+
+    /** An OPEN claim after a part-settle, and the part split off it, now SETTLED or PENDING. */
+    public record PartSettle(Claim original, Claim settled) {
+    }
+
+    /**
+     * Part-settles an OPEN claim: the amount is split off it as {@link #split} does, and the new claim settled at once
+     * by the user as the settle button does (PENDING when above the user's clerk limit). The four-eyes rules and the
+     * proof rule are judged on the original claim before the split; a refused split or settle refuses the whole.
+     */
+    @Transactional
+    public PartSettle settlePart(String by, String sheetId, Long id, BigDecimal amount) {
+        settings.refuseUnlessMay(sheetId, by, "settle");
+        Claim claim = lockedClaim(sheetId, id);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an OPEN claim can be part-settled.");
+        }
+        refuseFourEyes(by, claim);
+        Person person = person(sheetId, claim.getPersonId());
+        BigDecimal fixed = claim.isStated() && claim.getStatedDue() != null ? claim.getStatedDue()
+                : liveDue(rateFigure(sheetId, person, claim), claim, person, sheets.load(sheetId), true);
+        refuseWithoutProof(sheetId, claim, fixed);
+        Split split = split(by, sheetId, id, amount);
+        Claim settled = changeStatus(by, sheetId, split.split().getId(), ClaimStatus.SETTLED, null, true);
+        return new PartSettle(split.original(), settled);
+    }
+
+    /** Refuses settling the claim by the user who opened it or last edited it. */
+    private void refuseFourEyes(String by, Claim claim) {
+        if (by.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who opened a claim cannot settle it.");
+        }
+        if (by.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The user who last edited a claim cannot settle it.");
+        }
     }
 
     /**
