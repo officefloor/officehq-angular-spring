@@ -1,0 +1,47 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index c1d33cab..12700f5c 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -108,6 +108,17 @@ export function personPeriodDueTotals(
+   );
+ }
+ 
++/** Each period's count of the claims due by a date in it, by period id, VOID and DELETED claims left out. */
++export function periodClaimCounts(periods: readonly PeriodView[], figures: readonly DatedFigure[]): Map<number, number> {
++  const counts = new Map<number, number>(periods.map((p) => [p.id, 0]));
++  for (const f of figures) {
++    if (f.status === 'VOID' || f.status === 'DELETED') continue;
++    const p = periodOn(periods, f.dueBy);
++    if (p) counts.set(p.id, (counts.get(p.id) ?? 0) + 1);
++  }
++  return counts;
++}
++
+ /**
+  * The person's carried figure for each period, by period id: a closed or soft-closed one's figure fixed for them when it
+  * was closed (0.00 for a person added since), else the figures now of their claims belonging to a period that ends
+@@ -412,6 +423,7 @@ export class PeriodStore {
+       <table>
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Cap</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Locked</th>
++            <th scope="col">Claims</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+@@ -425,6 +437,7 @@ export class PeriodStore {
+               <td data-testid="period-closed">{{ (p.closed ? 'yes' : p.softClosed ? 'soft' : 'no') | fig }}</td>
+               <td data-testid="period-fy">{{ fiscalYear(p) | fig }}</td>
+               <td data-testid="period-locked">{{ (p.locked ? 'yes' : 'no') | fig }}</td>
++              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 | fig }}</td>
+               <td>
+                 <button type="button" data-testid="period-close" (click)="close(p)">
+                   Close<span class="visually-hidden"> period {{ p.name }}</span>
+@@ -492,6 +505,8 @@ export class Periods {
+   // Each period's due-total: a closed or soft-closed one's fixed total, else the figures of the claims due by a date in it that counted at
+   // the end of its last day, skipping n/a.
+   protected readonly dueBy = computed(() => periodDueTotals(this.store.list(), this.figures()));
++  // Each period's count of the claims due by a date in it, VOID and DELETED ones left out.
++  protected readonly claimCounts = computed(() => periodClaimCounts(this.store.list(), this.figures()));
+ 
+   /** The fiscal year the period's from-date falls in. */
+   protected fiscalYear(p: PeriodView): string {
