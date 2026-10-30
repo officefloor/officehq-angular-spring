@@ -1,6 +1,7 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
 import { Access } from '../access/access';
 import { ClaimTemplates } from '../claim-templates/claim-templates';
@@ -452,6 +453,17 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-merge" (click)="merge(p, mergeSelect)">
                   Merge<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'person-transfer-to-' + p.id">Transfer {{ p.name }} to sheet</label>
+                <input
+                  #transferTo
+                  type="text"
+                  [id]="'person-transfer-to-' + p.id"
+                  data-testid="person-transfer-to"
+                  (input)="clearError(p)"
+                />
+                <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo)">
+                  Transfer<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
               </td>
               <td><app-claims
                   [person]="p"
@@ -514,6 +526,8 @@ export class People {
   private aliasing = false;
   /** A merge still waiting for its answer: another press meanwhile is ignored. */
   private merging = false;
+  /** A transfer still waiting for its answer: another press meanwhile is ignored. */
+  private transferring = false;
   /** A statement still waiting for its answer: another press meanwhile is ignored. */
   private stating = false;
   /** A retirement still waiting for its answer: another press meanwhile is ignored. */
@@ -603,9 +617,14 @@ export class People {
   protected readonly overdueTotal = computed(() => (overdueTotalOf(this.people()) / 100).toFixed(2));
   /** The figures of each of the sheet's descendants (its children, theirs, and so on), as each shows them. */
   private readonly descendants = signal<SheetFigures[]>([]);
-  /** The people counted, and the due- and overdue-totals added up, over the sheet and all its descendants. */
+  /** The sheet's own live figures while it is shown as of a date; null while it is shown live (its people then). */
+  private readonly live = signal<SheetFigures | null>(null);
+  /**
+   * The people counted, and the due- and overdue-totals added up, over the sheet and all its descendants, as
+   * they stand live whatever date the sheet is shown as of.
+   */
   protected readonly consolidated = computed(() => {
-    const all = [figuresOf(this.people()), ...this.descendants()];
+    const all = [this.live() ?? figuresOf(this.people()), ...this.descendants()];
     return {
       people: all.reduce((sum, f) => sum + f.people, 0),
       due: (all.reduce((sum, f) => sum + f.due, 0) / 100).toFixed(2),
@@ -619,6 +638,7 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.descendants.set([]);
+      this.live.set(null);
       this.watched.set(new Set());
       this.personError.set(null);
       this.patronError.set(null);
@@ -1204,6 +1224,42 @@ export class People {
     }
   }
 
+  /** Transfer the person to the sheet with the typed id; once done the whole sheet is shown again as the store holds it. */
+  protected async transfer(p: Person, input: HTMLInputElement): Promise<void> {
+    if (this.transferring) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const toSheet = input.value.trim();
+    if (!toSheet) {
+      this.personError.set({ id: p.id, message: 'Enter the id of the sheet to transfer to.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.transferring = true;
+    try {
+      await firstValueFrom(
+        this.http.post<void>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/transfer`,
+          { toSheet },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      await this.reload(sheet);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message:
+          'Could not transfer: only a steward can, not a retired person, to another sheet with no one of the same name, alias or contact.',
+      });
+    } finally {
+      this.transferring = false;
+    }
+  }
+
   /** Hold the person from a date (blank: the sheet's today) to an optional date. */
   protected async hold(p: Person, from: string, to: string): Promise<void> {
     if (this.holding) return;
@@ -1295,7 +1351,7 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, watched, batch, descendants] = await Promise.all([
+    const [people, watched, batch, descendants, live] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
       firstValueFrom(
         this.http.get<number[]>(`/api/sheets/${encodeURIComponent(sheet)}/watches`, {
@@ -1306,21 +1362,35 @@ export class People {
         this.http.get<{ last: number | null }>(`/api/sheets/${encodeURIComponent(sheet)}/claims/settle-batch`),
       ),
       this.descendantFigures(sheet),
+      this.session.asOf() === null ? Promise.resolve(null) : this.liveFigures(sheet),
     ]);
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.people.set(people);
       this.watched.set(new Set(watched));
       this.settleBatch.set(batch.last);
       this.descendants.set(descendants);
+      this.live.set(live);
     }
   }
 
-  /** The figures of each of the sheet's descendants, each read from its own people as that sheet shows them. */
+  /** The sheet's figures as its people stand live. */
+  private async liveFigures(sheet: string): Promise<SheetFigures> {
+    return figuresOf(await firstValueFrom(this.livePeople(sheet)));
+  }
+
+  /** The people of a sheet as they stand live, whatever date the screen shows the sheet as of. */
+  private livePeople(sheet: string) {
+    return this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`, {
+      context: new HttpContext().set(LIVE, true),
+    });
+  }
+
+  /** The figures of each of the sheet's descendants, each read from its own people as they stand live. */
   private async descendantFigures(sheet: string): Promise<SheetFigures[]> {
     const ids = await firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/descendants`));
     return Promise.all(
       ids.map(async (id) =>
-        figuresOf(await firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(id)}/people`))),
+        figuresOf(await firstValueFrom(this.livePeople(id))),
       ),
     );
   }

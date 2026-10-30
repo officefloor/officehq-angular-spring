@@ -1,0 +1,168 @@
+package net.officefloor.hq.app.person;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.access.Role;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimLogLine;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.claim.Tags;
+import net.officefloor.hq.app.pool.PoolMemberRepository;
+import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.statement.StatementRepository;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+/**
+ * Transferring a person to another sheet by id. Only a steward of this sheet may; a retired person, this
+ * sheet's own id, an archived other sheet, or a name, alias or contact of theirs already on the other sheet,
+ * is refused. The person arrives with their grades (each from its date), terms, contact and aliases, and their
+ * claims with status, dates, notes, tags, frozen figures, logs and comments; each claim that had a number
+ * takes the other sheet's next one, in the order the claims were opened (by the sheet's today when each was
+ * opened, then by the order they were added). Figures a statement bound are released and references dropped.
+ * The person leaves this sheet entirely: their statements, holds, patron links, pool memberships and
+ * watches are dropped.
+ */
+@Service
+public class PersonTransferService {
+
+    private final PersonRepository people;
+    private final PatronRepository patrons;
+    private final WatchRepository watches;
+    private final ClaimRepository claims;
+    private final ClaimService claimService;
+    private final Tags tags;
+    private final StatementRepository statements;
+    private final PoolMemberRepository poolMembers;
+    private final AccessService access;
+    private final SheetService sheets;
+    private final SheetRepository sheetRows;
+    private final Rollup rollup;
+    private final ApplicationEventPublisher events;
+
+    public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
+            ClaimRepository claims, ClaimService claimService, Tags tags, StatementRepository statements,
+            PoolMemberRepository poolMembers, AccessService access, SheetService sheets, SheetRepository sheetRows,
+            Rollup rollup, ApplicationEventPublisher events) {
+        this.people = people;
+        this.patrons = patrons;
+        this.watches = watches;
+        this.claims = claims;
+        this.claimService = claimService;
+        this.tags = tags;
+        this.statements = statements;
+        this.poolMembers = poolMembers;
+        this.access = access;
+        this.sheets = sheets;
+        this.sheetRows = sheetRows;
+        this.rollup = rollup;
+        this.events = events;
+    }
+
+    /** Transfer the person to the other sheet (started empty when its id was never used). */
+    @Transactional
+    public void transfer(String sheetId, String user, long personId, String toSheet) {
+        if (toSheet.equals(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A person cannot be transferred to their own sheet");
+        }
+        sheets.load(toSheet, user);
+        // both sheets locked in the same order, so transfers each way between them take turns
+        Stream.of(sheetId, toSheet).sorted().forEach(sheetRows::lockById);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can transfer people");
+        }
+        if (sheets.isArchived(toSheet)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The other sheet is archived");
+        }
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (person.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred");
+        }
+        List<String> names = new ArrayList<>(person.getAliases());
+        names.add(person.getName());
+        for (String name : names) {
+            if (people.existsBySheetIdAndNameIgnoreCase(toSheet, name) || people.existsAlias(toSheet, name, null)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Name already in use on the other sheet");
+            }
+        }
+        if (person.getContact() != null && people.existsBySheetIdAndContact(toSheet, person.getContact())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Contact already in use on the other sheet");
+        }
+        Rollup.Figures beforeHere = rollup.figures(sheetId);
+        Rollup.Figures beforeThere = rollup.figures(toSheet);
+
+        Person arrived = people.saveAndFlush(person.arriving(toSheet));
+        // added oldest listed first, so they list on the other sheet in the order they listed here
+        List<Claim> leaving = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId));
+        Collections.reverse(leaving);
+        List<Claim> arriving = new ArrayList<>();
+        Map<Claim, String> oldNumbers = new HashMap<>();
+        Map<Claim, LocalDate> openedOn = new HashMap<>();
+        Map<Claim, Long> addedAs = new HashMap<>();
+        for (Claim claim : leaving) {
+            Claim copy = claim.arriving(toSheet, arrived.getId());
+            arriving.add(copy);
+            if (claim.getShownNumber() != null) {
+                oldNumbers.put(copy, claim.getShownNumber());
+            }
+            openedOn.put(copy, openedOn(claim));
+            addedAs.put(copy, claim.getId());
+            tags.use(toSheet, claim.getTags());
+        }
+        claims.saveAllAndFlush(arriving);
+
+        Map<String, String> renumbered = new HashMap<>();
+        arriving.stream().filter(oldNumbers::containsKey)
+                .sorted(Comparator.comparing(openedOn::get).thenComparing(addedAs::get))
+                .forEach(claim -> {
+                    claimService.numberArrived(toSheet, claim);
+                    renumbered.put(oldNumbers.get(claim), claim.getShownNumber());
+                });
+        // a correction, or a claim split off another, names the claim it came from by its new number
+        for (Claim claim : arriving) {
+            if (claim.getCorrects() != null) {
+                claim.setCorrects(renumbered.getOrDefault(claim.getCorrects(), claim.getCorrects()));
+            }
+            if (claim.getSplitFrom() != null) {
+                claim.setSplitFrom(renumbered.getOrDefault(claim.getSplitFrom(), claim.getSplitFrom()));
+            }
+        }
+        claims.flush();
+
+        patrons.deleteAll(patrons.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+        patrons.deleteAll(patrons.findBySheetIdAndPatronIdOrderByIdAsc(sheetId, personId));
+        poolMembers.deleteAll(poolMembers.findByPersonId(personId));
+        watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+        claims.deleteAll(leaving);
+        claims.flush();
+        people.delete(person);
+        people.flush();
+
+        events.publishEvent(new PersonTransferred(sheetId, user, person.getName(), toSheet, null));
+        rollup.changed(sheetId, user, beforeHere);
+        events.publishEvent(new PersonTransferred(toSheet, user, person.getName(), null, sheetId));
+        rollup.changed(toSheet, user, beforeThere);
+    }
+
+    /** The sheet's today when the claim was opened: its first status after DRAFT; its date when it has no log of it. */
+    private static LocalDate openedOn(Claim claim) {
+        return claim.getLog().stream().filter(l -> l.getStatus() != ClaimStatus.DRAFT).map(ClaimLogLine::getOn)
+                .findFirst().orElse(claim.getDate());
+    }
+}

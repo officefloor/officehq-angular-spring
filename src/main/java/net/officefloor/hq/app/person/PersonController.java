@@ -187,10 +187,13 @@ public class PersonController {
     private final RateService rates;
     private final StatementService statements;
     private final PersonMergeService merges;
+    private final PersonTransferService transfers;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
-            RateService rates, StatementService statements, PersonMergeService merges) {
+            RateService rates, StatementService statements, PersonMergeService merges,
+            PersonTransferService transfers) {
         this.service = service;
+        this.transfers = transfers;
         this.merges = merges;
         this.bulkGrade = bulkGrade;
         this.claims = claims;
@@ -322,6 +325,19 @@ public class PersonController {
             @Valid @RequestBody MergeForm form) {
         String sheet = sheetId.trim();
         return view(sheet, merges.merge(sheet, user.trim(), personId, form.intoId()));
+    }
+
+    /** A transfer as asked for: the id of the other sheet the person is transferred to. */
+    public record TransferForm(@NotBlank @Size(max = 100) String toSheet) {
+    }
+
+    /** Transfer the person to another sheet; they leave this one entirely. */
+    @PostMapping("/{personId}/transfer")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void transfer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody TransferForm form) {
+        transfers.transfer(sheetId.trim(), user.trim(), personId, form.toSheet().trim());
     }
 
     private PersonView view(String sheet, Person person) {

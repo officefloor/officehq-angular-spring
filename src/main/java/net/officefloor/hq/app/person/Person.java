@@ -81,6 +81,21 @@ public class Person {
         return sheetId;
     }
 
+    /**
+     * The person as they arrive on another sheet: their name, every grade they were given (each from its
+     * date), their terms, contact and aliases; not their holds nor retirement.
+     */
+    public Person arriving(String sheetId) {
+        Person arrived = new Person();
+        arrived.sheetId = sheetId;
+        arrived.name = name;
+        grades.forEach(g -> arrived.grades.add(new GradeFrom(g.getGrade(), g.getFromDate())));
+        arrived.aliases.addAll(aliases);
+        arrived.terms = terms;
+        arrived.contact = contact;
+        return arrived;
+    }
+
     public String getName() {
         return name;
     }

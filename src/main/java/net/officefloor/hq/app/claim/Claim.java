@@ -184,6 +184,32 @@ public class Claim {
         return sheetId;
     }
 
+    /**
+     * The claim as it arrives on another sheet for the person there: its status, dates, note, tags, frozen
+     * figures, log and comments; unnumbered (to be given the other sheet's next), released from any figure a
+     * statement bound, without its reference, settle batch or editor lock.
+     */
+    public Claim arriving(String sheetId, Long personId) {
+        Claim arrived = new Claim(sheetId, personId, amount, date, note, corrects);
+        arrived.status = status;
+        arrived.openedBy = openedBy;
+        arrived.editedBy = editedBy;
+        arrived.settledDue = settledDue;
+        arrived.correctsDate = correctsDate;
+        arrived.dueBy = dueBy;
+        arrived.terms = terms;
+        arrived.deferredUntil = deferredUntil;
+        arrived.remindedOn = remindedOn;
+        arrived.proofs = proofs;
+        arrived.splitFrom = splitFrom;
+        arrived.tags = tags;
+        arrived.voidReason = voidReason;
+        arrived.lateEntry = lateEntry;
+        log.forEach(l -> arrived.log.add(new ClaimLogLine(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
+        comments.forEach(c -> arrived.comments.add(new ClaimComment(c.getBy(), c.getOn(), c.getText())));
+        return arrived;
+    }
+
     public Long getListed() {
         return listed;
     }

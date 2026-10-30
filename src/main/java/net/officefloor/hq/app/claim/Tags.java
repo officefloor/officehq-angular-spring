@@ -42,7 +42,7 @@ public class Tags {
     }
 
     /** Keep the stored tags among the tags ever used on the sheet. */
-    void use(String sheetId, String stored) {
+    public void use(String sheetId, String stored) {
         for (String tag : list(stored)) {
             if (!used.existsBySheetIdAndTag(sheetId, tag)) {
                 used.saveAndFlush(new SheetTag(sheetId, tag));

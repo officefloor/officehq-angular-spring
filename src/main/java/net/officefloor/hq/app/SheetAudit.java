@@ -27,6 +27,7 @@ import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.person.PersonHeld;
 import net.officefloor.hq.app.person.PersonMerged;
 import net.officefloor.hq.app.person.PersonRetired;
+import net.officefloor.hq.app.person.PersonTransferred;
 import net.officefloor.hq.app.person.PersonWatched;
 import net.officefloor.hq.app.person.WatcherNotified;
 import net.officefloor.hq.app.pool.PoolAdded;
@@ -113,6 +114,13 @@ public class SheetAudit {
     public void on(PersonMerged e) {
         change(e.sheetId(), e.user(), "PERSON_MERGED sheet=" + e.sheetId() + " by=" + e.user()
                 + " from=" + e.from() + " into=" + e.into());
+    }
+
+    @TransactionalEventListener
+    public void on(PersonTransferred e) {
+        change(e.sheetId(), e.user(), "PERSON_TRANSFERRED sheet=" + e.sheetId() + " by=" + e.user()
+                + " name=" + e.name() + (e.to() == null ? "" : " to=" + e.to())
+                + (e.from() == null ? "" : " from=" + e.from()));
     }
 
     @TransactionalEventListener

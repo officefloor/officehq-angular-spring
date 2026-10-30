@@ -790,6 +790,12 @@ public class ClaimService {
                 : Dues.figure(claim, owner::gradeOn, rates.table(sheetId));
     }
 
+    /** Give a claim arriving on the sheet from another, unnumbered there, the sheet's next number as opening does. */
+    public void numberArrived(String sheetId, Claim claim) {
+        giveNumber(sheetId, claim);
+        claims.flush();
+    }
+
     /**
      * Give a claim being opened its number: while the sheet's period numbering from is set and the
      * sheet's today is on or after it, the next in the period its due-by falls in (<period name>-<n>), or
