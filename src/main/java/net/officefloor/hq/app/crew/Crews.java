@@ -109,7 +109,7 @@ public class Crews {
                 .orElseThrow(() -> new CrewRefused("No such crew on this sheet."));
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new CrewRefused("Choose a person on this sheet."));
-        if (crew.getLeadId().equals(person.getId())) {
+        if (person.getId().equals(crew.getLeadId())) {
             throw new CrewRefused(person.getName() + " leads the crew.");
         }
         if (members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
@@ -134,7 +134,7 @@ public class Crews {
         members.flush();
         for (CrewMember m : members.findByPersonId(personId)) {
             Crew crew = crews.findById(m.getCrewId()).orElseThrow();
-            if (crew.getLeadId().equals(intoId) || members.existsByCrewIdAndPersonId(crew.getId(), intoId)) {
+            if (Long.valueOf(intoId).equals(crew.getLeadId()) || members.existsByCrewIdAndPersonId(crew.getId(), intoId)) {
                 members.delete(m);
             } else {
                 m.setPersonId(intoId);
@@ -143,15 +143,13 @@ public class Crews {
         }
     }
 
-    /** The person leaves the sheet: out of every crew, and the crews they led are gone with their members. */
+    /** The person leaves the sheet: out of every crew, and the crews they led stay, with their members and no lead. */
     @Transactional
     public void remove(long personId) {
         members.deleteAll(members.findByPersonId(personId));
         members.flush();
         for (Crew crew : crews.findByLeadId(personId)) {
-            members.deleteAll(members.findByCrewId(crew.getId()));
-            members.flush();
-            crews.delete(crew);
+            crew.setLeadId(null);
         }
         crews.flush();
     }
@@ -160,7 +158,8 @@ public class Crews {
     @Transactional
     public void cloneTo(String sheetId, String toSheet, Map<Long, Long> personIds) {
         for (Crew crew : crews.findBySheetIdOrderByNameAsc(sheetId)) {
-            Crew copy = crews.save(new Crew(toSheet, crew.getName(), personIds.get(crew.getLeadId())));
+            Crew copy = crews.save(new Crew(toSheet, crew.getName(),
+                    crew.getLeadId() == null ? null : personIds.get(crew.getLeadId())));
             for (CrewMember m : members.findByCrewId(crew.getId())) {
                 members.save(new CrewMember(copy.getId(), personIds.get(m.getPersonId())));
             }

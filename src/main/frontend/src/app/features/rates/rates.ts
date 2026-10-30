@@ -48,7 +48,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
 }
 
 // The sheet's rates for each grade, a percent with two decimals from a from-date (or from the
-// beginning of time) through an optional to-date, the rate in force on the sheet's today per grade, and the form that sets one. A
+// beginning of time) through an optional to-date, the rate in force on the sheet's today per grade and on the first day of each month of its year, and the form that sets one. A
 // rate that was set is handed up as `changed`, so the dues it makes can be shown again.
 @Component({
   selector: 'app-rates',
@@ -69,6 +69,29 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           }
         </tbody>
       </table>
+      @if (calendar().length) {
+        <table aria-label="Rate calendar">
+          <caption>Rate calendar: the rate (%) in force on the first day of each month</caption>
+          <thead>
+            <tr>
+              <th scope="col">Grade</th>
+              @for (m of calendar(); track m.month) {
+                <th scope="col">{{ m.month }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (g of grades; track g) {
+              <tr>
+                <th scope="row">{{ g }}</th>
+                @for (m of calendar(); track m.month) {
+                  <td [attr.data-testid]="'rate-month-' + g + '-' + m.month">{{ (m.rates[g] ?? 'n/a') | figure }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       <ul aria-label="Rates set">
         @for (r of rates(); track r.grade + (r.from ?? '')) {
           <li [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
@@ -190,15 +213,15 @@ export class Rates {
    * Per grade, the rate in force on the sheet's today: the one with the latest from-date on or before it,
    * unless its to-date is before today (it has ended); with none, the parent sheet's, then its parent's.
    */
-  protected readonly current = computed<Record<string, string>>(() => {
-    const today = this.session.today() ?? '';
-    const found: Record<string, string> = {};
-    for (const level of [this.rates(), ...this.inherited()]) {
-      for (const [g, pct] of Object.entries(inForce(level, today))) {
-        if (found[g] === undefined) found[g] = pct;
-      }
-    }
-    return found;
+  protected readonly current = computed<Record<string, string>>(() => this.inForceOn(this.session.today() ?? ''));
+  /** Each month (yyyy-mm) of the sheet's today's calendar year, with the rates in force on its first day, as `current` is found. */
+  protected readonly calendar = computed<{ month: string; rates: Record<string, string> }[]>(() => {
+    const year = (this.session.today() ?? '').slice(0, 4);
+    if (!/^\d{4}$/.test(year)) return [];
+    return Array.from({ length: 12 }, (_, i) => {
+      const month = `${year}-${String(i + 1).padStart(2, '0')}`;
+      return { month, rates: this.inForceOn(`${month}-01`) };
+    });
   });
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
@@ -238,6 +261,17 @@ export class Rates {
       this.importError.set('');
       if (sheet) void this.reload(sheet);
     });
+  }
+
+  /** Per grade, the rate in force on the date; with none, the parent sheet's, then its parent's. */
+  private inForceOn(date: string): Record<string, string> {
+    const found: Record<string, string> = {};
+    for (const level of [this.rates(), ...this.inherited()]) {
+      for (const [g, pct] of Object.entries(inForce(level, date))) {
+        if (found[g] === undefined) found[g] = pct;
+      }
+    }
+    return found;
   }
 
   protected value(e: Event): string {
