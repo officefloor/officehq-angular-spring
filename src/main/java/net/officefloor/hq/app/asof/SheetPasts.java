@@ -130,7 +130,9 @@ public class SheetPasts {
     }
 
     private void put(String sheetId, LocalDate date) {
-        List<LocalDate> today = jdbc.queryForList("SELECT today FROM sheet WHERE id = ?", LocalDate.class, sheetId);
+        // take the sheet's lock first, as every change does, so a change under way is waited for, not deadlocked on
+        List<LocalDate> today = jdbc.queryForList("SELECT today FROM sheet WHERE id = ? FOR UPDATE", LocalDate.class,
+                sheetId);
         if (today.isEmpty()) {
             return;
         }

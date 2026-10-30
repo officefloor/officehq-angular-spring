@@ -21,6 +21,14 @@ export interface PoolMember {
   retired: boolean;
   /** Two decimals; null in an unbalanced pool, when the sheet has no pot or when every member is retired. */
   cut: string | null;
+  /** The member's cut at the end of each period whose to-date is on or before the sheet's today, in period order. */
+  periodCuts: PeriodCut[];
+}
+
+/** A member's cut as the sheet stood at the end of the period: two decimals, null when they had none then. */
+export interface PeriodCut {
+  period: string;
+  cut: string | null;
 }
 
 /**
@@ -59,6 +67,7 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
 // today is left out of its pool's total share, balance and cuts.
 // A person can be in several pools, each at most once; a pool is a member of at most one pool, and then its pot is
 // its cut there, while a pool that is a member of none has the sheet's pot.
+// For every period ended by the sheet's today, each member shows their cut as the sheet stood at the period's end.
 // Every crew is listed as a pool too: its members come from the crew, so it has no form to add one.
 @Component({
   selector: 'app-pools',
@@ -78,6 +87,12 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
                   <span data-testid="pool-member-name">{{ m.name }}</span>
                   <span>Share <span data-testid="pool-share">{{ m.share | figure }}</span></span>
                   <span>Cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span></span>
+                  @for (c of m.periodCuts; track c.period) {
+                    <span>
+                      Cut in {{ c.period }}
+                      <span [attr.data-testid]="'pool-cut-' + c.period">{{ (c.cut ?? '') | figure }}</span>
+                    </span>
+                  }
                   @if (m.retired) {
                     <span>(retired)</span>
                   }

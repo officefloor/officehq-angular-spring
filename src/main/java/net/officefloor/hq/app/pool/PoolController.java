@@ -3,6 +3,7 @@ package net.officefloor.hq.app.pool;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -41,19 +42,30 @@ public class PoolController {
 
     /**
      * A member of a pool: a person (pool null) or a pool (personId null); the share with two decimals, and so the
-     * cut, null when the member has none.
+     * cut, null when the member has none; their cut at the end of each period ended by the sheet's today.
      */
-    public record MemberView(Long personId, String pool, String name, String share, boolean retired, String cut) {
+    public record MemberView(Long personId, String pool, String name, String share, boolean retired, String cut,
+            List<PeriodCutView> periodCuts) {
+    }
+
+    /** A member's cut at the end of the named period, null when they had none then. */
+    public record PeriodCutView(String period, String cut) {
     }
 
     /** A pool on the sheet; its total share with two decimals; whether it is a crew's, its members the crew's. */
     public record PoolView(String name, List<MemberView> members, String total, boolean balanced, boolean crew) {
 
-        static PoolView of(Pools.Shown p) {
+        static PoolView of(Pools.Shown p, List<Pools.Then> history) {
             return new PoolView(p.name(), p.members().stream()
                     .map(m -> new MemberView(m.personId(), m.pool(), m.name(), m.share().toPlainString(), m.retired(),
-                            m.cut() == null ? null : m.cut().toPlainString())).toList(),
+                            text(m.cut()), history.stream()
+                                    .map(t -> new PeriodCutView(t.period(), text(t.cut(p.name(), m)))).toList()))
+                    .toList(),
                     p.total().toPlainString(), p.balanced(), p.crew());
+        }
+
+        private static String text(BigDecimal figure) {
+            return figure == null ? null : figure.toPlainString();
         }
     }
 
@@ -68,13 +80,19 @@ public class PoolController {
 
     @GetMapping
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return pools.list(sheetId.trim()).stream().map(PoolView::of).toList();
+        String sheet = sheetId.trim();
+        List<Pools.Shown> shown = pools.list(sheet);
+        List<Pools.Then> history = pools.history(sheet);
+        return shown.stream().map(p -> PoolView.of(p, history)).toList();
     }
 
     /** The pools on the sheet in the order they were added, each with its members in the order they were added. */
     @GetMapping(params = "order=added")
     public List<PoolView> listAsAdded(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return pools.list(sheetId.trim(), true).stream().map(PoolView::of).toList();
+        String sheet = sheetId.trim();
+        List<Pools.Shown> shown = pools.list(sheet, true);
+        List<Pools.Then> history = pools.history(sheet);
+        return shown.stream().map(p -> PoolView.of(p, history)).toList();
     }
 
     /** Add a pool; answers with every pool on the sheet. */

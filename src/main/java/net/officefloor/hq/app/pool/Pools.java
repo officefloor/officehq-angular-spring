@@ -14,10 +14,14 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import jakarta.persistence.EntityManager;
+import net.officefloor.hq.app.asof.SheetPasts;
 import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.crew.CrewMember;
 import net.officefloor.hq.app.crew.CrewMemberRepository;
 import net.officefloor.hq.app.crew.CrewRepository;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -44,6 +48,9 @@ import org.springframework.transaction.annotation.Transactional;
  * Every crew is also a pool under its name, listed with the stored pools: its lead and then its members, undated, at
  * equal shares of 100.00 (each rounded half to even, the remainder on the lead), cut from the sheet's pot like any
  * pool. Its members come from the crew, so none can be added to it here, and a pool cannot take a crew's name.
+ * For every period whose to-date is on or before the sheet's today, each member has the cut they had as the sheet
+ * stood at the end of that period (its pools, members, pot and holds then, that day as its today); none when they
+ * had none then.
  */
 @Service
 public class Pools {
@@ -70,6 +77,18 @@ public class Pools {
     public record Shown(String name, List<Member> members, BigDecimal total, boolean balanced, boolean crew) {
     }
 
+    /** The pools as they stood at the end of a period: its name and the pools then. */
+    public record Then(String period, List<Shown> pools) {
+
+        /** The member's cut in the pool then; null when the pool or the member was not there, or had none. */
+        public BigDecimal cut(String pool, Member member) {
+            return pools.stream().filter(p -> p.name().equals(pool)).flatMap(p -> p.members().stream())
+                    .filter(m -> Objects.equals(m.personId(), member.personId())
+                            && Objects.equals(m.pool(), member.pool()))
+                    .map(Member::cut).filter(Objects::nonNull).findFirst().orElse(null);
+        }
+    }
+
     private final PoolRepository pools;
     private final PoolMemberRepository members;
     private final PersonRepository people;
@@ -78,10 +97,16 @@ public class Pools {
     private final ApplicationEventPublisher events;
     private final CrewRepository crews;
     private final CrewMemberRepository crewMembers;
+    private final PeriodRepository periods;
+    private final SheetPasts pasts;
+    private final EntityManager entities;
 
     public Pools(PoolRepository pools, PoolMemberRepository members, PersonRepository people, SheetService sheets,
             SheetRepository sheetRows, ApplicationEventPublisher events, CrewRepository crews,
-            CrewMemberRepository crewMembers) {
+            CrewMemberRepository crewMembers, PeriodRepository periods, SheetPasts pasts, EntityManager entities) {
+        this.periods = periods;
+        this.pasts = pasts;
+        this.entities = entities;
         this.crews = crews;
         this.crewMembers = crewMembers;
         this.pools = pools;
@@ -123,6 +148,32 @@ public class Pools {
         List<Shown> crewPools = crewPools(sheetId, byId, pot, held);
         Stream<Shown> listed = Stream.concat(all.stream().map(p -> shown.get(p.getId())), crewPools.stream());
         return asAdded ? listed.toList() : listed.sorted(Comparator.comparing(Shown::name)).toList();
+    }
+
+    /**
+     * The pools as they stood at the end of each period whose to-date is on or before the sheet's today, in the
+     * order of the periods. Not in a transaction of its own: each period is read in its own rolled-back one.
+     */
+    public List<Then> history(String sheetId) {
+        LocalDate today = sheets.today(sheetId);
+        List<Period> ended = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> !p.getToDate().isAfter(today)).toList();
+        List<Then> result = new ArrayList<>();
+        for (Period period : ended) {
+            if (period.getToDate().equals(today)) {
+                result.add(new Then(period.getName(), list(sheetId)));
+                continue;
+            }
+            List<Shown> then = pasts.asOf(sheetId, period.getToDate(), () -> {
+                // the store now holds the sheet as it was: drop anything read before it was put there
+                entities.clear();
+                List<Shown> read = list(sheetId);
+                entities.clear();
+                return read;
+            });
+            result.add(new Then(period.getName(), then));
+        }
+        return result;
     }
 
     /** The sheet's crews, in the order they were added, each as a pool of its lead and members at equal shares. */
