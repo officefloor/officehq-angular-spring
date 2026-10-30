@@ -6,6 +6,7 @@ import net.officefloor.hq.app.access.SettingChanged;
 import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
+import net.officefloor.hq.app.person.PatronAdded;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.person.PersonHeld;
 import net.officefloor.hq.app.person.PersonRetired;
@@ -45,6 +46,12 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(PersonHeld e) {
         audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
+    }
+
+    @TransactionalEventListener
+    public void on(PatronAdded e) {
+        audit.record("PATRON_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+                + " name=" + e.name() + " patron=" + e.patron());
     }
 
     @TransactionalEventListener

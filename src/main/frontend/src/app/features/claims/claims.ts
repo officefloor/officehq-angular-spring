@@ -56,6 +56,8 @@ export interface PersonWithClaims {
   overdueCount: number;
   /** The due figures of the overdue claims that count, added up. */
   overdueTotal: string;
+  /** The ids of the people on the sheet the person named as their patrons. */
+  patrons: number[];
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;

@@ -62,14 +62,16 @@ public class PersonController {
      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
      * the date they are retired from (null when not), whether they are on hold, and how many of the claims
-     * that count are overdue and the sum of their due figures.
+     * that count are overdue and the sum of their due figures, and the ids of their patrons.
      */
     public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
             String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate,
-            boolean retired, LocalDate retiredFrom, boolean held, int overdueCount, String overdueTotal) {
+            boolean retired, LocalDate retiredFrom, boolean held, int overdueCount, String overdueTotal,
+            List<Long> patrons) {
 
         /** The person as shown, given the sheet's rates. */
-        public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements) {
+        public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
+                List<Long> patrons) {
             String grade = person.getGrade();
             boolean held = person.isHeld();
             BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held)).map(Claim::getAmount)
@@ -79,7 +81,8 @@ public class PersonController {
                     claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
-                    person.getRetiredFrom(), held, overdue.size(), money(Dues.sum(grade, overdue, rates)));
+                    person.getRetiredFrom(), held, overdue.size(), money(Dues.sum(grade, overdue, rates)),
+                    patrons);
         }
     }
 
@@ -115,9 +118,11 @@ public class PersonController {
         Map<Long, List<Claim>> bySheet = claims.bySheet(sheet);
         RateTable table = rates.table(sheet);
         Map<Long, Statements> stated = statements.bySheet(sheet);
+        Map<Long, List<Long>> patrons = service.patronsBySheet(sheet);
         return service.list(sheet).stream()
                 .map(p -> PersonView.of(p, bySheet.getOrDefault(p.getId(), List.of()), table,
-                        stated.getOrDefault(p.getId(), Statements.NONE))).toList();
+                        stated.getOrDefault(p.getId(), Statements.NONE),
+                        patrons.getOrDefault(p.getId(), List.of()))).toList();
     }
 
     @PostMapping
@@ -125,7 +130,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade()), List.of(),
-                rates.table(sheet), Statements.NONE);
+                rates.table(sheet), Statements.NONE, List.of());
     }
 
     @PutMapping("/{personId}")
@@ -133,8 +138,7 @@ public class PersonController {
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
-        return PersonView.of(service.edit(sheet, user.trim(), personId, form.version(), form.name(), form.grade()),
-                claims.forPerson(sheet, personId), rates.table(sheet), statements.forPerson(sheet, personId));
+        return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(), form.grade()));
     }
 
     /** Take a statement for the person; answers with the person as bound by it. */
@@ -143,8 +147,7 @@ public class PersonController {
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user) {
         String sheet = sheetId.trim();
         statements.take(sheet, user.trim(), personId);
-        return PersonView.of(service.get(sheet, personId), claims.forPerson(sheet, personId), rates.table(sheet),
-                statements.forPerson(sheet, personId));
+        return view(sheet, service.get(sheet, personId));
     }
 
     /** Retire the person from a date; answers with the person as retired. */
@@ -154,8 +157,7 @@ public class PersonController {
             @RequestBody(required = false) RetireForm form) {
         String sheet = sheetId.trim();
         Person person = service.retire(sheet, user.trim(), personId, form == null ? null : form.from());
-        return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
-                statements.forPerson(sheet, personId));
+        return view(sheet, person);
     }
 
     /** A hold as asked for: on hold (true) or released (false). */
@@ -169,8 +171,26 @@ public class PersonController {
             @Valid @RequestBody HoldForm form) {
         String sheet = sheetId.trim();
         Person person = service.hold(sheet, user.trim(), personId, form.held());
+        return view(sheet, person);
+    }
+
+    /** A patron as named: the id of another person on the sheet. */
+    public record PatronForm(@NotNull Long patronId) {
+    }
+
+    /** The person names another person on the sheet as their patron; answers with the person as they are now. */
+    @PostMapping("/{personId}/patrons")
+    public PersonView addPatron(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody PatronForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.addPatron(sheet, user.trim(), personId, form.patronId()));
+    }
+
+    private PersonView view(String sheet, Person person) {
+        long personId = person.getId();
         return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
-                statements.forPerson(sheet, personId));
+                statements.forPerson(sheet, personId), service.patrons(sheet, personId));
     }
 
     /** Another save took the name first: the unique name on the sheet refuses this one. */

@@ -18,7 +18,8 @@ function cents(amount: string): number {
 // The people on the active sheet, in the order they were added, each with their claims, and the
 // one form that adds a person or, once a person's editor is opened, edits them. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
-// can be put on hold and released; while held, their OPEN claims count in no total.
+// can be put on hold and released; while held, their OPEN claims count in no total. A person can name
+// others on the sheet as their patrons; their backing is their patrons' due-totals added up.
 @Component({
   selector: 'app-people',
   imports: [Access, Claims, Periods, Rates],
@@ -99,6 +100,7 @@ function cents(amount: string): number {
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -117,6 +119,8 @@ function cents(amount: string): number {
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
               <td data-testid="person-overdue-total">{{ p.overdueTotal }}</td>
+              <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
+              <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -140,6 +144,24 @@ function cents(amount: string): number {
                 </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                }
+                <label [for]="'person-patron-select-' + p.id">Patron for {{ p.name }}</label>
+                <select
+                  #patronSelect
+                  [id]="'person-patron-select-' + p.id"
+                  data-testid="person-patron-select"
+                  (change)="clearPatronError(p)"
+                >
+                  <option value="">Choose a person</option>
+                  @for (o of patronChoices(p); track o.id) {
+                    <option [value]="o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect)">
+                  Add patron<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+                @if (patronError()?.id === p.id) {
+                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                 }
               </td>
               <td><app-claims [person]="p" [periods]="periods()" (saved)="replace($event)" /></td>
@@ -172,6 +194,10 @@ export class People {
   private quickBusy = false;
   /** The refusal of the last action taken on a person's row, shown on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
+  /** The refusal of the last patron named on a person's row, shown on that row. */
+  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
+  /** A patron still waiting for its answer: another press meanwhile is ignored. */
+  private naming = false;
   /** A statement still waiting for its answer: another press meanwhile is ignored. */
   private stating = false;
   /** A retirement still waiting for its answer: another press meanwhile is ignored. */
@@ -192,6 +218,20 @@ export class People {
     (this.people().reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0) / 100).toFixed(2),
   );
 
+  /** Each person's patrons' names, sorted and comma separated, and their backing: the patrons'
+   *  due-totals added up, a patron showing n/a skipped. */
+  protected readonly patronage = computed(() => {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    return new Map(
+      this.people().map((p) => {
+        const patrons = p.patrons.map((id) => byId.get(id)).filter((q): q is Person => q !== undefined);
+        const names = patrons.map((q) => q.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
+        const backing = patrons.reduce((sum, q) => sum + (q.dueTotal === null ? 0 : cents(q.dueTotal)), 0);
+        return [p.id, { names, backing: (backing / 100).toFixed(2) }];
+      }),
+    );
+  });
+
   /** Everyone's overdue claims counted up. */
   protected readonly overdueCount = computed(() => this.people().reduce((sum, p) => sum + p.overdueCount, 0));
   /** Everyone's overdue-total added up. */
@@ -205,6 +245,7 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.personError.set(null);
+      this.patronError.set(null);
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -225,8 +266,51 @@ export class People {
     if (this.personError()?.id === p.id) this.personError.set(null);
   }
 
+  protected clearPatronError(p: Person): void {
+    if (this.patronError()?.id === p.id) this.patronError.set(null);
+  }
+
+  /** The people the person may still name as a patron: everyone else on the sheet not named yet. */
+  protected patronChoices(p: Person): Person[] {
+    return this.people().filter((q) => q.id !== p.id && !p.patrons.includes(q.id));
+  }
+
+  /** Name the chosen person as the person's patron. */
+  protected async addPatron(p: Person, select: HTMLSelectElement): Promise<void> {
+    if (this.naming) return;
+    this.patronError.set(null);
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const patronId = Number(select.value);
+    if (!select.value || !Number.isInteger(patronId)) {
+      this.patronError.set({ id: p.id, message: 'Choose a person to name as patron.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.naming = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/patrons`,
+          { patronId },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+      select.value = '';
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.patronError.set({ id: p.id, message: 'Could not name that person as patron.' });
+    } finally {
+      this.naming = false;
+    }
+  }
+
   protected edit(p: Person): void {
     this.personError.set(null);
+    this.patronError.set(null);
     this.editing.set(p.id);
     this.version = p.version;
     this.name.set(p.name);
@@ -327,6 +411,7 @@ export class People {
   protected async statement(p: Person): Promise<void> {
     if (this.stating) return;
     this.personError.set(null);
+    this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const headers = { 'X-User': this.session.user() ?? '' };
@@ -353,6 +438,7 @@ export class People {
   protected async retire(p: Person, from: string): Promise<void> {
     if (this.retiring) return;
     this.personError.set(null);
+    this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const date = from.trim();
@@ -384,6 +470,7 @@ export class People {
   protected async hold(p: Person): Promise<void> {
     if (this.holding) return;
     this.personError.set(null);
+    this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const headers = { 'X-User': this.session.user() ?? '' };
