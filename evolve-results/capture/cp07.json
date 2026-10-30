@@ -1,0 +1,64 @@
+{
+  "checkpoint": 7,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp07_rates-and-due",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a rate for each grade: a percent with two decimals, set on the screen (RATE_SET\ngrade=<grade> rate=<rate> in the audit). A claim's due is its amount times the rate for its\nperson's grade, divided by 100, rounded half up to two decimals (a half rounds away from zero:\n1.025 becomes 1.03). Show due on each claim. Show each person's due-total: their claimed times\ntheir grade's rate, divided by 100, rounded the same way. Show the sheet's due-total: everyone's\ndue-total added up. A grade with no rate makes its claims' due and its people's due-total n/a,\nand a total skips n/a.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a rate for each grade: a percent with two decimals, set on the screen (RATE_SET\ngrade=<grade> rate=<rate> in the audit). A claim's due is its amount times the rate for its\nperson's grade, divided by 100, rounded half up to two decimals (a half rounds away from zero:\n1.025 becomes 1.03). Show due on each claim. Show each person's due-total: their claimed times\ntheir grade's rate, divided by 100, rounded the same way. Show the sheet's due-total: everyone's\ndue-total added up. A grade with no rate makes its claims' due and its people's due-total n/a,\nand a total skips n/a.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c1ca016342a7706ea9096d7c178d01c47eba5346",
+  "reset_sha": "",
+  "preagent_sha": "de57e98644a8e15b6b1339a782a94289a75c72ea",
+  "prev_sha": "de57e98644a8e15b6b1339a782a94289a75c72ea",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8973490000000001,
+    "input_tokens": 24,
+    "output_tokens": 13004,
+    "cache_read_tokens": 506745,
+    "cache_creation_tokens": 66978,
+    "num_turns": 14,
+    "duration_ms": 224769,
+    "duration_api_ms": 108145,
+    "model": "claude-opus-5-5",
+    "session_id": "9f76945c-f6a4-44fd-8b85-d20c34e6bf02",
+    "stop_reason": "success",
+    "result_text": "Rates and due amounts are in, and `bin/e2e` passes all 4 acceptance tests.\n\n**What you'll see on screen**\n- **Rates:** a new section shows each grade's current rate (`rate-current-A/B/C`), or `n/a` if none is set. A form sets a grade's rate, and setting it again replaces the old value. A bad percent shows `rate-form-error` and saves nothing.\n- **Due:** each claim shows its due (`claim-due`) and each person shows a due-total (`person-due-total`); either reads `n/a` when the grade has no rate. The sheet's due-total (`rollup-due-total`) adds up the people's due-totals and skips the `n/a` ones.\n- **After a rate change** the people list re-reads from the server, so the dues update straight away without reloading the sheet.\n\n**Store and server**\n- A new migration, `V6__rate.sql`, adds a `rate` table with one rate per sheet and grade.\n- A new `rate` package holds the code to read and set rates. The server works out every due (amount \u00d7 rate \u00f7 100, rounded half up to two decimals), so the screen only displays results and adds them up for the sheet total.\n- Every rate set is recorded in the audit file as `RATE_SET sheet=<id> by=<user> grade=<g> rate=<rate>`, including setting a grade to the rate it already has. A refused set writes nothing.\n\n**Choices the request didn't settle:**\n- A rate must be 0 or more, with up to three digits before the decimal point and up to two after (so up to 999.99). Rates over 100% are allowed.\n- If every grade is `n/a`, the sheet's due-total shows `0.00`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8973490000000001,
+        "num_turns": 14,
+        "duration_ms": 224769,
+        "duration_api_ms": 108145,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp07.agent.jsonl",
+  "agent_diff_file": "cp07.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
