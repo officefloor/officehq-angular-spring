@@ -29,7 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
  * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
  * the date from which a claim opened is numbered within its period (none: off); and its cap, the most a
  * person's due-total comes to (none: no cap); and its proof threshold, the most due a claim may have to be
- * settled or approved while it has no proof (none: no threshold). The settings that carry a figure are dated (see
+ * settled or approved while it has no proof (none: no threshold), and each grade's own (none: the sheet's). The settings that carry a figure are dated (see
  * {@link DatedSettings}): a save records its value from a from-date, the sheet's today when none is given.
  */
 @Service
@@ -49,6 +49,11 @@ public class AccessService {
     /** The key of a grade's grace days: grace-A, grace-B or grace-C. */
     public static String gradeGraceKey(String grade) {
         return DatedSettings.gradeGraceKey(grade);
+    }
+
+    /** The key of a grade's proof threshold: proof-threshold-A, proof-threshold-B or proof-threshold-C. */
+    public static String gradeProofThresholdKey(String grade) {
+        return DatedSettings.gradeProofThresholdKey(grade);
     }
 
     public static final String LATE_PCT = DatedSettings.LATE_PCT;
@@ -237,7 +242,8 @@ public class AccessService {
     @Transactional
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
-            Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate) {
+            Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
+            Map<String, Dated> gradeProofThreshold) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -276,6 +282,11 @@ public class AccessService {
         if (proofThreshold != null) {
             setDated(sheetId, user, PROOF_THRESHOLD, money(proofThreshold.value(), null), proofThreshold.from(), false);
         }
+        gradeProofThreshold.forEach((grade, threshold) -> {
+            if (threshold != null) {
+                setDated(sheetId, user, gradeProofThresholdKey(grade), money(threshold.value(), null), threshold.from(), false);
+            }
+        });
         if (noteThreshold != null) {
             setDated(sheetId, user, NOTE_THRESHOLD, money(noteThreshold.value(), null), noteThreshold.from(), false);
         }

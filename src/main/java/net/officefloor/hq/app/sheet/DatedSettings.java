@@ -10,7 +10,7 @@ import java.util.Optional;
  * A sheet's dated settings: the value of each in force on a date is the one with the latest from-date on
  * or before it (a value with no from-date applying from the beginning of time); before every from-date,
  * and where that value was saved blank, the sheet's starting value (1.00 for the floor, 0.00 for the late
- * percent, 14 days for the terms; none for a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold; the sheet's terms for a grade's own
+ * percent, 14 days for the terms; none for a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's proof threshold and the note threshold; the sheet's terms for a grade's own
  * terms).
  */
 public record DatedSettings(List<SheetSetting> values) {
@@ -37,6 +37,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The key of a grade's grace days: grace-A, grace-B or grace-C. */
     public static String gradeGraceKey(String grade) {
         return GRACE + "-" + grade;
+    }
+
+    /** The key of a grade's proof threshold: proof-threshold-A, proof-threshold-B or proof-threshold-C. */
+    public static String gradeProofThresholdKey(String grade) {
+        return PROOF_THRESHOLD + "-" + grade;
     }
 
     /** The key of a grade's own terms: terms-A, terms-B or terms-C. */
@@ -103,6 +108,17 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The most due a claim dated on the date may have to be settled or approved with no proof; null when there is none. */
     public BigDecimal proofThreshold(LocalDate date) {
         return on(PROOF_THRESHOLD, date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The grade's proof threshold on the date; null when it has none then (it uses the sheet's). */
+    public BigDecimal gradeProofThreshold(String grade, LocalDate date) {
+        return grade == null ? null : on(gradeProofThresholdKey(grade), date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The proof threshold for a claim of the grade dated on the date: the grade's own, or the sheet's; null when neither. */
+    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
+        BigDecimal own = gradeProofThreshold(grade, date);
+        return own != null ? own : proofThreshold(date);
     }
 
     /** The most due a claim dated on the date may have to be opened with an empty note; null when there is none. */

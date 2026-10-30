@@ -46,6 +46,10 @@ interface Settings {
   graceA: string | null;
   graceB: string | null;
   graceC: string | null;
+  /** The most due a claim of grade A, B or C may have to be settled or approved with no proof; null when the grade has none (it uses the sheet's). */
+  proofThresholdA: string | null;
+  proofThresholdB: string | null;
+  proofThresholdC: string | null;
 }
 
 /** The steward role delegated by a steward (by) to a user, from a from-date to a to-date (yyyy-mm-dd), inclusive. */
@@ -68,10 +72,11 @@ const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
 const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
 const GRADE_GRACE = { A: 'graceA', B: 'graceB', C: 'graceC' } as const;
+const GRADE_PROOF = { A: 'proofThresholdA', B: 'proofThresholdB', C: 'proofThresholdC' } as const;
 /** The settings that carry a figure: each is saved from a from-date. */
-const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold', 'graceA', 'graceB', 'graceC'] as const;
+const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold', 'graceA', 'graceB', 'graceC', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC'] as const;
 type Dated = (typeof DATED)[number];
-const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', graceA: '', graceB: '', graceC: '' };
+const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', graceA: '', graceB: '', graceC: '', proofThresholdA: '', proofThresholdB: '', proofThresholdC: '' };
 /** The permission matrix: each action with its setting and the roles that take it when left blank. */
 const PERMS = [
   { action: 'open', field: 'permOpen', standing: 'clerk, steward' },
@@ -101,7 +106,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // past a claim's due-by before it is overdue and its late charge counts from (blank: none), and the entry date, the date a
 // new claim given no date takes in place of the sheet's today (blank: off; not dated), and the cap, the most a person's due-total comes to (blank: no
 // cap), and the proof threshold, the most due a claim may have to be settled or approved with no proof
-// (blank: none), and the permission matrix, the roles that may open, settle, void, reassign, close and
+// (blank: none), and each grade's own proof threshold, used for its claims in place of the sheet's (blank: none), and the permission matrix, the roles that may open, settle, void, reassign, close and
 // reopen, each a comma separated list (blank: the standing rule; not dated). The settings that carry a figure are dated: each is saved from its from-date (blank: the sheet's
 // today), and each shows, as does its input, the value in force on the sheet's today. A save sends only
 // the settings whose input (or from-date) was changed (a Delete or Backspace in a blank input asks to
@@ -208,6 +213,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
+      @for (g of grades; track g) {
+        <p>Proof threshold for grade {{ g }} <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProof()[g] ?? '' }}</strong></p>
+      }
       <p>Note threshold <strong data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</strong></p>
       @for (p of perms; track p.field) {
         <p>Roles that may {{ p.action }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
@@ -389,6 +397,25 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput().proofThreshold"
           (input)="setFrom('proofThreshold', value($event)); proofThresholdTouched = true; settingsError.set('')"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }}: used for its claims in place of the sheet's (blank: none)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g"
+            inputmode="decimal"
+            [attr.data-testid]="'setting-proof-threshold-' + g"
+            [value]="gradeProofInput()[g]"
+            (input)="setGradeProofInput(g, value($event)); gradeProofTouched[g] = true; settingsError.set('')"
+            (keydown)="gradeProofTouched[g] = gradeProofTouched[g] || clears($event)"
+          />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} in force from (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g + '-from'"
+            type="date"
+            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
+            [value]="fromInput()[GRADE_PROOF[g]]"
+            (input)="setFrom(GRADE_PROOF[g], value($event)); gradeProofTouched[g] = true; settingsError.set('')"
+          />
+        }
         <label for="setting-note-threshold">Note threshold: a claim with a due above it needs a note to be opened (blank: none)</label>
         <input
           id="setting-note-threshold"
@@ -463,10 +490,13 @@ export class Access {
   protected readonly capInput = signal('');
   protected readonly proofThreshold = signal<string | null>(null);
   protected readonly proofThresholdInput = signal('');
+  protected readonly gradeProof = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
+  protected readonly gradeProofInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly noteThreshold = signal<string | null>(null);
   protected readonly noteThresholdInput = signal('');
   protected readonly GRADE_TERMS = GRADE_TERMS;
   protected readonly GRADE_GRACE = GRADE_GRACE;
+  protected readonly GRADE_PROOF = GRADE_PROOF;
   protected readonly perms = PERMS;
   protected readonly perm = signal<Record<Perm, string | null>>({ ...NO_PERMS });
   protected readonly permInput = signal<Record<Perm, string>>(NO_PERMS);
@@ -486,6 +516,7 @@ export class Access {
   protected entryDateTouched = false;
   protected capTouched = false;
   protected proofThresholdTouched = false;
+  protected gradeProofTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
   protected noteThresholdTouched = false;
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
@@ -504,7 +535,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -525,6 +556,10 @@ export class Access {
 
   protected setGradeGraceInput(grade: Grade, v: string): void {
     this.gradeGraceInput.update((t) => ({ ...t, [grade]: v }));
+  }
+
+  protected setGradeProofInput(grade: Grade, v: string): void {
+    this.gradeProofInput.update((t) => ({ ...t, [grade]: v }));
   }
 
   protected setPermInput(key: Perm, v: string): void {
@@ -681,6 +716,14 @@ export class Access {
       this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const gradeProof = this.gradeProofInput();
+    for (const g of GRADES) {
+      const threshold = gradeProof[g].trim();
+      if (this.gradeProofTouched[g] && threshold !== '' && !LIMIT.test(threshold)) {
+        this.settingsError.set(`Enter a proof threshold for grade ${g} of 0.00 or more, with up to two decimals, or leave it blank for the sheet's.`);
+        return;
+      }
+    }
     const noteThreshold = this.noteThresholdInput().trim();
     if (this.noteThresholdTouched && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
       this.settingsError.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
@@ -719,6 +762,9 @@ export class Access {
     if (this.entryDateTouched) body.entryDate = entryDate;
     if (this.capTouched) body.cap = cap;
     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
+    for (const g of GRADES) {
+      if (this.gradeProofTouched[g]) body[GRADE_PROOF[g]] = gradeProof[g].trim();
+    }
     if (this.noteThresholdTouched) body.noteThreshold = noteThreshold;
     for (const p of PERMS) {
       if (this.permTouched[p.field]) body[p.field] = perms[p.field].trim();
@@ -790,6 +836,9 @@ export class Access {
     this.proofThreshold.set(settings.proofThreshold);
     this.proofThresholdInput.set(settings.proofThreshold ?? '');
     this.proofThresholdTouched = false;
+    this.gradeProof.set({ A: settings.proofThresholdA, B: settings.proofThresholdB, C: settings.proofThresholdC });
+    this.gradeProofInput.set({ A: settings.proofThresholdA ?? '', B: settings.proofThresholdB ?? '', C: settings.proofThresholdC ?? '' });
+    this.gradeProofTouched = { A: false, B: false, C: false };
     this.noteThreshold.set(settings.noteThreshold);
     this.noteThresholdInput.set(settings.noteThreshold ?? '');
     this.noteThresholdTouched = false;

@@ -336,7 +336,7 @@ public class ClaimService {
         String due = null;
         if (next == ClaimStatus.SETTLED) {
             BigDecimal fixed = dueNow(sheetId, claim, owner);
-            requireProof(sheetId, claim, fixed);
+            requireProof(sheetId, claim, owner, fixed);
             if (access.canSettle(sheetId, user, fixed)) {
                 claim.setSettledDue(fixed);
                 due = fixed == null ? "n/a" : fixed.toPlainString();
@@ -562,14 +562,15 @@ public class ClaimService {
     }
 
     /**
-     * Refuse settling or approving a claim with no proof whose due (null: n/a) is above the sheet's proof
-     * threshold in force on the claim's date.
+     * Refuse settling or approving a claim with no proof whose due (null: n/a) is above the proof threshold
+     * in force on the claim's date: its owner's grade's then when one is set, else the sheet's.
      */
-    private void requireProof(String sheetId, Claim claim, BigDecimal due) {
+    private void requireProof(String sheetId, Claim claim, Person owner, BigDecimal due) {
         if (due == null || claim.getProofs() > 0) {
             return;
         }
-        BigDecimal threshold = sheets.settings(sheetId).proofThreshold(claim.getDate());
+        String grade = owner == null ? null : owner.gradeOn(claim.getDate());
+        BigDecimal threshold = sheets.settings(sheetId).proofThresholdFor(grade, claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim with a due above " + threshold.toPlainString() + " needs a proof to be settled");
@@ -594,7 +595,7 @@ public class ClaimService {
         Rollup.Figures before = rollup.figures(sheetId);
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         BigDecimal fixed = dueNow(sheetId, claim, owner);
-        requireProof(sheetId, claim, fixed);
+        requireProof(sheetId, claim, owner, fixed);
         claim.setSettledDue(fixed);
         claim.setStatus(ClaimStatus.SETTLED);
         log(sheetId, user, claim, owner);
