@@ -1,0 +1,64 @@
+{
+  "checkpoint": 97,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp97_monthly-totals",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f38c9e1dfe2ae29b250c1e6df01267c35f5a6d17",
+  "reset_sha": "",
+  "preagent_sha": "4f8e1f1d7d37253995fbd3e37320273a2ff29b13",
+  "prev_sha": "4f8e1f1d7d37253995fbd3e37320273a2ff29b13",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.530592,
+    "input_tokens": 30,
+    "output_tokens": 4649,
+    "cache_read_tokens": 512100,
+    "cache_creation_tokens": 41884,
+    "num_turns": 15,
+    "duration_ms": 209099,
+    "duration_api_ms": 52260,
+    "model": "claude-opus-5-5",
+    "session_id": "a7ec0929-8785-4cb5-bbbb-035c70494d2f",
+    "stop_reason": "success",
+    "result_text": "The Summary panel now shows a due-total for each calendar month that has a claim on the sheet, and all 4 tests in `bin/e2e` pass.\n\n**What changed:**\n- **Server** (`PersonController.java`): each claim sent to the front end now carries a `counts` flag. It uses the same \"counts\" rule (`Dues.counts`) that the existing totals already use, so OPEN, PENDING and SETTLED claims count, and claims left out by a hold, a retirement or a deferral don't. I added the field at the end of the claim's data.\n- **Front end**:\n  - `claims.ts`: the `Claim` type has the new `counts` field.\n  - `summary.ts`: a new \"By month\" table lists every month (yyyy-mm) that has any claim, earliest first. This includes draft and void claims, so a month whose claims don't count shows `0.00` (as the tests expect). Each month's total adds up the due of its claims that count, and its value is under `month-<yyyy-mm>-due-total`.\n\n**Two choices to know about:**\n- **No trimming:** the month totals are plain sums. Unlike the sheet-wide due-total, they don't drop the highest and lowest person's figure.\n- **No cap:** the sheet's cap per person isn't applied to the month totals. A claim with no due figure (no rate) is skipped.\n\nI didn't change the stored data and added no audit records, because the test expects none for this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.530592,
+        "num_turns": 15,
+        "duration_ms": 209099,
+        "duration_api_ms": 52260,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp97.agent.jsonl",
+  "agent_diff_file": "cp97.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

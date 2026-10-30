@@ -1,0 +1,108 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index c634271d..e22a7441 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -60,6 +60,8 @@ export interface Claim {
+   voidReason: string | null;
+   /** The claim's comments, oldest first. */
+   comments: ClaimComment[];
++  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, and not left out by a hold, a retirement or a deferral. */
++  counts: boolean;
+ }
+ 
+ /** A comment on a claim: who wrote it, the sheet's today when it was written, and its text. */
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 09d3895a..63d8ca08 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -18,7 +18,8 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+ }
+ 
+ // The sheet's figures summed from the list: per grade, the people on it today (retired people left
+-// out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how many
++// out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per month any claim is dated in, the dues of
++// its claims that count; per status, how many
+ // claims have it; per reason on the sheet's void reasons, how many VOID claims were voided with it.
+ @Component({
+   selector: 'app-summary',
+@@ -55,6 +56,20 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+           }
+         </tbody>
+       </table>
++      <table>
++        <caption>By month</caption>
++        <thead>
++          <tr><th scope="col">Month</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (m of byMonth(); track m.month) {
++            <tr>
++              <th scope="row">{{ m.month }}</th>
++              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
+       <table>
+         <caption>By status</caption>
+         <thead>
+@@ -105,6 +120,17 @@ export class Summary {
+     return this.periods().map((p) => ({ name: p.name, dueTotal: totals[p.id] }));
+   });
+ 
++  /** Every month (yyyy-mm) any claim is dated in, earliest first, with the dues of its claims that count added up. */
++  protected readonly byMonth = computed(() => {
++    const totals = new Map<string, number>();
++    for (const c of this.people().flatMap((p) => p.claims)) {
++      const month = c.date.slice(0, 7);
++      const due = c.counts && c.due !== null ? cents(c.due) : 0;
++      totals.set(month, (totals.get(month) ?? 0) + due);
++    }
++    return [...totals.keys()].sort().map((month) => ({ month, dueTotal: ((totals.get(month) ?? 0) / 100).toFixed(2) }));
++  });
++
+   protected readonly byStatus = computed(() => statusCounts(this.people()));
+ 
+   protected readonly byVoidReason = computed(() => {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 6e58c806..25f78038 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -56,15 +56,15 @@ public class PersonController {
+      * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
+      * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}),
+      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
+-     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none) and its comments, oldest first.
++     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, and whether it counts in the live totals (see {@link Dues#counts}).
+      */
+     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
+             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
+             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
+             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
+-            String voidReason, List<CommentView> comments) {
++            String voidReason, List<CommentView> comments, boolean counts) {
+ 
+-        static ClaimView of(Claim claim, Grades grade, RateTable rates) {
++        static ClaimView of(Claim claim, Grades grade, RateTable rates, Holds held) {
+             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
+                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getShownNumber(),
+                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, grade, rates),
+@@ -73,7 +73,8 @@ public class PersonController {
+                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
+                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
+                     Tags.list(claim.getTags()), claim.getVoidReason(),
+-                    claim.getComments().stream().map(CommentView::of).toList());
++                    claim.getComments().stream().map(CommentView::of).toList(),
++                    Dues.counts(claim, held, rates.today()));
+         }
+     }
+ 
+@@ -122,7 +123,7 @@ public class PersonController {
+                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
+             return new PersonView(person.getId(), person.getVersion(), person.getName(),
+-                    grade.on(rates.today()), person.getTerms(), claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
++                    grade.on(rates.today()), person.getTerms(), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
+                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
+                     statements.count(),
+                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
