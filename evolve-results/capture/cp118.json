@@ -1,0 +1,64 @@
+{
+  "checkpoint": 118,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp118_import-rates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Rates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nRates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7838465fc6721cf57070b527c40ef19ccdf28312",
+  "reset_sha": "",
+  "preagent_sha": "21759a485d6739b001af234756e7b18efea90629",
+  "prev_sha": "21759a485d6739b001af234756e7b18efea90629",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.667498,
+    "input_tokens": 34,
+    "output_tokens": 7442,
+    "cache_read_tokens": 669050,
+    "cache_creation_tokens": 48089,
+    "num_turns": 19,
+    "duration_ms": 254001,
+    "duration_api_ms": 69687,
+    "model": "claude-opus-5-5",
+    "session_id": "8e2dde84-8f16-487f-aa62-357ebc8a6f88",
+    "stop_reason": "success",
+    "result_text": "You can now paste rates into a new rate import box, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves:**\n- Each line is `grade,rate,from,to`, and the from- and to-dates may be left out or blank. Blank lines are skipped.\n- Every line is checked first against the rate form's rules: the grade must be A, B or C; the rate needs up to three digits with up to two decimals; the dates must be real dates; and the to-date can't be before the from-date.\n- If any line fails, or the paste is empty, nothing is set and nothing goes to the audit file. The error names the line that failed.\n- Otherwise the lines are set in order through the same code the rate form uses. A rate for the same grade and from-date is replaced, and each line writes `RATE_SET` (plus any rollup and totals records the form would write).\n- All the lines go through as one change, so a failure partway rolls back the earlier ones.\n- When it's done, the box shows how many rates were set, and the rates list and dues refresh. The old count disappears as soon as the button is pressed again.\n\n**What I changed:**\n- **Server:** a new `rate/RateImportService.java`, modelled on the existing people import, and a new `POST /api/sheets/{sheetId}/rates/import` endpoint in `RateController.java` that returns how many were set.\n- **Front end:** the import box in `features/rates/rates.ts`, using the test's ids `import-rates`, `import-rates-submit`, `import-rates-set` and `import-rates-error`. It clears whenever a sheet is loaded, like the other forms.\n\nNo database changes were needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.667498,
+        "num_turns": 19,
+        "duration_ms": 254001,
+        "duration_api_ms": 69687,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp118.agent.jsonl",
+  "agent_diff_file": "cp118.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
