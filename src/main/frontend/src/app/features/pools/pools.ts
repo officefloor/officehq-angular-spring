@@ -17,11 +17,11 @@ export interface PoolMember {
   name: string;
   share: string;
   retired: boolean;
-  /** Two decimals; null in an unbalanced pool or when the sheet has no pot. */
+  /** Two decimals; null in an unbalanced pool, when the sheet has no pot or when every member is retired. */
   cut: string | null;
 }
 
-/** A pool: its members, its total share (a retired member's counting 0.00) and whether that is exactly 100.00. */
+/** A pool: its members, its total share (a retired member's share counted as given) and whether that is exactly 100.00. */
 export interface Pool {
   name: string;
   members: PoolMember[];

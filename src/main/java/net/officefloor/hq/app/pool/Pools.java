@@ -23,14 +23,16 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The pools on a sheet, sorted by name, and their members: people of the sheet, each in a pool at most once, or
  * other pools of the sheet, each a member of at most one pool, with a share percent. A pool cannot contain itself
- * through any chain of pools, and a chain is at most three pools deep. A pool's total share counts a retired member's
- * share (a retirement date set, whatever the date) as 0.00; the pool is balanced when its total is exactly 100.00.
+ * through any chain of pools, and a chain is at most three pools deep. A pool's total share counts every member's share,
+ * a retired member's (a retirement date set, whatever the date) as given; the pool is balanced when its total is
+ * exactly 100.00.
  * A pool that is a member of none has the sheet's pot; a pool that is a member of another has as its pot its cut in
  * that pool (none when that pool has no cuts). Each member of a balanced pool with a pot has a cut: 0.00 for a
  * retired member or a person with a hold covering the sheet's today, otherwise the pot times their share divided by
  * the shares of the members with a cut added up, rounded half to even to two decimals; the remainder, the pot less
  * the cuts added up, goes to the member with a cut with the largest share, the earliest added on a tie, so the cuts
- * total exactly the pot (all 0.00 when no member has a cut). A hold changes neither the total share nor the balance.
+ * total exactly the pot (all 0.00 when no member has a cut, but none at all when every member is retired). A hold
+ * changes neither the total share nor the balance.
  * A membership may be dated, from and to (both days included, either open); a member whose dates do not include the
  * sheet's today is left out entirely: not in the total share nor the balance, and no cut (shown, with its share).
  */
@@ -138,15 +140,14 @@ public class Pools {
         for (int i = 0; i < listed.size(); i++) {
             if (current.get(i)) {
                 counted.add(listed.get(i));
-                if (!listed.get(i).retired()) {
-                    total = total.add(listed.get(i).share());
-                }
+                total = total.add(listed.get(i).share());
             }
         }
         total = total.setScale(2);
         boolean balanced = total.compareTo(HUNDRED) == 0;
         List<Member> withCuts = listed;
-        if (balanced && pot != null) {
+        boolean allRetired = !counted.isEmpty() && counted.stream().allMatch(Member::retired);
+        if (balanced && pot != null && !allRetired) {
             // members out of their dates keep no cut; the others are cut as if they were all the pool's members
             List<Member> cut = cut(counted, pot, held);
             withCuts = new ArrayList<>();
