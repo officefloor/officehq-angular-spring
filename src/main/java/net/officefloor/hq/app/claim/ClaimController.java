@@ -75,6 +75,10 @@ public class ClaimController {
     public record DeferForm(@NotNull LocalDate until) {
     }
 
+    /** The amount split off a claim, more than 0.00 and less than the claim's amount. */
+    public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
+    }
+
     public record Refusal(String message) {
     }
 
@@ -203,6 +207,15 @@ public class ClaimController {
             @Valid @RequestBody DeferForm form) {
         String sheet = sheetId.trim();
         return view(sheet, claims.defer(sheet, user.trim(), claimId, form.until()));
+    }
+
+    /** Split an amount off an OPEN claim into a new OPEN claim of the same person. */
+    @PostMapping("/claims/{claimId}/split")
+    public PersonView split(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody SplitForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.split(sheet, user.trim(), claimId, new BigDecimal(form.amount())));
     }
 
     /** Add a proof to a claim, raising its proofs count by one. */

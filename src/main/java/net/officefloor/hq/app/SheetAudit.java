@@ -7,6 +7,7 @@ import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.claim.ClaimDeferred;
 import net.officefloor.hq.app.claim.ClaimProofAdded;
 import net.officefloor.hq.app.claim.ClaimReassigned;
+import net.officefloor.hq.app.claim.ClaimSplit;
 import net.officefloor.hq.app.claim.ClaimResettled;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
@@ -75,6 +76,13 @@ public class SheetAudit {
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " from=" + e.from() + " to=" + e.to());
+    }
+
+    @TransactionalEventListener
+    public void on(ClaimSplit e) {
+        audit.record("CLAIM_SPLIT sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + " number=" + e.number() + " into=" + e.into());
     }
 
     @TransactionalEventListener

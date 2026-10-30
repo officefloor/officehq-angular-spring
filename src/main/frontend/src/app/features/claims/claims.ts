@@ -42,6 +42,8 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has. */
   proofs: number;
+  /** For a claim split off another, the number of the claim it was split from, as shown; null otherwise. */
+  splitFrom: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
@@ -136,6 +138,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Deferred <span data-testid="claim-deferred">{{ c.deferred ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">
             Add proof<span class="visually-hidden"> to claim {{ c.amount }} {{ c.date }}</span>
           </button>
@@ -166,6 +169,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           />
           <button type="button" data-testid="claim-defer" (click)="defer(c)">
             Defer<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+          </button>
+          <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
+          <input
+            [id]="'claim-split-amount-' + c.id"
+            inputmode="decimal"
+            data-testid="claim-split-amount"
+            [value]="splitAmounts()[c.id] ?? ''"
+            (input)="setSplitAmount(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-split" (click)="split(c)">
+            Split<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
           </button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select
@@ -259,6 +273,8 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   /** The date typed for deferring each claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The amount typed for splitting off each claim, by claim id. */
+  protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The id of the person chosen to reassign each claim to, by claim id. */
   protected readonly reassignTo = signal<Record<number, string>>({});
   /** The other people on the sheet, whom this person's claims can be reassigned to. */
@@ -317,6 +333,48 @@ export class Claims {
       if (this.session.sheet() !== sheet) return;
       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be deferred to that date.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected setSplitAmount(id: number, amount: string): void {
+    this.splitAmounts.update((all) => ({ ...all, [id]: amount }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Split the amount typed off an OPEN claim into a new OPEN claim; the amount must be more than 0.00 and
+   * less than the claim's. A refusal shows on the claim's row.
+   */
+  protected async split(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.splitAmounts()[c.id] ?? '').trim();
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) {
+      this.claimError.set({ id: c.id, message: 'Enter the amount to split off, with up to two decimals.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/split`,
+          { amount },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.splitAmounts.update((all) => ({ ...all, [c.id]: '' }));
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be split by that amount.' });
     } finally {
       this.busy = false;
     }

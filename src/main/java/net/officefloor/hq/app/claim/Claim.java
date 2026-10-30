@@ -101,6 +101,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The number (as shown) of the claim this one was split off; null for any claim not split off another. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** The claim's place in its person's list, newest first; the store takes it on adding and reassigning. */
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
@@ -253,6 +257,14 @@ public class Claim {
     /** The number as shown: its period number, or its sheet-wide number; null while it has none. */
     public String getShownNumber() {
         return periodNumber != null ? periodNumber : number == null ? null : number.toString();
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    public void setSplitFrom(String splitFrom) {
+        this.splitFrom = splitFrom;
     }
 
     public String getOpenedBy() {

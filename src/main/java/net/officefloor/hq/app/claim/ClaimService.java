@@ -237,6 +237,56 @@ public class ClaimService {
     }
 
     /**
+     * Split an amount (more than 0.00 and less than the claim's amount) off an OPEN claim. The claim keeps
+     * the rest and is released from any figure a statement bound it to; a new OPEN claim of the same person
+     * takes the amount split off, with the same date and note, the next number, opened by the user and
+     * due by its date plus the terms then of its person's grade on its date, naming the claim it was split
+     * from. A claim not OPEN, a deferred one, one dated inside a closed period, an amount out of range, or a
+     * split by a role the sheet's permission matrix does not allow to open a claim is refused and nothing
+     * changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long split(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be split; only an OPEN one can");
+        }
+        if (Dues.deferred(claim, sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be split");
+        }
+        if (!access.allows(sheetId, user, Permission.OPEN)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not open a claim on this sheet");
+        }
+        if (amount.signum() <= 0 || amount.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The amount split off must be more than 0.00 and less than " + claim.getAmount().toPlainString());
+        }
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Rollup.Figures before = rollup.figures(sheetId);
+        claim.setAmount(claim.getAmount().subtract(amount));
+        claim.unbind();
+        Claim part = new Claim(sheetId, owner.getId(), amount, claim.getDate(), claim.getNote(), null);
+        sheets.load(sheetId, user);
+        part.setDueBy(claim.getDate().plusDays(
+                sheets.settings(sheetId).termsFor(owner.gradeOn(claim.getDate()), claim.getDate())));
+        part.setSplitFrom(claim.getShownNumber());
+        giveNumber(sheetId, part);
+        part.setOpenedBy(user);
+        part.setStatus(ClaimStatus.OPEN);
+        log(sheetId, user, part, owner);
+        claims.saveAndFlush(part);
+        events.publishEvent(new ClaimSplit(sheetId, user, owner.getName(), claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), part.getShownNumber()));
+        events.publishEvent(new ClaimChanged("CLAIM_OPENED", sheetId, user, owner.getName(), part.getAmount(),
+                part.getDate(), part.getShownNumber(), null));
+        rollup.changed(sheetId, user, before);
+        return owner.getId();
+    }
+
+    /**
      * Add a proof to a claim, raising its proofs count by one. A SETTLED or VOID claim, or a claim dated
      * inside a closed period, is refused and nothing changes. Returns the person it belongs to.
      */
