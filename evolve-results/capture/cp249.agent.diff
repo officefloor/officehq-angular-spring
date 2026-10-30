@@ -1,0 +1,176 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index df4d7e01..d3ab87d1 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -16,12 +16,13 @@ import { Crews } from '../crews/crews';
+ import { AuditViewer } from '../audit-viewer/audit-viewer';
+ import { TreeSearch } from '../tree-search/tree-search';
+ import { Duplicates } from '../duplicates/duplicates';
++import { PolicyViewer } from '../policy-viewer/policy-viewer';
+ import { PlanStore } from '../plans/plans';
+ 
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [FigPipe, People, Rates, Settings, Grades, Delegation, Holidays, VoidReasons, Notes, ClaimTemplates, Pools, Crews, TreeSearch, Duplicates, AuditViewer],
++  imports: [FigPipe, People, Rates, Settings, Grades, Delegation, Holidays, VoidReasons, Notes, ClaimTemplates, Pools, Crews, TreeSearch, Duplicates, PolicyViewer, AuditViewer],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user | fig }}</strong></p>
+@@ -134,6 +135,7 @@ import { PlanStore } from '../plans/plans';
+         <app-crews />
+         <app-tree-search />
+         <app-duplicates />
++        <app-policy-viewer />
+         <app-audit-viewer />
+       }
+     } @else {
+diff --git a/src/main/frontend/src/app/features/policy-viewer/policy-viewer.ts b/src/main/frontend/src/app/features/policy-viewer/policy-viewer.ts
+new file mode 100644
+index 00000000..def6d9ec
+--- /dev/null
++++ b/src/main/frontend/src/app/features/policy-viewer/policy-viewer.ts
+@@ -0,0 +1,62 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The policy versions, oldest first: one line "<version> <from> <key>=<value> <count>" each, the count being of the
++// claims whose policy version (the one in force on their date) it is.
++@Component({
++  selector: 'app-policy-viewer',
++  template: `
++    <section aria-label="Policy versions">
++      <h2>Policy versions</h2>
++      <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++      @if (error(); as err) {
++        <p role="alert" data-testid="policy-error">{{ err }}</p>
++      }
++      <ol aria-label="Policy versions">
++        @for (line of lines(); track $index) {
++          <li data-testid="policy-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class PolicyViewer {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<readonly string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  // Each press is numbered, so only the latest one's answer shows.
++  private press = 0;
++
++  constructor() {
++    // A newly loaded sheet starts with nothing shown.
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      untracked(() => {
++        this.press++;
++        this.error.set(null);
++        this.lines.set([]);
++      });
++    });
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    this.lines.set([]);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const press = ++this.press;
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims/policy`),
++      );
++      if (press === this.press) this.lines.set(lines);
++    } catch {
++      if (press === this.press) this.error.set('Could not show the policy versions.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c096c89c..64834c1a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -143,6 +143,13 @@ public class ClaimController {
+         return service.duplicates(sheetId);
+     }
+ 
++    /** The sheet's policy versions, oldest first, one line each with the count of claims whose version it is. */
++    @GetMapping("/claims/policy")
++    public List<String> policy(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
++        return service.policy(sheetId);
++    }
++
+     @GetMapping("/claims/{id}/timeline")
+     public List<String> timeline(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e6297f70..4ec05f61 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -25,6 +25,7 @@ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateChain;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.settings.SettingsService;
++import net.officefloor.hq.app.sheet.SettingChange;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import net.officefloor.hq.app.sheet.TodayChanged;
+@@ -107,6 +108,29 @@ public class ClaimService {
+         return lines;
+     }
+ 
++    /**
++     * The sheet's policy versions, oldest first: one line {@code <version> <from> <key>=<value> <count>} each, where
++     * the count is of the claims (DELETED ones left out) whose policy version, the one in force on their date, it is.
++     */
++    @Transactional(readOnly = true)
++    public List<String> policy(String sheetId) {
++        Sheet sheet = sheets.load(sheetId);
++        Map<Integer, Integer> counts = new HashMap<>();
++        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (c.getStatus() == ClaimStatus.DELETED) continue;
++            counts.merge(sheet.policyVersionOn(c.getDate()), 1, Integer::sum);
++        }
++        List<String> lines = new ArrayList<>();
++        List<SettingChange> changes = sheet.policyChanges();
++        for (int i = 0; i < changes.size(); i++) {
++            SettingChange ch = changes.get(i);
++            int version = i + 1;
++            lines.add(version + " " + (ch.getFrom() == null ? "start" : ch.getFrom()) + " " + ch.getKey() + "="
++                    + (ch.getValue() == null ? "" : ch.getValue()) + " " + counts.getOrDefault(version, 0));
++        }
++        return lines;
++    }
++
+     /**
+      * The claim's timeline: the audit lines about it, newest first, as the file holds them (see
+      * {@link Audit#claimLines}).
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 217084c3..172b8d9f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -308,10 +308,14 @@ public class Sheet {
+                 .max(Comparator.comparing(DatedSetting::getFrom));
+     }
+ 
++    /** The policy versions, in the order recorded: the values recorded for the policy settings. */
++    public List<SettingChange> policyChanges() {
++        return settingChanges.stream().filter(c -> POLICY_KEYS.contains(c.getKey())).toList();
++    }
++
+     /** The from-dates of the policy versions, in the order recorded (a null from-date counts on every date). */
+     public List<LocalDate> policyVersionFroms() {
+-        return settingChanges.stream().filter(c -> POLICY_KEYS.contains(c.getKey())).map(SettingChange::getFrom)
+-                .toList();
++        return policyChanges().stream().map(SettingChange::getFrom).toList();
+     }
+ 
+     /** The current policy version: how many have been recorded; 0 for none. */

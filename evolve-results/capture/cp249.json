@@ -1,0 +1,64 @@
+{
+  "checkpoint": 249,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp249_policy-viewer",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cdeb69673c45aa385c7f3b991ede4cf922d77d61",
+  "reset_sha": "",
+  "preagent_sha": "96fc370b6ab3c6dbbca57118ca27af148183ea92",
+  "prev_sha": "96fc370b6ab3c6dbbca57118ca27af148183ea92",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7005011999999999,
+    "input_tokens": 42,
+    "output_tokens": 7831,
+    "cache_read_tokens": 820886,
+    "cache_creation_tokens": 47442,
+    "num_turns": 21,
+    "duration_ms": 338391,
+    "duration_api_ms": 80288,
+    "model": "claude-opus-5-5",
+    "session_id": "d5541bb6-c631-4200-9a80-75ba24bbeb4b",
+    "stop_reason": "success",
+    "result_text": "I added the policy version list, and all 4 tests in `bin/e2e` pass.\n\nA new \"Show policy versions\" button lists one line per version, oldest first, as `<version> <from> <key>=<value> <count>`, e.g. `2 2026-03-10 terms=5 1`. The list is fetched fresh each time the button is pressed, so it always reflects the latest claims and settings.\n\n- **Server:**\n  - `Sheet.policyChanges()` returns the recorded policy-setting changes in order. The existing `policyVersionFroms()` now uses it.\n  - `ClaimService.policy()` builds the lines. A claim counts towards the version in force on its date, the same rule the claim row's policy column already uses.\n  - It's served at `GET /api/sheets/{id}/claims/policy` from `ClaimController`.\n- **Front end:** a new `PolicyViewer` component in `features/policy-viewer/policy-viewer.ts`, modelled on the duplicates viewer and placed on the home screen. It has `policy-show`, `policy-line` and `policy-error` test ids.\n- **No database change:** each version's key, value and from-date were already stored.\n\nChoices worth checking:\n- **Which claims count:** voided claims are included, because one test needs that. Deleted claims are left out, which no test checks.\n- **The \"start\" date:** the from-date can't be empty in the database (a setting saved without one gets the sheet's today), so \"start\" only shows as a fallback if one is ever missing.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7005011999999999,
+        "num_turns": 21,
+        "duration_ms": 338391,
+        "duration_api_ms": 80288,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp249.agent.jsonl",
+  "agent_diff_file": "cp249.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
