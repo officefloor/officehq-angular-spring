@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.access.Permission;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -149,7 +150,7 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims due by a date inside it that counted (OPEN, PENDING and SETTLED,
+     * Close a period, fixing each person's due-total and carried figure for it (see {@link #carried}), for every person on the sheet, and its own, their sum: the due figures of the claims due by a date inside it that counted (OPEN, PENDING and SETTLED,
      * but not an unbound OPEN claim dated within a hold of its person, nor a deferred one) at the end of its last day,
      * see {@link Dues#countsAsOf}, added up per person. A soft-closed period is closed with its figures fixed
      * afresh. Refused when it is already closed, or for a role the sheet's
@@ -212,7 +213,37 @@ public class PeriodService {
                 .forEach(p -> fix(e.sheetId(), e.user(), p, true, false));
     }
 
-    /** Fix the period's due-totals as of the end of its last day and close it, or soft-close it. */
+    /**
+     * Each person's carried figure for the period, for every person on the sheet: the due figures as they stand of
+     * their claims that count on the sheet's today (neither left out by a hold or retirement nor deferred, see
+     * {@link Dues#counts}) due by a date inside a period ending before it starts and still OPEN or PENDING at the end
+     * of its last day, by the status log, added up per person.
+     */
+    private Map<Long, BigDecimal> carried(String sheetId, Period period, Map<Long, Person> byId, RateTable table) {
+        List<Period> all = list(sheetId);
+        Map<Long, BigDecimal> carried = new HashMap<>();
+        byId.keySet().forEach(id -> carried.put(id, BigDecimal.ZERO.setScale(2)));
+        claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> byId.containsKey(c.getPersonId()))
+                .filter(c -> all.stream().anyMatch(home -> home.contains(c.getDueBy())
+                        && home.getToDate().isBefore(period.getFromDate())))
+                .filter(c -> c.getDeferredUntil() == null || !table.today().isBefore(c.getDeferredUntil()))
+                .filter(c -> Dues.countsAsOf(c, byId.get(c.getPersonId()).leaves(), table.today(), period.getToDate()))
+                .filter(c -> {
+                    ClaimStatus then = Dues.statusAsOf(c, period.getToDate());
+                    return then == ClaimStatus.OPEN || then == ClaimStatus.PENDING;
+                })
+                .forEach(c -> {
+                    BigDecimal due = Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table);
+                    if (due != null) {
+                        carried.merge(c.getPersonId(), due, BigDecimal::add);
+                    }
+                });
+        carried.replaceAll((id, t) -> t.setScale(2, RoundingMode.HALF_UP));
+        return carried;
+    }
+
+    /** Fix the period's due-totals and carried figures as of the end of its last day and close it, or soft-close it. */
     private void fix(String sheetId, String user, Period period, boolean auto, boolean soft) {
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, p -> p));
@@ -229,14 +260,14 @@ public class PeriodService {
                     }
                 });
         totals.replaceAll((id, t) -> t.setScale(2, RoundingMode.HALF_UP));
-        period.close(totals, soft);
+        period.close(totals, carried(sheetId, period, byId, table), soft);
         BigDecimal total = period.getClosedTotal().setScale(2, RoundingMode.HALF_UP);
         periods.flush();
         events.publishEvent(new PeriodClosed(sheetId, user, period.getName(), total, auto, soft));
     }
 
     /**
-     * Reopen a closed or soft-closed period: its due-total is live again, the current figures of the claims
+     * Reopen a closed or soft-closed period: its due-total and its people's carried figures are live again, the current figures of the claims
      * due by a date inside it. Refused unless the sheet's permission matrix allows the user's role (a steward, unless
      * set), and when the period is neither closed nor soft-closed.
      */

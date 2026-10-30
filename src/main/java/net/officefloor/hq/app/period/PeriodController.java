@@ -33,19 +33,24 @@ public class PeriodController {
 
     /**
      * A period as shown, whether it is closed or soft-closed; once either, with the due-total fixed then (null
-     * while open) and per person id the person's due-total fixed then (empty while open); and the fiscal year
+     * while open), per person id the person's due-total fixed then and their carried figure fixed then (each
+     * empty while open); and the fiscal year
      * (FY and a year) its from-date falls in.
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
-            String closedTotal, Map<Long, String> personTotals, String fy, Integer cap) {
+            String closedTotal, Map<Long, String> personTotals, String fy, Integer cap,
+            Map<Long, String> personCarried) {
 
         static PeriodView of(Period period, int fiscalStartMonth) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, t) -> personTotals.put(id, t.setScale(2, RoundingMode.HALF_UP).toPlainString()));
+            Map<Long, String> personCarried = new TreeMap<>();
+            period.getPersonCarried().forEach((id, t) -> personCarried.put(id, t.setScale(2, RoundingMode.HALF_UP).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null
                             : period.getClosedTotal().setScale(2, RoundingMode.HALF_UP).toPlainString(),
-                    personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth), period.getCap());
+                    personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth), period.getCap(),
+                    personCarried);
         }
     }
 

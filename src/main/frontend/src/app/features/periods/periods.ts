@@ -18,6 +18,8 @@ export interface Period {
   closedTotal: string | null;
   /** Per person id, the person's due-total fixed when the period was closed; empty while it is open. */
   personTotals: Record<number, string>;
+  /** Per person id, the person's carried figure fixed when the period was closed; empty while it is open. */
+  personCarried: Record<number, string>;
   /** The fiscal year its from-date falls in: FY and the calendar year that fiscal year's first day falls in. */
   fy: string;
   /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
@@ -75,7 +77,8 @@ export function personPeriodTotals(periods: Period[], person: PersonWithClaims):
 
 /** Per period id, the person's carried figure for it: the dues as shown now of their claims that count (the same
  * claims left out as personPeriodTotals) due by a date in a period ending before it starts and still OPEN or PENDING
- * at the end of its last day, by the status log, added up. */
+ * at the end of its last day, by the status log, added up; or once closed or soft-closed the figure fixed then (0.00
+ * for a person added later). */
 export function personPeriodCarried(periods: Period[], person: PersonWithClaims): Record<number, string> {
   const totals: Record<number, number> = {};
   for (const p of periods) totals[p.id] = 0;
@@ -90,7 +93,9 @@ export function personPeriodCarried(periods: Period[], person: PersonWithClaims)
     }
   }
   const shown: Record<number, string> = {};
-  for (const p of periods) shown[p.id] = (totals[p.id] / 100).toFixed(2);
+  for (const p of periods) {
+    shown[p.id] = isFixed(p) ? (p.personCarried?.[person.id] ?? '0.00') : (totals[p.id] / 100).toFixed(2);
+  }
   return shown;
 }
 

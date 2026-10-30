@@ -62,6 +62,13 @@ public class Period {
     @Column(name = "total", nullable = false, precision = 14, scale = 2)
     private Map<Long, BigDecimal> personTotals = new HashMap<>();
 
+    /** Per person id, the person's carried figure fixed when the period was closed; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "carried", nullable = false, precision = 14, scale = 2)
+    private Map<Long, BigDecimal> personCarried = new HashMap<>();
+
     protected Period() {
     }
 
@@ -123,29 +130,36 @@ public class Period {
         return Map.copyOf(personTotals);
     }
 
+    public Map<Long, BigDecimal> getPersonCarried() {
+        return Map.copyOf(personCarried);
+    }
+
     /** Close the period, fixing each person's due-total for it and its own, their sum. */
     public void close(Map<Long, BigDecimal> personTotals) {
-        close(personTotals, false);
+        close(personTotals, Map.of(), false);
     }
 
     /**
-     * Close the period, or soft-close it, fixing each person's due-total for it and its own, their sum. A
-     * soft-closed period still takes changes to the claims due by a date inside it.
+     * Close the period, or soft-close it, fixing each person's due-total and carried figure for it and its own
+     * due-total, their sum. A soft-closed period still takes changes to the claims due by a date inside it.
      */
-    public void close(Map<Long, BigDecimal> personTotals, boolean soft) {
+    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried, boolean soft) {
         this.closed = !soft;
         this.softClosed = soft;
         this.personTotals.clear();
         this.personTotals.putAll(personTotals);
+        this.personCarried.clear();
+        this.personCarried.putAll(personCarried);
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** Reopen the period: its due-total is live again. */
+    /** Reopen the period: its due-total and carried figures are live again. */
     public void reopen() {
         this.closed = false;
         this.softClosed = false;
         this.closedTotal = null;
         this.personTotals.clear();
+        this.personCarried.clear();
     }
 
     /** Whether the date falls in the period, its from and to date included. */

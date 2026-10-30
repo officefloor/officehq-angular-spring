@@ -1,8 +1,7 @@
-import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
-import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
 import { Access } from '../access/access';
 import { ClaimTemplates } from '../claim-templates/claim-templates';
@@ -899,16 +898,18 @@ export class People {
   });
   /** Everyone's overdue-total added up, trimmed (see {@link trimmedSum}). */
   protected readonly overdueTotal = computed(() => (overdueTotalOf(this.people()) / 100).toFixed(2));
-  /** The figures of each of the sheet's descendants (its children, theirs, and so on), as each shows them. */
+  /**
+   * The figures of each of the sheet's descendants (its children, theirs, and so on), as each shows them: as of the
+   * date the sheet is shown as of, while one is set.
+   */
   private readonly descendants = signal<SheetFigures[]>([]);
-  /** The sheet's own live figures while it is shown as of a date; null while it is shown live (its people then). */
-  private readonly live = signal<SheetFigures | null>(null);
   /**
    * The people counted, and the due- and overdue-totals added up, over the sheet and all its descendants, as
-   * they stand live whatever date the sheet is shown as of.
+   * they stand live; while the sheet is shown as of a date, each as it stood at the end of that day, that date
+   * as its today.
    */
   protected readonly consolidated = computed(() => {
-    const all = [this.live() ?? figuresOf(this.people()), ...this.descendants()];
+    const all = [figuresOf(this.people()), ...this.descendants()];
     return {
       people: all.reduce((sum, f) => sum + f.people, 0),
       due: (all.reduce((sum, f) => sum + f.due, 0) / 100).toFixed(2),
@@ -922,7 +923,6 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.descendants.set([]);
-      this.live.set(null);
       this.watched.set(new Set());
       this.personError.set(null);
       this.patronError.set(null);
@@ -1954,7 +1954,7 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, watched, batch, descendants, live, hidden] = await Promise.all([
+    const [people, watched, batch, descendants, hidden] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
       firstValueFrom(
         this.http.get<number[]>(`/api/sheets/${encodeURIComponent(sheet)}/watches`, {
@@ -1965,7 +1965,6 @@ export class People {
         this.http.get<{ last: number | null }>(`/api/sheets/${encodeURIComponent(sheet)}/claims/settle-batch`),
       ),
       this.descendantFigures(sheet),
-      this.session.asOf() === null ? Promise.resolve(null) : this.liveFigures(sheet),
       firstValueFrom(
         this.http.get<string[]>('/api/me/hidden-columns', { headers: { 'X-User': this.session.user() ?? '' } }),
       ),
@@ -1976,28 +1975,18 @@ export class People {
       if (this.columnSaves === 0) this.hidden.set(new Set(hidden));
       this.settleBatch.set(batch.last);
       this.descendants.set(descendants);
-      this.live.set(live);
     }
   }
 
-  /** The sheet's figures as its people stand live. */
-  private async liveFigures(sheet: string): Promise<SheetFigures> {
-    return figuresOf(await firstValueFrom(this.livePeople(sheet)));
-  }
-
-  /** The people of a sheet as they stand live, whatever date the screen shows the sheet as of. */
-  private livePeople(sheet: string) {
-    return this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`, {
-      context: new HttpContext().set(LIVE, true),
-    });
-  }
-
-  /** The figures of each of the sheet's descendants, each read from its own people as they stand live. */
+  /**
+   * The figures of each of the sheet's descendants, each read from its own people as they stand live, or while the
+   * screen shows the sheet as of a date, as they stood at the end of that day (the request names the date).
+   */
   private async descendantFigures(sheet: string): Promise<SheetFigures[]> {
     const ids = await firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/descendants`));
     return Promise.all(
       ids.map(async (id) =>
-        figuresOf(await firstValueFrom(this.livePeople(id))),
+        figuresOf(await firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(id)}/people`))),
       ),
     );
   }
