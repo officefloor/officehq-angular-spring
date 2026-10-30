@@ -185,6 +185,10 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
     }
 
+    /** A retirement for the selected people as entered: from a date (none: the sheet's today). */
+    public record BulkRetireForm(@NotEmpty List<@NotNull Long> personIds, LocalDate from) {
+    }
+
     /** Pasted lines of name,grade,terms,contact, one person per line; terms and contact may be left out. */
     public record ImportForm(@NotNull @Size(max = 100_000) String text) {
     }
@@ -192,6 +196,7 @@ public class PersonController {
     private final PersonService service;
     private final PersonImportService imports;
     private final BulkGradeService bulkGrade;
+    private final BulkRetireService bulkRetire;
     private final ClaimService claims;
     private final RateService rates;
     private final StatementService statements;
@@ -200,7 +205,8 @@ public class PersonController {
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
             RateService rates, StatementService statements, PersonMergeService merges,
-            PersonTransferService transfers, PersonImportService imports) {
+            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire) {
+        this.bulkRetire = bulkRetire;
         this.service = service;
         this.imports = imports;
         this.transfers = transfers;
@@ -256,6 +262,13 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkGradeForm form) {
         return bulkGrade.grade(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.personIds()), form.grade(),
                 form.from());
+    }
+
+    /** Retire the selected people from the date, in list order; answers how many were retired. */
+    @PostMapping("/retire")
+    public BulkRetireService.Result retireAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkRetireForm form) {
+        return bulkRetire.retire(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.personIds()), form.from());
     }
 
     /** A statement as asked for: as of a date on or before the sheet's today (none: as of now). */

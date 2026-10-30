@@ -309,6 +309,23 @@ function csvField(value: string): string {
           <p role="alert" data-testid="person-error">{{ bulkGradeError() }}</p>
         }
       </form>
+      <form (submit)="retireSelected($event)" aria-label="Retire selected people">
+        <label for="bulk-retire-date">Retire the selected people from (blank: today)</label>
+        <input
+          id="bulk-retire-date"
+          data-testid="bulk-retire-date"
+          type="date"
+          [value]="bulkRetireFrom()"
+          (input)="bulkRetireFrom.set(value($event)); bulkRetireError.set('')"
+        />
+        <button type="submit" data-testid="bulk-retire">Retire selected people</button>
+        @if (bulkRetired() !== null) {
+          <span>Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></span>
+        }
+        @if (bulkRetireError()) {
+          <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
+        }
+      </form>
       <table>
         <thead>
           <tr>
@@ -616,6 +633,13 @@ export class People {
   protected readonly bulkGradeError = signal('');
   /** A bulk grade still waiting for its answer: another press meanwhile is ignored. */
   private bulkGrading = false;
+  /** The date the selected people are retired from; blank: the sheet's today. */
+  protected readonly bulkRetireFrom = signal('');
+  /** How many people the last bulk retire retired; null while it runs. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  protected readonly bulkRetireError = signal('');
+  /** A bulk retire still waiting for its answer: another press meanwhile is ignored. */
+  private bulkRetiring = false;
   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
@@ -708,6 +732,9 @@ export class People {
       this.bulkGradeFrom.set('');
       this.bulkGraded.set(null);
       this.bulkGradeError.set('');
+      this.bulkRetireFrom.set('');
+      this.bulkRetired.set(null);
+      this.bulkRetireError.set('');
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -751,6 +778,7 @@ export class People {
     else next.delete(p.id);
     this.selectedPeople.set(next);
     this.bulkGradeError.set('');
+    this.bulkRetireError.set('');
     this.clearError(p);
   }
 
@@ -798,6 +826,48 @@ export class People {
       this.bulkGradeError.set('Could not give the selected people the grade.');
     } finally {
       this.bulkGrading = false;
+    }
+  }
+
+  /** Retire the selected people from the date (blank: the sheet's today), each as the row's retire would. */
+  protected async retireSelected(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.bulkRetiring) return;
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set('');
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const personIds = [...this.selectedPeople()];
+    const from = this.bulkRetireFrom().trim();
+    if (personIds.length === 0) {
+      this.bulkRetireError.set('Select the people to retire.');
+      return;
+    }
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.bulkRetireError.set('Enter a date, or leave it blank for today.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.bulkRetiring = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ retired: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/retire`,
+          { personIds, from: from || null },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedPeople.set(new Set());
+      await this.reload(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.bulkRetired.set(result.retired);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkRetireError.set('Could not retire the selected people.');
+    } finally {
+      this.bulkRetiring = false;
     }
   }
 

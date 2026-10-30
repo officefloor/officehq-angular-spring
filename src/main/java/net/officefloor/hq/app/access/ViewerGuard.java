@@ -35,7 +35,8 @@ public class ViewerGuard implements HandlerInterceptor {
             return true;
         }
         String path = request.getRequestURI();
-        if (path.endsWith("/load") || path.contains("/bulk-") || path.endsWith("/people/grade")) {
+        if (path.endsWith("/load") || path.contains("/bulk-") || path.endsWith("/people/grade")
+                || path.endsWith("/people/retire")) {
             return true;
         }
         Object vars = request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
