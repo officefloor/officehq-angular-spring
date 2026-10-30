@@ -6,7 +6,7 @@ import { Access } from '../access/access';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Period, Periods } from '../periods/periods';
 import { Rates } from '../rates/rates';
-import { Summary } from '../summary/summary';
+import { Summary, statusCounts } from '../summary/summary';
 
 const GRADES = ['A', 'B', 'C'];
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -31,6 +31,14 @@ function csvField(value: string): string {
   selector: 'app-people',
   imports: [Access, Claims, Periods, Rates, Summary],
   template: `
+    <header aria-label="Counters">
+      <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
+      @for (s of statusCounts(); track s.status) {
+        <p>{{ s.status }} claims <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong></p>
+      }
+      <p>Due total <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
+    </header>
     <app-rates (changed)="reloadSheet()" />
     <app-access />
     <app-periods [people]="people()" [(periods)]="periods" />
@@ -276,6 +284,7 @@ export class People {
   protected readonly shown = computed(() =>
     this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
   );
+  protected readonly statusCounts = computed(() => statusCounts(this.people()));
   protected readonly claimedTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
   );

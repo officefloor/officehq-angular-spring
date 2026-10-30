@@ -10,6 +10,12 @@ function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
+/** How many claims the people have in each status, in status order. */
+export function statusCounts(people: PersonWithClaims[]): { status: string; count: number }[] {
+  const claims = people.flatMap((p) => p.claims);
+  return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
+}
+
 // The sheet's figures summed from the list: per grade, the people on it today (retired people left
 // out) and their due-totals added up (n/a skipped); per period, its due-total; per status, how many
 // claims have it.
@@ -81,8 +87,5 @@ export class Summary {
     return this.periods().map((p) => ({ name: p.name, dueTotal: totals[p.id] }));
   });
 
-  protected readonly byStatus = computed(() => {
-    const claims = this.people().flatMap((p) => p.claims);
-    return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
-  });
+  protected readonly byStatus = computed(() => statusCounts(this.people()));
 }
