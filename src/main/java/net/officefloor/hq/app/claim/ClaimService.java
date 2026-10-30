@@ -235,6 +235,9 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
         }
+        if (next == ClaimStatus.OPEN) {
+            requireNote(sheetId, claim);
+        }
         Rollup.Figures before = rollup.figures(sheetId);
         if (next == ClaimStatus.OPEN) {
             giveNumber(sheetId, claim);
@@ -406,6 +409,26 @@ public class ClaimService {
         events.publishEvent(new ClaimProofAdded(sheetId, user, person, claim.getAmount(), claim.getDate(),
                 claim.getShownNumber(), claim.getProofs()));
         return claim.getPersonId();
+    }
+
+    /**
+     * Refuse opening a claim with an empty note whose due (null: n/a) is above the sheet's note threshold in
+     * force on the claim's date.
+     */
+    private void requireNote(String sheetId, Claim claim) {
+        if (claim.getNote() != null && !claim.getNote().isBlank()) {
+            return;
+        }
+        BigDecimal threshold = sheets.settings(sheetId).noteThreshold(claim.getDate());
+        if (threshold == null) {
+            return;
+        }
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        BigDecimal due = dueNow(sheetId, claim, owner);
+        if (due != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim with a due above " + threshold.toPlainString() + " needs a note to be opened");
+        }
     }
 
     /**

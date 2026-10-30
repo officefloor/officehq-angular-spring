@@ -47,13 +47,13 @@ public class AccessController {
      * its own (it uses the sheet's); the late percent is a figure with two decimals; the policy date and
      * the period numbering from are dates (yyyy-mm-dd), null when blank; the grace days are a number of days, null
      * when blank (off); the cap is a figure with two
-     * decimals, null for none; so is the proof threshold. Each entry of the permission matrix (open, settle,
+     * decimals, null for none; so are the proof threshold and the note threshold. Each entry of the permission matrix (open, settle,
      * void, reassign, close, reopen) is the roles that may take the action as written, comma separated; null
      * when blank (the standing rule).
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
-            String cap, String proofThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+            String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
             String permClose, String permReopen) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
@@ -64,7 +64,7 @@ public class AccessController {
                     dated.latePct(today).toPlainString(),
                     policyDate == null ? null : policyDate.toString(),
                     periodNumberingFrom == null ? null : periodNumberingFrom.toString(), text(graceDays),
-                    text(dated.cap(today)), text(dated.proofThreshold(today)),
+                    text(dated.cap(today)), text(dated.proofThreshold(today)), text(dated.noteThreshold(today)),
                     perm(dated, Permission.OPEN, today), perm(dated, Permission.SETTLE, today),
                     perm(dated, Permission.VOID, today), perm(dated, Permission.REASSIGN, today),
                     perm(dated, Permission.CLOSE, today), perm(dated, Permission.REOPEN, today));
@@ -108,7 +108,7 @@ public class AccessController {
      * decimals, blank putting back 0.00. The policy date is a date (yyyy-mm-dd), blank meaning the
      * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off. The grace days are a whole number of
      * days, blank meaning off; not dated. The cap is 0.00
-     * or more with up to two decimals, blank meaning no cap; so is the proof threshold, blank meaning none. Each setting that carries a figure takes a
+     * or more with up to two decimals, blank meaning no cap; so are the proof threshold and the note threshold, blank meaning none. Each setting that carries a figure takes a
      * from-date (yyyy-mm-dd) its value is in force from, blank or left out meaning the sheet's today. Each
      * entry of the permission matrix is a comma separated list of roles (clerk, steward), blank putting back
      * the standing rule; it is not dated.
@@ -125,6 +125,7 @@ public class AccessController {
             @Pattern(regexp = "(\\d{1,5})?") String graceDays,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String cap,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String proofThreshold,
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String noteThreshold,
             @Pattern(regexp = DATE) String clerkLimitFrom,
             @Pattern(regexp = DATE) String floorFrom,
             @Pattern(regexp = DATE) String termsFrom,
@@ -134,6 +135,7 @@ public class AccessController {
             @Pattern(regexp = DATE) String latePctFrom,
             @Pattern(regexp = DATE) String capFrom,
             @Pattern(regexp = DATE) String proofThresholdFrom,
+            @Pattern(regexp = DATE) String noteThresholdFrom,
             @Pattern(regexp = Permission.ROLES) String permOpen,
             @Pattern(regexp = Permission.ROLES) String permSettle,
             @Pattern(regexp = Permission.ROLES) String permVoid,
@@ -199,7 +201,8 @@ public class AccessController {
         permissions.put(Permission.CLOSE, form.permClose());
         permissions.put(Permission.REOPEN, form.permReopen());
         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
-                form.periodNumberingFrom(), form.graceDays(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()), permissions);
+                form.periodNumberingFrom(), form.graceDays(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
+                dated(form.noteThreshold(), form.noteThresholdFrom()), permissions);
         return settings(sheet);
     }
 

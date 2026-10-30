@@ -57,6 +57,8 @@ public class AccessService {
 
     public static final String PROOF_THRESHOLD = DatedSettings.PROOF_THRESHOLD;
 
+    public static final String NOTE_THRESHOLD = DatedSettings.NOTE_THRESHOLD;
+
     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
     public record Dated(String value, LocalDate from) {
     }
@@ -221,7 +223,7 @@ public class AccessService {
     @Transactional
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
-            Dated cap, Dated proofThreshold, Map<Permission, String> permissions) {
+            Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -254,6 +256,9 @@ public class AccessService {
         }
         if (proofThreshold != null) {
             setDated(sheetId, user, PROOF_THRESHOLD, money(proofThreshold.value(), null), proofThreshold.from(), false);
+        }
+        if (noteThreshold != null) {
+            setDated(sheetId, user, NOTE_THRESHOLD, money(noteThreshold.value(), null), noteThreshold.from(), false);
         }
         permissions.forEach((permission, roles) -> {
             if (roles != null) {

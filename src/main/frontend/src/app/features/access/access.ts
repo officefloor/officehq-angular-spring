@@ -31,6 +31,8 @@ interface Settings {
   cap: string | null;
   /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
   proofThreshold: string | null;
+  /** The most due a claim may have to be opened with an empty note, with two decimals; null when there is none. */
+  noteThreshold: string | null;
   /** The roles that may open, settle, void, reassign, close or reopen, comma separated; null when blank (the standing rule). */
   permOpen: string | null;
   permSettle: string | null;
@@ -60,9 +62,9 @@ const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
 const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
 /** The settings that carry a figure: each is saved from a from-date. */
-const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold'] as const;
+const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold'] as const;
 type Dated = (typeof DATED)[number];
-const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '' };
+const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '' };
 /** The permission matrix: each action with its setting and the roles that take it when left blank. */
 const PERMS = [
   { action: 'open', field: 'permOpen', standing: 'clerk, steward' },
@@ -193,6 +195,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Grace days <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
+      <p>Note threshold <strong data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</strong></p>
       @for (p of perms; track p.field) {
         <p>Roles that may {{ p.action }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
       }
@@ -345,6 +348,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput().proofThreshold"
           (input)="setFrom('proofThreshold', value($event)); proofThresholdTouched = true; settingsError.set('')"
         />
+        <label for="setting-note-threshold">Note threshold: a claim with a due above it needs a note to be opened (blank: none)</label>
+        <input
+          id="setting-note-threshold"
+          inputmode="decimal"
+          data-testid="setting-note-threshold"
+          [value]="noteThresholdInput()"
+          (input)="noteThresholdInput.set(value($event)); noteThresholdTouched = true; settingsError.set('')"
+          (keydown)="noteThresholdTouched = noteThresholdTouched || clears($event)"
+        />
+        <label for="setting-note-threshold-from">Note threshold in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-note-threshold-from"
+          type="date"
+          data-testid="setting-note-threshold-from"
+          [value]="fromInput().noteThreshold"
+          (input)="setFrom('noteThreshold', value($event)); noteThresholdTouched = true; settingsError.set('')"
+        />
         @for (p of perms; track p.field) {
           <label [for]="'setting-perm-' + p.action">Roles that may {{ p.action }}, comma separated (blank: {{ p.standing }})</label>
           <input
@@ -398,6 +418,8 @@ export class Access {
   protected readonly capInput = signal('');
   protected readonly proofThreshold = signal<string | null>(null);
   protected readonly proofThresholdInput = signal('');
+  protected readonly noteThreshold = signal<string | null>(null);
+  protected readonly noteThresholdInput = signal('');
   protected readonly GRADE_TERMS = GRADE_TERMS;
   protected readonly perms = PERMS;
   protected readonly perm = signal<Record<Perm, string | null>>({ ...NO_PERMS });
@@ -416,6 +438,7 @@ export class Access {
   protected graceDaysTouched = false;
   protected capTouched = false;
   protected proofThresholdTouched = false;
+  protected noteThresholdTouched = false;
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
@@ -433,7 +456,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, cap: null, proofThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -593,6 +616,11 @@ export class Access {
       this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const noteThreshold = this.noteThresholdInput().trim();
+    if (this.noteThresholdTouched && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
+      this.settingsError.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
     const perms = this.permInput();
     for (const p of PERMS) {
       const roles = perms[p.field].trim();
@@ -622,6 +650,7 @@ export class Access {
     if (this.graceDaysTouched) body.graceDays = graceDays;
     if (this.capTouched) body.cap = cap;
     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
+    if (this.noteThresholdTouched) body.noteThreshold = noteThreshold;
     for (const p of PERMS) {
       if (this.permTouched[p.field]) body[p.field] = perms[p.field].trim();
     }
@@ -686,6 +715,9 @@ export class Access {
     this.proofThreshold.set(settings.proofThreshold);
     this.proofThresholdInput.set(settings.proofThreshold ?? '');
     this.proofThresholdTouched = false;
+    this.noteThreshold.set(settings.noteThreshold);
+    this.noteThresholdInput.set(settings.noteThreshold ?? '');
+    this.noteThresholdTouched = false;
     this.fromInput.set(NO_FROM);
     const perm = { ...NO_PERMS } as Record<Perm, string | null>;
     const input = { ...NO_PERMS };
