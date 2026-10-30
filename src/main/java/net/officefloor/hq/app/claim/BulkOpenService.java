@@ -1,13 +1,7 @@
 package net.officefloor.hq.app.claim;
 
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
-import net.officefloor.hq.app.person.Person;
-import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -23,28 +17,16 @@ public class BulkOpenService {
     }
 
     private final ClaimService claims;
-    private final ClaimRepository claimRows;
-    private final PersonRepository people;
+    private final SelectedClaims selected;
 
-    public BulkOpenService(ClaimService claims, ClaimRepository claimRows, PersonRepository people) {
+    public BulkOpenService(ClaimService claims, SelectedClaims selected) {
         this.claims = claims;
-        this.claimRows = claimRows;
-        this.people = people;
+        this.selected = selected;
     }
 
     public Result open(String sheetId, String user, Set<Long> claimIds) {
-        Map<Long, Integer> personOrder = new HashMap<>();
-        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
-        for (int i = 0; i < listed.size(); i++) {
-            personOrder.put(listed.get(i).getId(), i);
-        }
-        List<Claim> selected = claimRows.findBySheetIdOrderByListedDesc(sheetId).stream()
-                .filter(c -> claimIds.contains(c.getId()))
-                .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
-                        .thenComparing(Claim::getListed, Comparator.reverseOrder()))
-                .toList();
         int opened = 0;
-        for (Claim c : selected) {
+        for (Claim c : selected.inListOrder(sheetId, claimIds)) {
             try {
                 claims.move(sheetId, user, c.getId(), ClaimStatus.OPEN);
                 opened++;

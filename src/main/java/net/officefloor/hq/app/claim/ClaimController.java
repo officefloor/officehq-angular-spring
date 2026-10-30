@@ -69,13 +69,15 @@ public class ClaimController {
     private final ClaimService claims;
     private final QuickAddService quick;
     private final BulkOpenService bulkOpen;
+    private final BulkSettleService bulkSettle;
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
 
-    public ClaimController(ClaimService claims, QuickAddService quick, BulkOpenService bulkOpen, PersonService people,
-            RateService rates, StatementService statements) {
+    public ClaimController(ClaimService claims, QuickAddService quick, BulkOpenService bulkOpen,
+            BulkSettleService bulkSettle, PersonService people, RateService rates, StatementService statements) {
         this.bulkOpen = bulkOpen;
+        this.bulkSettle = bulkSettle;
         this.claims = claims;
         this.quick = quick;
         this.people = people;
@@ -123,6 +125,13 @@ public class ClaimController {
     public BulkOpenService.Result openAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkOpenForm form) {
         return bulkOpen.open(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()));
+    }
+
+    /** Settle the selected claims in list order; answers how many were settled and how many refused. */
+    @PostMapping("/claims/bulk-settle")
+    public BulkSettleService.Result settleAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkOpenForm form) {
+        return bulkSettle.settle(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()));
     }
 
     @PostMapping("/claims/{claimId}/settle")

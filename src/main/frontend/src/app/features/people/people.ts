@@ -130,6 +130,16 @@ function csvField(value: string): string {
           <span role="alert" data-testid="bulk-open-error">{{ bulkOpenError() }}</span>
         }
       </p>
+      <p>
+        <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
+        @if (bulkSettled(); as r) {
+          <span>Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong></span>
+          <span>Refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong></span>
+        }
+        @if (bulkSettleError()) {
+          <span role="alert" data-testid="bulk-settle-error">{{ bulkSettleError() }}</span>
+        }
+      </p>
       <table>
         <thead>
           <tr>
@@ -272,13 +282,18 @@ export class People {
   private retiring = false;
   /** A hold still waiting for its answer: another press meanwhile is ignored. */
   private holding = false;
-  /** The ids of the claims selected to be opened together. */
+  /** The ids of the claims selected to be opened or settled together. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** How many of the selected claims the last bulk open opened and refused; null while it runs. */
   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
   protected readonly bulkOpenError = signal('');
   /** A bulk open still waiting for its answer: another press meanwhile is ignored. */
   private bulkOpening = false;
+  /** How many of the selected claims the last bulk settle settled and refused; null while it runs. */
+  protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
+  protected readonly bulkSettleError = signal('');
+  /** A bulk settle still waiting for its answer: another press meanwhile is ignored. */
+  private bulkSettling = false;
   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
@@ -325,6 +340,8 @@ export class People {
       this.selectedClaims.set(new Set());
       this.bulkOpened.set(null);
       this.bulkOpenError.set('');
+      this.bulkSettled.set(null);
+      this.bulkSettleError.set('');
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -383,6 +400,36 @@ export class People {
       this.bulkOpenError.set('Could not open the selected claims.');
     } finally {
       this.bulkOpening = false;
+    }
+  }
+
+  /** Settle the selected claims together; each that cannot be settled is refused and left as it is. */
+  protected async settleSelected(): Promise<void> {
+    if (this.bulkSettling) return;
+    this.bulkSettled.set(null);
+    this.bulkSettleError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.bulkSettling = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ settled: number; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-settle`,
+          { claimIds: [...this.selectedClaims()] },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedClaims.set(new Set());
+      await this.reload(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.bulkSettled.set(result);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkSettleError.set('Could not settle the selected claims.');
+    } finally {
+      this.bulkSettling = false;
     }
   }
 
