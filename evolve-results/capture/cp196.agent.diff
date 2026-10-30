@@ -1,0 +1,58 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 31fa839f8..b2896bd5c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -19,8 +19,8 @@ public final class Dues {
+      * A claim's due: once settled, the due fixed then (its late charge frozen in); while bound by a statement
+      * to its figure as shown, that figure (its late charge bound in); a correction, its
+      * {@link #base} figure (no floor, no late charge); otherwise the greater of the floor in force on its date
+-     * and its {@link #base} figure plus, while overdue and not waived, its {@link RateTable#lateCharge late charge} on that
+-     * figure. Null when there is none.
++     * and its {@link #base} figure (the floored figure) plus, while overdue and not waived, its
++     * {@link RateTable#lateCharge late charge} on that floored figure. Null when there is none.
+      */
+     public static BigDecimal figure(Claim claim, Grades grades, RateTable rates) {
+         if (claim.getSettledDue() != null) {
+@@ -33,10 +33,10 @@ public final class Dues {
+         if (base == null || claim.isCorrection()) {
+             return base;
+         }
+-        BigDecimal due = overdue(claim, grades, rates) && !claim.isWaived()
+-                ? base.add(rates.lateCharge(base, graceBy(claim, grades, rates), claim.getRoundsBy()))
+-                : base;
+-        return rates.floored(due, claim.getDate());
++        BigDecimal floored = rates.floored(base, claim.getDate());
++        return overdue(claim, grades, rates) && !claim.isWaived()
++                ? floored.add(rates.lateCharge(floored, graceBy(claim, grades, rates), claim.getRoundsBy()))
++                : floored;
+     }
+ 
+     /**
+@@ -64,9 +64,9 @@ public final class Dues {
+     }
+ 
+     /**
+-     * The figure the claim would have today as an OPEN claim bound by no statement: its rate figure plus the
+-     * late charge it has today on that figure (none once waived) when its due-by plus its grace has passed, but at least the floor in force on
+-     * its date; a correction has neither floor nor late charge. Null when there is none. Re-settling a claim
++     * The figure the claim would have today as an OPEN claim bound by no statement: its rate figure held up to
++     * the floor in force on its date, plus the late charge it has today on that floored figure (none once waived)
++     * when its due-by plus its grace has passed; a correction has neither floor nor late charge. Null when there is none. Re-settling a claim
+      * fixes its due at this figure.
+      */
+     public static BigDecimal asOpen(Claim claim, Grades grades, RateTable rates) {
+@@ -75,10 +75,10 @@ public final class Dues {
+             return base;
+         }
+         LocalDate graceBy = graceBy(claim, grades, rates);
+-        BigDecimal due = graceBy.isBefore(rates.today()) && !claim.isWaived()
+-                ? base.add(rates.lateCharge(base, graceBy, claim.getRoundsBy()))
+-                : base;
+-        return rates.floored(due, claim.getDate());
++        BigDecimal floored = rates.floored(base, claim.getDate());
++        return graceBy.isBefore(rates.today()) && !claim.isWaived()
++                ? floored.add(rates.lateCharge(floored, graceBy, claim.getRoundsBy()))
++                : floored;
+     }
+ 
+     /** Whether a statement binds the claim's figure: it is stated (whatever its status, PENDING included). */
