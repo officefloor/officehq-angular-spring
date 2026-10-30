@@ -1,0 +1,64 @@
+{
+  "checkpoint": 162,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp162_claim-timeline",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each claim can show its timeline: a button on the claim lists the audit lines about it, newest\nfirst, each as the file holds it: the lines carrying its number (number=<its number>), and for a\nclaim with no number the lines naming its person, amount and date together.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach claim can show its timeline: a button on the claim lists the audit lines about it, newest\nfirst, each as the file holds it: the lines carrying its number (number=<its number>), and for a\nclaim with no number the lines naming its person, amount and date together.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "dc3ffad967c2bde4608237ec289ffa7d5a8b0573",
+  "reset_sha": "",
+  "preagent_sha": "79bbf7f6729b7e427530a31a9c3bb86a821c6096",
+  "prev_sha": "79bbf7f6729b7e427530a31a9c3bb86a821c6096",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9597950000000001,
+    "input_tokens": 56,
+    "output_tokens": 10485,
+    "cache_read_tokens": 1331035,
+    "cache_creation_tokens": 60458,
+    "num_turns": 29,
+    "duration_ms": 606529,
+    "duration_api_ms": 110445,
+    "model": "claude-opus-5-5",
+    "session_id": "39db94a7-02a7-43a5-a090-bd824bb37c3c",
+    "stop_reason": "success",
+    "result_text": "Each claim now has a Timeline button that lists the audit lines about that claim, newest first, exactly as the audit file holds them. The last full `bin/e2e` run passed all 4 tests.\n\n**How lines are matched to a claim:**\n- **A claim with a number** shows every line on its sheet that carries `number=<its number>`, using the number as displayed, e.g. `FY2026-1`.\n- **A claim without a number** shows lines that name its person, amount and date together. I also exclude lines that carry any `number=`. The request doesn't say this, but the test needs it: otherwise a still-unnumbered claim would pick up the `CLAIM_OPENED` line of an identical claim that was opened.\n- One side effect: a numbered claim's timeline leaves out lines that don't carry the number. That includes `CLAIM_REVIEWED` and the `CLAIM_ADDED` it had before it was opened. That follows the request as written.\n\n**Changes:**\n- **Server:** a new `GET /api/sheets/{sheetId}/audit/claims/{claimId}` in `audit/AuditController.java`. It reads the audit file and writes nothing to it, and answers 404 if there's no such claim.\n- **Front end** (`features/claims/claims.ts`):\n  - **Elements:** the `claim-timeline` button and the `claim-timeline-line` list items match the test, and `claim-timeline-error` shows if the timeline can't be read.\n  - **Clearing:** each press clears the old list, and a shown list is also cleared whenever the person or sheet is re-read, so out-of-date lines never stay on screen.\n\n**One flaky test:** on my first full run, \"claim timeline scenario 2\" failed at its first step on vic's page, moving Ada down, before any timeline is used. Moving the bottom person down should be refused, but the test saw the list order change. The audit file has no move for that sheet, so the server did nothing; the order seems to have changed while vic's page was still loading. When I ran that test alone 3 times it passed every time, and it passed in the final full run. I didn't change anything for it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9597950000000001,
+        "num_turns": 29,
+        "duration_ms": 606529,
+        "duration_api_ms": 110445,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp162.agent.jsonl",
+  "agent_diff_file": "cp162.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
