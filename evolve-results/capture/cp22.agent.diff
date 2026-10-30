@@ -1,0 +1,384 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2d3234a0..6019be58 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -32,7 +32,7 @@ export interface PersonWithClaims {
+   name: string;
+   grade: string;
+   claims: Claim[];
+-  /** The amounts of the OPEN and SETTLED claims added up. */
++  /** The amounts of the OPEN and SETTLED claims added up; only the SETTLED ones while on hold. */
+   claimed: string;
+   /** Claimed at the rate for the person's grade; null when the grade has no rate. */
+   dueTotal: string | null;
+@@ -46,6 +46,8 @@ export interface PersonWithClaims {
+   retired: boolean;
+   /** The date the person is retired from; no claim dated after it can be added. Null when not retired. */
+   retiredFrom: string | null;
++  /** Whether the person is on hold: their OPEN claims then count in no live total. */
++  held: boolean;
+ }
+ 
+ const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 55882f07..41aa522e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,7 +16,8 @@ function cents(amount: string): number {
+ 
+ // The people on the active sheet, in the order they were added, each with their claims, and the
+ // one form that adds a person or, once a person's editor is opened, edits them. Retired people are
+-// left out of the list unless "show retired" is on; their claims keep counting in the totals.
++// left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
++// can be put on hold and released; while held, their OPEN claims count in no total.
+ @Component({
+   selector: 'app-people',
+   imports: [Claims, Periods, Rates],
+@@ -92,7 +93,7 @@ function cents(amount: string): number {
+           <tr>
+             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+-            <th scope="col">Retired</th><th scope="col">Retired from</th>
++            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+           </tr>
+         </thead>
+@@ -108,6 +109,7 @@ function cents(amount: string): number {
+               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
++              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+                   Edit<span class="visually-hidden"> {{ p.name }}</span>
+@@ -126,6 +128,9 @@ function cents(amount: string): number {
+                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)">
+                   Retire<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)">
++                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
++                </button>
+                 @if (personError()?.id === p.id) {
+                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                 }
+@@ -164,6 +169,8 @@ export class People {
+   private stating = false;
+   /** A retirement still waiting for its answer: another press meanwhile is ignored. */
+   private retiring = false;
++  /** A hold or release still waiting for its answer: another press meanwhile is ignored. */
++  private holding = false;
+   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
+   protected readonly showRetired = signal(false);
+   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
+@@ -359,6 +366,32 @@ export class People {
+     }
+   }
+ 
++  /** Put the person on hold, or release them when they are on it. */
++  protected async hold(p: Person): Promise<void> {
++    if (this.holding) return;
++    this.personError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.holding = true;
++    try {
++      const saved = await firstValueFrom(
++        this.http.post<Person>(
++          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/hold`,
++          { held: !p.held },
++          { headers },
++        ),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.replace(saved);
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.personError.set({ id: p.id, message: p.held ? 'Could not release the person.' : 'Could not hold the person.' });
++    } finally {
++      this.holding = false;
++    }
++  }
++
+   /** After a refused stale edit: show the person as the store holds them now, in the row and the form. */
+   private async showCurrent(sheet: string, id: number): Promise<void> {
+     const loads = this.session.loads();
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index f42c1ea7..abaa6a7d 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -96,7 +96,8 @@ export class Periods {
+   readonly people = input.required<PersonWithClaims[]>();
+   readonly periods = model<Period[]>([]);
+ 
+-  /** Per period id, the dues of the claims that count whose date falls in it, added up. */
++  /** Per period id, the dues of the claims that count whose date falls in it, added up; the OPEN claims
++   * of a person on hold count in none. */
+   protected readonly dueTotals = computed<Record<number, string>>(() => {
+     const totals: Record<number, number> = {};
+     for (const p of this.periods()) totals[p.id] = 0;
+@@ -104,6 +105,7 @@ export class Periods {
+     for (const person of this.people()) {
+       for (const c of person.claims) {
+         if ((c.status !== 'OPEN' && c.status !== 'SETTLED') || c.due === null) continue;
++        if (person.held && c.status === 'OPEN') continue;
+         const period = periodOf(this.periods(), c.date);
+         if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 30624fc7..a986ea6d 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -5,6 +5,7 @@ import net.officefloor.hq.app.claim.ClaimChanged;
+ import net.officefloor.hq.app.period.PeriodAdded;
+ import net.officefloor.hq.app.period.PeriodClosed;
+ import net.officefloor.hq.app.person.PersonChanged;
++import net.officefloor.hq.app.person.PersonHeld;
+ import net.officefloor.hq.app.person.PersonRetired;
+ import net.officefloor.hq.app.rate.RateChanged;
+ import net.officefloor.hq.app.rollup.Rollup;
+@@ -39,6 +40,11 @@ public class SheetAudit {
+                 + " name=" + e.name() + " from=" + e.from());
+     }
+ 
++    @TransactionalEventListener
++    public void on(PersonHeld e) {
++        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
++    }
++
+     @TransactionalEventListener
+     public void on(ClaimChanged e) {
+         audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index bed56a2b..f0fecc4d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -31,12 +31,27 @@ public final class Dues {
+     }
+ 
+     /**
+-     * The sum of the due figures of the claims that count (0.00 with none). Null (n/a) when the grade has
++     * Whether the claim counts in the live totals: OPEN and SETTLED claims do, except that the OPEN
++     * claims of a person on hold count in none.
++     */
++    public static boolean counts(Claim claim, boolean held) {
++        return claim.getStatus().counts() && !(held && claim.getStatus() == ClaimStatus.OPEN);
++    }
++
++    /**
++     * The sum of the due figures of the claims that count (0.00 with none); a person not on hold.
++     */
++    public static BigDecimal total(String grade, List<Claim> claims, RateTable rates) {
++        return total(grade, claims, rates, false);
++    }
++
++    /**
++     * The sum of the due figures of the claims that count (0.00 with none), see {@link #counts}. Null (n/a) when the grade has
+      * no rate on the sheet's today, unless a claim that counts keeps a figure: then it is the sum of the
+      * figures there are.
+      */
+-    public static BigDecimal total(String grade, List<Claim> claims, RateTable rates) {
+-        List<Claim> counting = claims.stream().filter(c -> c.getStatus().counts()).toList();
++    public static BigDecimal total(String grade, List<Claim> claims, RateTable rates, boolean held) {
++        List<Claim> counting = claims.stream().filter(c -> counts(c, held)).toList();
+         boolean shown = rates.current(grade) != null || counting.stream().anyMatch(Dues::kept);
+         return shown ? counting.stream().map(c -> figure(c, grade, rates))
+                 .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add) : null;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 4a0f8c5a..45c98db9 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -77,8 +77,8 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * Close a period, fixing its due-total: the due figures of the claims that count (OPEN and SETTLED)
+-     * dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
++     * Close a period, fixing its due-total: the due figures of the claims that count (OPEN and SETTLED,
++     * but not the OPEN claims of a person on hold) dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
+      * sheet, so the total fixed is the one the claims had at that moment.
+      */
+     @Transactional
+@@ -89,12 +89,12 @@ public class PeriodService {
+         if (period.isClosed()) {
+             throw new PeriodRefused("The period is already closed.");
+         }
+-        Map<Long, String> grades = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+-                .collect(Collectors.toMap(Person::getId, Person::getGrade));
++        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .collect(Collectors.toMap(Person::getId, p -> p));
+         RateTable table = rates.table(sheetId);
+         BigDecimal total = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+-                .filter(c -> c.getStatus().counts() && period.contains(c.getDate()))
+-                .map(c -> Dues.figure(c, grades.get(c.getPersonId()), table))
++                .filter(c -> Dues.counts(c, byId.get(c.getPersonId()).isHeld()) && period.contains(c.getDate()))
++                .map(c -> Dues.figure(c, byId.get(c.getPersonId()).getGrade(), table))
+                 .filter(Objects::nonNull)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add)
+                 .setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 3a5a16df..03cad5be 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -11,7 +11,7 @@ import java.time.LocalDate;
+ 
+ /**
+  * A person on a sheet, with a name and a grade (A, B or C), the date they are retired from (null while
+- * not retired) and the version it was last saved at.
++ * not retired), whether they are on hold and the version it was last saved at.
+  */
+ @Entity
+ @Table(name = "person")
+@@ -33,6 +33,9 @@ public class Person {
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+ 
++    @Column(name = "held", nullable = false)
++    private boolean held;
++
+     @Version
+     @Column(name = "version", nullable = false)
+     private long version;
+@@ -82,6 +85,15 @@ public class Person {
+         this.retiredFrom = retiredFrom;
+     }
+ 
++    /** Whether the person is on hold: their OPEN claims then count in no live total. */
++    public boolean isHeld() {
++        return held;
++    }
++
++    public void setHeld(boolean held) {
++        this.held = held;
++    }
++
+     /** Whether a retirement date is set: retired at once, whatever the date. */
+     public boolean isRetired() {
+         return retiredFrom != null;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index ddd19b8b..9ffa477b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -57,24 +57,26 @@ public class PersonController {
+ 
+     /**
+      * A person with their claims, newest first, claimed: the sum of the amounts of the claims that
+-     * count (OPEN and SETTLED), dueTotal: the sum of the due figures of the claims that count (see
++     * count (OPEN and SETTLED, but only SETTLED while on hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
+      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+-     * the date they are retired from (null when not).
++     * the date they are retired from (null when not), and whether they are on hold.
+      */
+     public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
+             String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate,
+-            boolean retired, LocalDate retiredFrom) {
++            boolean retired, LocalDate retiredFrom, boolean held) {
+ 
+         /** The person as shown, given the sheet's rates. */
+         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements) {
+             String grade = person.getGrade();
+-            BigDecimal claimed = claims.stream().filter(c -> c.getStatus().counts()).map(Claim::getAmount)
++            boolean held = person.isHeld();
++            BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held)).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+             return new PersonView(person.getId(), person.getVersion(), person.getName(), grade,
+                     claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
+-                    money(Dues.total(grade, claims, rates)), statements.count(), money(statements.lastDueTotal()),
+-                    statements.lastDate(), person.isRetired(), person.getRetiredFrom());
++                    money(Dues.total(grade, claims, rates, held)), statements.count(),
++                    money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
++                    person.getRetiredFrom(), held);
+         }
+     }
+ 
+@@ -153,6 +155,21 @@ public class PersonController {
+                 statements.forPerson(sheet, personId));
+     }
+ 
++    /** A hold as asked for: on hold (true) or released (false). */
++    public record HoldForm(@NotNull Boolean held) {
++    }
++
++    /** Put the person on hold or take them off it; answers with the person as they are now. */
++    @PostMapping("/{personId}/hold")
++    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
++            @Valid @RequestBody HoldForm form) {
++        String sheet = sheetId.trim();
++        Person person = service.hold(sheet, user.trim(), personId, form.held());
++        return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
++                statements.forPerson(sheet, personId));
++    }
++
+     /** Another save took the name first: the unique name on the sheet refuses this one. */
+     @ExceptionHandler(DataIntegrityViolationException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonHeld.java b/src/main/java/net/officefloor/hq/app/person/PersonHeld.java
+new file mode 100644
+index 00000000..b2740ceb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonHeld.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.person;
++
++/** A person was put on hold ({@code PERSON_HELD}) or taken off it ({@code PERSON_RELEASED}) on a sheet. */
++public record PersonHeld(String event, String sheetId, String user, String name) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 45d17f3a..337405c3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -93,6 +93,27 @@ public class PersonService {
+         return person;
+     }
+ 
++    /**
++     * Put the person on hold or take them off it, moving the figures their OPEN claims count in. Asking
++     * for the state they are already in changes nothing. Takes turns with claim changes on the sheet.
++     */
++    @Transactional
++    public Person hold(String sheetId, String user, long personId, boolean held) {
++        sheetRows.lockById(sheetId);
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        if (person.isHeld() == held) {
++            return person;
++        }
++        Rollup.Figures before = rollup.figures(sheetId);
++        person.setHeld(held);
++        people.flush();
++        events.publishEvent(new PersonHeld(held ? "PERSON_HELD" : "PERSON_RELEASED", sheetId, user,
++                person.getName()));
++        rollup.changed(sheetId, user, before);
++        return person;
++    }
++
+     /** Someone else saved the person after the editor loaded them. */
+     public static ResponseStatusException edited() {
+         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Saved by someone else since loaded");
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 0c853f67..01de04b9 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -71,9 +71,9 @@ public class Rollup {
+         BigDecimal dueTotal = BigDecimal.ZERO;
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
+-            BigDecimal claimed = theirs.stream().filter(c -> c.getStatus().counts()).map(Claim::getAmount)
++            BigDecimal claimed = theirs.stream().filter(c -> Dues.counts(c, person.isHeld())).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+-            BigDecimal due = Dues.total(person.getGrade(), theirs, table);
++            BigDecimal due = Dues.total(person.getGrade(), theirs, table, person.isHeld());
+             claimedTotal = claimedTotal.add(claimed);
+             if (due != null) {
+                 dueTotal = dueTotal.add(due);
+diff --git a/src/main/resources/db/migration/V17__person_held.sql b/src/main/resources/db/migration/V17__person_held.sql
+new file mode 100644
+index 00000000..55fd143c
+--- /dev/null
++++ b/src/main/resources/db/migration/V17__person_held.sql
+@@ -0,0 +1,3 @@
++-- Whether a person is on hold: while held, their OPEN claims count in no live total; their SETTLED
++-- claims still count.
++ALTER TABLE person ADD COLUMN held BOOLEAN NOT NULL DEFAULT FALSE;
