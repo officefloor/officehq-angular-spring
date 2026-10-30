@@ -1,0 +1,301 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index f253504d..df2b909e 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -173,6 +173,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           <button type="button" data-testid="claim-defer" (click)="defer(c)">
+             Defer<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+           </button>
++          <label [for]="'claim-date-new-' + c.id">New date</label>
++          <input
++            [id]="'claim-date-new-' + c.id"
++            type="date"
++            data-testid="claim-date-new"
++            [value]="newDates()[c.id] ?? ''"
++            (input)="setNewDate(c.id, value($event))"
++          />
++          <button type="button" data-testid="claim-redate" (click)="redate(c)">
++            Re-date<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
++          </button>
+           <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
+           <input
+             [id]="'claim-split-amount-' + c.id"
+@@ -276,6 +287,8 @@ export class Claims {
+   protected readonly rejectReasons = signal<Record<number, string>>({});
+   /** The date typed for deferring each claim until, by claim id. */
+   protected readonly deferDates = signal<Record<number, string>>({});
++  /** The new date typed for re-dating each claim, by claim id. */
++  protected readonly newDates = signal<Record<number, string>>({});
+   /** The amount typed for splitting off each claim, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
+   /** The id of the person chosen to reassign each claim to, by claim id. */
+@@ -341,6 +354,45 @@ export class Claims {
+     }
+   }
+ 
++  protected setNewDate(id: number, date: string): void {
++    this.newDates.update((all) => ({ ...all, [id]: date }));
++    if (this.claimError()?.id === id) this.claimError.set(null);
++  }
++
++  /** A steward re-dates an OPEN or PENDING claim to the date typed; a refusal shows on the claim's row. */
++  protected async redate(c: Claim): Promise<void> {
++    if (this.busy) return;
++    this.claimError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const date = (this.newDates()[c.id] ?? '').trim();
++    if (!DATE.test(date)) {
++      this.claimError.set({ id: c.id, message: 'Enter the new date of the claim.' });
++      return;
++    }
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.busy = true;
++    try {
++      const person = await firstValueFrom(
++        this.http.post<PersonWithClaims>(
++          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/redate`,
++          { date },
++          { headers },
++        ),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.newDates.update((all) => ({ ...all, [c.id]: '' }));
++      this.saved.emit(person);
++    } catch (err) {
++      if (this.session.sheet() !== sheet) return;
++      const refusal =
++        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
++      this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be re-dated to that date.' });
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   protected setSplitAmount(id: number, amount: string): void {
+     this.splitAmounts.update((all) => ({ ...all, [id]: amount }));
+     if (this.claimError()?.id === id) this.claimError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 6b814e5a..19fbe4d0 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -9,6 +9,7 @@ import net.officefloor.hq.app.claim.ClaimChanged;
+ import net.officefloor.hq.app.claim.ClaimDeferred;
+ import net.officefloor.hq.app.claim.ClaimProofAdded;
+ import net.officefloor.hq.app.claim.ClaimReassigned;
++import net.officefloor.hq.app.claim.ClaimRedated;
+ import net.officefloor.hq.app.claim.ClaimSplit;
+ import net.officefloor.hq.app.claim.ClaimResettled;
+ import net.officefloor.hq.app.period.PeriodAdded;
+@@ -107,6 +108,14 @@ public class SheetAudit {
+                 + " from=" + e.from() + " to=" + e.to());
+     }
+ 
++    @TransactionalEventListener
++    public void on(ClaimRedated e) {
++        change(e.sheetId(), e.user(), "CLAIM_REDATED sheet=" + e.sheetId() + " by=" + e.user()
++                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
++                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
++                + " old=" + e.old() + " new=" + e.fresh());
++    }
++
+     @TransactionalEventListener
+     public void on(ClaimSplit e) {
+         change(e.sheetId(), e.user(), "CLAIM_SPLIT sheet=" + e.sheetId() + " by=" + e.user()
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 75a697ff..a1397a57 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -254,6 +254,14 @@ public class Claim {
+         this.periodNumber = label;
+     }
+ 
++    public String getPeriodSequence() {
++        return periodSequence;
++    }
++
++    public Integer getPeriodSeqNumber() {
++        return periodSeqNumber;
++    }
++
+     /** The number as shown: its period number, or its sheet-wide number; null while it has none. */
+     public String getShownNumber() {
+         return periodNumber != null ? periodNumber : number == null ? null : number.toString();
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 7609272a..408c2f0f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -75,6 +75,10 @@ public class ClaimController {
+     public record DeferForm(@NotNull LocalDate until) {
+     }
+ 
++    /** The new date of a claim being re-dated. */
++    public record RedateForm(@NotNull LocalDate date) {
++    }
++
+     /** The amount split off a claim, more than 0.00 and less than the claim's amount. */
+     public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
+     }
+@@ -209,6 +213,15 @@ public class ClaimController {
+         return view(sheet, claims.defer(sheet, user.trim(), claimId, form.until()));
+     }
+ 
++    /** A steward re-dates an OPEN or PENDING claim. */
++    @PostMapping("/claims/{claimId}/redate")
++    public PersonView redate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
++            @Valid @RequestBody RedateForm form) {
++        String sheet = sheetId.trim();
++        return view(sheet, claims.redate(sheet, user.trim(), claimId, form.date()));
++    }
++
+     /** Split an amount off an OPEN claim into a new OPEN claim of the same person. */
+     @PostMapping("/claims/{claimId}/split")
+     public PersonView split(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRedated.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRedated.java
+new file mode 100644
+index 00000000..52dd2935
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRedated.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * An OPEN or PENDING claim was re-dated on a sheet from an old date to a new one. The date and number are
++ * the claim's after the change.
++ */
++public record ClaimRedated(String sheetId, String user, String person, BigDecimal amount, LocalDate date,
++        String number, LocalDate old, LocalDate fresh) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index daaf2db9..cdab0a5d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -25,7 +25,19 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+ 
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+ 
+-    /** The last place given in a period sequence on the sheet; 0 before any. */
+-    @Query("select coalesce(max(c.periodSeqNumber), 0) from Claim c where c.sheetId = :sheetId and c.periodSequence = :sequence")
++    /**
++     * The last place given in a period sequence on the sheet, counting the places claims left when re-dated
++     * into another period; 0 before any.
++     */
++    @Query(value = "select greatest("
++            + "(select coalesce(max(period_seq_number), 0) from claim where sheet_id = :sheetId and period_sequence = :sequence), "
++            + "(select coalesce(max(period_seq_number), 0) from claim_retired_number where sheet_id = :sheetId and period_sequence = :sequence))",
++            nativeQuery = true)
+     int lastInSequence(@Param("sheetId") String sheetId, @Param("sequence") String sequence);
++
++    /** Keep a place a claim leaves in a period sequence, so it is never given again. */
++    @Modifying(flushAutomatically = true)
++    @Query(value = "insert into claim_retired_number (sheet_id, period_sequence, period_seq_number) "
++            + "values (:sheetId, :sequence, :n)", nativeQuery = true)
++    void retireNumber(@Param("sheetId") String sheetId, @Param("sequence") String sequence, @Param("n") int n);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e531b00c..949dfbe1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -248,6 +248,44 @@ public class ClaimService {
+         return claim.getPersonId();
+     }
+ 
++    /**
++     * A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement
++     * bound it to stays bound; its period follows the new date. While period numbering is on and the new
++     * date falls in another period (or none) than the old, the claim takes the next number of its new
++     * period's sequence, and its old place is never given again. A claim not OPEN or PENDING, one dated
++     * inside a closed period, a new date inside one or after its person's retirement date, or a re-date by
++     * anyone but a steward is refused and nothing changes. Returns the person it belongs to.
++     */
++    @Transactional
++    public long redate(String sheetId, String user, long claimId, LocalDate date) {
++        Claim claim = claim(sheetId, claimId);
++        if (access.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can re-date a claim");
++        }
++        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be re-dated; only an OPEN or PENDING one can");
++        }
++        periods.requireOpen(sheetId, date);
++        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        requireNotRetired(owner, date);
++        Rollup.Figures before = rollup.figures(sheetId);
++        LocalDate old = claim.getDate();
++        claim.setDate(date);
++        if (numberingOn(sheetId) && !sequenceOf(sheetId, old).equals(sequenceOf(sheetId, date))) {
++            if (claim.getPeriodSequence() != null) {
++                claims.retireNumber(sheetId, claim.getPeriodSequence(), claim.getPeriodSeqNumber());
++            }
++            giveNumber(sheetId, claim);
++        }
++        claims.flush();
++        events.publishEvent(new ClaimRedated(sheetId, user, owner.getName(), claim.getAmount(), claim.getDate(),
++                claim.getShownNumber(), old, date));
++        rollup.changed(sheetId, user, before);
++        return claim.getPersonId();
++    }
++
+     /**
+      * Split an amount (more than 0.00 and less than the claim's amount) off an OPEN claim. The claim keeps
+      * the rest and is released from any figure a statement bound it to; a new OPEN claim of the same person
+@@ -508,19 +546,34 @@ public class ClaimService {
+      * taking one at the same moment wait on each other, so no number is given twice or skipped.
+      */
+     private void giveNumber(String sheetId, Claim claim) {
+-        LocalDate from = sheets.periodNumberingFrom(sheetId);
+-        if (from == null || sheets.today(sheetId).isBefore(from)) {
++        if (!numberingOn(sheetId)) {
+             claim.setNumber(sheets.nextClaimNumber(sheetId));
+             return;
+         }
+         sheetRows.lockById(sheetId);
+-        Period period = periods.list(sheetId).stream().filter(p -> p.contains(claim.getDate()))
+-                .findFirst().orElse(null);
+-        String sequence = period == null ? "X" : "P" + period.getId();
++        Period period = periodOf(sheetId, claim.getDate());
++        String sequence = sequenceOf(sheetId, claim.getDate());
+         int n = claims.lastInSequence(sheetId, sequence) + 1;
+         claim.setPeriodNumber(sequence, n, (period == null ? "X" : period.getName()) + "-" + n);
+     }
+ 
++    /** Whether the sheet's period numbering from is set and the sheet's today is on or after it. */
++    private boolean numberingOn(String sheetId) {
++        LocalDate from = sheets.periodNumberingFrom(sheetId);
++        return from != null && !sheets.today(sheetId).isBefore(from);
++    }
++
++    /** The period whose dates contain the date, or null when none does. */
++    private Period periodOf(String sheetId, LocalDate date) {
++        return periods.list(sheetId).stream().filter(p -> p.contains(date)).findFirst().orElse(null);
++    }
++
++    /** The period sequence a claim dated on the date counts in ('P<period id>', or 'X' for no period). */
++    private String sequenceOf(String sheetId, LocalDate date) {
++        Period period = periodOf(sheetId, date);
++        return period == null ? "X" : "P" + period.getId();
++    }
++
+     /**
+      * Refuse a correction (a negative amount) that does not name the number of a SETTLED claim of the
+      * same person, and a claim that is not a correction but names one. Returns the date of the claim a
+diff --git a/src/main/resources/db/migration/V45__claim_retired_number.sql b/src/main/resources/db/migration/V45__claim_retired_number.sql
+new file mode 100644
+index 00000000..686836b5
+--- /dev/null
++++ b/src/main/resources/db/migration/V45__claim_retired_number.sql
+@@ -0,0 +1,8 @@
++-- A place in a period sequence that a claim left when it was re-dated into another period: it is never
++-- given again, so the next number of that sequence counts it as taken.
++CREATE TABLE claim_retired_number (
++    sheet_id VARCHAR(100) NOT NULL,
++    period_sequence VARCHAR(30) NOT NULL,
++    period_seq_number INT NOT NULL,
++    PRIMARY KEY (sheet_id, period_sequence, period_seq_number)
++);
