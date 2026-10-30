@@ -361,6 +361,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <option [value]="r" [selected]="voidReasons()[c.id] === r">{{ r }}</option>
             }
           </select>
+          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+          <input
+            [id]="'claim-settle-date-' + c.id"
+            type="date"
+            data-testid="claim-settle-date"
+            [value]="settleDates()[c.id] ?? ''"
+            (input)="setSettleDate(c.id, value($event))"
+          />
           @for (a of actions; track a.action) {
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
@@ -553,6 +561,8 @@ export class Claims implements OnInit {
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   /** The reason typed for rejecting each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The date typed to settle each claim as of, by claim id; blank settles it as of today. */
+  protected readonly settleDates = signal<Record<number, string>>({});
   /** The void reason chosen for each claim, by claim id. */
   protected readonly voidReasons = signal<Record<number, string>>({});
   /** The date typed for deferring each claim until, by claim id. */
@@ -603,6 +613,11 @@ export class Claims implements OnInit {
 
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((all) => ({ ...all, [id]: reason }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  protected setSettleDate(id: number, on: string): void {
+    this.settleDates.update((all) => ({ ...all, [id]: on }));
     if (this.claimError()?.id === id) this.claimError.set(null);
   }
 
@@ -1282,13 +1297,21 @@ export class Claims implements OnInit {
       this.claimError.set({ id: c.id, message: 'Choose a reason to void the claim.' });
       return;
     }
+    const on = (this.settleDates()[c.id] ?? '').trim();
+    if (action === 'settle') this.settleDates.update((all) => ({ ...all, [c.id]: '' }));
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
       const person = await firstValueFrom(
         this.http.post<PersonWithClaims>(
           `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`,
-          action === 'reject' ? { reason } : action === 'void' ? { reason: voidReason === '' ? null : voidReason } : null,
+          action === 'reject'
+            ? { reason }
+            : action === 'void'
+              ? { reason: voidReason === '' ? null : voidReason }
+              : action === 'settle' && on !== ''
+                ? { on }
+                : null,
           { headers },
         ),
       );

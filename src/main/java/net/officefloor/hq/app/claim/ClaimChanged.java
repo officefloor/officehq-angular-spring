@@ -15,10 +15,17 @@ import java.time.LocalDate;
  * The ref is an added claim's external reference, or null when it has none or the event carries none. The
  * tags are an added claim's tags, sorted and comma separated, or null when it has none or the event carries none.
  * The void reason is the reason from the sheet's list a claim was voided with, or null when none was given.
+ * The on is the past day a claim was settled as of, its due frozen as it stood then, or null when it was not.
  */
 public record ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
         LocalDate date, String number, String due, String reason, String reversed, String ref, String tags,
-        String voidReason) {
+        String voidReason, LocalDate on) {
+
+    public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
+            LocalDate date, String number, String due, String reason, String reversed, String ref, String tags,
+            String voidReason) {
+        this(event, sheetId, user, person, amount, date, number, due, reason, reversed, ref, tags, voidReason, null);
+    }
 
     public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
             LocalDate date, String number, String due, String reason, String reversed, String ref, String tags) {

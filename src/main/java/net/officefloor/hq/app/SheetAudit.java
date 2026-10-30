@@ -174,7 +174,8 @@ public class SheetAudit {
                 + (e.reversed() == null ? "" : " reversed=" + e.reversed())
                 + (e.ref() == null ? "" : " ref=" + e.ref())
                 + (e.tags() == null ? "" : " tags=" + e.tags())
-                + (e.voidReason() == null ? "" : " reason=" + e.voidReason()));
+                + (e.voidReason() == null ? "" : " reason=" + e.voidReason())
+                + (e.on() == null ? "" : " on=" + e.on()));
     }
 
     @TransactionalEventListener

@@ -84,6 +84,10 @@ public class ClaimController {
     }
 
     /** The reason from the sheet's list a claim is voided with; none (null or blank) while the list is empty. */
+    /** The date a claim is settled as of; null settles it as of today. */
+    public record SettleForm(LocalDate on) {
+    }
+
     public record VoidForm(@Size(max = 1000) String reason) {
     }
 
@@ -134,10 +138,13 @@ public class ClaimController {
     private final RateService rates;
     private final StatementService statements;
     private final Tags tags;
+    private final SettleAsOfService settleAsOf;
 
     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
             BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
-            BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags) {
+            BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags,
+            SettleAsOfService settleAsOf) {
+        this.settleAsOf = settleAsOf;
         this.bulkReassign = bulkReassign;
         this.bulkRedate = bulkRedate;
         this.bulkVoid = bulkVoid;
@@ -276,10 +283,16 @@ public class ClaimController {
         return bulkVoid.voidAll(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()), form.reason());
     }
 
+    /** Settle a claim; given a date, as of that date: its due frozen as it stood at the end of that day. */
     @PostMapping("/claims/{claimId}/settle")
     public PersonView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
-        return move(sheetId, claimId, user, ClaimStatus.SETTLED);
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody(required = false) SettleForm form) {
+        if (form == null || form.on() == null) {
+            return move(sheetId, claimId, user, ClaimStatus.SETTLED);
+        }
+        String sheet = sheetId.trim();
+        return view(sheet, settleAsOf.settle(sheet, user.trim(), claimId, form.on()));
     }
 
     /** A steward approves a PENDING claim, settling it. */

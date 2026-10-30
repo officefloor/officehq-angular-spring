@@ -346,6 +346,34 @@ public class ClaimService {
      */
     private long move(String sheetId, String user, long claimId, ClaimStatus next, String voidReason,
             boolean judgeHere) {
+        return move(sheetId, user, claimId, next, voidReason, judgeHere, null);
+    }
+
+    /** A claim's due as it stood at the end of a past day of the sheet (null: n/a), to settle it at. */
+    public record DueThen(LocalDate on, BigDecimal due) {
+    }
+
+    /**
+     * The claim's due as the sheet shows it now, as of the date given; empty when the sheet has no such
+     * claim. Read within {@link net.officefloor.hq.app.asof.SheetPasts#asOf}, it is the due as it stood then.
+     */
+    java.util.Optional<DueThen> dueThen(String sheetId, long claimId, LocalDate on) {
+        return claims.findByIdAndSheetId(claimId, sheetId).map(claim -> new DueThen(on,
+                dueNow(sheetId, claim, people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null))));
+    }
+
+    /**
+     * Settle a claim as {@link #move(String, String, long, ClaimStatus, String)} does, freezing the due it had
+     * as of a past day of the sheet in place of today's.
+     */
+    @Transactional
+    public long settleAsOf(String sheetId, String user, long claimId, DueThen then) {
+        return move(sheetId, user, claimId, ClaimStatus.SETTLED, null, true, then);
+    }
+
+    /** Move a claim; a settle with a due as of a past day freezes that due in place of today's. */
+    private long move(String sheetId, String user, long claimId, ClaimStatus next, String voidReason,
+            boolean judgeHere, DueThen then) {
         Claim claim = claim(sheetId, claimId);
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -401,7 +429,7 @@ public class ClaimService {
         String number = claim.getShownNumber();
         String due = null;
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal fixed = dueNow(sheetId, claim, owner);
+            BigDecimal fixed = then == null ? dueNow(sheetId, claim, owner) : then.due();
             if (judgeHere) {
                 requireProof(sheetId, claim, owner, fixed);
             }
@@ -429,7 +457,8 @@ public class ClaimService {
             case DRAFT, DELETED -> throw new IllegalStateException();
         };
         events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number,
-                due, null, reversed, null, null, reasonGiven));
+                due, null, reversed, null, null, reasonGiven,
+                then != null && next == ClaimStatus.SETTLED ? then.on() : null));
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, owner, number);
         }
