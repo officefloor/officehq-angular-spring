@@ -1,0 +1,22 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateTable.java b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+index 408a079f..0e093a53 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateTable.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+@@ -94,7 +94,7 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
+     /**
+      * The late charge on a figure of a claim due by the due-by: for every full 30 days from its due-by to the
+      * sheet's today, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of
+-     * the figure, each rounded by the date its claim's rounding goes by, added up; a boundary whose percent is
++     * the figure plus the charges of the boundaries before it (compounding), each rounded by the date its claim's rounding goes by, added up; a boundary whose percent is
+      * 0.00 adds nothing. 0.00 when not a full 30 days overdue.
+      */
+     public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate roundsBy) {
+@@ -104,7 +104,7 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
+         for (long n = 1; n <= periods; n++) {
+             BigDecimal pct = settings.latePct(dueBy.plusDays(n * LATE_PERIOD_DAYS));
+             if (pct.signum() != 0) {
+-                charge = charge.add(RateService.due(figure, pct, rounding));
++                charge = charge.add(RateService.due(figure.add(charge), pct, rounding));
+             }
+         }
+         return charge;

@@ -1,0 +1,68 @@
+{
+  "checkpoint": 88,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp88_compound-late-charge",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    27
+  ],
+  "replaced_tests": [
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2"
+  ],
+  "request": {
+    "spec": "The late charge now compounds: the charge for each 30-day boundary is the late percent in force\non that boundary date of the claim's figure plus the charges of the boundaries before it, each\nrounded like the claim as before, then added up. A claim settled with its charge keeps the frozen\nfigure.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe late charge now compounds: the charge for each 30-day boundary is the late percent in force\non that boundary date of the claim's figure plus the charges of the boundaries before it, each\nrounded like the claim as before, then added up. A claim settled with its charge keeps the frozen\nfigure.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b5554efa870461f88a25df6e4d415407c1373469",
+  "reset_sha": "",
+  "preagent_sha": "23272f986d44f81b7e817162055e55746296692f",
+  "prev_sha": "23272f986d44f81b7e817162055e55746296692f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2690292,
+    "input_tokens": 16,
+    "output_tokens": 1596,
+    "cache_read_tokens": 200666,
+    "cache_creation_tokens": 24614,
+    "num_turns": 8,
+    "duration_ms": 181809,
+    "duration_api_ms": 29138,
+    "model": "claude-opus-5-5",
+    "session_id": "5bed0595-0778-4615-943b-1459a442dd8f",
+    "stop_reason": "success",
+    "result_text": "The late charge now compounds, and all 4 tests in `bin/e2e` pass.\n\nThe fix was one line in `RateTable.lateCharge` (`src/main/java/net/officefloor/hq/app/rate/RateTable.java:107`). At each 30-day boundary, the late percent in force on that date is now applied to the claim's figure plus the charges already added. Each charge is still rounded the way the claim is, and a boundary with 0.00% still adds nothing. I updated the method's comment to match.\n\nFor example, the test's 20.00 claim is three boundaries late at 10%: the charges are 2.00, then 2.20, then 2.42, so it now shows 26.62.\n\nNothing else needed changing:\n- **Settled claims:** these use the figure frozen when they were settled, so they stay as they are.\n- **Front end and stored data:** neither does this calculation; the server does it all.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.2690292,
+        "num_turns": 8,
+        "duration_ms": 181809,
+        "duration_api_ms": 29138,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp88.agent.jsonl",
+  "agent_diff_file": "cp88.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
