@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.rate.RateService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -34,19 +35,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /**
-     * A claim as shown: its amount with two decimals, its date, its note, and its due: the amount at
-     * the rate for its person's grade (null when the grade has no rate).
+     * A claim as shown: its amount with two decimals, its date, its note, its due: the amount at
+     * the rate for its person's grade (null when the grade has no rate), and its status.
      */
-    public record ClaimView(long id, String amount, LocalDate date, String note, String due) {
+    public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status) {
 
         static ClaimView of(Claim claim, BigDecimal pct) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
-                    money(RateService.due(claim.getAmount(), pct)));
+                    money(RateService.due(claim.getAmount(), pct)), claim.getStatus());
         }
     }
 
     /**
-     * A person with their claims, newest first, claimed: the sum of the claims' amounts, and
+     * A person with their claims, newest first, claimed: the sum of the amounts of the claims that
+     * count (OPEN and SETTLED), and
      * dueTotal: claimed at the rate for their grade (null when the grade has no rate).
      */
     public record PersonView(long id, String name, String grade, List<ClaimView> claims, String claimed,
@@ -55,7 +57,7 @@ public class PersonController {
         /** The person as shown, given the sheet's rate for each grade. */
         public static PersonView of(Person person, List<Claim> claims, Map<String, BigDecimal> rates) {
             BigDecimal pct = rates.get(person.getGrade());
-            BigDecimal claimed = claims.stream().map(Claim::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal claimed = claims.stream().filter(c -> c.getStatus().counts()).map(Claim::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
             return new PersonView(person.getId(), person.getName(), person.getGrade(),
                     claims.stream().map(c -> ClaimView.of(c, pct)).toList(), money(claimed),
                     money(RateService.due(claimed, pct)));

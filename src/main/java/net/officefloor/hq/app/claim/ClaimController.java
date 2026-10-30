@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * A person's claims. Adding or editing a claim answers with the person it belongs to, carrying
- * their claims and claimed. The signed-in user's name comes in the {@code X-User} header.
+ * their claims and claimed; so does opening, settling or voiding one. The signed-in user's name comes in the {@code X-User} header.
  */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -59,6 +59,29 @@ public class ClaimController {
         String sheet = sheetId.trim();
         long id = claims.edit(sheet, user.trim(), claimId, new BigDecimal(form.amount()), form.date(), form.note());
         return view(sheet, id);
+    }
+
+    @PostMapping("/claims/{claimId}/open")
+    public PersonView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        return move(sheetId, claimId, user, ClaimStatus.OPEN);
+    }
+
+    @PostMapping("/claims/{claimId}/settle")
+    public PersonView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        return move(sheetId, claimId, user, ClaimStatus.SETTLED);
+    }
+
+    @PostMapping("/claims/{claimId}/void")
+    public PersonView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        return move(sheetId, claimId, user, ClaimStatus.VOID);
+    }
+
+    private PersonView move(String sheetId, long claimId, String user, ClaimStatus next) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.move(sheet, user.trim(), claimId, next));
     }
 
     private PersonView view(String sheetId, long personId) {

@@ -3,6 +3,11 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
+/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+export type ClaimAction = 'open' | 'settle' | 'void';
+
 export interface Claim {
   id: number;
   amount: string;
@@ -10,6 +15,7 @@ export interface Claim {
   note: string;
   /** The amount at the rate for the person's grade; null when the grade has no rate. */
   due: string | null;
+  status: ClaimStatus;
 }
 
 export interface PersonWithClaims {
@@ -17,6 +23,7 @@ export interface PersonWithClaims {
   name: string;
   grade: string;
   claims: Claim[];
+  /** The amounts of the OPEN and SETTLED claims added up. */
   claimed: string;
   /** Claimed at the rate for the person's grade; null when the grade has no rate. */
   dueTotal: string | null;
@@ -26,7 +33,8 @@ const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
-// opened, edits it. A saved claim answers with the person, which is handed up as `saved`.
+// opened, edits it. Each claim can be opened, settled or voided. A saved or moved claim answers with
+// the person, which is handed up as `saved`.
 @Component({
   selector: 'app-claims',
   template: `
@@ -37,6 +45,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ c.due ?? 'n/a' }}</span></span>
+          <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+          @for (a of actions; track a.action) {
+            <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
+              {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+            </button>
+          }
+          @if (claimError()?.id === c.id) {
+            <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
+          }
           <button type="button" data-testid="claim-edit" (click)="edit(c)">
             Edit claim<span class="visually-hidden"> {{ c.amount }} {{ c.date }}</span>
           </button>
@@ -91,6 +108,13 @@ export class Claims {
   protected readonly note = signal('');
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
+  /** The refusal of the last action taken on a claim's row, shown on that row. */
+  protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  protected readonly actions: { action: ClaimAction; label: string }[] = [
+    { action: 'open', label: 'Open' },
+    { action: 'settle', label: 'Settle' },
+    { action: 'void', label: 'Void' },
+  ];
 
   protected fid(field: string): string {
     return `claim-${this.person().id}-${field}`;
@@ -150,4 +174,28 @@ export class Claims {
       this.error.set(id === null ? 'Could not add the claim.' : 'Could not save the claim.');
     }
   }
+
+  /** Open, settle or void a claim; a change its status does not allow is refused on its row. */
+  protected async move(c: Claim, action: ClaimAction): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`,
+          null,
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(person);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be ${PAST[action]}.` });
+    }
+  }
 }
+
+const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
