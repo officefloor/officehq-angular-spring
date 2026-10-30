@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 8b76a60e1..8cd181b68 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -172,7 +172,7 @@ export interface PersonWithClaims {
+   retirements: Retirement[];
+   /** The person's snapshot lines, one per SNAPSHOT written for them, oldest first. */
+   snapshots: Snapshot[];
+-  /** The person's statement lines, one per statement still standing, oldest first by date. */
++  /** The person's statement lines, one per statement still standing, in the order taken. */
+   statementLines: StatementLine[];
+   /** Whether the person has any hold, whatever its dates. */
+   held: boolean;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c1ff25f30..6736e7bbd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -184,6 +184,9 @@ function csvField(value: string): string {
+       <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
+       <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
+       <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
++      <p>Due aged 0–30 <strong data-testid="rollup-aged-0-30">{{ aged0to30() | figure }}</strong></p>
++      <p>Due aged 31–60 <strong data-testid="rollup-aged-31-60">{{ aged31to60() | figure }}</strong></p>
++      <p>Due aged 61+ <strong data-testid="rollup-aged-61">{{ aged61() | figure }}</strong></p>
+       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
+         <label for="person-form-name">Name</label>
+         <input
+@@ -943,6 +946,19 @@ export class People {
+     (this.people().reduce((sum, p) => sum + cents(p.openTotal), 0) / 100).toFixed(2),
+   );
+ 
++  /** Everyone's due aged 0 to 30 days added up, not trimmed. */
++  protected readonly aged0to30 = computed(() =>
++    (this.people().reduce((sum, p) => sum + cents(p.aged0to30), 0) / 100).toFixed(2),
++  );
++  /** Everyone's due aged 31 to 60 days added up, not trimmed. */
++  protected readonly aged31to60 = computed(() =>
++    (this.people().reduce((sum, p) => sum + cents(p.aged31to60), 0) / 100).toFixed(2),
++  );
++  /** Everyone's due aged 61 or more days added up, not trimmed. */
++  protected readonly aged61 = computed(() =>
++    (this.people().reduce((sum, p) => sum + cents(p.aged61), 0) / 100).toFixed(2),
++  );
++
+   /** Everyone's cut total added up, not trimmed. */
+   protected readonly cutTotal = computed(() =>
+     (this.people().reduce((sum, p) => sum + (this.personCuts().get(p.id) ?? 0), 0) / 100).toFixed(2),
+diff --git a/src/main/frontend/src/app/features/tags/tags.ts b/src/main/frontend/src/app/features/tags/tags.ts
+index 2cee5f545..27005ff72 100644
+--- a/src/main/frontend/src/app/features/tags/tags.ts
++++ b/src/main/frontend/src/app/features/tags/tags.ts
+@@ -52,7 +52,7 @@ export class Tags {
+         const tags = new Set([...c.tags, ...(person.tags ?? [])]);
+         for (const t of tags) if (!totals.has(t)) totals.set(t, 0);
+         const counts = (c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED') && c.due !== null
+-          && !c.deferred && !heldOut(c, person.holds) && !retiredOut(c, person.retiredNow);
++          && !c.deferred && !(c.held && !c.stated && c.status !== 'SETTLED') && !heldOut(c, person.holds) && !retiredOut(c, person.retiredNow);
+         if (!counts) continue;
+         for (const t of tags) totals.set(t, (totals.get(t) ?? 0) + cents(c.due!));
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index e0287a58a..c028b4589 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -124,7 +124,7 @@ public class PersonController {
+      * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
+      * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
+      * transferred from (null: none), their past retirements, earliest first, their snapshot lines, oldest first, and
+-     * their statement lines: one per statement still standing, oldest first by date, and the reason of their flag
++     * their statement lines: one per statement still standing, in the order taken, and the reason of their flag
+      * while it is in force on the sheet's today (null otherwise, see {@link Person#flagOn}).
+      */
+     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statements.java b/src/main/java/net/officefloor/hq/app/statement/Statements.java
+index a0455e3c9..bcd8fa59d 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statements.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statements.java
+@@ -2,12 +2,11 @@ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+-import java.util.Comparator;
+ import java.util.List;
+ 
+ /**
+  * A person's statements as shown: how many were taken, the last one's due-total and date (null with none),
+- * and every one still standing, oldest first by date (in the order taken on the same date).
++ * and every one still standing, in the order taken.
+  */
+ public record Statements(int count, BigDecimal lastDueTotal, LocalDate lastDate, List<Line> lines) {
+ 
+@@ -24,7 +23,6 @@ public record Statements(int count, BigDecimal lastDueTotal, LocalDate lastDate,
+         }
+         Statement last = taken.get(taken.size() - 1);
+         List<Line> lines = taken.stream()
+-                .sorted(Comparator.comparing(Statement::getTakenOn).thenComparing(Statement::getId))
+                 .map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
+         return new Statements(taken.size(), last.getDueTotal(), last.getTakenOn(), lines);
+     }
