@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Access } from '../access/access';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
-import { Period, Periods } from '../periods/periods';
+import { Period, Periods, personPeriodTotals } from '../periods/periods';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
 
@@ -148,6 +148,9 @@ function csvField(value: string): string {
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Patrons</th><th scope="col">Backing</th>
+            @for (pd of periods(); track pd.id) {
+              <th scope="col">Due in {{ pd.name }}</th>
+            }
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -169,6 +172,9 @@ function csvField(value: string): string {
               <td data-testid="person-overdue-total">{{ p.overdueTotal }}</td>
               <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
               <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
+              @for (pd of periods(); track pd.id) {
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodTotals().get(p.id)?.[pd.id] }}</td>
+              }
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -255,6 +261,10 @@ export class People {
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
   protected readonly periods = signal<Period[]>([]);
+  /** Per person id, their due-total for each period on the sheet, by period id. */
+  protected readonly periodTotals = computed(
+    () => new Map(this.people().map((p) => [p.id, personPeriodTotals(this.periods(), p)])),
+  );
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   /** The date an edit's grade applies from; blank: the sheet's today. */

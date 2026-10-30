@@ -13,6 +13,8 @@ export interface Period {
   closed: boolean;
   /** The due-total fixed when the period was closed; null while it is open. */
   closedTotal: string | null;
+  /** Per person id, the person's due-total fixed when the period was closed; empty while it is open. */
+  personTotals: Record<number, string>;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -27,28 +29,42 @@ function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
-/** Per period id, the dues of the claims that count whose date falls in it, added up, or once closed the
- * due-total fixed then; an unbound OPEN claim dated within a hold of its person counts in none. */
-export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
+/** Per period id, the person's due-total for it: the dues of their claims that count whose date falls in it,
+ * added up, or once closed the figure fixed then (0.00 for a person added later); an unbound OPEN claim dated
+ * within a hold of its person counts in none. */
+export function personPeriodTotals(periods: Period[], person: PersonWithClaims): Record<number, string> {
   const totals: Record<number, number> = {};
   for (const p of periods) totals[p.id] = 0;
-  const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
-  for (const person of people) {
-    for (const c of person.claims) {
-      const unpaid = c.status === 'OPEN' || c.status === 'PENDING';
-      if ((!unpaid && c.status !== 'SETTLED') || c.due === null) continue;
-      if (heldOut(c, person.holds)) continue;
-      const period = periodOf(periods, c.date);
-      if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
-    }
+  for (const c of person.claims) {
+    const unpaid = c.status === 'OPEN' || c.status === 'PENDING';
+    if ((!unpaid && c.status !== 'SETTLED') || c.due === null) continue;
+    if (heldOut(c, person.holds)) continue;
+    const period = periodOf(periods, c.date);
+    if (period && !period.closed) totals[period.id] += cents(c.due);
   }
   const shown: Record<number, string> = {};
-  for (const id of Object.keys(totals)) shown[+id] = closed.get(+id) ?? (totals[+id] / 100).toFixed(2);
+  for (const p of periods) {
+    shown[p.id] = p.closed ? (p.personTotals?.[person.id] ?? '0.00') : (totals[p.id] / 100).toFixed(2);
+  }
   return shown;
 }
 
-// The sheet's periods, earliest first, each with its due-total: the dues of the claims that count
-// (OPEN, PENDING and SETTLED) whose date falls in it, or once closed the due-total fixed then; and the form that
+/** Per period id, its due-total: the people's due-totals for it, added up. */
+export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
+  const totals: Record<number, number> = {};
+  for (const p of periods) totals[p.id] = 0;
+  for (const person of people) {
+    const figures = personPeriodTotals(periods, person);
+    for (const p of periods) totals[p.id] += cents(figures[p.id]);
+  }
+  const shown: Record<number, string> = {};
+  for (const p of periods) shown[p.id] = (totals[p.id] / 100).toFixed(2);
+  return shown;
+}
+
+// The sheet's periods, earliest first, each with its due-total: the people's due-totals for it added up,
+// each the dues of their claims that count (OPEN, PENDING and SETTLED) whose date falls in it, or once
+// closed the figure fixed then; and the form that
 // adds one. No two periods share a name or a date.
 @Component({
   selector: 'app-periods',

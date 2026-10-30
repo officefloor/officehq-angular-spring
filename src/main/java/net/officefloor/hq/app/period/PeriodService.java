@@ -3,6 +3,7 @@ package net.officefloor.hq.app.period;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -82,8 +83,8 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing its due-total: the due figures of the claims that count (OPEN, PENDING and SETTLED,
-     * but not an unbound OPEN claim dated within a hold of its person) dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
+     * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims that count (OPEN, PENDING and SETTLED,
+     * but not an unbound OPEN claim dated within a hold of its person) dated inside it, added up per person. Refused when it is already closed. Takes turns with claim changes on the
      * sheet, so the total fixed is the one the claims had at that moment.
      */
     @Transactional
@@ -97,13 +98,19 @@ public class PeriodService {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, p -> p));
         RateTable table = rates.table(sheetId);
-        BigDecimal total = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
+        claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> Dues.counts(c, byId.get(c.getPersonId())::heldOn) && period.contains(c.getDate()))
-                .map(c -> Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table))
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
-        period.close(total);
+                .forEach(c -> {
+                    BigDecimal due = Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table);
+                    if (due != null) {
+                        totals.merge(c.getPersonId(), due, BigDecimal::add);
+                    }
+                });
+        totals.replaceAll((id, t) -> t.setScale(2, RoundingMode.HALF_UP));
+        period.close(totals);
+        BigDecimal total = period.getClosedTotal().setScale(2, RoundingMode.HALF_UP);
         periods.flush();
         events.publishEvent(new PeriodClosed(sheetId, user, period.getName(), total));
         return period;
