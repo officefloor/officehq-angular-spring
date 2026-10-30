@@ -1,0 +1,920 @@
+diff --git a/src/main/frontend/src/app/core/figure.ts b/src/main/frontend/src/app/core/figure.ts
+new file mode 100644
+index 000000000..e39c3e705
+--- /dev/null
++++ b/src/main/frontend/src/app/core/figure.ts
+@@ -0,0 +1,26 @@
++import { Pipe, PipeTransform, inject } from '@angular/core';
++import { Session } from './session';
++
++/** A figure as the server sends it: digits, a dot, two decimals. */
++const FIGURE = /^(-?)(\d+)\.(\d{2})$/;
++
++/**
++ * Shows a figure (an amount, total, rate, share or cut with two decimals) in the signed-in user's locale:
++ * under de as 1.234,56, under en as it comes. Anything that is not such a figure is shown as it is.
++ * Impure, as it reads the user's locale, which may change while the value does not.
++ */
++@Pipe({ name: 'figure', pure: false })
++export class FigurePipe implements PipeTransform {
++  private readonly session = inject(Session);
++
++  transform<T>(value: T): T | string {
++    return formatFigure(value, this.session.locale());
++  }
++}
++
++export function formatFigure<T>(value: T, locale: string): T | string {
++  if (locale !== 'de' || typeof value !== 'string') return value;
++  const m = FIGURE.exec(value);
++  if (!m) return value;
++  return `${m[1]}${m[2].replace(/\B(?=(\d{3})+$)/g, '.')},${m[3]}`;
++}
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 62b378e97..1e61ead47 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -2,6 +2,10 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
++/** The locales a user may choose; en unless chosen. */
++export const LOCALES = ['en', 'de'] as const;
++export type Locale = (typeof LOCALES)[number];
++
+ interface SheetView {
+   id: string;
+   today: string;
+@@ -16,6 +20,8 @@ export class Session {
+   private readonly http = inject(HttpClient);
+ 
+   readonly user = signal<string | null>(null);
++  /** The signed-in user's locale, saved per user: how the screen shows them figures. */
++  readonly locale = signal<Locale>('en');
+   readonly sheet = signal<string | null>(null);
+   /** The active sheet's own today (yyyy-mm-dd), whatever date the screen shows it as of. */
+   private readonly sheetToday = signal<string | null>(null);
+@@ -36,7 +42,7 @@ export class Session {
+   readonly loads = signal(0);
+ 
+   async signIn(name: string): Promise<void> {
+-    const res = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
++    const res = await firstValueFrom(this.http.post<{ name: string; locale: Locale }>('/api/signin', { name }));
+     this.sheet.set(null);
+     this.sheetToday.set(null);
+     this.asOf.set(null);
+@@ -44,9 +50,20 @@ export class Session {
+     this.parent.set(null);
+     this.clonedTo.set(null);
+     this.loads.update((n) => n + 1);
++    this.locale.set(res.locale);
+     this.user.set(res.name);
+   }
+ 
++  /** Save the signed-in user's locale. */
++  async setLocale(locale: Locale): Promise<void> {
++    const res = await firstValueFrom(
++      this.http.put<{ locale: Locale }>('/api/me/locale', { locale }, {
++        headers: { 'X-User': this.user() ?? '' },
++      }),
++    );
++    this.locale.set(res.locale);
++  }
++
+   async loadSheet(id: string): Promise<void> {
+     const res = await firstValueFrom(
+       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 5accbe0a9..5c0e367b2 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Component, effect, inject, input, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -128,6 +129,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+ // save it blank).
+ @Component({
+   selector: 'app-access',
++  imports: [FigurePipe],
+   template: `
+     <section aria-label="Roles">
+       <h2>Roles</h2>
+@@ -212,13 +214,13 @@ const ROUNDING = /^(half-up|half-even)$/;
+     </section>
+     <section aria-label="Settings">
+       <h2>Settings</h2>
+-      <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
+-      <p>Floor <strong data-testid="setting-floor-current">{{ floor() }}</strong></p>
++      <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</strong></p>
++      <p>Floor <strong data-testid="setting-floor-current">{{ floor() | figure }}</strong></p>
+       <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
+       @for (g of grades; track g) {
+         <p>Terms for grade {{ g }} (days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</strong></p>
+       }
+-      <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
++      <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() | figure }}</strong></p>
+       <p>Rounding mode <strong data-testid="setting-rounding-current">{{ rounding() ?? '' }}</strong></p>
+       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
+       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
+@@ -227,17 +229,17 @@ const ROUNDING = /^(half-up|half-even)$/;
+         <p>Grace days for grade {{ g }} <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</strong></p>
+       }
+       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
+-      <p>Pot <strong data-testid="setting-pot-current">{{ pot() ?? '' }}</strong></p>
+-      <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</strong></p>
++      <p>Pot <strong data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</strong></p>
++      <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
+       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
+       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
+-      <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
+-      <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
++      <p>Cap <strong data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</strong></p>
++      <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ (proofThreshold() ?? '') | figure }}</strong></p>
+       @for (g of grades; track g) {
+         <p>Proof threshold for grade {{ g }} <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProof()[g] ?? '' }}</strong></p>
+       }
+-      <p>Note threshold <strong data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</strong></p>
+-      <p>Review threshold <strong data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</strong></p>
++      <p>Note threshold <strong data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</strong></p>
++      <p>Review threshold <strong data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</strong></p>
+       @for (p of perms; track p.field) {
+         <p>Roles that may {{ p.action }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
+       }
+diff --git a/src/main/frontend/src/app/features/claim-templates/claim-templates.ts b/src/main/frontend/src/app/features/claim-templates/claim-templates.ts
+index 8afad4ae6..ad189d833 100644
+--- a/src/main/frontend/src/app/features/claim-templates/claim-templates.ts
++++ b/src/main/frontend/src/app/features/claim-templates/claim-templates.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, Injectable, effect, inject, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -65,6 +66,7 @@ export class ClaimTemplateList {
+ // name or an amount the claim form would refuse is refused.
+ @Component({
+   selector: 'app-claim-templates',
++  imports: [FigurePipe],
+   template: `
+     <section aria-label="Claim templates">
+       <h2>Claim templates</h2>
+@@ -72,7 +74,7 @@ export class ClaimTemplateList {
+         @for (t of list.templates(); track t.name) {
+           <li [attr.data-testid]="'template-row-' + t.name">
+             <span data-testid="template-name">{{ t.name }}</span>
+-            <span>Amount <span data-testid="template-amount">{{ t.amount }}</span></span>
++            <span>Amount <span data-testid="template-amount">{{ t.amount | figure }}</span></span>
+             <span>Note <span data-testid="template-note">{{ t.note }}</span></span>
+           </li>
+         }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 4e11b66d9..9f53c6527 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Period, periodOf } from '../periods/periods';
+@@ -199,6 +200,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ // the others selected.
+ @Component({
+   selector: 'app-claims',
++  imports: [FigurePipe],
+   template: `
+     <ul aria-label="Claims">
+       @for (c of person().claims; track c.id) {
+@@ -211,12 +213,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+             (change)="selectToggled.emit({ id: c.id, checked: checked($event) })"
+           />
+           <label [for]="'claim-select-' + c.id" class="visually-hidden">Select claim {{ c.amount }} {{ c.date }}</label>
+-          <span data-testid="claim-amount">{{ c.amount }}</span>
++          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
+           <span data-testid="claim-date">{{ c.date }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+           <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
+-          <span>Due <span data-testid="claim-due">{{ c.due ?? 'n/a' }}</span></span>
++          <span>Due <span data-testid="claim-due">{{ (c.due ?? 'n/a') | figure }}</span></span>
+           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 02f103e87..1e67fbfd9 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,5 +1,5 @@
+-import { Component, inject, signal } from '@angular/core';
+-import { Session } from '../../core/session';
++import { Component, inject, linkedSignal, signal } from '@angular/core';
++import { LOCALES, Locale, Session } from '../../core/session';
+ import { People } from '../people/people';
+ 
+ // The one screen: sign in by name, then load a sheet by id.
+@@ -10,6 +10,24 @@ import { People } from '../people/people';
+     @if (session.user(); as user) {
+       <section aria-label="Session">
+         <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
++        <form (submit)="saveLocale($event)" aria-label="Locale">
++          <p>Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong></p>
++          <label for="user-locale">Show figures as</label>
++          <select
++            id="user-locale"
++            data-testid="user-locale"
++            [value]="localeInput()"
++            (change)="localeInput.set($any(value($event))); localeError.set('')"
++          >
++            @for (l of locales; track l) {
++              <option [value]="l" [selected]="l === localeInput()">{{ l }}</option>
++            }
++          </select>
++          <button type="submit" data-testid="user-locale-save">Save locale</button>
++          @if (localeError()) {
++            <p role="alert" data-testid="user-locale-error">{{ localeError() }}</p>
++          }
++        </form>
+         <form (submit)="load($event)">
+           <label for="sheet-id">Sheet id</label>
+           <input
+@@ -95,6 +113,10 @@ export class Home {
+   protected readonly todayInput = signal('');
+   protected readonly asOfInput = signal('');
+   protected readonly cloneInput = signal('');
++  protected readonly locales = LOCALES;
++  /** The locale chosen in the select; it follows the user's saved locale until changed. */
++  protected readonly localeInput = linkedSignal<Locale>(() => this.session.locale());
++  protected readonly localeError = signal('');
+   /** A today change, archive or clone still waiting for its answer: another press meanwhile is ignored. */
+   private busy = false;
+ 
+@@ -117,6 +139,16 @@ export class Home {
+     }
+   }
+ 
++  protected async saveLocale(e: Event): Promise<void> {
++    e.preventDefault();
++    this.localeError.set('');
++    try {
++      await this.session.setLocale(this.localeInput());
++    } catch {
++      this.localeError.set('Could not save the locale.');
++    }
++  }
++
+   protected async load(e: Event): Promise<void> {
+     e.preventDefault();
+     this.sheetError.set('');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 30b70c2c1..8fd126835 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { LIVE } from '../../core/as-of';
+ import { Session } from '../../core/session';
+@@ -116,23 +117,23 @@ function csvField(value: string): string {
+ // user can watch people of their own choosing.
+ @Component({
+   selector: 'app-people',
+-  imports: [Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
++  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
+   template: `
+     <header aria-label="Counters">
+       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
+       @for (s of statusCounts(); track s.status) {
+         <p>{{ s.status }} claims <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong></p>
+       }
+-      <p>Due total <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
+-      <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
+-      <p>My due total <strong data-testid="my-due-total">{{ me() === null ? '' : (me()!.dueTotal ?? 'n/a') }}</strong></p>
+-      <p>My overdue total <strong data-testid="my-overdue-total">{{ me()?.overdueTotal ?? '' }}</strong></p>
++      <p>Due total <strong data-testid="header-due-total">{{ dueTotal() | figure }}</strong></p>
++      <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() | figure }}</strong></p>
++      <p>My due total <strong data-testid="my-due-total">{{ (me() === null ? '' : (me()!.dueTotal ?? 'n/a')) | figure }}</strong></p>
++      <p>My overdue total <strong data-testid="my-overdue-total">{{ (me()?.overdueTotal ?? '') | figure }}</strong></p>
+     </header>
+     <section aria-label="Consolidated figures">
+       <h2>Consolidated over this sheet and its descendants</h2>
+       <p>People <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
+-      <p>Due total <strong data-testid="consolidated-due-total">{{ consolidated().due }}</strong></p>
+-      <p>Overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdue }}</strong></p>
++      <p>Due total <strong data-testid="consolidated-due-total">{{ consolidated().due | figure }}</strong></p>
++      <p>Overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdue | figure }}</strong></p>
+     </section>
+     <app-rates (changed)="reloadSheet()" />
+     <app-access [settingsSaved]="reloadAfterSettings" />
+@@ -147,13 +148,13 @@ function csvField(value: string): string {
+     <app-audit />
+     <section aria-label="People">
+       <h2>People</h2>
+-      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+-      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
++      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
++      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
+       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+-      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+-      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+-      <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+-      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
++      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() | figure }}</strong></p>
++      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
++      <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
++      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
+       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
+         <label for="person-form-name">Name</label>
+         <input
+@@ -438,29 +439,29 @@ function csvField(value: string): string {
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+               <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
+-              <td data-testid="person-claimed">{{ p.claimed }}</td>
+-              <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
+-              <td data-testid="person-settled-total">{{ p.settledTotal }}</td>
+-              <td data-testid="person-open-total">{{ p.openTotal }}</td>
+-              <td data-testid="person-excess">{{ p.excess }}</td>
++              <td data-testid="person-claimed">{{ p.claimed | figure }}</td>
++              <td data-testid="person-due-total">{{ (p.dueTotal ?? 'n/a') | figure }}</td>
++              <td data-testid="person-settled-total">{{ p.settledTotal | figure }}</td>
++              <td data-testid="person-open-total">{{ p.openTotal | figure }}</td>
++              <td data-testid="person-excess">{{ p.excess | figure }}</td>
+               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+-              <td data-testid="person-stated-total">{{ p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a') }}</td>
++              <td data-testid="person-stated-total">{{ (p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a')) | figure }}</td>
+               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+               <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
+-              <td data-testid="person-overdue-total">{{ p.overdueTotal }}</td>
+-              <td data-testid="person-aged-0-30">{{ p.aged0to30 }}</td>
+-              <td data-testid="person-aged-31-60">{{ p.aged31to60 }}</td>
+-              <td data-testid="person-aged-61">{{ p.aged61 }}</td>
++              <td data-testid="person-overdue-total">{{ p.overdueTotal | figure }}</td>
++              <td data-testid="person-aged-0-30">{{ p.aged0to30 | figure }}</td>
++              <td data-testid="person-aged-31-60">{{ p.aged31to60 | figure }}</td>
++              <td data-testid="person-aged-61">{{ p.aged61 | figure }}</td>
+               <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
+-              <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
++              <td data-testid="person-backing">{{ (patronage().get(p.id)?.backing) | figure }}</td>
+               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+-              <td data-testid="person-cut-total">{{ ((personCuts().get(p.id) ?? 0) / 100).toFixed(2) }}</td>
++              <td data-testid="person-cut-total">{{ (((personCuts().get(p.id) ?? 0) / 100).toFixed(2)) | figure }}</td>
+               @for (pd of periods(); track pd.id) {
+-                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodTotals().get(p.id)?.[pd.id] }}</td>
++                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (periodTotals().get(p.id)?.[pd.id]) | figure }}</td>
+               }
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 2a13eb578..b9c9fdeba 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { heldOut, retiredOut, type Claim, type ClaimStatus, type PersonWithClaims } from '../claims/claims';
+@@ -111,6 +112,7 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
+ // adds one. No two periods share a name or a date.
+ @Component({
+   selector: 'app-periods',
++  imports: [FigurePipe],
+   template: `
+     <section aria-label="Periods">
+       <h2>Periods</h2>
+@@ -125,8 +127,8 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
+               <td data-testid="period-from">{{ p.from }}</td>
+               <td data-testid="period-to">{{ p.to }}</td>
+               <td data-testid="period-fy">{{ p.fy }}</td>
+-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+-              <td data-testid="period-due-total">{{ dueTotals()[p.id] }}</td>
++              <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
++              <td data-testid="period-due-total">{{ dueTotals()[p.id] | figure }}</td>
+               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+               <td>
+                 <button type="button" data-testid="period-close" [attr.aria-label]="'Close period ' + p.name" (click)="act(p, 'close')">Close</button>
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index b9406cf51..053b6f218 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -137,11 +138,12 @@ export class PlanList {
+ // A person's plans, each with how many claims it has made so far, and the form that adds one.
+ @Component({
+   selector: 'app-person-plans',
++  imports: [FigurePipe],
+   template: `
+     <ul aria-label="Plans">
+       @for (pl of plans(); track pl.id) {
+         <li [attr.data-testid]="'plan-row-' + pl.id">
+-          <span>Plan <span data-testid="plan-amount-shown">{{ pl.amount }}</span></span>
++          <span>Plan <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span></span>
+           <span>from <span data-testid="plan-start">{{ pl.start }}</span></span>
+           @if (pl.day === null) {
+             <span>every <span data-testid="plan-every">{{ pl.every }}</span> days</span>
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 683b33350..7c990fdeb 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, input, model, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { PersonWithClaims } from '../claims/claims';
+@@ -55,6 +56,7 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
+ // its cut there, while a pool that is a member of none has the sheet's pot.
+ @Component({
+   selector: 'app-pools',
++  imports: [FigurePipe],
+   template: `
+     <section aria-label="Pools">
+       <h2>Pools</h2>
+@@ -62,14 +64,14 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
+         @for (p of pools(); track p.name) {
+           <li [attr.data-testid]="'pool-row-' + p.name">
+             <span data-testid="pool-name">{{ p.name }}</span>
+-            <span>Total share <span data-testid="pool-total-share">{{ p.total }}</span></span>
++            <span>Total share <span data-testid="pool-total-share">{{ p.total | figure }}</span></span>
+             <span>Balanced <span data-testid="pool-balanced">{{ p.balanced ? 'yes' : 'no' }}</span></span>
+             <ul>
+               @for (m of p.members; track memberKey(m)) {
+                 <li [attr.data-testid]="'pool-member-' + p.name + '-' + memberKey(m)">
+                   <span data-testid="pool-member-name">{{ m.name }}</span>
+-                  <span>Share <span data-testid="pool-share">{{ m.share }}</span></span>
+-                  <span>Cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span></span>
++                  <span>Share <span data-testid="pool-share">{{ m.share | figure }}</span></span>
++                  <span>Cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span></span>
+                   @if (m.retired) {
+                     <span>(retired)</span>
+                   }
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 1d329f6f7..541c65811 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, output, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -23,7 +24,7 @@ interface Preview {
+ }
+ 
+ const GRADES = ['A', 'B', 'C'];
+-const PCT = /^\d{1,3}(\.\d{1,2})?$/;
++const PCT = /^\d{1,12}(\.\d{1,2})?$/;
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ /** Per grade, the rate in force on the date: the one with the latest from-date on or before it, unless its to-date is before it. */
+@@ -51,6 +52,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
+ // rate that was set is handed up as `changed`, so the dues it makes can be shown again.
+ @Component({
+   selector: 'app-rates',
++  imports: [FigurePipe],
+   template: `
+     <section aria-label="Rates">
+       <h2>Rates</h2>
+@@ -62,7 +64,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
+           @for (g of grades; track g) {
+             <tr>
+               <th scope="row">{{ g }}</th>
+-              <td [attr.data-testid]="'rate-current-' + g">{{ current()[g] ?? 'n/a' }}</td>
++              <td [attr.data-testid]="'rate-current-' + g">{{ (current()[g] ?? 'n/a') | figure }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -74,7 +76,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
+             @if (r.to) {
+               through <span data-testid="rate-to">{{ r.to }}</span>
+             }
+-            : <span data-testid="rate-pct">{{ r.pct }}</span>%
++            : <span data-testid="rate-pct">{{ r.pct | figure }}</span>%
+             (version <span data-testid="rate-version">{{ r.version }}</span>)
+             @if (r.forwardOnly) {
+               <span data-testid="rate-forward-only">forward-only</span>
+@@ -164,7 +166,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
+         @if (previewed(); as p) {
+           <p>
+             Claims whose due would change: <span data-testid="rate-preview-count">{{ p.count }}</span>;
+-            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
++            difference: <span data-testid="rate-preview-diff">{{ p.diff | figure }}</span>
+           </p>
+         }
+         @if (previewError()) {
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index ea26a30d5..d59061d20 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,4 +1,5 @@
+ import { Component, computed, inject, input } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import type { PersonWithClaims } from '../claims/claims';
+ import { Period, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
+ import { VoidReasonList } from '../void-reasons/void-reasons';
+@@ -25,6 +26,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+ // sheet's due-total untrimmed: everyone's due-total added up (n/a skipped).
+ @Component({
+   selector: 'app-summary',
++  imports: [FigurePipe],
+   template: `
+     <section aria-label="Summary">
+       <h2>Summary</h2>
+@@ -38,7 +40,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+             <tr>
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+@@ -53,8 +55,8 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+           @for (p of byPeriod(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change | figure }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -68,7 +70,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+           @for (m of byMonth(); track m.month) {
+             <tr>
+               <th scope="row">{{ m.month }}</th>
+-              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal | figure }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -113,12 +115,12 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+           @for (p of classicByPeriod(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
+             </tr>
+           }
+         </tbody>
+       </table>
+-      <p>Due total: <span data-testid="classic-due-total">{{ classicDueTotal() }}</span></p>
++      <p>Due total: <span data-testid="classic-due-total">{{ classicDueTotal() | figure }}</span></p>
+     </section>
+   `,
+ })
+diff --git a/src/main/frontend/src/app/features/tags/tags.ts b/src/main/frontend/src/app/features/tags/tags.ts
+index f7e3ef84d..2cee5f545 100644
+--- a/src/main/frontend/src/app/features/tags/tags.ts
++++ b/src/main/frontend/src/app/features/tags/tags.ts
+@@ -1,5 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Component, computed, effect, inject, input, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { PersonWithClaims, heldOut, retiredOut } from '../claims/claims';
+@@ -14,6 +15,7 @@ function cents(amount: string): number {
+ // (once, when both do); a claim with two tags counts in both.
+ @Component({
+   selector: 'app-tags',
++  imports: [FigurePipe],
+   template: `
+     <section aria-label="Tags">
+       <h2>Tags</h2>
+@@ -25,7 +27,7 @@ function cents(amount: string): number {
+           @for (t of byTag(); track t.tag) {
+             <tr>
+               <th scope="row">{{ t.tag }}</th>
+-              <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
++              <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal | figure }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java
+index c24a2f73f..5cc134af0 100644
+--- a/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java
+@@ -13,7 +13,7 @@ import org.springframework.web.servlet.HandlerMapping;
+ /**
+  * Refuses every change a viewer asks for on a sheet, and every change anyone asks for on an archived sheet
+  * (403, writing nothing). Reading, and loading a sheet, go through; so do the bulk actions, which answer
+- * with nothing done and every selected item refused.
++ * with nothing done and every selected item refused, and a viewer's plan generate, which makes nothing.
+  */
+ @Component
+ public class ViewerGuard implements HandlerInterceptor {
+@@ -50,7 +50,7 @@ public class ViewerGuard implements HandlerInterceptor {
+         }
+         String refusal = access.isArchived(id.trim()) ? ARCHIVED
+                 : access.isViewer(id.trim(), user.trim()) ? REFUSAL : null;
+-        if (refusal == null) {
++        if (refusal == null || (refusal == REFUSAL && path.endsWith("/plans/generate"))) {
+             return true;
+         }
+         response.setStatus(HttpStatus.FORBIDDEN.value());
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plans.java b/src/main/java/net/officefloor/hq/app/plan/Plans.java
+index ad875e93e..024b8acf4 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plans.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plans.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.plan;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.access.AccessService;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+@@ -21,7 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * the plan's amount for each plan date (the start, then every N days; or that day of every month from the start's month, on the month's
+  * last day when it is shorter, leaving out dates before the start) up to its end and the sheet's today that has
+  * none yet, dated that day with an empty note, by every rule of the claim form. A date the form refuses is skipped,
+- * writing nothing, and tried again the next time.
++ * writing nothing, and tried again the next time. A viewer's generate makes nothing: every claim it would make is
++ * refused.
+  */
+ @Service
+ public class Plans {
+@@ -34,10 +36,12 @@ public class Plans {
+     private final SheetRepository sheetRows;
+     private final ApplicationEventPublisher events;
+     private final TransactionTemplate transaction;
++    private final AccessService access;
+ 
+     public Plans(PlanRepository plans, PlanClaimRepository made, PersonRepository people, ClaimService claims,
+             SheetService sheets, SheetRepository sheetRows, ApplicationEventPublisher events,
+-            PlatformTransactionManager transactions) {
++            PlatformTransactionManager transactions, AccessService access) {
++        this.access = access;
+         this.plans = plans;
+         this.made = made;
+         this.people = people;
+@@ -90,6 +94,9 @@ public class Plans {
+     /** Make the claims the plans are due up to the sheet's today; returns how many were made. */
+     public int generate(String sheetId, String user) {
+         sheets.load(sheetId, user);
++        if (access.isViewer(sheetId, user)) {
++            return 0;
++        }
+         LocalDate today = sheets.today(sheetId);
+         int count = 0;
+         for (Plan plan : list(sheetId)) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index fcc2c7265..25fedcf97 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -28,7 +28,7 @@ public class Rate {
+     @Column(name = "grade", nullable = false)
+     private String grade;
+ 
+-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
++    @Column(name = "pct", nullable = false, precision = 14, scale = 2)
+     private BigDecimal pct;
+ 
+     /** The first date the rate applies to; null when it applies from the beginning of time. */
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index aebf4cb42..4f6893690 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -49,7 +49,7 @@ public class RateController {
+      * A percent is 0.00 or more with up to two decimals; a blank from-date applies from the beginning of
+      * time, a blank to-date has no end, and a to-date is not before the from-date.
+      */
+-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from,
++    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String pct, LocalDate from,
+             LocalDate to) {
+ 
+         @AssertTrue
+@@ -84,7 +84,7 @@ public class RateController {
+     @GetMapping("/{grade}/preview")
+     public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable @Pattern(regexp = "[ABC]") String grade,
+-            @RequestParam @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct) {
++            @RequestParam @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String pct) {
+         RatePreviewService.Preview p = previews.preview(sheetId.trim(), grade, new BigDecimal(pct));
+         return new PreviewView(p.count(), p.diff().toPlainString());
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+index 43c605050..96f8f3639 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+@@ -21,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class RateImportService {
+ 
+     private static final Pattern GRADE = Pattern.compile("[ABC]");
+-    private static final Pattern PCT = Pattern.compile("\\d{1,3}(\\.\\d{1,2})?");
++    private static final Pattern PCT = Pattern.compile("\\d{1,12}(\\.\\d{1,2})?");
+ 
+     private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersion.java b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+index 2d3ebe480..77d51d06d 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+@@ -24,7 +24,7 @@ public class RateVersion {
+     @Column(name = "version", nullable = false)
+     private int version;
+ 
+-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
++    @Column(name = "pct", nullable = false, precision = 14, scale = 2)
+     private BigDecimal pct;
+ 
+     @Column(name = "to_date")
+diff --git a/src/main/java/net/officefloor/hq/app/session/SessionController.java b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+index afbda7c91..6ee99fae8 100644
+--- a/src/main/java/net/officefloor/hq/app/session/SessionController.java
++++ b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+@@ -2,22 +2,50 @@ package net.officefloor.hq.app.session;
+ 
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+-import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+-/** Sign-in by name; there is no password. The front end sends the name back as {@code X-User}. */
++/**
++ * Sign-in by name; there is no password. The front end sends the name back as {@code X-User}. Signing in
++ * answers with the user's saved locale, which they may change.
++ */
+ @RestController
+-@RequestMapping("/api/signin")
++@Validated
+ public class SessionController {
+ 
+     public record SignIn(@NotBlank @Size(max = 100) String name) {
+     }
+ 
+-    @PostMapping
+-    public SignIn signIn(@Valid @RequestBody SignIn request) {
+-        return new SignIn(request.name().trim());
++    public record SignedIn(String name, String locale) {
++    }
++
++    public record LocaleForm(@NotBlank @Pattern(regexp = "en|de") String locale) {
++    }
++
++    public record LocaleView(String locale) {
++    }
++
++    private final UserLocaleService locales;
++
++    public SessionController(UserLocaleService locales) {
++        this.locales = locales;
++    }
++
++    @PostMapping("/api/signin")
++    public SignedIn signIn(@Valid @RequestBody SignIn request) {
++        String name = request.name().trim();
++        return new SignedIn(name, locales.localeOf(name));
++    }
++
++    @PutMapping("/api/me/locale")
++    public LocaleView setLocale(
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody LocaleForm form) {
++        return new LocaleView(locales.setLocale(user.trim(), form.locale()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/session/UserLocale.java b/src/main/java/net/officefloor/hq/app/session/UserLocale.java
+new file mode 100644
+index 000000000..d299ab2d6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/UserLocale.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app.session;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A user's locale: how the screen shows them figures. It is kept per user, across every sheet. */
++@Entity
++@Table(name = "user_locale")
++public class UserLocale {
++
++    /** The locale a user has until they choose one. */
++    public static final String DEFAULT = "en";
++
++    @Id
++    @Column(name = "user_name", nullable = false)
++    private String user;
++
++    @Column(name = "locale", nullable = false)
++    private String locale;
++
++    protected UserLocale() {
++    }
++
++    public UserLocale(String user, String locale) {
++        this.user = user;
++        this.locale = locale;
++    }
++
++    public String getUser() {
++        return user;
++    }
++
++    public String getLocale() {
++        return locale;
++    }
++
++    public void setLocale(String locale) {
++        this.locale = locale;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/session/UserLocaleRepository.java b/src/main/java/net/officefloor/hq/app/session/UserLocaleRepository.java
+new file mode 100644
+index 000000000..0dedcc0fa
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/UserLocaleRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.session;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UserLocaleRepository extends JpaRepository<UserLocale, String> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/session/UserLocaleService.java b/src/main/java/net/officefloor/hq/app/session/UserLocaleService.java
+new file mode 100644
+index 000000000..e07c7ca0c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/UserLocaleService.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app.session;
++
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Reads and saves each user's locale. Choosing a locale writes no audit line. */
++@Service
++public class UserLocaleService {
++
++    private final UserLocaleRepository locales;
++
++    public UserLocaleService(UserLocaleRepository locales) {
++        this.locales = locales;
++    }
++
++    @Transactional(readOnly = true)
++    public String localeOf(String user) {
++        return locales.findById(user).map(UserLocale::getLocale).orElse(UserLocale.DEFAULT);
++    }
++
++    @Transactional
++    public String setLocale(String user, String locale) {
++        locales.findById(user).ifPresentOrElse(
++                l -> l.setLocale(locale),
++                () -> locales.save(new UserLocale(user, locale)));
++        return locale;
++    }
++}
+diff --git a/src/main/resources/db/migration/V81__user_locale.sql b/src/main/resources/db/migration/V81__user_locale.sql
+new file mode 100644
+index 000000000..54eb71479
+--- /dev/null
++++ b/src/main/resources/db/migration/V81__user_locale.sql
+@@ -0,0 +1,6 @@
++-- Each user's locale: how the screen shows them figures. A user with no row is en.
++CREATE TABLE user_locale (
++    user_name VARCHAR(100) PRIMARY KEY,
++    locale    VARCHAR(10)  NOT NULL,
++    CONSTRAINT user_locale_known CHECK (locale IN ('en', 'de'))
++);
+diff --git a/src/main/resources/db/migration/V82__rate_wider.sql b/src/main/resources/db/migration/V82__rate_wider.sql
+new file mode 100644
+index 000000000..606626126
+--- /dev/null
++++ b/src/main/resources/db/migration/V82__rate_wider.sql
+@@ -0,0 +1,3 @@
++-- A rate may run past 999.99 percent: up to twelve digits before the decimals, as other figures do.
++ALTER TABLE rate ALTER COLUMN pct DECIMAL(14, 2);
++ALTER TABLE rate_version ALTER COLUMN pct DECIMAL(14, 2);
