@@ -1,0 +1,501 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 71b287d4..b52abff4 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -13,6 +13,8 @@ interface Settings {
+   clerkLimit: string | null;
+   /** The least live due a claim has, with two decimals. */
+   floor: string;
++  /** The days a claim has to be paid by, from its date. */
++  terms: string;
+ }
+ 
+ interface AccessView {
+@@ -22,10 +24,12 @@ interface AccessView {
+ 
+ const ROLES = ['clerk', 'steward'];
+ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
++const DAYS = /^\d{1,5}$/;
+ 
+ // The sheet's roles (any name without one is a clerk) with the form that sets one, and the
+ // sheet's settings: the clerk limit, the most due a clerk may settle (blank: no limit), and the floor,
+-// the least live due a claim has (blank: 1.00). Each input shows the value saved; a save sends only the
++// the least live due a claim has (blank: 1.00), and the terms, the days a claim has to be paid by
++// from its date (blank: 14). Each input shows the value saved; a save sends only the
+ // settings whose input was changed.
+ @Component({
+   selector: 'app-access',
+@@ -72,6 +76,7 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+       <h2>Settings</h2>
+       <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
+       <p>Floor <strong data-testid="setting-floor-current">{{ floor() }}</strong></p>
++      <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
+       <form (submit)="saveSettings($event)" aria-label="Save settings">
+         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
+         <input
+@@ -89,6 +94,14 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+           [value]="floorInput()"
+           (input)="floorInput.set(value($event)); floorTouched = true; settingsError.set('')"
+         />
++        <label for="setting-terms">Terms in days (blank: 14)</label>
++        <input
++          id="setting-terms"
++          inputmode="numeric"
++          data-testid="setting-terms"
++          [value]="termsInput()"
++          (input)="termsInput.set(value($event)); termsTouched = true; settingsError.set('')"
++        />
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (settingsError()) {
+           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
+@@ -110,9 +123,12 @@ export class Access {
+   protected readonly limitInput = signal('');
+   protected readonly floor = signal('');
+   protected readonly floorInput = signal('');
++  protected readonly terms = signal('');
++  protected readonly termsInput = signal('');
+   /** Whether each settings input was changed since the settings were last shown. */
+   protected limitTouched = false;
+   protected floorTouched = false;
++  protected termsTouched = false;
+   protected readonly settingsError = signal('');
+   /** A submit still waiting for its answer: another press meanwhile is ignored. */
+   private busy = false;
+@@ -125,7 +141,7 @@ export class Access {
+       this.roleUser.set('');
+       this.role.set('');
+       this.roleError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '' });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '' });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -185,9 +201,15 @@ export class Access {
+       this.settingsError.set('Enter a floor of 0.00 or more, with up to two decimals, or leave it blank for 1.00.');
+       return;
+     }
++    const terms = this.termsInput().trim();
++    if (this.termsTouched && terms !== '' && !DAYS.test(terms)) {
++      this.settingsError.set('Enter terms of 0 or more whole days, or leave them blank for 14.');
++      return;
++    }
+     const body: Partial<Settings> = {};
+     if (this.limitTouched) body.clerkLimit = clerkLimit;
+     if (this.floorTouched) body.floor = floor;
++    if (this.termsTouched) body.terms = terms;
+     const headers = { 'X-User': this.session.user() ?? '' };
+     this.busy = true;
+     try {
+@@ -219,7 +241,10 @@ export class Access {
+     this.floor.set(settings.floor);
+     this.limitInput.set(settings.clerkLimit ?? '');
+     this.floorInput.set(settings.floor);
++    this.terms.set(settings.terms);
++    this.termsInput.set(settings.terms);
+     this.limitTouched = false;
+     this.floorTouched = false;
++    this.termsTouched = false;
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 6019be58..df28c76f 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -23,6 +23,10 @@ export interface Claim {
+   openedBy: string | null;
+   /** Whether the person's last statement binds the claim to the figure it had then. */
+   stated: boolean;
++  /** The claim's date plus the sheet's terms. */
++  dueBy: string;
++  /** Whether the claim is OPEN and its due-by is before the sheet's today. */
++  overdue: boolean;
+ }
+ 
+ export interface PersonWithClaims {
+@@ -48,6 +52,10 @@ export interface PersonWithClaims {
+   retiredFrom: string | null;
+   /** Whether the person is on hold: their OPEN claims then count in no live total. */
+   held: boolean;
++  /** How many of the claims that count are overdue. */
++  overdueCount: number;
++  /** The due figures of the overdue claims that count, added up. */
++  overdueTotal: string;
+ }
+ 
+ const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+@@ -71,6 +79,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+           <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
++          <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
++          <span>Overdue <span data-testid="claim-overdue">{{ c.overdue ? 'yes' : 'no' }}</span></span>
+           @for (a of actions; track a.action) {
+             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
+               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4e92e7b0..825762a5 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -30,6 +30,8 @@ function cents(amount: string): number {
+       <h2>People</h2>
+       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
++      <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
++      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
+         <label for="person-form-name">Name</label>
+         <input
+@@ -96,6 +98,7 @@ function cents(amount: string): number {
+             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
++            <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+           </tr>
+         </thead>
+@@ -112,6 +115,8 @@ function cents(amount: string): number {
+               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
++              <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
++              <td data-testid="person-overdue-total">{{ p.overdueTotal }}</td>
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+                   Edit<span class="visually-hidden"> {{ p.name }}</span>
+@@ -187,6 +192,13 @@ export class People {
+     (this.people().reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0) / 100).toFixed(2),
+   );
+ 
++  /** Everyone's overdue claims counted up. */
++  protected readonly overdueCount = computed(() => this.people().reduce((sum, p) => sum + p.overdueCount, 0));
++  /** Everyone's overdue-total added up. */
++  protected readonly overdueTotal = computed(() =>
++    (this.people().reduce((sum, p) => sum + cents(p.overdueTotal), 0) / 100).toFixed(2),
++  );
++
+   constructor() {
+     effect(() => {
+       const sheet = this.session.sheet();
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index 7440abb7..fe78c013 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -33,11 +33,15 @@ public class AccessController {
+         }
+     }
+ 
+-    /** The sheet's settings as shown; a limit is a figure with two decimals, null for none; so is the floor. */
+-    public record SettingsView(String clerkLimit, String floor) {
++    /**
++     * The sheet's settings as shown; a limit is a figure with two decimals, null for none; so is the floor;
++     * the terms are a number of days.
++     */
++    public record SettingsView(String clerkLimit, String floor, String terms) {
+ 
+-        static SettingsView of(BigDecimal limit, BigDecimal floor) {
+-            return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString());
++        static SettingsView of(BigDecimal limit, BigDecimal floor, int terms) {
++            return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
++                    Integer.toString(terms));
+         }
+     }
+ 
+@@ -50,10 +54,12 @@ public class AccessController {
+ 
+     /**
+      * The settings to save; one left out (null) is kept as it is. A clerk limit is 0.00 or more with up
+-     * to two decimals, blank meaning no limit; so is a floor, blank putting back 1.00.
++     * to two decimals, blank meaning no limit; so is a floor, blank putting back 1.00. The terms are a
++     * whole number of days, blank putting back 14.
+      */
+     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
+-            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor) {
++            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
++            @Pattern(regexp = "(\\d{1,5})?") String terms) {
+     }
+ 
+     private final AccessService service;
+@@ -66,7 +72,7 @@ public class AccessController {
+     public AccessView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+         String sheet = sheetId.trim();
+         return new AccessView(service.roles(sheet).stream().map(RoleView::of).toList(),
+-                SettingsView.of(service.clerkLimit(sheet), service.floor(sheet)));
++                SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet)));
+     }
+ 
+     @PutMapping("/roles")
+@@ -80,8 +86,8 @@ public class AccessController {
+     public SettingsView setSettings(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody SettingsForm form) {
+         String sheet = sheetId.trim();
+-        service.setSettings(sheet, user.trim(), form.clerkLimit(), form.floor());
+-        return SettingsView.of(service.clerkLimit(sheet), service.floor(sheet));
++        service.setSettings(sheet, user.trim(), form.clerkLimit(), form.floor(), form.terms());
++        return SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet));
+     }
+ 
+     /** Another user set a role for the same name at the same moment: this one is refused. */
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 5c806399..f4a8d1f7 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
+ /**
+  * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
+  * clerk limit, the most due a clerk may settle on a claim (none: no limit); and the sheet's floor, the
+- * least live due a claim has.
++ * least live due a claim has; and its terms, the days a claim has to be paid by from its date.
+  */
+ @Service
+ public class AccessService {
+@@ -23,6 +23,8 @@ public class AccessService {
+ 
+     public static final String FLOOR = "floor";
+ 
++    public static final String TERMS = "terms";
++
+     private final SheetRoleRepository roles;
+     private final SheetRepository sheetRows;
+     private final SheetService sheets;
+@@ -60,6 +62,11 @@ public class AccessService {
+         return sheets.floor(sheetId);
+     }
+ 
++    @Transactional(readOnly = true)
++    public int terms(String sheetId) {
++        return sheets.terms(sheetId);
++    }
++
+     /** Give a user name a role on the sheet, replacing the one it had. */
+     @Transactional
+     public SheetRole setRole(String sheetId, String user, String name, Role role) {
+@@ -80,13 +87,30 @@ public class AccessService {
+      * out (null) is kept as it is.
+      */
+     @Transactional
+-    public void setSettings(String sheetId, String user, String clerkLimit, String floor) {
++    public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms) {
+         if (clerkLimit != null) {
+             setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
+         }
+         if (floor != null) {
+             setFloor(sheetId, user, floor.isEmpty() ? null : new BigDecimal(floor));
+         }
++        if (terms != null) {
++            setTerms(sheetId, user, terms.isEmpty() ? null : Integer.valueOf(terms));
++        }
++    }
++
++    /**
++     * Save the sheet's terms in days; null puts back the ones a sheet starts with. Every claim's due-by
++     * moves with them; no due figure does.
++     */
++    @Transactional
++    public int setTerms(String sheetId, String user, Integer terms) {
++        Sheet sheet = sheets.load(sheetId, user);
++        int days = terms == null ? Sheet.DEFAULT_TERMS : terms;
++        sheet.setTerms(days);
++        sheetRows.saveAndFlush(sheet);
++        events.publishEvent(new SettingChanged(sheetId, user, TERMS, Integer.toString(days)));
++        return days;
+     }
+ 
+     /** Save the sheet's clerk limit; null removes it. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 55fc2591..e7060d7a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -24,6 +24,22 @@ public final class Dues {
+                 : rates.due(claim.getAmount(), grade, claim.getDate());
+     }
+ 
++    /** Whether the claim is overdue: OPEN, and due by a date before the sheet's today. */
++    public static boolean overdue(Claim claim, RateTable rates) {
++        return claim.getStatus() == ClaimStatus.OPEN && rates.dueBy(claim.getDate()).isBefore(rates.today());
++    }
++
++    /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */
++    public static List<Claim> overdue(List<Claim> claims, RateTable rates, boolean held) {
++        return claims.stream().filter(c -> counts(c, held) && overdue(c, rates)).toList();
++    }
++
++    /** The sum of the due figures of the claims given (0.00 with none); a claim with none is skipped. */
++    public static BigDecimal sum(String grade, List<Claim> claims, RateTable rates) {
++        return claims.stream().map(c -> figure(c, grade, rates)).filter(Objects::nonNull)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++    }
++
+     /** Whether the claim's figure is kept whatever the rates: fixed by settling or bound by a statement. */
+     private static boolean kept(Claim claim) {
+         return claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 9ffa477b..1c4f6a13 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -43,15 +43,16 @@ public class PersonController {
+      * A claim as shown: its amount with two decimals, its date, its note, its due: the amount at
+      * the rate for its person's grade in force on its date (null when none is) or, once settled, the due fixed
+      * then, or while bound by a statement, the figure bound then, its status, its number (null while it has
+-     * none), who opened it (null while it was never opened) and whether a statement binds it.
++     * none), who opened it (null while it was never opened), whether a statement binds it, the date it is
++     * due by (its date plus the sheet's terms) and whether it is overdue (see {@link Dues#overdue}).
+      */
+     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
+-            Integer number, String openedBy, boolean stated) {
++            Integer number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue) {
+ 
+         static ClaimView of(Claim claim, String grade, RateTable rates) {
+             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
+                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getNumber(),
+-                    claim.getOpenedBy(), claim.isStated());
++                    claim.getOpenedBy(), claim.isStated(), rates.dueBy(claim.getDate()), Dues.overdue(claim, rates));
+         }
+     }
+ 
+@@ -60,11 +61,12 @@ public class PersonController {
+      * count (OPEN and SETTLED, but only SETTLED while on hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
+      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+-     * the date they are retired from (null when not), and whether they are on hold.
++     * the date they are retired from (null when not), whether they are on hold, and how many of the claims
++     * that count are overdue and the sum of their due figures.
+      */
+     public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
+             String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate,
+-            boolean retired, LocalDate retiredFrom, boolean held) {
++            boolean retired, LocalDate retiredFrom, boolean held, int overdueCount, String overdueTotal) {
+ 
+         /** The person as shown, given the sheet's rates. */
+         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements) {
+@@ -72,11 +74,12 @@ public class PersonController {
+             boolean held = person.isHeld();
+             BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held)).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO, BigDecimal::add);
++            List<Claim> overdue = Dues.overdue(claims, rates, held);
+             return new PersonView(person.getId(), person.getVersion(), person.getName(), grade,
+                     claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
+                     money(Dues.total(grade, claims, rates, held)), statements.count(),
+                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
+-                    person.getRetiredFrom(), held);
++                    person.getRetiredFrom(), held, overdue.size(), money(Dues.sum(grade, overdue, rates)));
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index dd5103d4..a4c774e4 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -41,7 +41,8 @@ public class RateService {
+     /** The sheet's rates with its today and floor, to find the rate in force and the live due on any date. */
+     @Transactional(readOnly = true)
+     public RateTable table(String sheetId) {
+-        return new RateTable(list(sheetId), sheets.today(sheetId), sheets.floor(sheetId));
++        return new RateTable(list(sheetId), sheets.today(sheetId), sheets.floor(sheetId),
++                sheets.terms(sheetId));
+     }
+ 
+     /** Set a grade's rate from a from-date (null: from the beginning of time), replacing the one it had. */
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateTable.java b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+index 09bb8cc3..bb56c04f 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateTable.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+@@ -6,10 +6,10 @@ import java.util.Comparator;
+ import java.util.List;
+ 
+ /**
+- * Every rate on a sheet, the sheet's today and its floor: which rate is in force for a grade on a date,
+- * and the live due it makes of an amount.
++ * Every rate on a sheet, the sheet's today, its floor and its terms: which rate is in force for a grade
++ * on a date, the live due it makes of an amount, and the date a claim is due by.
+  */
+-public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor) {
++public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, int terms) {
+ 
+     /**
+      * The percent in force for the grade on the date: the rate whose from-date is the latest one on
+@@ -36,4 +36,9 @@ public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor) {
+         BigDecimal due = RateService.due(amount, on(grade, date));
+         return due == null || floor == null || due.compareTo(floor) >= 0 ? due : floor;
+     }
++
++    /** The date a claim dated on the date is due by: the date plus the terms. */
++    public LocalDate dueBy(LocalDate date) {
++        return date.plusDays(terms);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 3260db1c..e0c1ac6c 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -65,7 +65,8 @@ public class Rollup {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         LocalDate today = sheet == null ? LocalDate.now() : sheet.getToday();
+         RateTable table = new RateTable(rates.findBySheetId(sheetId), today,
+-                sheet == null ? Sheet.DEFAULT_FLOOR : sheet.getFloor());
++                sheet == null ? Sheet.DEFAULT_FLOOR : sheet.getFloor(),
++                sheet == null ? Sheet.DEFAULT_TERMS : sheet.getTerms());
+         Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                 .collect(Collectors.groupingBy(Claim::getPersonId));
+         Map<Long, PersonFigures> figures = new LinkedHashMap<>();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 55150e60..40d18205 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -15,6 +15,9 @@ public class Sheet {
+     /** The floor a sheet starts with. */
+     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
+ 
++    /** The terms a sheet starts with, in days. */
++    public static final int DEFAULT_TERMS = 14;
++
+     @Id
+     private String id;
+ 
+@@ -37,6 +40,10 @@ public class Sheet {
+     @Column(name = "due_floor", nullable = false, precision = 14, scale = 2)
+     private BigDecimal floor = DEFAULT_FLOOR;
+ 
++    /** The days a claim has to be paid by, from its date; 14 until set. */
++    @Column(name = "terms", nullable = false)
++    private int terms = DEFAULT_TERMS;
++
+     protected Sheet() {
+     }
+ 
+@@ -77,4 +84,12 @@ public class Sheet {
+     public void setFloor(BigDecimal floor) {
+         this.floor = floor;
+     }
++
++    public int getTerms() {
++        return terms;
++    }
++
++    public void setTerms(int terms) {
++        this.terms = terms;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 6d062de7..baa4805b 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -39,6 +39,11 @@ public class SheetService {
+         return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
+     }
+ 
++    /** The sheet's terms: the days a claim has to be paid by, from its date. */
++    public int terms(String id) {
++        return sheets.findById(id).map(Sheet::getTerms).orElse(Sheet.DEFAULT_TERMS);
++    }
++
+     /** The sheet's today: the date to use for every decision and default date on the sheet. */
+     public LocalDate today(String id) {
+         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));
+diff --git a/src/main/resources/db/migration/V20__sheet_terms.sql b/src/main/resources/db/migration/V20__sheet_terms.sql
+new file mode 100644
+index 00000000..c37545c3
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__sheet_terms.sql
+@@ -0,0 +1,2 @@
++-- The days a claim has to be paid by, from its date; it starts at 14.
++ALTER TABLE sheet ADD COLUMN terms INT DEFAULT 14 NOT NULL;
