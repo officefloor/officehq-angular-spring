@@ -93,6 +93,10 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** The date the claim is deferred until; null when it was never deferred. See {@link Dues#deferred}. */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     /** The claim's place in its person's list, newest first; the store takes it on adding and reassigning. */
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
@@ -157,6 +161,14 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    public void setDeferredUntil(LocalDate deferredUntil) {
+        this.deferredUntil = deferredUntil;
     }
 
     public String getNote() {

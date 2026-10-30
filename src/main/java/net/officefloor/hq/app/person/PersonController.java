@@ -48,17 +48,20 @@ public class PersonController {
      * then, or while bound by a statement, the figure bound then, its status, its number (null while it has
      * none), who opened it (null while it was never opened), whether a statement binds it, the date it is
      * due by (fixed when it was added: its date plus the terms then of its person's grade on its date), whether it is overdue (see {@link Dues#overdue}) and, for a
-     * correction, the number of the claim it corrects (null otherwise).
+     * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
+     * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
-            List<LogLineView> log) {
+            List<LogLineView> log, boolean deferred, LocalDate deferredUntil) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getShownNumber(),
                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, rates),
-                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList());
+                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
+                    Dues.deferred(claim, rates.today()),
+                    Dues.deferred(claim, rates.today()) ? claim.getDeferredUntil() : null);
         }
     }
 
@@ -88,7 +91,7 @@ public class PersonController {
                 List<Long> patrons) {
             Grades grade = person::gradeOn;
             Holds held = person::heldOn;
-            BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held)).map(Claim::getAmount)
+            BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held, rates.today())).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             List<Claim> overdue = Dues.overdue(claims, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),

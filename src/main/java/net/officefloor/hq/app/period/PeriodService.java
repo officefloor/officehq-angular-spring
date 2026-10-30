@@ -101,7 +101,7 @@ public class PeriodService {
         Map<Long, BigDecimal> totals = new HashMap<>();
         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
         claims.findBySheetIdOrderByIdDesc(sheetId).stream()
-                .filter(c -> Dues.counts(c, byId.get(c.getPersonId())::heldOn) && period.contains(c.getDate()))
+                .filter(c -> Dues.counts(c, byId.get(c.getPersonId())::heldOn, table.today()) && period.contains(c.getDate()))
                 .forEach(c -> {
                     BigDecimal due = Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table);
                     if (due != null) {

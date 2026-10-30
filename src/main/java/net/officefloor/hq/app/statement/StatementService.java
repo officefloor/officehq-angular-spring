@@ -70,7 +70,7 @@ public class StatementService {
         BigDecimal dueTotal = Dues.total(person::gradeOn, theirs, table, person::heldOn);
         int counting = 0;
         for (Claim claim : theirs) {
-            if (Dues.counts(claim, person::heldOn)) {
+            if (Dues.counts(claim, person::heldOn, table.today())) {
                 claim.bind(Dues.base(claim, person::gradeOn, table));
                 counting++;
             } else {

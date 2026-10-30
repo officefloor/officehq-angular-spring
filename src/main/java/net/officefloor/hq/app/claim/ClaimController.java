@@ -71,6 +71,10 @@ public class ClaimController {
     public record ReassignForm(@NotNull Long personId) {
     }
 
+    /** The date a claim is deferred until. */
+    public record DeferForm(@NotNull LocalDate until) {
+    }
+
     public record Refusal(String message) {
     }
 
@@ -190,6 +194,15 @@ public class ClaimController {
         String sheet = sheetId.trim();
         long[] moved = claims.reassign(sheet, user.trim(), claimId, form.personId());
         return List.of(view(sheet, moved[0]), view(sheet, moved[1]));
+    }
+
+    /** Defer an OPEN claim until a date after the sheet's today. */
+    @PostMapping("/claims/{claimId}/defer")
+    public PersonView defer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody DeferForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.defer(sheet, user.trim(), claimId, form.until()));
     }
 
     @PostMapping("/claims/{claimId}/void")

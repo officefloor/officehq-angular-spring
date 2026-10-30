@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.rate.Grades;
@@ -69,14 +70,23 @@ public final class Dues {
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
     }
 
-    /** Whether the claim is overdue: OPEN or PENDING, and due by a date before the sheet's today (its due-by, fixed when it was added). */
+    /**
+     * Whether the claim is overdue: OPEN or PENDING, not {@link #deferred deferred}, and due by a date before
+     * the sheet's today (its due-by, fixed when it was added).
+     */
     public static boolean overdue(Claim claim, RateTable rates) {
-        return claim.getStatus().unpaid() && claim.getDueBy().isBefore(rates.today());
+        return claim.getStatus().unpaid() && !deferred(claim, rates.today()) && claim.getDueBy().isBefore(rates.today());
+    }
+
+    /** Whether the claim is deferred on the given today: OPEN and deferred until a date after it. */
+    public static boolean deferred(Claim claim, LocalDate today) {
+        return claim.getStatus() == ClaimStatus.OPEN && claim.getDeferredUntil() != null
+                && today.isBefore(claim.getDeferredUntil());
     }
 
     /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */
     public static List<Claim> overdue(List<Claim> claims, RateTable rates, Holds holds) {
-        return claims.stream().filter(c -> counts(c, holds) && overdue(c, rates)).toList();
+        return claims.stream().filter(c -> counts(c, holds, rates.today()) && overdue(c, rates)).toList();
     }
 
     /** The sum of the due figures of the claims given (0.00 with none); a claim with none is skipped. */
@@ -91,12 +101,13 @@ public final class Dues {
     }
 
     /**
-     * Whether the claim counts in the live totals: OPEN, PENDING and SETTLED claims do, except that an
-     * OPEN claim dated within one of its person's holds counts in none, unless a statement binds it.
+     * Whether the claim counts in the live totals on the sheet's today: OPEN, PENDING and SETTLED claims do,
+     * except that an OPEN claim dated within one of its person's holds counts in none, unless a statement
+     * binds it, and a claim {@link #deferred deferred} on that today counts in none.
      */
-    public static boolean counts(Claim claim, Holds holds) {
-        return claim.getStatus().counts() && !(claim.getStatus() == ClaimStatus.OPEN && !bound(claim)
-                && holds.on(claim.getDate()));
+    public static boolean counts(Claim claim, Holds holds, LocalDate today) {
+        return claim.getStatus().counts() && !deferred(claim, today) && !(claim.getStatus() == ClaimStatus.OPEN
+                && !bound(claim) && holds.on(claim.getDate()));
     }
 
     /**
@@ -127,7 +138,7 @@ public final class Dues {
      * a claim that counts has a figure.
      */
     public static BigDecimal uncapped(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
-        List<Claim> counting = claims.stream().filter(c -> counts(c, holds)).toList();
+        List<Claim> counting = claims.stream().filter(c -> counts(c, holds, rates.today())).toList();
         String current = grades.on(rates.today());
         boolean ended = rates.ended(current, rates.today());
         boolean shown = rates.current(current) != null || counting.stream().anyMatch(c -> kept(c)

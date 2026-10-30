@@ -4,6 +4,7 @@ import java.math.RoundingMode;
 import net.officefloor.hq.app.access.RoleSet;
 import net.officefloor.hq.app.access.SettingChanged;
 import net.officefloor.hq.app.claim.ClaimChanged;
+import net.officefloor.hq.app.claim.ClaimDeferred;
 import net.officefloor.hq.app.claim.ClaimReassigned;
 import net.officefloor.hq.app.claim.ClaimResettled;
 import net.officefloor.hq.app.period.PeriodAdded;
@@ -73,6 +74,14 @@ public class SheetAudit {
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " from=" + e.from() + " to=" + e.to());
+    }
+
+    @TransactionalEventListener
+    public void on(ClaimDeferred e) {
+        audit.record("CLAIM_DEFERRED sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + " until=" + e.until());
     }
 
     @TransactionalEventListener

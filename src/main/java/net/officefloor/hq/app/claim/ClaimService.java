@@ -153,6 +153,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        if (next == ClaimStatus.SETTLED && Dues.deferred(claim, sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be settled before then");
+        }
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
@@ -186,6 +190,34 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number, due));
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
+    }
+
+    /**
+     * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it the claim
+     * counts in no total, is not overdue, cannot be settled and no statement binds it (see
+     * {@link Dues#deferred}). A claim not OPEN, a date not after today, or a claim dated inside a closed
+     * period is refused and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long defer(String sheetId, String user, long claimId, LocalDate until) {
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deferred; only an OPEN one can");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (!until.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim can only be deferred to a date after the sheet's today (" + today + ")");
+        }
+        Rollup.Figures before = rollup.figures(sheetId);
+        claim.setDeferredUntil(until);
+        claims.flush();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new ClaimDeferred(sheetId, user, person, claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), until));
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }

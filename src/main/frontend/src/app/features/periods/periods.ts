@@ -31,14 +31,14 @@ function cents(amount: string): number {
 
 /** Per period id, the person's due-total for it: the dues of their claims that count whose date falls in it,
  * added up, or once closed the figure fixed then (0.00 for a person added later); an unbound OPEN claim dated
- * within a hold of its person counts in none. */
+ * within a hold of its person counts in none, nor does a deferred claim. */
 export function personPeriodTotals(periods: Period[], person: PersonWithClaims): Record<number, string> {
   const totals: Record<number, number> = {};
   for (const p of periods) totals[p.id] = 0;
   for (const c of person.claims) {
     const unpaid = c.status === 'OPEN' || c.status === 'PENDING';
     if ((!unpaid && c.status !== 'SETTLED') || c.due === null) continue;
-    if (heldOut(c, person.holds)) continue;
+    if (heldOut(c, person.holds) || c.deferred) continue;
     const period = periodOf(periods, c.date);
     if (period && !period.closed) totals[period.id] += cents(c.due);
   }
