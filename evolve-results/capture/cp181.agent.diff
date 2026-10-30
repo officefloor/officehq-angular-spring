@@ -1,0 +1,461 @@
+diff --git a/src/main/frontend/src/app/features/notes/notes.ts b/src/main/frontend/src/app/features/notes/notes.ts
+new file mode 100644
+index 000000000..cbdb0d386
+--- /dev/null
++++ b/src/main/frontend/src/app/features/notes/notes.ts
+@@ -0,0 +1,100 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A note on the sheet: the sheet's today when it was added, who added it and its text. */
++interface Note {
++  on: string;
++  by: string;
++  text: string;
++}
++
++// The sheet's notes, newest first, and the entry that adds one; a blank note is refused. Re-read on every sheet
++// load, so under an as-of date only the notes added while the sheet's today was on or before it show.
++@Component({
++  selector: 'app-notes',
++  template: `
++    <section aria-label="Sheet notes">
++      <h2>Notes</h2>
++      <ul>
++        @for (n of notes(); track $index) {
++          <li data-testid="note-line">{{ n.on }} {{ n.by }}: {{ n.text }}</li>
++        }
++      </ul>
++      <form (submit)="add($event)" aria-label="Add note">
++        <label for="note-text">Note</label>
++        <input
++          id="note-text"
++          data-testid="note-text"
++          [value]="text()"
++          (input)="text.set(value($event)); error.set('')"
++        />
++        <button type="submit" data-testid="note-add">Add note</button>
++        @if (error()) {
++          <p role="alert" data-testid="note-error">{{ error() }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class Notes {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly notes = signal<Note[]>([]);
++  protected readonly text = signal('');
++  protected readonly error = signal('');
++  /** An add still waiting for its answer: another press meanwhile is ignored. */
++  private busy = false;
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheet();
++      this.session.loads();
++      this.notes.set([]);
++      this.text.set('');
++      this.error.set('');
++      if (sheet) void this.reload(sheet);
++    });
++  }
++
++  protected value(e: Event): string {
++    return (e.target as HTMLInputElement).value;
++  }
++
++  protected async add(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    this.error.set('');
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    if (this.text().trim() === '') {
++      this.error.set("Enter the note's text.");
++      return;
++    }
++    this.busy = true;
++    try {
++      const notes = await firstValueFrom(
++        this.http.post<Note[]>(
++          `/api/sheets/${encodeURIComponent(sheet)}/notes`,
++          { text: this.text() },
++          { headers: { 'X-User': this.session.user() ?? '' } },
++        ),
++      );
++      if (this.session.sheet() === sheet) this.notes.set(notes);
++      this.text.set('');
++    } catch (err) {
++      const answer = err instanceof HttpErrorResponse ? err : null;
++      this.error.set(answer?.error?.message ?? 'Could not add the note.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
++  private async reload(sheet: string): Promise<void> {
++    const loads = this.session.loads();
++    const notes = await firstValueFrom(this.http.get<Note[]>(`/api/sheets/${encodeURIComponent(sheet)}/notes`));
++    if (this.session.sheet() === sheet && this.session.loads() === loads) this.notes.set(notes);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f77154f1a..ca2a35e0e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Access } from '../access/access';
+ import { ClaimTemplates } from '../claim-templates/claim-templates';
++import { Notes } from '../notes/notes';
+ import { Claims, PersonWithClaims as Person } from '../claims/claims';
+ import { Audit } from '../audit/audit';
+ import { Search } from '../search/search';
+@@ -136,7 +137,7 @@ function csvField(value: string): string {
+ // user can watch people of their own choosing.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Crews, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
++  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Crews, Holidays, Notes, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
+   template: `
+     <header aria-label="Counters">
+       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
+@@ -167,6 +168,7 @@ function csvField(value: string): string {
+     <app-holidays />
+     <app-void-reasons />
+     <app-claim-templates />
++    <app-notes />
+     <app-pools [people]="people()" [crews]="crews()" [(pools)]="pools" />
+     <app-crews [people]="people()" [(crews)]="crews" />
+     <app-summary [people]="people()" [periods]="periods()" />
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index ba2fa35ca..6201ca380 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimEscalated;
+ import net.officefloor.hq.app.claim.ClaimSplit;
+ import net.officefloor.hq.app.claim.ClaimResettled;
+ import net.officefloor.hq.app.claim.TemplateSaved;
++import net.officefloor.hq.app.note.NoteAdded;
+ import net.officefloor.hq.app.claim.VoidReasonAdded;
+ import net.officefloor.hq.app.holiday.HolidayAdded;
+ import net.officefloor.hq.app.period.OpeningSet;
+@@ -307,6 +308,11 @@ public class SheetAudit {
+                 + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString() + " note=" + e.note());
+     }
+ 
++    @TransactionalEventListener
++    public void on(NoteAdded e) {
++        change(e.sheetId(), e.user(), "NOTE_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " text=" + e.text());
++    }
++
+     @TransactionalEventListener
+     public void on(PlanAdded e) {
+         change(e.sheetId(), e.user(), "PLAN_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+index 214284606..6bbccabf3 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+@@ -68,6 +68,7 @@ public class SheetPasts {
+             new Scope("POOL_MEMBER", "pool_id IN (SELECT id FROM pool WHERE sheet_id = ?)"),
+             new Scope("CREW", "sheet_id = ?"),
+             new Scope("CREW_MEMBER", "crew_id IN (SELECT id FROM crew WHERE sheet_id = ?)"),
++            new Scope("SHEET_NOTE", "sheet_id = ?"),
+             new Scope("SHEET_PLAN", "sheet_id = ?"),
+             new Scope("SHEET_PLAN_CLAIM", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"));
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 5d2034419..74928bde1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -137,7 +137,7 @@ public final class Dues {
+ 
+     /**
+      * Whether the claim counts in the live totals on the sheet's today: OPEN, PENDING and SETTLED claims do,
+-     * except that an OPEN claim dated within one of its person's holds, and an OPEN or PENDING claim of a
++     * except that an OPEN or PENDING claim dated within one of its person's holds, and an OPEN or PENDING claim of a
+      * person whose retirement date that today has reached, counts in none, unless a statement binds it, and a claim {@link #deferred deferred} on that today counts in none.
+      */
+     public static boolean counts(Claim claim, Holds holds, LocalDate today) {
+@@ -155,11 +155,11 @@ public final class Dues {
+ 
+     /**
+      * Whether the person's holds or retirement leave the claim out of the live totals: unless a statement
+-     * binds it, an OPEN claim dated within a hold, and an OPEN or PENDING claim once the sheet's today has
++     * binds it, an OPEN or PENDING claim dated within a hold, and an OPEN or PENDING claim once the sheet's today has
+      * reached the person's retirement date.
+      */
+     private static boolean leftOut(Claim claim, Holds holds, LocalDate today) {
+-        return !bound(claim) && ((claim.getStatus() == ClaimStatus.OPEN && holds.on(claim.getDate()))
++        return !bound(claim) && ((claim.getStatus().unpaid() && holds.on(claim.getDate()))
+                 || (claim.getStatus().unpaid() && holds.retiredOn(today)));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteAdded.java b/src/main/java/net/officefloor/hq/app/note/NoteAdded.java
+new file mode 100644
+index 000000000..5d90020f2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteAdded.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.note;
++
++/** A note was added to a sheet ({@code NOTE_ADDED}). */
++public record NoteAdded(String sheetId, String user, String text) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteController.java b/src/main/java/net/officefloor/hq/app/note/NoteController.java
+new file mode 100644
+index 000000000..24e7129a0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteController.java
+@@ -0,0 +1,65 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The notes on a sheet. The signed-in user's name comes in the {@code X-User} header. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/notes")
++@Validated
++public class NoteController {
++
++    /** A note to add: its text (blank is refused). */
++    public record NoteForm(@Size(max = 5000) String text) {
++    }
++
++    /** A note as shown: the sheet's today when it was added, who added it and its text. */
++    public record NoteView(LocalDate on, String by, String text) {
++
++        static NoteView of(SheetNote n) {
++            return new NoteView(n.getAddedOn(), n.getAddedBy(), n.getText());
++        }
++    }
++
++    public record Refusal(String message) {
++    }
++
++    private final SheetNotes notes;
++
++    public NoteController(SheetNotes notes) {
++        this.notes = notes;
++    }
++
++    @GetMapping
++    public List<NoteView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return notes.list(sheetId.trim()).stream().map(NoteView::of).toList();
++    }
++
++    /** Add a note; answers with every note on the sheet, newest first. */
++    @PostMapping
++    public List<NoteView> add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody NoteForm form) {
++        String sheet = sheetId.trim();
++        notes.add(sheet, user.trim(), form.text());
++        return list(sheet);
++    }
++
++    @ExceptionHandler(NoteRefused.class)
++    public ResponseEntity<Refusal> refused(NoteRefused e) {
++        return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteRefused.java b/src/main/java/net/officefloor/hq/app/note/NoteRefused.java
+new file mode 100644
+index 000000000..6a40131d2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteRefused.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.note;
++
++/** A note was refused: nothing was written. */
++public class NoteRefused extends RuntimeException {
++
++    public NoteRefused(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/SheetNote.java b/src/main/java/net/officefloor/hq/app/note/SheetNote.java
+new file mode 100644
+index 000000000..bcec59e7d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/SheetNote.java
+@@ -0,0 +1,61 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A note on a sheet: its text, who added it and the sheet's today when it was added. */
++@Entity
++@Table(name = "sheet_note")
++public class SheetNote {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "text", nullable = false)
++    private String text;
++
++    @Column(name = "added_by", nullable = false)
++    private String addedBy;
++
++    @Column(name = "added_on", nullable = false)
++    private LocalDate addedOn;
++
++    protected SheetNote() {
++    }
++
++    public SheetNote(String sheetId, String text, String addedBy, LocalDate addedOn) {
++        this.sheetId = sheetId;
++        this.text = text;
++        this.addedBy = addedBy;
++        this.addedOn = addedOn;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public String getAddedBy() {
++        return addedBy;
++    }
++
++    public LocalDate getAddedOn() {
++        return addedOn;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/SheetNoteRepository.java b/src/main/java/net/officefloor/hq/app/note/SheetNoteRepository.java
+new file mode 100644
+index 000000000..acf7f34ec
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/SheetNoteRepository.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.note;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetNoteRepository extends JpaRepository<SheetNote, Long> {
++
++    List<SheetNote> findBySheetIdOrderByIdDesc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/SheetNotes.java b/src/main/java/net/officefloor/hq/app/note/SheetNotes.java
+new file mode 100644
+index 000000000..97927d774
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/SheetNotes.java
+@@ -0,0 +1,51 @@
++package net.officefloor.hq.app.note;
++
++import java.util.List;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.ApplicationEventPublisher;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** The notes on a sheet, newest first: each a non-blank text, who added it and the sheet's today then. */
++@Service
++public class SheetNotes {
++
++    /** The longest a note may be. */
++    static final int TEXT_MAX = 1000;
++
++    private final SheetNoteRepository notes;
++    private final SheetService sheets;
++    private final SheetRepository sheetRows;
++    private final ApplicationEventPublisher events;
++
++    public SheetNotes(SheetNoteRepository notes, SheetService sheets, SheetRepository sheetRows,
++            ApplicationEventPublisher events) {
++        this.notes = notes;
++        this.sheets = sheets;
++        this.sheetRows = sheetRows;
++        this.events = events;
++    }
++
++    /** The notes on the sheet, newest first. */
++    @Transactional(readOnly = true)
++    public List<SheetNote> list(String sheetId) {
++        return notes.findBySheetIdOrderByIdDesc(sheetId);
++    }
++
++    /** Add a note, its text trimmed, dated the sheet's today; refused when blank or too long. */
++    @Transactional
++    public void add(String sheetId, String user, String given) {
++        String text = given == null ? "" : given.strip();
++        if (text.isEmpty()) {
++            throw new NoteRefused("Enter the note's text.");
++        }
++        if (text.length() > TEXT_MAX) {
++            throw new NoteRefused("The note is too long.");
++        }
++        sheets.load(sheetId, user);
++        sheetRows.lockById(sheetId);
++        notes.saveAndFlush(new SheetNote(sheetId, text, user, sheets.today(sheetId)));
++        events.publishEvent(new NoteAdded(sheetId, user, text));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 13033555b..7737b04cb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -110,7 +110,7 @@ public class PersonController {
+ 
+     /**
+      * A person with the grade in force on the sheet's today, their own terms in force on it (null: none), their claims, newest first, claimed: the sum of the amounts of the claims that
+-     * count, leaving out corrections (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
++     * count, leaving out corrections (OPEN, PENDING and SETTLED, but not an unbound OPEN or PENDING claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
+      * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
+diff --git a/src/main/resources/db/migration/V96__sheet_note.sql b/src/main/resources/db/migration/V96__sheet_note.sql
+new file mode 100644
+index 000000000..ed12880c2
+--- /dev/null
++++ b/src/main/resources/db/migration/V96__sheet_note.sql
+@@ -0,0 +1,8 @@
++-- The notes on a sheet: a text, who added it and the sheet's today when it was added.
++CREATE TABLE sheet_note (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    text     VARCHAR(1000) NOT NULL,
++    added_by VARCHAR(100) NOT NULL,
++    added_on DATE NOT NULL
++);

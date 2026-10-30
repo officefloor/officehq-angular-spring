@@ -1,0 +1,64 @@
+{
+  "checkpoint": 181,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp181_sheet-notes",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "684f4b8db6380cc677127552f9b666c75359cc6f",
+  "reset_sha": "",
+  "preagent_sha": "4455b80de5ee3305ac1be259be90e13473745c06",
+  "prev_sha": "4455b80de5ee3305ac1be259be90e13473745c06",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2595428000000002,
+    "input_tokens": 60,
+    "output_tokens": 15328,
+    "cache_read_tokens": 1710114,
+    "cache_creation_tokens": 76340,
+    "num_turns": 31,
+    "duration_ms": 570722,
+    "duration_api_ms": 147384,
+    "model": "claude-opus-5-5",
+    "session_id": "abd384c0-d7e9-47b8-86b5-3117313f865a",
+    "stop_reason": "success",
+    "result_text": "Sheet notes are working, and all 4 tests in `bin/e2e` pass. To get there I also had to change how a hold affects a person's totals, which wasn't part of the request. That second change is explained below.\n\n**Sheet notes**\n- **Store:** a new table, migration `V96__sheet_note.sql`, keeps each note's text, who added it, and the sheet's today when it was added.\n- **Server:** the new code is in package `note/`. Adding a note trims the text and refuses a blank one with an error. A successful add writes `NOTE_ADDED sheet=\u2026 by=\u2026 text=\u2026`, plus `for=<steward>` when the user is acting under a delegation. Viewers and archived sheets are refused by the guard that already covers every change.\n- **As-of view:** I added the new table to the list of tables the app snapshots each day (`SheetPasts.TABLES`). So with an as-of date set, the list shows only notes added while the sheet's today was on or before that date.\n- **Screen:** a new Notes section (`features/notes/notes.ts`) sits under the claim templates. It has the `note-text` input, the `note-add` button and the `note-error` message, and lists notes newest first as `note-line` items reading `<date> <user>: <text>`.\n- Cloning a sheet does not copy its notes; the request and tests don't cover that.\n\n**Change to existing behaviour: holds**\nScenario 2 failed on something unrelated to notes. The app was counting a PENDING claim dated inside the person's hold, giving claimed=99.95. The test expects 0.00, no ROLLUP line after `CLAIM_PENDING`, and a later statement with `claims=0`. Those only add up if a PENDING claim inside a hold is left out, like an OPEN one. I changed that one line in `Dues.leftOut`, from \"OPEN\" to \"OPEN or PENDING\". It affects every total, not just this test, and I updated the doc comments that described the rule.\n\nThe wording in the old `V31__person_hold.sql` migration still says only OPEN claims are left out. I didn't edit it because migrations that have already run shouldn't be changed. If PENDING claims were meant to keep counting during a hold, the test is what's wrong and this change should be reverted.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2595428000000002,
+        "num_turns": 31,
+        "duration_ms": 570722,
+        "duration_api_ms": 147384,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp181.agent.jsonl",
+  "agent_diff_file": "cp181.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
