@@ -1,0 +1,71 @@
+{
+  "checkpoint": 168,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp168_crews-are-pools",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    166,
+    167
+  ],
+  "replaced_tests": [
+    "cp166_crews.spec.ts::crews",
+    "cp166_crews.spec.ts::crews scenario 1",
+    "cp167_crew-lead-total.spec.ts::crew lead total scenario 1"
+  ],
+  "request": {
+    "spec": "A crew is now also a pool: it appears among the pools under its name, with the lead and the\nmembers as its members at equal shares (100.00 split as patrons' shares are, the remainder on the\nlead), and receives cuts like any pool. A pool cannot be added with a crew's name nor a crew with a\npool's name. Crew totals stay as they are.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA crew is now also a pool: it appears among the pools under its name, with the lead and the\nmembers as its members at equal shares (100.00 split as patrons' shares are, the remainder on the\nlead), and receives cuts like any pool. A pool cannot be added with a crew's name nor a crew with a\npool's name. Crew totals stay as they are.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "046608c545c3c6bc70a4a8287ba074ca8ff79dea",
+  "reset_sha": "",
+  "preagent_sha": "4d1c58dd2c5aea4b35618c9983a069268d44d465",
+  "prev_sha": "4d1c58dd2c5aea4b35618c9983a069268d44d465",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8038804,
+    "input_tokens": 30,
+    "output_tokens": 9744,
+    "cache_read_tokens": 701162,
+    "cache_creation_tokens": 58581,
+    "num_turns": 16,
+    "duration_ms": 275833,
+    "duration_api_ms": 94745,
+    "model": "claude-opus-5-5",
+    "session_id": "9e7f28f8-425b-4487-91a9-5dcfa7efc6f0",
+    "stop_reason": "success",
+    "result_text": "Every crew now also shows up as a pool under its own name. All 4 acceptance tests pass in `bin/e2e`.\n\n**How it works:** a crew's pool isn't saved anywhere. It is built from the crew's current data each time the pools are listed. That way, when a person moves between crews, is merged, removed or copied to a cloned sheet, the crew's pool follows without anything to keep in sync. No database change was needed.\n\n- **Shares** (`pool/Pools.java`): the lead comes first, then the members. Each gets 100.00 divided equally, rounded half to even, and the lead takes what's left over, the same way patrons' shares are split. Three people gives 33.34 / 33.33 / 33.33. Cuts come from the existing cut calculation, so retired and on-hold people get 0.00 just as in any other pool.\n- **Where they appear:** in the default list, crew pools are sorted by name together with the other pools. In the \"order added\" listing (the one the CSV export uses), they come after the ordinary pools.\n- **Names:** you can't add a pool with an existing crew's name, or a crew with an existing pool's name. Both are refused with an error message and nothing is written to the store or the audit file.\n- **Crew totals** are unchanged.\n- **Screen** (`features/pools/pools.ts`): pools now carry a `crew` flag. A crew's pool has no \"add member\" form, because its members come from the crew. It also isn't offered as a choice when adding a pool to another pool. The pools list now refreshes when the crews change as well as when people change.\n\n**Decision for you:** a crew's pool can't be made a member of another pool. I left it out because there's no stored pool record to point to. If \"receives cuts like any pool\" should also mean it can sit inside another pool and take a cut from it, I'd need to save a pool record for each crew. The tests don't use that case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8038804,
+        "num_turns": 16,
+        "duration_ms": 275833,
+        "duration_api_ms": 94745,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp168.agent.jsonl",
+  "agent_diff_file": "cp168.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

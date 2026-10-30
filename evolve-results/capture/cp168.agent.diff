@@ -1,0 +1,380 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 20bf135d6..e06737326 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -161,7 +161,7 @@ function csvField(value: string): string {
+     <app-holidays />
+     <app-void-reasons />
+     <app-claim-templates />
+-    <app-pools [people]="people()" [(pools)]="pools" />
++    <app-pools [people]="people()" [crews]="crews()" [(pools)]="pools" />
+     <app-crews [people]="people()" [(crews)]="crews" />
+     <app-summary [people]="people()" [periods]="periods()" />
+     <app-tags [people]="people()" />
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 829889993..ffadec6a6 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -1,9 +1,10 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, effect, inject, input, model, signal } from '@angular/core';
++import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
+ import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { PersonWithClaims } from '../claims/claims';
++import { Crew } from '../crews/crews';
+ 
+ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+@@ -22,12 +23,16 @@ export interface PoolMember {
+   cut: string | null;
+ }
+ 
+-/** A pool: its members, its total share (a retired member's share counted as given) and whether that is exactly 100.00. */
++/**
++ * A pool: its members, its total share (a retired member's share counted as given), whether that is exactly 100.00 and
++ * whether it is a crew's, whose members are the crew's lead and members at equal shares.
++ */
+ export interface Pool {
+   name: string;
+   members: PoolMember[];
+   total: string;
+   balanced: boolean;
++  crew: boolean;
+ }
+ 
+ /**
+@@ -54,6 +59,7 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
+ // today is left out of its pool's total share, balance and cuts.
+ // A person can be in several pools, each at most once; a pool is a member of at most one pool, and then its pot is
+ // its cut there, while a pool that is a member of none has the sheet's pot.
++// Every crew is listed as a pool too: its members come from the crew, so it has no form to add one.
+ @Component({
+   selector: 'app-pools',
+   imports: [FigurePipe],
+@@ -78,55 +84,57 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
+                 </li>
+               }
+             </ul>
+-            <form (submit)="addMember($event, p.name)" [attr.aria-label]="'Add member to pool ' + p.name">
+-              <label [for]="'pool-member-select-' + p.name">Person or pool</label>
+-              <select
+-                [id]="'pool-member-select-' + p.name"
+-                data-testid="pool-member-select"
+-                [value]="draft(p.name).personId"
+-                (change)="edit(p.name, { personId: value($event) })"
+-              >
+-                <option value="" [selected]="draft(p.name).personId === ''">Choose a person or pool</option>
+-                @for (person of people(); track person.id) {
+-                  <option [value]="'' + person.id" [selected]="draft(p.name).personId === '' + person.id">
+-                    {{ person.name }}
+-                  </option>
+-                }
+-                @for (other of pools(); track other.name) {
+-                  <option [value]="'pool:' + other.name" [selected]="draft(p.name).personId === 'pool:' + other.name">
+-                    pool:{{ other.name }}
+-                  </option>
++            @if (!p.crew) {
++              <form (submit)="addMember($event, p.name)" [attr.aria-label]="'Add member to pool ' + p.name">
++                <label [for]="'pool-member-select-' + p.name">Person or pool</label>
++                <select
++                  [id]="'pool-member-select-' + p.name"
++                  data-testid="pool-member-select"
++                  [value]="draft(p.name).personId"
++                  (change)="edit(p.name, { personId: value($event) })"
++                >
++                  <option value="" [selected]="draft(p.name).personId === ''">Choose a person or pool</option>
++                  @for (person of people(); track person.id) {
++                    <option [value]="'' + person.id" [selected]="draft(p.name).personId === '' + person.id">
++                      {{ person.name }}
++                    </option>
++                  }
++                  @for (other of storedPools(); track other.name) {
++                    <option [value]="'pool:' + other.name" [selected]="draft(p.name).personId === 'pool:' + other.name">
++                      pool:{{ other.name }}
++                    </option>
++                  }
++                </select>
++                <label [for]="'pool-member-share-' + p.name">Share %</label>
++                <input
++                  [id]="'pool-member-share-' + p.name"
++                  data-testid="pool-member-share"
++                  inputmode="decimal"
++                  [value]="draft(p.name).share"
++                  (input)="edit(p.name, { share: value($event) })"
++                />
++                <label [for]="'pool-member-from-' + p.name">From (blank: from the start)</label>
++                <input
++                  [id]="'pool-member-from-' + p.name"
++                  type="date"
++                  data-testid="pool-member-from"
++                  [value]="draft(p.name).from"
++                  (input)="edit(p.name, { from: value($event) })"
++                />
++                <label [for]="'pool-member-to-' + p.name">To (blank: no end)</label>
++                <input
++                  [id]="'pool-member-to-' + p.name"
++                  type="date"
++                  data-testid="pool-member-to"
++                  [value]="draft(p.name).to"
++                  (input)="edit(p.name, { to: value($event) })"
++                />
++                <button type="submit" data-testid="pool-member-add">Add member</button>
++                @if (draft(p.name).error) {
++                  <p role="alert" data-testid="pool-error">{{ draft(p.name).error }}</p>
+                 }
+-              </select>
+-              <label [for]="'pool-member-share-' + p.name">Share %</label>
+-              <input
+-                [id]="'pool-member-share-' + p.name"
+-                data-testid="pool-member-share"
+-                inputmode="decimal"
+-                [value]="draft(p.name).share"
+-                (input)="edit(p.name, { share: value($event) })"
+-              />
+-              <label [for]="'pool-member-from-' + p.name">From (blank: from the start)</label>
+-              <input
+-                [id]="'pool-member-from-' + p.name"
+-                type="date"
+-                data-testid="pool-member-from"
+-                [value]="draft(p.name).from"
+-                (input)="edit(p.name, { from: value($event) })"
+-              />
+-              <label [for]="'pool-member-to-' + p.name">To (blank: no end)</label>
+-              <input
+-                [id]="'pool-member-to-' + p.name"
+-                type="date"
+-                data-testid="pool-member-to"
+-                [value]="draft(p.name).to"
+-                (input)="edit(p.name, { to: value($event) })"
+-              />
+-              <button type="submit" data-testid="pool-member-add">Add member</button>
+-              @if (draft(p.name).error) {
+-                <p role="alert" data-testid="pool-error">{{ draft(p.name).error }}</p>
+-              }
+-            </form>
++              </form>
++            }
+           </li>
+         }
+       </ul>
+@@ -154,8 +162,13 @@ export class Pools {
+   /** Everyone on the sheet, retired people included: the choices for a member, re-read as they change. */
+   readonly people = input.required<PersonWithClaims[]>();
+ 
++  /** The sheet's crews, each also a pool: the pools are re-read as they change. */
++  readonly crews = input<Crew[]>([]);
++
+   /** The pools as shown, shared with the sheet's people, whose cut totals add up their cuts. */
+   readonly pools = model<Pool[]>([]);
++  /** The pools that can be a member of another: not a crew's. */
++  protected readonly storedPools = computed(() => this.pools().filter((p) => !p.crew));
+   protected readonly name = signal('');
+   protected readonly error = signal('');
+   protected readonly drafts = signal<Record<string, Draft>>({});
+@@ -175,9 +188,11 @@ export class Pools {
+       this.drafts.set({});
+       if (sheet) void this.reload(sheet);
+     });
+-    // a member's retirement changes the pool's total: re-read the pools whenever the people change
++    // a member's retirement changes the pool's total, and a crew is a pool: re-read the pools whenever the people
++    // or the crews change
+     effect(() => {
+       this.people();
++      this.crews();
+       const sheet = this.session.sheet();
+       if (sheet) void this.reload(sheet);
+     });
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crews.java b/src/main/java/net/officefloor/hq/app/crew/Crews.java
+index 222c4efb8..854b8d7ca 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/Crews.java
++++ b/src/main/java/net/officefloor/hq/app/crew/Crews.java
+@@ -6,6 +6,7 @@ import java.util.function.Function;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.context.ApplicationEventPublisher;
+@@ -36,9 +37,11 @@ public class Crews {
+     private final SheetService sheets;
+     private final SheetRepository sheetRows;
+     private final ApplicationEventPublisher events;
++    private final PoolRepository pools;
+ 
+     public Crews(CrewRepository crews, CrewMemberRepository members, PersonRepository people, SheetService sheets,
+-            SheetRepository sheetRows, ApplicationEventPublisher events) {
++            SheetRepository sheetRows, ApplicationEventPublisher events, PoolRepository pools) {
++        this.pools = pools;
+         this.crews = crews;
+         this.members = members;
+         this.people = people;
+@@ -65,7 +68,10 @@ public class Crews {
+         return p == null ? null : new Who(p.getId(), p.getName());
+     }
+ 
+-    /** Add a crew under its name, trimmed, led by a person of the sheet; refused when the name is blank, too long or already a crew's. */
++    /**
++     * Add a crew under its name, trimmed, led by a person of the sheet; refused when the name is blank, too long or
++     * already a crew's or a pool's (a crew is also a pool under its name).
++     */
+     @Transactional
+     public void add(String sheetId, String user, String text, Long leadId) {
+         String name = text == null ? "" : text.strip();
+@@ -85,6 +91,9 @@ public class Crews {
+         if (crews.findBySheetIdAndName(sheetId, name).isPresent()) {
+             throw new CrewRefused("There is already a crew named " + name + ".");
+         }
++        if (pools.findBySheetIdAndName(sheetId, name).isPresent()) {
++            throw new CrewRefused("There is already a pool named " + name + ".");
++        }
+         crews.saveAndFlush(new Crew(sheetId, name, lead.getId()));
+         events.publishEvent(new CrewAdded(sheetId, user, name, lead.getName()));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index ed7b8b3da..69bf6c1da 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -46,14 +46,14 @@ public class PoolController {
+     public record MemberView(Long personId, String pool, String name, String share, boolean retired, String cut) {
+     }
+ 
+-    /** A pool on the sheet; its total share with two decimals. */
+-    public record PoolView(String name, List<MemberView> members, String total, boolean balanced) {
++    /** A pool on the sheet; its total share with two decimals; whether it is a crew's, its members the crew's. */
++    public record PoolView(String name, List<MemberView> members, String total, boolean balanced, boolean crew) {
+ 
+         static PoolView of(Pools.Shown p) {
+             return new PoolView(p.name(), p.members().stream()
+                     .map(m -> new MemberView(m.personId(), m.pool(), m.name(), m.share().toPlainString(), m.retired(),
+                             m.cut() == null ? null : m.cut().toPlainString())).toList(),
+-                    p.total().toPlainString(), p.balanced());
++                    p.total().toPlainString(), p.balanced(), p.crew());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pools.java b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+index 79094333e..6f1bed11e 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/Pools.java
++++ b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -12,6 +13,11 @@ import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Function;
+ import java.util.stream.Collectors;
++import java.util.stream.Stream;
++import net.officefloor.hq.app.crew.Crew;
++import net.officefloor.hq.app.crew.CrewMember;
++import net.officefloor.hq.app.crew.CrewMemberRepository;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -35,6 +41,9 @@ import org.springframework.transaction.annotation.Transactional;
+  * changes neither the total share nor the balance.
+  * A membership may be dated, from and to (both days included, either open); a member whose dates do not include the
+  * sheet's today is left out entirely: not in the total share nor the balance, and no cut (shown, with its share).
++ * Every crew is also a pool under its name, listed with the stored pools: its lead and then its members, undated, at
++ * equal shares of 100.00 (each rounded half to even, the remainder on the lead), cut from the sheet's pot like any
++ * pool. Its members come from the crew, so none can be added to it here, and a pool cannot take a crew's name.
+  */
+ @Service
+ public class Pools {
+@@ -54,8 +63,11 @@ public class Pools {
+     public record Member(Long personId, String pool, String name, BigDecimal share, boolean retired, BigDecimal cut) {
+     }
+ 
+-    /** A pool as shown: its members in the order they were added, its total share and whether it is balanced. */
+-    public record Shown(String name, List<Member> members, BigDecimal total, boolean balanced) {
++    /**
++     * A pool as shown: its members in the order they were added, its total share, whether it is balanced and whether
++     * it is a crew's.
++     */
++    public record Shown(String name, List<Member> members, BigDecimal total, boolean balanced, boolean crew) {
+     }
+ 
+     private final PoolRepository pools;
+@@ -64,9 +76,14 @@ public class Pools {
+     private final SheetService sheets;
+     private final SheetRepository sheetRows;
+     private final ApplicationEventPublisher events;
++    private final CrewRepository crews;
++    private final CrewMemberRepository crewMembers;
+ 
+     public Pools(PoolRepository pools, PoolMemberRepository members, PersonRepository people, SheetService sheets,
+-            SheetRepository sheetRows, ApplicationEventPublisher events) {
++            SheetRepository sheetRows, ApplicationEventPublisher events, CrewRepository crews,
++            CrewMemberRepository crewMembers) {
++        this.crews = crews;
++        this.crewMembers = crewMembers;
+         this.pools = pools;
+         this.members = members;
+         this.people = people;
+@@ -103,7 +120,38 @@ public class Pools {
+         for (Pool pool : all) {
+             show(pool.getId(), poolById, byId, byPool, above, pot, held, today, shown, new HashSet<>());
+         }
+-        return all.stream().map(p -> shown.get(p.getId())).toList();
++        List<Shown> crewPools = crewPools(sheetId, byId, pot, held);
++        Stream<Shown> listed = Stream.concat(all.stream().map(p -> shown.get(p.getId())), crewPools.stream());
++        return asAdded ? listed.toList() : listed.sorted(Comparator.comparing(Shown::name)).toList();
++    }
++
++    /** The sheet's crews, in the order they were added, each as a pool of its lead and members at equal shares. */
++    private List<Shown> crewPools(String sheetId, Map<Long, Person> byId, BigDecimal pot, Set<Long> held) {
++        List<Crew> all = crews.findBySheetIdOrderByNameAsc(sheetId).stream()
++                .sorted(Comparator.comparing(Crew::getId)).toList();
++        Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(all.stream().map(Crew::getId)
++                .toList()).stream().collect(Collectors.groupingBy(CrewMember::getCrewId));
++        List<Shown> result = new ArrayList<>();
++        for (Crew crew : all) {
++            List<Person> who = Stream.concat(Stream.of(crew.getLeadId()),
++                    byCrew.getOrDefault(crew.getId(), List.of()).stream().map(CrewMember::getPersonId))
++                    .map(byId::get).filter(Objects::nonNull).toList();
++            List<Member> listed = new ArrayList<>();
++            if (!who.isEmpty()) {
++                BigDecimal each = HUNDRED.divide(BigDecimal.valueOf(who.size()), 2, RoundingMode.HALF_EVEN);
++                BigDecimal first = HUNDRED.subtract(each.multiply(BigDecimal.valueOf(who.size() - 1))).setScale(2);
++                for (int i = 0; i < who.size(); i++) {
++                    Person p = who.get(i);
++                    listed.add(new Member(p.getId(), null, p.getName(), i == 0 ? first : each, p.isRetired(), null));
++                }
++            }
++            BigDecimal total = listed.stream().map(Member::share).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
++            boolean balanced = total.compareTo(HUNDRED) == 0;
++            boolean allRetired = listed.stream().allMatch(Member::retired);
++            List<Member> withCuts = balanced && pot != null && !allRetired ? cut(listed, pot, held) : listed;
++            result.add(new Shown(crew.getName(), withCuts, total, balanced, true));
++        }
++        return result;
+     }
+ 
+     /** The pool shown with its figures, the pool above it shown first since its cut there is this pool's pot. */
+@@ -163,7 +211,7 @@ public class Pools {
+                 withCuts.add(current.get(i) ? cut.get(c++) : listed.get(i));
+             }
+         }
+-        Shown result = new Shown(pool.getName(), withCuts, total, balanced);
++        Shown result = new Shown(pool.getName(), withCuts, total, balanced, false);
+         shown.put(poolId, result);
+         return result;
+     }
+@@ -229,6 +277,9 @@ public class Pools {
+         if (pools.findBySheetIdAndName(sheetId, name).isPresent()) {
+             throw new PoolRefused("There is already a pool named " + name + ".");
+         }
++        if (crews.findBySheetIdAndName(sheetId, name).isPresent()) {
++            throw new PoolRefused("There is already a crew named " + name + ".");
++        }
+         pools.saveAndFlush(new Pool(sheetId, name));
+         events.publishEvent(new PoolAdded(sheetId, user, name));
+     }
