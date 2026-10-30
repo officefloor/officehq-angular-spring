@@ -2,7 +2,6 @@ package net.officefloor.hq.app.pool;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,13 +28,19 @@ public class PoolController {
     public record PoolForm(@Size(max = 1000) String name) {
     }
 
-    /** A member to add to the named pool: a person of the sheet and their share percent. */
-    public record MemberForm(@NotBlank @Size(max = 1000) String pool, @NotNull Long personId,
-            @Size(max = 100) String share) {
+    /**
+     * A member to add to the named pool: a person of the sheet, or else another pool of the sheet by name, and the
+     * share percent.
+     */
+    public record MemberForm(@NotBlank @Size(max = 1000) String pool, Long personId,
+            @Size(max = 1000) String memberPool, @Size(max = 100) String share) {
     }
 
-    /** A member of a pool; the share with two decimals, and so the cut, null when the member has none. */
-    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
+    /**
+     * A member of a pool: a person (pool null) or a pool (personId null); the share with two decimals, and so the
+     * cut, null when the member has none.
+     */
+    public record MemberView(Long personId, String pool, String name, String share, boolean retired, String cut) {
     }
 
     /** A pool on the sheet; its total share with two decimals. */
@@ -43,7 +48,7 @@ public class PoolController {
 
         static PoolView of(Pools.Shown p) {
             return new PoolView(p.name(), p.members().stream()
-                    .map(m -> new MemberView(m.personId(), m.name(), m.share().toPlainString(), m.retired(),
+                    .map(m -> new MemberView(m.personId(), m.pool(), m.name(), m.share().toPlainString(), m.retired(),
                             m.cut() == null ? null : m.cut().toPlainString())).toList(),
                     p.total().toPlainString(), p.balanced());
         }
@@ -77,7 +82,13 @@ public class PoolController {
     public List<PoolView> addMember(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody MemberForm form) {
         String sheet = sheetId.trim();
-        pools.addMember(sheet, user.trim(), form.pool(), form.personId(), form.share());
+        if (form.personId() != null) {
+            pools.addMember(sheet, user.trim(), form.pool(), form.personId(), form.share());
+        } else if (form.memberPool() != null && !form.memberPool().isBlank()) {
+            pools.addPoolMember(sheet, user.trim(), form.pool(), form.memberPool(), form.share());
+        } else {
+            throw new PoolRefused("Choose a person or a pool.");
+        }
         return list(sheet);
     }
 

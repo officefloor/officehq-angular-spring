@@ -6,9 +6,13 @@ import { PersonWithClaims } from '../claims/claims';
 
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 
-/** A member of a pool: the person, their share (two decimals), whether they are retired and their cut of the pot. */
+/**
+ * A member of a pool: a person (pool null) or another pool (personId null), the share (two decimals), whether they
+ * are retired and their cut of the pool's pot.
+ */
 export interface PoolMember {
-  personId: number;
+  personId: number | null;
+  pool: string | null;
   name: string;
   share: string;
   retired: boolean;
@@ -24,7 +28,7 @@ export interface Pool {
   balanced: boolean;
 }
 
-/** What is typed into a pool's member form, and why its last add was refused. */
+/** What is typed into a pool's member form (a person's id, or pool:<name>), and why its last add was refused. */
 interface Draft {
   personId: string;
   share: string;
@@ -34,8 +38,9 @@ interface Draft {
 const EMPTY: Draft = { personId: '', share: '', error: '' };
 
 // The sheet's pools, sorted by name, each with its members and their shares, its total share and whether it is
-// balanced, and each member's cut of the sheet's pot (none unless the pool is balanced and there is a pot); the form that adds a pool, and on each pool's row the form that adds a person to it with a share.
-// A person can be in several pools, each at most once.
+// balanced, and each member's cut of the pool's pot (none unless the pool is balanced and has a pot); the form that adds a pool, and on each pool's row the form that adds a person, or another pool, to it with a share.
+// A person can be in several pools, each at most once; a pool is a member of at most one pool, and then its pot is
+// its cut there, while a pool that is a member of none has the sheet's pot.
 @Component({
   selector: 'app-pools',
   template: `
@@ -48,8 +53,8 @@ const EMPTY: Draft = { personId: '', share: '', error: '' };
             <span>Total share <span data-testid="pool-total-share">{{ p.total }}</span></span>
             <span>Balanced <span data-testid="pool-balanced">{{ p.balanced ? 'yes' : 'no' }}</span></span>
             <ul>
-              @for (m of p.members; track m.personId) {
-                <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
+              @for (m of p.members; track memberKey(m)) {
+                <li [attr.data-testid]="'pool-member-' + p.name + '-' + memberKey(m)">
                   <span data-testid="pool-member-name">{{ m.name }}</span>
                   <span>Share <span data-testid="pool-share">{{ m.share }}</span></span>
                   <span>Cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span></span>
@@ -60,17 +65,22 @@ const EMPTY: Draft = { personId: '', share: '', error: '' };
               }
             </ul>
             <form (submit)="addMember($event, p.name)" [attr.aria-label]="'Add member to pool ' + p.name">
-              <label [for]="'pool-member-select-' + p.name">Person</label>
+              <label [for]="'pool-member-select-' + p.name">Person or pool</label>
               <select
                 [id]="'pool-member-select-' + p.name"
                 data-testid="pool-member-select"
                 [value]="draft(p.name).personId"
                 (change)="edit(p.name, { personId: value($event) })"
               >
-                <option value="" [selected]="draft(p.name).personId === ''">Choose a person</option>
+                <option value="" [selected]="draft(p.name).personId === ''">Choose a person or pool</option>
                 @for (person of people(); track person.id) {
                   <option [value]="'' + person.id" [selected]="draft(p.name).personId === '' + person.id">
                     {{ person.name }}
+                  </option>
+                }
+                @for (other of pools(); track other.name) {
+                  <option [value]="'pool:' + other.name" [selected]="draft(p.name).personId === 'pool:' + other.name">
+                    pool:{{ other.name }}
                   </option>
                 }
               </select>
@@ -145,6 +155,11 @@ export class Pools {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
   }
 
+  /** A member's part of its row's test id: the person's id, or pool-<name> for a pool. */
+  protected memberKey(m: PoolMember): string {
+    return m.pool !== null ? 'pool-' + m.pool : '' + m.personId;
+  }
+
   protected draft(pool: string): Draft {
     return this.drafts()[pool] ?? EMPTY;
   }
@@ -180,13 +195,16 @@ export class Pools {
     const share = draft.share.trim();
     let refusal = '';
     if (draft.personId === '') {
-      refusal = 'Choose a person.';
+      refusal = 'Choose a person or a pool.';
     } else if (!SHARE.test(share) || Number(share) <= 0 || Number(share) > 100) {
       refusal = 'Enter a share with up to two decimals, more than 0.00 and at most 100.00.';
     } else {
       this.busy = true;
       try {
-        refusal = await this.post('/members', { pool, personId: Number(draft.personId), share });
+        const member = draft.personId.startsWith('pool:')
+          ? { memberPool: draft.personId.slice('pool:'.length) }
+          : { personId: Number(draft.personId) };
+        refusal = await this.post('/members', { pool, ...member, share });
       } finally {
         this.busy = false;
       }
