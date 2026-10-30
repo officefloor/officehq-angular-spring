@@ -1,0 +1,64 @@
+{
+  "checkpoint": 41,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp41_header-counters",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen gains a header with counters, shown at all times: the number of people on the sheet\n(retired people included), the number of claims in each status (DRAFT, OPEN, PENDING, SETTLED,\nVOID), the sheet's due-total and the sheet's overdue-total. Each counter always equals the figure\nit repeats: the status counts those of the summary, the two totals the sheet's totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen gains a header with counters, shown at all times: the number of people on the sheet\n(retired people included), the number of claims in each status (DRAFT, OPEN, PENDING, SETTLED,\nVOID), the sheet's due-total and the sheet's overdue-total. Each counter always equals the figure\nit repeats: the status counts those of the summary, the two totals the sheet's totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5aaa9de612d27c613f5216acf824e17578df3aba",
+  "reset_sha": "",
+  "preagent_sha": "12e0fc39232c3c84c25b5cf70c507978fd885e38",
+  "prev_sha": "12e0fc39232c3c84c25b5cf70c507978fd885e38",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.32057159999999996,
+    "input_tokens": 18,
+    "output_tokens": 2539,
+    "cache_read_tokens": 239878,
+    "cache_creation_tokens": 27718,
+    "num_turns": 9,
+    "duration_ms": 148012,
+    "duration_api_ms": 25842,
+    "model": "claude-opus-5-5",
+    "session_id": "a0fa1b04-9ade-40fe-b5d1-d3fd68d868a6",
+    "stop_reason": "success",
+    "result_text": "The header with counters is in, and all 4 acceptance tests pass (`bin/e2e`).\n\n**What changed (front end only):**\n- **New header** at the top of the sheet's screen in `features/people/people.ts`. It shows whenever a sheet is loaded, above everything else. It holds:\n  - `header-people-count`: everyone on the sheet, retired people included, whether or not \"Show retired\" is on.\n  - `header-claims-<STATUS>-count`: one count for each of DRAFT, OPEN, PENDING, SETTLED and VOID.\n  - `header-due-total` and `header-overdue-total`: the same figures the existing sheet totals (`rollup-due-total`, `rollup-overdue-total`) show.\n- **Counts always match:** I moved the summary's per-status counting into a shared `statusCounts()` function in `features/summary/summary.ts`. The header and the summary table both use it, so the header's status counts and the summary's can't disagree. The two totals also come from the values the sheet's totals already compute.\n\nThe server and the stored data didn't need to change, because the header only repeats figures the screen already has. There are no new audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.32057159999999996,
+        "num_turns": 9,
+        "duration_ms": 148012,
+        "duration_api_ms": 25842,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp41.agent.jsonl",
+  "agent_diff_file": "cp41.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
