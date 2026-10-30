@@ -9,6 +9,7 @@ import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
 
 const GRADES = ['A', 'B', 'C'];
+const DAYS = /^\d{1,5}$/;
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** Cents in an amount shown with two decimals ("12.50" is 1250). */
@@ -82,6 +83,14 @@ function csvField(value: string): string {
           type="date"
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set('')"
+        />
+        <label for="person-form-terms">Terms in days (blank: none)</label>
+        <input
+          id="person-form-terms"
+          data-testid="person-form-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); error.set('')"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
@@ -167,7 +176,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Excess</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Excess</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
@@ -183,6 +192,7 @@ function csvField(value: string): string {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ p.claimed }}</td>
               <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
               <td data-testid="person-excess">{{ p.excess }}</td>
@@ -302,6 +312,8 @@ export class People {
   protected readonly grade = signal('A');
   /** The date an edit's grade applies from; blank: the sheet's today. */
   protected readonly gradeFrom = signal('');
+  /** The person's own terms in days; blank: none. */
+  protected readonly terms = signal('');
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private version = 0;
@@ -536,6 +548,7 @@ export class People {
     this.name.set(p.name);
     this.grade.set(p.grade);
     this.gradeFrom.set('');
+    this.terms.set(p.terms === null ? '' : String(p.terms));
     this.error.set('');
   }
 
@@ -544,6 +557,7 @@ export class People {
     this.name.set('');
     this.grade.set('A');
     this.gradeFrom.set('');
+    this.terms.set('');
     this.error.set('');
   }
 
@@ -556,12 +570,19 @@ export class People {
     const name = this.name().trim();
     const grade = this.grade();
     const gradeFrom = this.gradeFrom() || null;
+    const terms = this.terms().trim();
     if (!name) {
       this.error.set('Enter a name.');
       return;
     }
     if (!GRADES.includes(grade)) {
       this.error.set('Choose a grade.');
+      return;
+    }
+    if (terms && !DAYS.test(terms)) {
+      // the edit is refused and its editor closed, so the form is back to adding a person
+      this.reset();
+      this.error.set('Enter the terms as a whole number of days, or leave them blank.');
       return;
     }
     const id = this.editing();
@@ -571,8 +592,8 @@ export class People {
     try {
       const saved = await firstValueFrom(
         id === null
-          ? this.http.post<Person>(base, { name, grade }, { headers })
-          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, version: this.version }, { headers }),
+          ? this.http.post<Person>(base, { name, grade, terms }, { headers })
+          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, terms, version: this.version }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       this.replace(saved);
@@ -819,6 +840,7 @@ export class People {
       if (current && this.editing() === id) {
         this.name.set(current.name);
         this.grade.set(current.grade);
+        this.terms.set(current.terms === null ? '' : String(current.terms));
       }
     } catch {
       // the error still shows; re-loading the sheet shows the current values

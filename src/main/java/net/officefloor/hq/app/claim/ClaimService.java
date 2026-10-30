@@ -103,7 +103,7 @@ public class ClaimService {
         Claim claim = new Claim(sheetId, personId, amount, on, note == null ? "" : note, corrects);
         claim.setCorrectsDate(correctsDate);
         sheets.load(sheetId, user);
-        claim.setDueBy(on.plusDays(sheets.settings(sheetId).termsFor(person.gradeOn(on), on)));
+        claim.setDueBy(on.plusDays(sheets.settings(sheetId).termsFor(person.getTerms(), person.gradeOn(on), on)));
         log(sheetId, user, claim, person);
         claims.saveAndFlush(claim);
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
@@ -277,7 +277,7 @@ public class ClaimService {
         Claim part = new Claim(sheetId, owner.getId(), amount, claim.getDate(), claim.getNote(), null);
         sheets.load(sheetId, user);
         part.setDueBy(claim.getDate().plusDays(
-                sheets.settings(sheetId).termsFor(owner.gradeOn(claim.getDate()), claim.getDate())));
+                sheets.settings(sheetId).termsFor(owner.getTerms(), owner.gradeOn(claim.getDate()), claim.getDate())));
         part.setSplitFrom(claim.getShownNumber());
         giveNumber(sheetId, part);
         part.setOpenedBy(user);

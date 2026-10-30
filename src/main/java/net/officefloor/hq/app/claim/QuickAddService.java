@@ -32,7 +32,7 @@ public class QuickAddService {
     public long add(String sheetId, String user, String name, BigDecimal amount) {
         String trimmed = name.trim();
         Person person = people.findBySheetIdAndNameIgnoreCase(sheetId, trimmed)
-                .orElseGet(() -> persons.add(sheetId, user, trimmed, GRADE));
+                .orElseGet(() -> persons.add(sheetId, user, trimmed, GRADE, null));
         return claims.add(sheetId, user, person.getId(), amount, null, "");
     }
 }

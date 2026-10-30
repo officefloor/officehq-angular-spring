@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -48,15 +49,18 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
         Rollup.Figures before = rollup.figures(sheetId);
-        Person person = people.saveAndFlush(new Person(sheetId, trimmed, grade));
-        events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade));
+        Person added = new Person(sheetId, trimmed, grade);
+        added.setTerms(terms);
+        Person person = people.saveAndFlush(added);
+        events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade,
+                terms == null ? null : terms.toString()));
         rollup.changed(sheetId, user, before);
         return person;
     }
@@ -64,11 +68,12 @@ public class PersonService {
     /**
      * Save the person's name and record the grade from a date (none: the sheet's today), keeping the
      * grades already recorded; a grade left as the row showed it (in force on the sheet's today) with no
-     * date records nothing. The edit names the grade in force on the sheet's today after it.
+     * date records nothing. The person's own terms are set to those given (null: none). The edit names the
+     * grade in force on the sheet's today after it and, when they changed, the terms.
      */
     @Transactional
     public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version != null && version != person.getVersion()) {
@@ -84,8 +89,11 @@ public class PersonService {
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
         }
+        String termsChange = Objects.equals(terms, person.getTerms()) ? null : terms == null ? "" : terms.toString();
+        person.setTerms(terms);
         people.flush();
-        events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, person.gradeOn(today)));
+        events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, person.gradeOn(today),
+                termsChange));
         rollup.changed(sheetId, user, before);
         return person;
     }

@@ -71,6 +71,8 @@ export interface PersonWithClaims {
   version: number;
   name: string;
   grade: string;
+  /** The person's own terms in days; null when they have none (their grade's or the sheet's apply). */
+  terms: number | null;
   claims: Claim[];
   /** The amounts of the OPEN, PENDING and SETTLED claims added up, but not unbound OPEN ones dated within a hold. */
   claimed: string;

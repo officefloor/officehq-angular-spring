@@ -70,6 +70,14 @@ public record DatedSettings(List<SheetSetting> values) {
         return own != null ? own : terms(date);
     }
 
+    /**
+     * The terms that fix the due-by of a claim dated on the date for a person with their own terms (null:
+     * none) and the grade then: the person's own, else the grade's, else the sheet's.
+     */
+    public int termsFor(Integer personTerms, String grade, LocalDate date) {
+        return personTerms != null ? personTerms : termsFor(grade, date);
+    }
+
     /** The most due a clerk may settle on a claim on the date; null when there is no limit. */
     public BigDecimal clerkLimit(LocalDate date) {
         return on(CLERK_LIMIT, date).map(BigDecimal::new).orElse(null);

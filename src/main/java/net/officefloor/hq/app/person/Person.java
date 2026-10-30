@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * A person on a sheet, with a name and their grades (A, B or C), each from a date (see {@link #gradeOn}), the date they are retired from (null while
+ * A person on a sheet, with a name, their own terms (null: none) and their grades (A, B or C), each from a date (see {@link #gradeOn}), the date they are retired from (null while
  * not retired), their holds (see {@link #heldOn}) and the version it was last saved at.
  */
 @Entity
@@ -39,6 +39,9 @@ public class Person {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
     private List<GradeFrom> grades = new ArrayList<>();
+
+    @Column(name = "terms")
+    private Integer terms;
 
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -96,6 +99,15 @@ public class Person {
     public void gradeFrom(String grade, LocalDate from) {
         grades.removeIf(g -> g.getFromDate() != null && Objects.equals(g.getFromDate(), from));
         grades.add(new GradeFrom(grade, from));
+    }
+
+    /** The person's own terms in days, in force on every date; null when they have none. */
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public LocalDate getRetiredFrom() {

@@ -47,7 +47,7 @@ public class PersonController {
      * the rate in force on its date for its person's grade in force then (null when none is) or, once settled, the due fixed
      * then, or while bound by a statement, the figure bound then, its status, its number (null while it has
      * none), who opened it (null while it was never opened), whether a statement binds it, the date it is
-     * due by (fixed when it was added: its date plus the terms then of its person's grade on its date), whether it is overdue (see {@link Dues#overdue}) and, for a
+     * due by (fixed when it was added: its date plus its person's own terms, else the terms then of their grade on its date, else the sheet's), whether it is overdue (see {@link Dues#overdue}) and, for a
      * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
      * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}),
      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise).
@@ -75,14 +75,14 @@ public class PersonController {
     }
 
     /**
-     * A person with the grade in force on the sheet's today, their claims, newest first, claimed: the sum of the amounts of the claims that
+     * A person with the grade in force on the sheet's today, their own terms (null: none), their claims, newest first, claimed: the sum of the amounts of the claims that
      * count (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
      * that count are overdue and the sum of their due figures, and the ids of their patrons.
      */
-    public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
+    public record PersonView(long id, long version, String name, String grade, Integer terms, List<ClaimView> claims,
             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
             String overdueTotal, List<Long> patrons) {
@@ -96,7 +96,7 @@ public class PersonController {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             List<Claim> overdue = Dues.overdue(claims, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
-                    grade.on(rates.today()), claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
+                    grade.on(rates.today()), person.getTerms(), claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
                     statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
@@ -118,9 +118,16 @@ public class PersonController {
     /**
      * A person as entered; an edit carries the version its editor loaded (none: no check) and the date
      * its grade applies from (none: the sheet's today). An add's grade applies from the beginning of time.
+     * The person's own terms are a number of days, blank (or none) for none.
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
+            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms) {
+
+        /** The terms as days; null when there are none. */
+        Integer termsDays() {
+            return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+        }
     }
 
     /** A retirement as entered; a date left out takes the sheet's today. */
@@ -157,7 +164,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
-        return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade()), List.of(),
+        return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays()), List.of(),
                 rates.table(sheet), Statements.NONE, List.of());
     }
 
@@ -167,7 +174,7 @@ public class PersonController {
             @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(),
-                form.grade(), form.gradeFrom()));
+                form.grade(), form.gradeFrom(), form.termsDays()));
     }
 
     /** Take a statement for the person; answers with the person as bound by it. */
