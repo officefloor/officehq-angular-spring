@@ -194,6 +194,8 @@ export interface PersonWithClaims {
   openTotal: string;
   /** Their settled figures divided by 100, minus 5 for every overdue claim that counts, rounded half to even. */
   score: string;
+  /** While both score thresholds are set: HIGH, MID or LOW by their score; null otherwise. */
+  band: string | null;
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
   /** Whether their name or an alias is another's on a sheet of the sheet's tree; every edit is refused until it is not. */

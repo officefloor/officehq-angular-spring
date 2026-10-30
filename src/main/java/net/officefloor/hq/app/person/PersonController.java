@@ -126,7 +126,8 @@ public class PersonController {
      * transferred from (null: none), their past retirements, earliest first, their snapshot lines, oldest first, and
      * their statement lines: one per statement still standing, in the order taken, and the reason of their flag
      * while it is in force on the sheet's today (null otherwise, see {@link Person#flagOn}), and their approver (null: none),
-     * and their score (see {@link Dues#score}), a whole number.
+     * and their score (see {@link Dues#score}), a whole number, and their band while both score thresholds are set:
+     * HIGH when the score is at or above the high one, MID when at or above the mid one, else LOW (null otherwise).
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<String> tags,
@@ -137,7 +138,7 @@ public class PersonController {
             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
             List<SnapshotView> snapshots, List<StatementLineView> statementLines, String flag,
-            String approver, String score) {
+            String approver, String score, String band) {
 
         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -146,6 +147,7 @@ public class PersonController {
             Holds held = person.leaves();
             BigDecimal claimed = Dues.claimed(claims, held, rates.today());
             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
+            BigDecimal score = Dues.score(grade, claims, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
                     grade.on(rates.today()), person.termsOn(rates.today()), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
@@ -168,7 +170,17 @@ public class PersonController {
                             .map(l -> new StatementLineView(l.date(), l.dueTotal() == null ? "n/a" : money(l.dueTotal())))
                             .toList(),
                     person.flagOn(rates.today()), person.getApprover(),
-                    Dues.score(grade, claims, rates, held).toPlainString());
+                    score.toPlainString(), band(score, rates));
+        }
+
+        private static String band(BigDecimal score, RateTable rates) {
+            Integer mid = rates.settings().scoreMid();
+            Integer high = rates.settings().scoreHigh();
+            if (mid == null || high == null) {
+                return null;
+            }
+            return score.compareTo(BigDecimal.valueOf(high)) >= 0 ? "HIGH"
+                    : score.compareTo(BigDecimal.valueOf(mid)) >= 0 ? "MID" : "LOW";
         }
     }
 

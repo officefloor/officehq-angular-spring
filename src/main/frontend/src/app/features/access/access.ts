@@ -38,6 +38,9 @@ interface Settings {
   escalateAfter: string | null;
   /** A REVIEW claim whose review day plus this many days is before the sheet's today is late; null when blank (none). Not dated. */
   reviewSla: string | null;
+  /** While both are set, a person whose score is at or above the high one is HIGH, at or above the mid one MID, else LOW; null when blank. Whole numbers, not dated. */
+  scoreMid: string | null;
+  scoreHigh: string | null;
   /** The kinds of proof (receipt, photo), comma separated, a claim above the proof threshold needs one of each of; null when none. Not dated. */
   proofKinds: string | null;
   /** The grade quick-add and an import line with a blank grade give a new person; null when blank (A). Not dated. */
@@ -118,6 +121,7 @@ const NO_PERMS_TOUCHED: Record<Perm, boolean> = { permOpen: false, permSettle: f
 const PERM_ROLES = /^\s*(clerk|steward)\s*(,\s*(clerk|steward)\s*)*$/;
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
+const WHOLE = /^-?\d{1,6}$/;
 /** Proof kinds: a comma separated list of receipt and photo. */
 const PROOF_KINDS = /^\s*(receipt|photo)\s*(,\s*(receipt|photo)\s*)*$/;
 const MONTH = /^([1-9]|0[1-9]|1[0-2])$/;
@@ -251,6 +255,8 @@ const ROUNDING = /^(half-up|half-even)$/;
       <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
       <p>Escalate after (days) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
       <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
+      <p>Score mid threshold <strong data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</strong></p>
+      <p>Score high threshold <strong data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</strong></p>
       <p>Proof kinds <strong data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</strong></p>
       <p>Default grade <strong data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</strong></p>
       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
@@ -479,6 +485,24 @@ const ROUNDING = /^(half-up|half-even)$/;
           (input)="reviewSlaInput.set(value($event)); reviewSlaTouched = true; settingsError.set('')"
           (keydown)="reviewSlaTouched = reviewSlaTouched || clears($event)"
         />
+        <label for="setting-score-mid">Score mid threshold: a score at or above it is MID (a whole number; blank: no bands)</label>
+        <input
+          id="setting-score-mid"
+          inputmode="numeric"
+          data-testid="setting-score-mid"
+          [value]="scoreMidInput()"
+          (input)="scoreMidInput.set(value($event)); scoreMidTouched = true; settingsError.set('')"
+          (keydown)="scoreMidTouched = scoreMidTouched || clears($event)"
+        />
+        <label for="setting-score-high">Score high threshold: a score at or above it is HIGH (a whole number; blank: no bands)</label>
+        <input
+          id="setting-score-high"
+          inputmode="numeric"
+          data-testid="setting-score-high"
+          [value]="scoreHighInput()"
+          (input)="scoreHighInput.set(value($event)); scoreHighTouched = true; settingsError.set('')"
+          (keydown)="scoreHighTouched = scoreHighTouched || clears($event)"
+        />
         <label for="setting-proof-kinds">Proof kinds: a claim above the proof threshold needs a proof of each (comma separated, receipt or photo; blank: none)</label>
         <input
           id="setting-proof-kinds"
@@ -666,6 +690,10 @@ export class Access {
   protected readonly escalateAfterInput = signal('');
   protected readonly reviewSla = signal<string | null>(null);
   protected readonly reviewSlaInput = signal('');
+  protected readonly scoreMid = signal<string | null>(null);
+  protected readonly scoreMidInput = signal('');
+  protected readonly scoreHigh = signal<string | null>(null);
+  protected readonly scoreHighInput = signal('');
   protected readonly proofKinds = signal<string | null>(null);
   protected readonly proofKindsInput = signal('');
   protected readonly defaultGrade = signal<string | null>(null);
@@ -711,6 +739,8 @@ export class Access {
   protected alertThresholdTouched = false;
   protected escalateAfterTouched = false;
   protected reviewSlaTouched = false;
+  protected scoreMidTouched = false;
+  protected scoreHighTouched = false;
   protected proofKindsTouched = false;
   protected defaultGradeTouched = false;
   protected parentTouched = false;
@@ -737,7 +767,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -945,6 +975,16 @@ export class Access {
       this.settingsError.set('Enter a review SLA as a whole number of days, or leave it blank for none.');
       return;
     }
+    const scoreMid = this.scoreMidInput().trim();
+    if (this.scoreMidTouched && scoreMid !== '' && !WHOLE.test(scoreMid)) {
+      this.settingsError.set('Enter a score mid threshold as a whole number, or leave it blank for no bands.');
+      return;
+    }
+    const scoreHigh = this.scoreHighInput().trim();
+    if (this.scoreHighTouched && scoreHigh !== '' && !WHOLE.test(scoreHigh)) {
+      this.settingsError.set('Enter a score high threshold as a whole number, or leave it blank for no bands.');
+      return;
+    }
     const proofKinds = this.proofKindsInput().trim();
     if (this.proofKindsTouched && proofKinds !== '' && !PROOF_KINDS.test(proofKinds)) {
       this.settingsError.set('Enter the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
@@ -1027,6 +1067,8 @@ export class Access {
     if (this.alertThresholdTouched) body.alertThreshold = alertThreshold;
     if (this.escalateAfterTouched) body.escalateAfter = escalateAfter;
     if (this.reviewSlaTouched) body.reviewSla = reviewSla;
+    if (this.scoreMidTouched) body.scoreMid = scoreMid;
+    if (this.scoreHighTouched) body.scoreHigh = scoreHigh;
     if (this.proofKindsTouched) body.proofKinds = proofKinds;
     if (this.defaultGradeTouched) body.defaultGrade = defaultGrade;
     if (this.parentTouched) body.parent = this.parentInput().trim();
@@ -1123,6 +1165,12 @@ export class Access {
     this.reviewSla.set(settings.reviewSla);
     this.reviewSlaInput.set(settings.reviewSla ?? '');
     this.reviewSlaTouched = false;
+    this.scoreMid.set(settings.scoreMid);
+    this.scoreMidInput.set(settings.scoreMid ?? '');
+    this.scoreMidTouched = false;
+    this.scoreHigh.set(settings.scoreHigh);
+    this.scoreHighInput.set(settings.scoreHigh ?? '');
+    this.scoreHighTouched = false;
     this.proofKinds.set(settings.proofKinds);
     this.proofKindsInput.set(settings.proofKinds ?? '');
     this.proofKindsTouched = false;

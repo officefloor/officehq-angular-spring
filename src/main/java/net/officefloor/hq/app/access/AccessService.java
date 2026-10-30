@@ -93,6 +93,8 @@ public class AccessService {
 
     public static final String ESCALATE_AFTER = DatedSettings.ESCALATE_AFTER;
     public static final String REVIEW_SLA = DatedSettings.REVIEW_SLA;
+    public static final String SCORE_MID = DatedSettings.SCORE_MID;
+    public static final String SCORE_HIGH = DatedSettings.SCORE_HIGH;
 
     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
 
@@ -274,7 +276,7 @@ public class AccessService {
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
             String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
-            String defaultGrade, Map<String, Dated> gradeClerkLimit) {
+            String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh) {
         if (defaultGrade != null && !defaultGrade.isEmpty() && !defaultGrade.matches("[ABC]")) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The default grade is A, B or C");
         }
@@ -364,6 +366,12 @@ public class AccessService {
         }
         if (proofKinds != null) {
             setProofKinds(sheetId, user, proofKinds);
+        }
+        if (scoreMid != null) {
+            setUndated(sheetId, user, SCORE_MID, whole(scoreMid));
+        }
+        if (scoreHigh != null) {
+            setUndated(sheetId, user, SCORE_HIGH, whole(scoreHigh));
         }
         if (defaultGrade != null) {
             setUndated(sheetId, user, DEFAULT_GRADE, defaultGrade.isEmpty() ? null : defaultGrade);
@@ -529,6 +537,11 @@ public class AccessService {
     }
 
     /** A number of days as kept; blank is the starting value given (null: none). */
+    /** A whole number as written, normalised (blank: null). */
+    private static String whole(String value) {
+        return value.isEmpty() ? null : Integer.valueOf(value).toString();
+    }
+
     private static String days(String value, Integer start) {
         Integer days = value.isEmpty() ? start : Integer.valueOf(value);
         return days == null ? null : days.toString();

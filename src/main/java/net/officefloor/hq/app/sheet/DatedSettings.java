@@ -48,6 +48,12 @@ public record DatedSettings(List<SheetSetting> values) {
     /** A REVIEW claim is late once its review day plus this many days is before the sheet's today; not dated. */
     public static final String REVIEW_SLA = "review-sla";
 
+    /** A person whose score is at or above it is in the MID band (while the high threshold is set too); not dated. */
+    public static final String SCORE_MID = "score-mid";
+
+    /** A person whose score is at or above it is in the HIGH band (while the mid threshold is set too); not dated. */
+    public static final String SCORE_HIGH = "score-high";
+
     /** The sheet's proof kinds, comma separated (receipt, photo): each a claim above its proof threshold needs a proof of; not dated. */
     public static final String PROOF_KINDS = "proof-kinds";
 
@@ -229,6 +235,16 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's review SLA in days (not dated: it holds on every date); null when there is none. */
     public Integer reviewSla() {
         return on(REVIEW_SLA, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+    }
+
+    /** The sheet's mid score threshold, a whole number (not dated); null when it is blank. */
+    public Integer scoreMid() {
+        return on(SCORE_MID, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+    }
+
+    /** The sheet's high score threshold, a whole number (not dated); null when it is blank. */
+    public Integer scoreHigh() {
+        return on(SCORE_HIGH, LocalDate.MAX).map(Integer::valueOf).orElse(null);
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in (not dated); 1 when none is set. */
