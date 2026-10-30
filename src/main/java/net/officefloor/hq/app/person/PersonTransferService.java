@@ -32,8 +32,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Transferring a person to another sheet by id. Only a steward of this sheet may; a retired person, this
- * sheet's own id, an archived other sheet, or a name, alias or contact of theirs already on the other sheet,
- * is refused. The person arrives with their grades (each from its date), terms, contact and aliases, and their
+ * sheet's own id, an archived other sheet, or a name, alias or contact of theirs already on the other sheet's
+ * tree, is refused; except that when one person on the other sheet itself (not retired) has a name or alias of
+ * theirs, the person is merged into them as a merge does: their claims listed after the other's, their name and
+ * aliases joined to the other's aliases, their contact dropped. The person arrives with their grades (each from its date), terms, contact and aliases, and their
  * claims with status, dates, notes, tags, frozen figures, logs and comments; each claim that had a number
  * takes the other sheet's next one, in the order the claims were opened (by the sheet's today when each was
  * opened, then by the order they were added). Figures a statement bound are released and references dropped.
@@ -98,28 +100,48 @@ public class PersonTransferService {
         }
         List<String> names = new ArrayList<>(person.getAliases());
         names.add(person.getName());
-        // held to the other sheet's tree, which may hold the person themselves
-        Set<String> taken = new HashSet<>();
+        // held to the other sheet's tree, which may hold the person themselves; one person on the other sheet
+        // itself sharing a name is merged into instead
+        Set<String> wanted = new HashSet<>();
+        names.forEach(n -> wanted.add(n.trim().toLowerCase(Locale.ROOT)));
+        Person into = null;
         for (Person other : people.findBySheetIdIn(sheets.tree(toSheet))) {
-            if (!other.getId().equals(person.getId())) {
-                taken.add(other.getName().trim().toLowerCase(Locale.ROOT));
-                other.getAliases().forEach(a -> taken.add(a.trim().toLowerCase(Locale.ROOT)));
+            if (other.getId().equals(person.getId())) {
+                continue;
             }
-        }
-        for (String name : names) {
-            if (taken.contains(name.trim().toLowerCase(Locale.ROOT))) {
+            Set<String> theirs = new HashSet<>();
+            theirs.add(other.getName().trim().toLowerCase(Locale.ROOT));
+            other.getAliases().forEach(a -> theirs.add(a.trim().toLowerCase(Locale.ROOT)));
+            if (Collections.disjoint(wanted, theirs)) {
+                continue;
+            }
+            if (!other.getSheetId().equals(toSheet) || into != null) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Name already in use on the other sheet");
             }
+            into = other;
         }
-        if (person.getContact() != null && people.existsBySheetIdAndContact(toSheet, person.getContact())) {
+        if (into != null && into.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged");
+        }
+        if (into == null && person.getContact() != null
+                && people.existsBySheetIdAndContact(toSheet, person.getContact())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Contact already in use on the other sheet");
         }
         Rollup.Figures beforeHere = rollup.figures(sheetId);
         Rollup.Figures beforeThere = rollup.figures(toSheet);
 
-        Person newcomer = person.arriving(toSheet);
-        newcomer.setPosition(people.maxPosition(toSheet) + 1);
-        Person arrived = people.saveAndFlush(newcomer);
+        Person arrived;
+        if (into == null) {
+            Person newcomer = person.arriving(toSheet);
+            newcomer.setPosition(people.maxPosition(toSheet) + 1);
+            arrived = people.saveAndFlush(newcomer);
+        } else {
+            // merged as a merge does: their name and aliases become the other's aliases
+            arrived = into;
+            arrived.addAlias(person.getName());
+            person.getAliases().forEach(arrived::addAlias);
+            people.saveAndFlush(arrived);
+        }
         // added oldest listed first, so they list on the other sheet in the order they listed here
         List<Claim> leaving = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId));
         Collections.reverse(leaving);
@@ -170,6 +192,9 @@ public class PersonTransferService {
         events.publishEvent(new PersonTransferred(sheetId, user, person.getName(), toSheet, null));
         rollup.changed(sheetId, user, beforeHere);
         events.publishEvent(new PersonTransferred(toSheet, user, person.getName(), null, sheetId));
+        if (into != null) {
+            events.publishEvent(new PersonMerged(toSheet, user, person.getName(), into.getName()));
+        }
         rollup.changed(toSheet, user, beforeThere);
     }
 
