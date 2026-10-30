@@ -47,7 +47,8 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(PersonHeld e) {
-        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
+        audit.record("PERSON_HELD sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                + " from=" + e.from());
     }
 
     @TransactionalEventListener

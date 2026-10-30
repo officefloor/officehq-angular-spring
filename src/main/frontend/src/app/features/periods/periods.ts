@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import type { PersonWithClaims } from '../claims/claims';
+import { heldOut, type PersonWithClaims } from '../claims/claims';
 
 export interface Period {
   id: number;
@@ -28,7 +28,7 @@ function cents(amount: string): number {
 }
 
 /** Per period id, the dues of the claims that count whose date falls in it, added up, or once closed the
- * due-total fixed then; the OPEN and PENDING claims of a person on hold count in none. */
+ * due-total fixed then; an unbound OPEN claim dated within a hold of its person counts in none. */
 export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
   const totals: Record<number, number> = {};
   for (const p of periods) totals[p.id] = 0;
@@ -37,7 +37,7 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
     for (const c of person.claims) {
       const unpaid = c.status === 'OPEN' || c.status === 'PENDING';
       if ((!unpaid && c.status !== 'SETTLED') || c.due === null) continue;
-      if (person.held && unpaid) continue;
+      if (heldOut(c, person.holds)) continue;
       const period = periodOf(periods, c.date);
       if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
     }

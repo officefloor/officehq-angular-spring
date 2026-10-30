@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
@@ -19,7 +20,7 @@ import java.util.Objects;
 
 /**
  * A person on a sheet, with a name and their grades (A, B or C), each from a date (see {@link #gradeOn}), the date they are retired from (null while
- * not retired), whether they are on hold and the version it was last saved at.
+ * not retired), their holds (see {@link #heldOn}) and the version it was last saved at.
  */
 @Entity
 @Table(name = "person")
@@ -42,8 +43,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderBy("fromDate ASC")
+    private List<HoldSpan> holds = new ArrayList<>();
 
     @Version
     @Column(name = "version", nullable = false)
@@ -103,13 +106,24 @@ public class Person {
         this.retiredFrom = retiredFrom;
     }
 
-    /** Whether the person is on hold: their OPEN and PENDING claims then count in no live total. */
+    /** Whether the person has any hold, whatever its dates. */
     public boolean isHeld() {
-        return held;
+        return !holds.isEmpty();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** The person's holds, earliest from-date first. */
+    public List<HoldSpan> getHolds() {
+        return holds.stream().sorted(Comparator.comparing(HoldSpan::getFromDate)).toList();
+    }
+
+    /** Whether a hold covers the date: their OPEN claims dated then count in no live total. */
+    public boolean heldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    /** Add a hold from a date to an optional date, keeping the others. */
+    public void hold(LocalDate from, LocalDate to) {
+        holds.add(new HoldSpan(from, to));
     }
 
     /** Whether a retirement date is set: retired at once, whatever the date. */

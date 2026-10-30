@@ -107,22 +107,23 @@ public class PersonService {
     }
 
     /**
-     * Put the person on hold or take them off it, moving the figures their OPEN and PENDING claims count in. Asking
-     * for the state they are already in changes nothing. Takes turns with claim changes on the sheet.
+     * Add a hold on the person from a date (none: the sheet's today) to an optional date, keeping their
+     * other holds and moving the figures their OPEN claims dated within it count in. Refused when the
+     * to-date is before the from-date. Takes turns with claim changes on the sheet.
      */
     @Transactional
-    public Person hold(String sheetId, String user, long personId, boolean held) {
+    public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
         sheetRows.lockById(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        if (person.isHeld() == held) {
-            return person;
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        if (to != null && to.isBefore(on)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts.");
         }
         Rollup.Figures before = rollup.figures(sheetId);
-        person.setHeld(held);
+        person.hold(on, to);
         people.flush();
-        events.publishEvent(new PersonHeld(held ? "PERSON_HELD" : "PERSON_RELEASED", sheetId, user,
-                person.getName()));
+        events.publishEvent(new PersonHeld(sheetId, user, person.getName(), on));
         rollup.changed(sheetId, user, before);
         return person;
     }

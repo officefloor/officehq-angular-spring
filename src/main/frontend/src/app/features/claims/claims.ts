@@ -44,6 +44,17 @@ export interface ClaimLogLine {
   due: string | null;
 }
 
+/** A hold on a person from a date to a date (both included); null to-date: open-ended. */
+export interface Hold {
+  from: string;
+  to: string | null;
+}
+
+/** Whether the claim is OPEN, not bound by a statement, and dated within one of the holds: it then counts in no live total. */
+export function heldOut(c: Claim, holds: Hold[]): boolean {
+  return c.status === 'OPEN' && !c.stated && holds.some((h) => c.date >= h.from && (h.to === null || c.date <= h.to));
+}
+
 export interface PersonWithClaims {
   id: number;
   /** The version the person was last saved at; an edit sends the one its editor loaded. */
@@ -51,7 +62,7 @@ export interface PersonWithClaims {
   name: string;
   grade: string;
   claims: Claim[];
-  /** The amounts of the OPEN, PENDING and SETTLED claims added up; only the SETTLED ones while on hold. */
+  /** The amounts of the OPEN, PENDING and SETTLED claims added up, but not unbound OPEN ones dated within a hold. */
   claimed: string;
   /** Claimed at the rate for the person's grade; null when the grade has no rate. */
   dueTotal: string | null;
@@ -65,8 +76,11 @@ export interface PersonWithClaims {
   retired: boolean;
   /** The date the person is retired from; no claim dated after it can be added. Null when not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: their OPEN and PENDING claims then count in no live total. */
+  /** Whether the person has any hold, whatever its dates. */
   held: boolean;
+  /** The person's holds, earliest first: their OPEN claims dated within one, unless bound by a statement,
+   * count in no live total. */
+  holds: Hold[];
   /** How many of the claims that count are overdue. */
   overdueCount: number;
   /** The due figures of the overdue claims that count, added up. */

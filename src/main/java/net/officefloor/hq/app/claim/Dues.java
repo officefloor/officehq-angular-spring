@@ -58,8 +58,8 @@ public final class Dues {
     }
 
     /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */
-    public static List<Claim> overdue(List<Claim> claims, RateTable rates, boolean held) {
-        return claims.stream().filter(c -> counts(c, held) && overdue(c, rates)).toList();
+    public static List<Claim> overdue(List<Claim> claims, RateTable rates, Holds holds) {
+        return claims.stream().filter(c -> counts(c, holds) && overdue(c, rates)).toList();
     }
 
     /** The sum of the due figures of the claims given (0.00 with none); a claim with none is skipped. */
@@ -74,18 +74,19 @@ public final class Dues {
     }
 
     /**
-     * Whether the claim counts in the live totals: OPEN, PENDING and SETTLED claims do, except that the
-     * OPEN and PENDING claims of a person on hold count in none.
+     * Whether the claim counts in the live totals: OPEN, PENDING and SETTLED claims do, except that an
+     * OPEN claim dated within one of its person's holds counts in none, unless a statement binds it.
      */
-    public static boolean counts(Claim claim, boolean held) {
-        return claim.getStatus().counts() && !(held && claim.getStatus().unpaid());
+    public static boolean counts(Claim claim, Holds holds) {
+        return claim.getStatus().counts() && !(claim.getStatus() == ClaimStatus.OPEN && !bound(claim)
+                && holds.on(claim.getDate()));
     }
 
     /**
      * The sum of the due figures of the claims that count (0.00 with none); a person not on hold.
      */
     public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates) {
-        return total(grades, claims, rates, false);
+        return total(grades, claims, rates, Holds.NONE);
     }
 
     /**
@@ -94,8 +95,8 @@ public final class Dues {
      * figure not made by that grade (kept, or at the rate for another grade in force on its date): then it
      * is the sum of the figures there are.
      */
-    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, boolean held) {
-        List<Claim> counting = claims.stream().filter(c -> counts(c, held)).toList();
+    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
+        List<Claim> counting = claims.stream().filter(c -> counts(c, holds)).toList();
         String current = grades.on(rates.today());
         boolean shown = rates.current(current) != null || counting.stream().anyMatch(c -> kept(c)
                 || (!current.equals(grades.on(c.getDate())) && figure(c, grades, rates) != null));

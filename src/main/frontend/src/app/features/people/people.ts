@@ -24,7 +24,8 @@ function csvField(value: string): string {
 // The people on the active sheet, in the order they were added, each with their claims, and the
 // one form that adds a person or, once a person's editor is opened, edits them. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
-// can be put on hold and released; while held, their OPEN and PENDING claims count in no total. A person can name
+// can be held from a date to an optional date, as many times as needed; their OPEN claims dated within a hold,
+// unless a statement binds them, count in no total. A person can name
 // others on the sheet as their patrons; their backing is their patrons' due-totals added up.
 @Component({
   selector: 'app-people',
@@ -167,8 +168,29 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)">
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
-                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)">
-                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
+                <ul aria-label="Holds">
+                  @for (h of p.holds; track $index) {
+                    <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
+                  }
+                </ul>
+                <label [for]="'person-hold-from-' + p.id">Hold {{ p.name }} from</label>
+                <input
+                  #holdFrom
+                  type="date"
+                  [id]="'person-hold-from-' + p.id"
+                  data-testid="person-hold-from"
+                  (input)="clearError(p)"
+                />
+                <label [for]="'person-hold-to-' + p.id">to</label>
+                <input
+                  #holdTo
+                  type="date"
+                  [id]="'person-hold-to-' + p.id"
+                  data-testid="person-hold-to"
+                  (input)="clearError(p)"
+                />
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)">
+                  Hold<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
@@ -239,7 +261,7 @@ export class People {
   private stating = false;
   /** A retirement still waiting for its answer: another press meanwhile is ignored. */
   private retiring = false;
-  /** A hold or release still waiting for its answer: another press meanwhile is ignored. */
+  /** A hold still waiting for its answer: another press meanwhile is ignored. */
   private holding = false;
   /** The ids of the claims selected to be opened together. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
@@ -553,20 +575,26 @@ export class People {
     }
   }
 
-  /** Put the person on hold, or release them when they are on it. */
-  protected async hold(p: Person): Promise<void> {
+  /** Hold the person from a date (blank: the sheet's today) to an optional date. */
+  protected async hold(p: Person, from: string, to: string): Promise<void> {
     if (this.holding) return;
     this.personError.set(null);
     this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
+    const start = from.trim();
+    const end = to.trim();
+    if ((start && !/^\d{4}-\d{2}-\d{2}$/.test(start)) || (end && !/^\d{4}-\d{2}-\d{2}$/.test(end))) {
+      this.personError.set({ id: p.id, message: 'Enter the dates, or leave the from-date blank for today.' });
+      return;
+    }
     const headers = { 'X-User': this.session.user() ?? '' };
     this.holding = true;
     try {
       const saved = await firstValueFrom(
         this.http.post<Person>(
           `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/hold`,
-          { held: !p.held },
+          { from: start || null, to: end || null },
           { headers },
         ),
       );
@@ -574,7 +602,7 @@ export class People {
       this.replace(saved);
     } catch {
       if (this.session.sheet() !== sheet) return;
-      this.personError.set({ id: p.id, message: p.held ? 'Could not release the person.' : 'Could not hold the person.' });
+      this.personError.set({ id: p.id, message: 'Could not hold the person: a hold cannot end before it starts.' });
     } finally {
       this.holding = false;
     }

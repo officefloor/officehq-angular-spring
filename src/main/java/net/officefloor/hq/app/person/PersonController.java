@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.ClaimLogLine;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.claim.Holds;
 import net.officefloor.hq.app.rate.Grades;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
@@ -71,22 +72,22 @@ public class PersonController {
 
     /**
      * A person with the grade in force on the sheet's today, their claims, newest first, claimed: the sum of the amounts of the claims that
-     * count (OPEN, PENDING and SETTLED, but only SETTLED while on hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
+     * count (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
-     * the date they are retired from (null when not), whether they are on hold, and how many of the claims
+     * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
      * that count are overdue and the sum of their due figures, and the ids of their patrons.
      */
     public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
             String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate,
-            boolean retired, LocalDate retiredFrom, boolean held, int overdueCount, String overdueTotal,
-            List<Long> patrons) {
+            boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
+            String overdueTotal, List<Long> patrons) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
                 List<Long> patrons) {
             Grades grade = person::gradeOn;
-            boolean held = person.isHeld();
+            Holds held = person::heldOn;
             BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             List<Claim> overdue = Dues.overdue(claims, rates, held);
@@ -94,9 +95,15 @@ public class PersonController {
                     grade.on(rates.today()), claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
-                    person.getRetiredFrom(), held, overdue.size(), money(Dues.sum(grade, overdue, rates)),
+                    person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+                    overdue.size(), money(Dues.sum(grade, overdue, rates)),
                     patrons);
         }
+    }
+
+    /** A hold on a person: from a date to a date (null: open-ended). */
+    public record HoldView(LocalDate from, LocalDate to) {
     }
 
     private static String money(BigDecimal amount) {
@@ -177,17 +184,18 @@ public class PersonController {
         return view(sheet, person);
     }
 
-    /** A hold as asked for: on hold (true) or released (false). */
-    public record HoldForm(@NotNull Boolean held) {
+    /** A hold as entered: from a date (none: the sheet's today) to an optional date. */
+    public record HoldForm(LocalDate from, LocalDate to) {
     }
 
-    /** Put the person on hold or take them off it; answers with the person as they are now. */
+    /** Add a hold on the person; answers with the person as they are now. */
     @PostMapping("/{personId}/hold")
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
-            @Valid @RequestBody HoldForm form) {
+            @RequestBody(required = false) HoldForm form) {
         String sheet = sheetId.trim();
-        Person person = service.hold(sheet, user.trim(), personId, form.held());
+        Person person = service.hold(sheet, user.trim(), personId, form == null ? null : form.from(),
+                form == null ? null : form.to());
         return view(sheet, person);
     }
 

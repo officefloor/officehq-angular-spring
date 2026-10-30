@@ -83,7 +83,7 @@ public class PeriodService {
 
     /**
      * Close a period, fixing its due-total: the due figures of the claims that count (OPEN, PENDING and SETTLED,
-     * but not the OPEN or PENDING claims of a person on hold) dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
+     * but not an unbound OPEN claim dated within a hold of its person) dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
      * sheet, so the total fixed is the one the claims had at that moment.
      */
     @Transactional
@@ -98,7 +98,7 @@ public class PeriodService {
                 .collect(Collectors.toMap(Person::getId, p -> p));
         RateTable table = rates.table(sheetId);
         BigDecimal total = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
-                .filter(c -> Dues.counts(c, byId.get(c.getPersonId()).isHeld()) && period.contains(c.getDate()))
+                .filter(c -> Dues.counts(c, byId.get(c.getPersonId())::heldOn) && period.contains(c.getDate()))
                 .map(c -> Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table))
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
