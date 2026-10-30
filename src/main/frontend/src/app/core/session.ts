@@ -16,11 +16,14 @@ export class Session {
   readonly sheet = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date the screen decides on or defaults to. */
   readonly today = signal<string | null>(null);
+  /** Bumped on every sheet load, so what is shown for the sheet is re-read even for the same id. */
+  readonly loads = signal(0);
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
     this.sheet.set(null);
     this.today.set(null);
+    this.loads.update((n) => n + 1);
     this.user.set(res.name);
   }
 
@@ -32,6 +35,7 @@ export class Session {
     );
     this.sheet.set(res.id);
     this.today.set(res.today);
+    this.loads.update((n) => n + 1);
   }
 
   async setToday(today: string): Promise<void> {
