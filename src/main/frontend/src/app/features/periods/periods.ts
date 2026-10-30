@@ -257,6 +257,17 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
         />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
+      <form (submit)="generateQuarters($event)" aria-label="Generate a year's quarterly periods">
+        <label for="period-generate-quarters-year">Calendar year</label>
+        <input
+          id="period-generate-quarters-year"
+          inputmode="numeric"
+          data-testid="period-generate-quarters-year"
+          [value]="quartersYear()"
+          (input)="quartersYear.set(value($event)); genError.set('')"
+        />
+        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
+      </form>
       <form (submit)="importOpenings($event)" aria-label="Paste opening balances">
         <label for="opening-import">Paste opening balances, a line each: name,period,amount</label>
         <textarea
@@ -293,6 +304,7 @@ export class Periods {
   protected readonly genFrom = signal('');
   protected readonly genTo = signal('');
   protected readonly fyYear = signal('');
+  protected readonly quartersYear = signal('');
   /** How many periods the last generate made; null while it runs. */
   protected readonly generated = signal<number | null>(null);
   protected readonly genError = signal('');
@@ -423,6 +435,25 @@ export class Periods {
       return;
     }
     await this.runGenerate(sheet, 'generate-fy', { year: Number(year) });
+  }
+
+  /**
+   * Generate the four calendar quarters of the year given, named yyyy-Q1 to yyyy-Q4; a quarter whose name is
+   * taken or whose days overlap a period is left out. Shows how many were made.
+   */
+  protected async generateQuarters(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.busy) return;
+    this.generated.set(null);
+    this.genError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const year = this.quartersYear().trim();
+    if (!YEAR.test(year)) {
+      this.genError.set('Enter a year, such as 2026.');
+      return;
+    }
+    await this.runGenerate(sheet, 'generate-quarters', { year: Number(year) });
   }
 
   /**

@@ -109,18 +109,40 @@ public class PeriodService {
         List<Period> existing = new ArrayList<>(list(sheetId));
         List<Period> made = new ArrayList<>();
         for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
-            String name = month.toString();
-            LocalDate first = month.atDay(1);
-            LocalDate last = month.atEndOfMonth();
-            if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(name) || p.overlaps(first, last))) {
-                continue;
-            }
-            Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
-            events.publishEvent(new PeriodAdded(sheetId, user, name, first, last, null));
-            existing.add(period);
-            made.add(period);
+            addUnlessTaken(sheetId, user, month.toString(), month.atDay(1), month.atEndOfMonth(), existing, made);
         }
         return made;
+    }
+
+    /**
+     * Generate the four calendar quarters of the given year, named yyyy-Q1 to yyyy-Q4, each running from the first
+     * day of its first month to the last day of its third. A quarter whose name is already a period on the sheet,
+     * or whose days overlap one, is left out; the others are still made. Returns the periods made, earliest first.
+     */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        sheets.load(sheetId, user);
+        sheetRows.lockById(sheetId);
+        List<Period> existing = new ArrayList<>(list(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            YearMonth start = YearMonth.of(year, quarter * 3 - 2);
+            addUnlessTaken(sheetId, user, String.format("%04d-Q%d", year, quarter), start.atDay(1),
+                    start.plusMonths(2).atEndOfMonth(), existing, made);
+        }
+        return made;
+    }
+
+    /** Add a generated period, unless its name is taken or its days overlap one of {@code existing}. */
+    private void addUnlessTaken(String sheetId, String user, String name, LocalDate first, LocalDate last,
+            List<Period> existing, List<Period> made) {
+        if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(name) || p.overlaps(first, last))) {
+            return;
+        }
+        Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
+        events.publishEvent(new PeriodAdded(sheetId, user, name, first, last, null));
+        existing.add(period);
+        made.add(period);
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */

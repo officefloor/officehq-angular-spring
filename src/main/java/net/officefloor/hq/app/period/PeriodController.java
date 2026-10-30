@@ -115,6 +115,17 @@ public class PeriodController {
         return views(sheet, service.generateFiscalYear(sheet, user.trim(), form.year()));
     }
 
+    /** A calendar year: its four quarterly periods. */
+    public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
+    }
+
+    @PostMapping("/generate-quarters")
+    public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody GenerateQuartersForm form) {
+        String sheet = sheetId.trim();
+        return views(sheet, service.generateQuarters(sheet, user.trim(), form.year()));
+    }
+
     /** Paste opening balances, a line each; one refused line adds none. */
     @PostMapping("/openings")
     public OpeningsResult importOpenings(@PathVariable @NotBlank @Size(max = 100) String sheetId,
