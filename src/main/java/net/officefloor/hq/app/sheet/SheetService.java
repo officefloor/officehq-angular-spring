@@ -3,6 +3,8 @@ package net.officefloor.hq.app.sheet;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -130,15 +132,22 @@ public class SheetService {
     }
 
     /**
-     * The next claim number on the sheet: 1 for the first, then 2, and so on. Two users taking one
-     * at the same moment wait on each other, so no number is given twice or skipped.
+     * The next claim number on the sheet: the sheets of a tree share one sequence, so the next after the
+     * last number given on any sheet of the sheet's tree (1 for the first). Two users taking one at the
+     * same moment wait on each other, so no number is given twice or skipped.
      */
     @Transactional
     public int nextClaimNumber(String id) {
-        if (sheets.bumpClaimNumber(id) != 1) {
+        List<String> tree = new ArrayList<>(tree(id));
+        Collections.sort(tree);
+        for (String sheetId : tree) {
+            sheets.lockById(sheetId);
+        }
+        int next = sheets.lastClaimNumberOf(tree) + 1;
+        if (sheets.setLastClaimNumber(id, next) != 1) {
             throw new IllegalStateException("No such sheet " + id);
         }
-        return sheets.lastClaimNumber(id);
+        return next;
     }
 
     /**
