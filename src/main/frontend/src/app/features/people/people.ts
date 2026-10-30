@@ -26,7 +26,8 @@ function csvField(value: string): string {
 // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
 // can be held from a date to an optional date, as many times as needed; their OPEN claims dated within a hold,
 // unless a statement binds them, count in no total. A person can name
-// others on the sheet as their patrons; their backing is their patrons' due-totals added up.
+// others on the sheet as their patrons; their backing is their patrons' due-totals added up. Each signed-in
+// user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
   imports: [Access, Claims, Periods, Rates, Summary],
@@ -164,7 +165,7 @@ function csvField(value: string): string {
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th>
             @for (pd of periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
             }
@@ -189,12 +190,21 @@ function csvField(value: string): string {
               <td data-testid="person-overdue-total">{{ p.overdueTotal }}</td>
               <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
               <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
+              <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodTotals().get(p.id)?.[pd.id] }}</td>
               }
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-watch"
+                  [attr.aria-pressed]="watched().has(p.id)"
+                  (click)="watch(p)"
+                >
+                  {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 <button type="button" data-testid="person-statement" (click)="statement(p)">
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
@@ -315,6 +325,10 @@ export class People {
   private retiring = false;
   /** A hold still waiting for its answer: another press meanwhile is ignored. */
   private holding = false;
+  /** The ids of the people the signed-in user watches on the sheet. */
+  protected readonly watched = signal<ReadonlySet<number>>(new Set());
+  /** A watch still waiting for its answer: another press meanwhile is ignored. */
+  private watching = false;
   /** The ids of the claims selected to be opened or settled together. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** How many of the selected claims the last bulk open opened and refused; null while it runs. */
@@ -368,6 +382,7 @@ export class People {
       const sheet = this.session.sheet();
       this.session.loads();
       this.people.set([]);
+      this.watched.set(new Set());
       this.personError.set(null);
       this.patronError.set(null);
       this.selectedClaims.set(new Set());
@@ -701,6 +716,35 @@ export class People {
     }
   }
 
+  /** Start watching the person as the signed-in user, or stop when watching them already. */
+  protected async watch(p: Person): Promise<void> {
+    if (this.watching) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const loads = this.session.loads();
+    const on = !this.watched().has(p.id);
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.watching = true;
+    try {
+      const ids = await firstValueFrom(
+        this.http.put<number[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/watch`,
+          { on },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet || this.session.loads() !== loads) return;
+      this.watched.set(new Set(ids));
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({ id: p.id, message: on ? 'Could not watch the person.' : 'Could not stop watching the person.' });
+    } finally {
+      this.watching = false;
+    }
+  }
+
   /** Hold the person from a date (blank: the sheet's today) to an optional date. */
   protected async hold(p: Person, from: string, to: string): Promise<void> {
     if (this.holding) return;
@@ -790,9 +834,17 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const people = await firstValueFrom(
-      this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`),
-    );
-    if (this.session.sheet() === sheet && this.session.loads() === loads) this.people.set(people);
+    const [people, watched] = await Promise.all([
+      firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
+      firstValueFrom(
+        this.http.get<number[]>(`/api/sheets/${encodeURIComponent(sheet)}/watches`, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      ),
+    ]);
+    if (this.session.sheet() === sheet && this.session.loads() === loads) {
+      this.people.set(people);
+      this.watched.set(new Set(watched));
+    }
   }
 }

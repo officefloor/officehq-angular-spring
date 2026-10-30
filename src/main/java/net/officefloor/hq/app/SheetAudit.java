@@ -16,6 +16,8 @@ import net.officefloor.hq.app.person.PatronAdded;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.person.PersonHeld;
 import net.officefloor.hq.app.person.PersonRetired;
+import net.officefloor.hq.app.person.PersonWatched;
+import net.officefloor.hq.app.person.WatcherNotified;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
@@ -53,6 +55,17 @@ public class SheetAudit {
     public void on(PersonHeld e) {
         audit.record("PERSON_HELD sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " from=" + e.from());
+    }
+
+    @TransactionalEventListener
+    public void on(PersonWatched e) {
+        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
+    }
+
+    @TransactionalEventListener
+    public void on(WatcherNotified e) {
+        audit.record("NOTIFY sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.watcher()
+                + " person=" + e.person() + " number=" + e.number());
     }
 
     @TransactionalEventListener

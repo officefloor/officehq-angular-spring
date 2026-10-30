@@ -11,6 +11,7 @@ import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.WatchService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.person.Person;
@@ -49,12 +50,14 @@ public class ClaimService {
     private final Rollup rollup;
     private final PeriodService periods;
     private final AccessService access;
+    private final WatchService watches;
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetRows, RateService rates, Rollup rollup, PeriodService periods, AccessService access,
-            ApplicationEventPublisher events) {
+            WatchService watches, ApplicationEventPublisher events) {
         this.access = access;
+        this.watches = watches;
         this.rollup = rollup;
         this.periods = periods;
         this.claims = claims;
@@ -204,6 +207,9 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number, due));
+        if (next == ClaimStatus.SETTLED) {
+            watches.notifyWatchers(sheetId, user, owner, number);
+        }
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }
@@ -341,6 +347,7 @@ public class ClaimService {
         claims.flush();
         events.publishEvent(new ClaimChanged("CLAIM_APPROVED", sheetId, user, owner == null ? "" : owner.getName(),
                 claim.getAmount(), claim.getDate(), claim.getShownNumber(), fixed == null ? "n/a" : fixed.toPlainString()));
+        watches.notifyWatchers(sheetId, user, owner, claim.getShownNumber());
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }
@@ -371,6 +378,7 @@ public class ClaimService {
         claims.flush();
         events.publishEvent(new ClaimResettled(sheetId, user, owner.getName(), claim.getAmount(), claim.getDate(),
                 claim.getShownNumber(), old, fixed));
+        watches.notifyWatchers(sheetId, user, owner, claim.getShownNumber());
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }
