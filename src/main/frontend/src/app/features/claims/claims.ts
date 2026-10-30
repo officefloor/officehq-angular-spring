@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -18,6 +18,8 @@ export interface Claim {
   status: ClaimStatus;
   /** The number the claim got when opened, the next on the sheet; null while a draft or once voided. */
   number: number | null;
+  /** The user who opened the claim; null while a draft or once voided. */
+  openedBy: string | null;
 }
 
 export interface PersonWithClaims {
@@ -49,6 +51,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Due <span data-testid="claim-due">{{ c.due ?? 'n/a' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           @for (a of actions; track a.action) {
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
@@ -194,8 +197,12 @@ export class Claims {
       );
       if (this.session.sheet() !== sheet) return;
       this.saved.emit(person);
-    } catch {
+    } catch (err) {
       if (this.session.sheet() !== sheet) return;
+      if (err instanceof HttpErrorResponse && err.status === 403) {
+        this.claimError.set({ id: c.id, message: 'You opened this claim, so another user must settle it.' });
+        return;
+      }
       this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be ${PAST[action]}.` });
     }
   }

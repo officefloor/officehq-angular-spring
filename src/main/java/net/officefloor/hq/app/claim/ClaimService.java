@@ -76,7 +76,8 @@ public class ClaimService {
     }
 
     /**
-     * Move a claim to a status; a move its status does not allow is refused and changes nothing.
+     * Move a claim to a status; a move its status does not allow, or settling by the user who opened
+     * the claim, is refused and changes nothing.
      * Returns the person it belongs to.
      */
     @Transactional
@@ -87,12 +88,18 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened a claim cannot settle it");
+        }
         Integer number = claim.getNumber();
         if (next == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
             claim.setNumber(number);
+            claim.setOpenedBy(user);
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
+            claim.setOpenedBy(null);
         }
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         String due = null;

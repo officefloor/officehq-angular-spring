@@ -39,14 +39,15 @@ public class PersonController {
     /**
      * A claim as shown: its amount with two decimals, its date, its note, its due: the amount at
      * the rate for its person's grade in force on its date (null when none is) or, once settled, the due fixed
-     * then, its status, and its number (null while it has none).
+     * then, its status, its number (null while it has none) and who opened it (null while it has no number).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
-            Integer number) {
+            Integer number, String openedBy) {
 
         static ClaimView of(Claim claim, String grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
-                    money(figure(claim, grade, rates)), claim.getStatus(), claim.getNumber());
+                    money(figure(claim, grade, rates)), claim.getStatus(), claim.getNumber(),
+                    claim.getOpenedBy());
         }
     }
 
