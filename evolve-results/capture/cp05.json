@@ -1,0 +1,64 @@
+{
+  "checkpoint": 5,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp05_claims",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person can have claims. A claim has an amount (required; a number with up to two decimals,\n0.00 or more), a date (defaults to the sheet's today) and a note (may be empty). Claims are added\nfrom the person's row and listed under it, newest first, each showing its amount with two\ndecimals, its date and its note. A claim can be edited (amount, date, note) through the same\nform. Show each person's claimed: the sum of their claims' amounts, with two decimals. Show the\nsheet's claimed-total: everyone's claimed added up.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person can have claims. A claim has an amount (required; a number with up to two decimals,\n0.00 or more), a date (defaults to the sheet's today) and a note (may be empty). Claims are added\nfrom the person's row and listed under it, newest first, each showing its amount with two\ndecimals, its date and its note. A claim can be edited (amount, date, note) through the same\nform. Show each person's claimed: the sum of their claims' amounts, with two decimals. Show the\nsheet's claimed-total: everyone's claimed added up.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a029ba3830039517171bd95aadc32b29be6414ff",
+  "reset_sha": "",
+  "preagent_sha": "01fbb49e26ece8c1781a9aa8f89bcd51df50c2d1",
+  "prev_sha": "01fbb49e26ece8c1781a9aa8f89bcd51df50c2d1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8528542,
+    "input_tokens": 24,
+    "output_tokens": 12834,
+    "cache_read_tokens": 567151,
+    "cache_creation_tokens": 60331,
+    "num_turns": 13,
+    "duration_ms": 260310,
+    "duration_api_ms": 126127,
+    "model": "claude-opus-5-5",
+    "session_id": "3b8f006a-201a-4d84-97f1-255160e74213",
+    "stop_reason": "success",
+    "result_text": "Claims are in, and all 4 Playwright tests pass in `bin/e2e`.\n\n**What a person sees**\n- Each person's row lists their claims, newest first. Each claim shows its amount with two decimals, its date and its note.\n- Each row has its own form for adding a claim, with amount, date and note. A blank date takes the sheet's today.\n- A claim's edit button loads it into that same form, and a cancel button appears on the claim while it is being edited.\n- Each row shows the person's claimed, and the People section shows the sheet's claimed-total.\n- An amount that is negative or has more than two decimals is refused. The form shows its error and nothing is saved. The error clears as soon as the form is changed or submitted again.\n\n**How it's built**\n- **Database:** a new migration, `V5__claim.sql`, adds a `claim` table. Amounts are stored as exact decimals, and the database itself also refuses amounts below 0.\n- **Server:** a new `claim` package handles adding a claim (`POST /api/sheets/{sheet}/people/{person}/claims`) and editing one (`PUT /api/sheets/{sheet}/claims/{claim}`). The amount is checked both on the server and in the browser. After an add or edit, the server sends back the whole person with their claims and claimed, so the row updates in one step.\n- **Person data:** the person data the server sends now carries each person's claims and their claimed.\n- **Front end:** a new `features/claims/claims.ts` component holds each row's claims and form. `people.ts` shows the claimed column and the claimed-total, which is added up in whole cents so it isn't thrown off by rounding.\n\nThe request didn't ask for audit records, so adding or editing a claim doesn't write to the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8528542,
+        "num_turns": 13,
+        "duration_ms": 260310,
+        "duration_api_ms": 126127,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp05.agent.jsonl",
+  "agent_diff_file": "cp05.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
