@@ -24,6 +24,12 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    @Transactional(readOnly = true)
+    public Person get(String sheetId, long personId) {
+        return people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+    }
+
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId, user);

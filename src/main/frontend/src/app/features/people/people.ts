@@ -1,23 +1,25 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-
-interface Person {
-  id: number;
-  name: string;
-  grade: string;
-}
+import { Claims, PersonWithClaims as Person } from '../claims/claims';
 
 const GRADES = ['A', 'B', 'C'];
 
-// The people on the active sheet, in the order they were added, and the one form that adds a
-// person or, once a person's editor is opened, edits them.
+/** Cents in an amount shown with two decimals ("12.50" is 1250). */
+function cents(amount: string): number {
+  return Math.round(Number(amount) * 100);
+}
+
+// The people on the active sheet, in the order they were added, each with their claims, and the
+// one form that adds a person or, once a person's editor is opened, edits them.
 @Component({
   selector: 'app-people',
+  imports: [Claims],
   template: `
     <section aria-label="People">
       <h2>People</h2>
+      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
         <label for="person-form-name">Name</label>
         <input
@@ -49,18 +51,23 @@ const GRADES = ['A', 'B', 'C'];
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+          </tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ p.claimed }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
               </td>
+              <td><app-claims [person]="p" (saved)="replace($event)" /></td>
             </tr>
           }
         </tbody>
@@ -78,6 +85,9 @@ export class People {
   protected readonly grade = signal('A');
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
+  protected readonly claimedTotal = computed(() =>
+    (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
+  );
 
   constructor() {
     effect(() => {
@@ -132,9 +142,7 @@ export class People {
           : this.http.put<Person>(`${base}/${id}`, { name, grade }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
-      this.people.update((ps) =>
-        ps.some((p) => p.id === saved.id) ? ps.map((p) => (p.id === saved.id ? saved : p)) : [...ps, saved],
-      );
+      this.replace(saved);
       this.reset();
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
@@ -144,6 +152,13 @@ export class People {
       }
       this.error.set(id === null ? 'Could not add the person.' : 'Could not save the person.');
     }
+  }
+
+  /** Show a person as saved: in their place, or added at the end when new. */
+  protected replace(saved: Person): void {
+    this.people.update((ps) =>
+      ps.some((p) => p.id === saved.id) ? ps.map((p) => (p.id === saved.id ? saved : p)) : [...ps, saved],
+    );
   }
 
   private async reload(sheet: string): Promise<void> {
