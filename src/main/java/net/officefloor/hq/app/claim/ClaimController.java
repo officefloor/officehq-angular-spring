@@ -75,6 +75,10 @@ public class ClaimController {
     public record BulkReassignForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull Long personId) {
     }
 
+    /** The claims selected to be voided together, and the reason from the sheet's list (none while it is empty). */
+    public record BulkVoidForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @Size(max = 1000) String reason) {
+    }
+
     /** Why a PENDING claim is rejected. */
     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
     }
@@ -125,6 +129,7 @@ public class ClaimController {
     private final BulkSettleService bulkSettle;
     private final BulkReassignService bulkReassign;
     private final BulkRedateService bulkRedate;
+    private final BulkVoidService bulkVoid;
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
@@ -132,9 +137,10 @@ public class ClaimController {
 
     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
             BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
-            PersonService people, RateService rates, StatementService statements, Tags tags) {
+            BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags) {
         this.bulkReassign = bulkReassign;
         this.bulkRedate = bulkRedate;
+        this.bulkVoid = bulkVoid;
         this.tags = tags;
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
@@ -261,6 +267,13 @@ public class ClaimController {
     public BulkRedateService.Result redateAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkRedateForm form) {
         return bulkRedate.redate(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()), form.date());
+    }
+
+    /** Void the selected claims in list order; answers how many were voided and how many refused. */
+    @PostMapping("/claims/bulk-void")
+    public BulkVoidService.Result voidAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkVoidForm form) {
+        return bulkVoid.voidAll(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()), form.reason());
     }
 
     @PostMapping("/claims/{claimId}/settle")

@@ -17,7 +17,7 @@ import { Pool, Pools } from '../pools/pools';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
 import { Tags } from '../tags/tags';
-import { VoidReasons } from '../void-reasons/void-reasons';
+import { VoidReasonList, VoidReasons } from '../void-reasons/void-reasons';
 
 const GRADES = ['A', 'B', 'C'];
 
@@ -394,6 +394,29 @@ function csvField(value: string): string {
         }
         @if (bulkRedateError()) {
           <span role="alert" data-testid="bulk-redate-error">{{ bulkRedateError() }}</span>
+        }
+      </p>
+      <p>
+        @if (voidReasonList.reasons().length > 0) {
+          <label for="bulk-void-reason">Void reason</label>
+          <select
+            id="bulk-void-reason"
+            data-testid="bulk-void-reason"
+            (change)="bulkVoidReason.set(value($event)); bulkVoidError.set('')"
+          >
+            <option value="" [selected]="!bulkVoidReason()">Choose a reason</option>
+            @for (r of voidReasonList.reasons(); track r) {
+              <option [value]="r" [selected]="bulkVoidReason() === r">{{ r }}</option>
+            }
+          </select>
+        }
+        <button type="button" data-testid="bulk-void" (click)="voidSelected()">Void selected claims</button>
+        @if (bulkVoided(); as r) {
+          <span>Voided <strong data-testid="bulk-voided">{{ r.voided }}</strong></span>
+          <span>Refused <strong data-testid="bulk-void-refused">{{ r.refused }}</strong></span>
+        }
+        @if (bulkVoidError()) {
+          <span role="alert" data-testid="bulk-void-error">{{ bulkVoidError() }}</span>
         }
       </p>
       <form (submit)="gradeSelected($event)" aria-label="Grade selected people">
@@ -869,6 +892,14 @@ export class People {
   protected readonly bulkRedateError = signal('');
   /** A bulk re-date still waiting for its answer: another press meanwhile is ignored. */
   private bulkRedating = false;
+  protected readonly voidReasonList = inject(VoidReasonList);
+  /** The reason from the sheet's list the selected claims are to be voided with; blank until one is chosen. */
+  protected readonly bulkVoidReason = signal('');
+  /** How many of the selected claims the last bulk void voided and refused; null while it runs. */
+  protected readonly bulkVoided = signal<{ voided: number; refused: number } | null>(null);
+  protected readonly bulkVoidError = signal('');
+  /** A bulk void still waiting for its answer: another press meanwhile is ignored. */
+  private bulkVoiding = false;
   /** The ids of the people selected to be given a grade together. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   protected readonly bulkGrade = signal('A');
@@ -1018,6 +1049,9 @@ export class People {
       this.bulkRedateDate.set('');
       this.bulkRedated.set(null);
       this.bulkRedateError.set('');
+      this.bulkVoidReason.set('');
+      this.bulkVoided.set(null);
+      this.bulkVoidError.set('');
       this.selectedPeople.set(new Set());
       this.bulkGrade.set('A');
       this.bulkGradeFrom.set('');
@@ -1339,6 +1373,38 @@ export class People {
       this.bulkRedateError.set('Could not re-date the selected claims.');
     } finally {
       this.bulkRedating = false;
+    }
+  }
+
+  /** Void the selected claims together with the chosen reason; each that cannot be voided is refused and left as it is. */
+  protected async voidSelected(): Promise<void> {
+    if (this.bulkVoiding) return;
+    this.bulkVoided.set(null);
+    this.bulkVoidError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const reason = this.bulkVoidReason();
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.bulkVoiding = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ voided: number; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-void`,
+          { claimIds: [...this.selectedClaims()], reason: reason === '' ? null : reason },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedClaims.set(new Set());
+      this.bulkVoidReason.set('');
+      await this.reload(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.bulkVoided.set(result);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkVoidError.set('Could not void the selected claims.');
+    } finally {
+      this.bulkVoiding = false;
     }
   }
 
