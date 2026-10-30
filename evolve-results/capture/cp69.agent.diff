@@ -1,0 +1,365 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index fb2aeaa8..832048b4 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, computed, inject, input, output, signal } from '@angular/core';
++import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Period, periodOf } from '../periods/periods';
+@@ -45,6 +45,8 @@ export interface Claim {
+   proofs: number;
+   /** For a claim split off another, the number of the claim it was split from, as shown; null otherwise. */
+   splitFrom: string | null;
++  /** The user whose open editor locks the claim for everyone else; null when no editor holds it. */
++  lockedBy: string | null;
+ }
+ 
+ /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
+@@ -220,7 +222,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+             Edit claim<span class="visually-hidden"> {{ c.amount }} {{ c.date }}</span>
+           </button>
+           @if (editing() === c.id) {
+-            <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
++            <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+           }
+         </li>
+       }
+@@ -231,6 +233,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         [id]="fid('amount')"
+         inputmode="decimal"
+         data-testid="claim-form-amount"
++        [disabled]="locking()"
+         [value]="amount()"
+         (input)="amount.set(value($event)); error.set('')"
+       />
+@@ -239,6 +242,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         [id]="fid('date')"
+         type="date"
+         data-testid="claim-form-date"
++        [disabled]="locking()"
+         [value]="date()"
+         (input)="date.set(value($event)); error.set('')"
+       />
+@@ -246,6 +250,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       <input
+         [id]="fid('note')"
+         data-testid="claim-form-note"
++        [disabled]="locking()"
+         [value]="note()"
+         (input)="note.set(value($event)); error.set('')"
+       />
+@@ -254,10 +259,11 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         [id]="fid('corrects')"
+         inputmode="numeric"
+         data-testid="claim-form-corrects"
++        [disabled]="locking()"
+         [value]="corrects()"
+         (input)="corrects.set(value($event)); error.set('')"
+       />
+-      <button type="submit" data-testid="claim-form-submit">
++      <button type="submit" data-testid="claim-form-submit" [disabled]="locking()">
+         {{ editing() === null ? 'Add claim' : 'Save claim' }}
+       </button>
+       @if (error()) {
+@@ -266,7 +272,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+     </form>
+   `,
+ })
+-export class Claims {
++export class Claims implements OnInit {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
+ 
+@@ -285,6 +291,8 @@ export class Claims {
+   protected readonly corrects = signal('');
+   protected readonly editing = signal<number | null>(null);
+   protected readonly error = signal('');
++  /** An edit button waiting for its claim's lock: the form is held until the answer comes. */
++  protected readonly locking = signal(false);
+   /** The refusal of the last action taken on a claim's row, shown on that row. */
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+   /** The reason typed for rejecting each claim, by claim id. */
+@@ -512,13 +520,60 @@ export class Claims {
+     return (e.target as HTMLInputElement).checked;
+   }
+ 
+-  /** Open a claim's editor; only a DRAFT can be edited, so any other is refused on its row. */
+-  protected edit(c: Claim): void {
++  /** An editor the signed-in user left open on one of the person's claims is open again once the sheet is re-read. */
++  ngOnInit(): void {
++    const mine = this.person().claims.find((c) => c.status === 'DRAFT' && c.lockedBy !== null && c.lockedBy === this.session.user());
++    if (mine) this.fill(mine);
++  }
++
++  /** Why the claim's editor cannot be opened, as far as the screen knows; null when it may be. */
++  private editRefusal(c: Claim): string | null {
++    if (c.status !== 'DRAFT') return `A ${c.status} claim cannot be edited; void it and add a new one.`;
++    const period = periodOf(this.periods(), c.date);
++    if (period?.closed) return `The claim is in the closed period ${period.name}, so it cannot be edited.`;
++    if (c.lockedBy !== null && c.lockedBy !== this.session.user()) return `${c.lockedBy} is editing this claim.`;
++    return null;
++  }
++
++  /**
++   * Open a claim's editor, locking the claim for other users until it is saved or cancelled (or the sheet's
++   * today changes). A claim that cannot be edited (not a DRAFT, in a closed period, or locked by another
++   * user), or a viewer's edit, is refused on its row and takes no lock.
++   */
++  protected async edit(c: Claim): Promise<void> {
++    if (this.busy) return;
+     this.claimError.set(null);
+-    if (c.status !== 'DRAFT') {
+-      this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be edited; void it and add a new one.` });
++    const refusal = this.editRefusal(c);
++    if (refusal !== null) {
++      this.claimError.set({ id: c.id, message: refusal });
+       return;
+     }
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const previous = this.editing();
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.busy = true;
++    this.locking.set(true);
++    try {
++      const person = await firstValueFrom(
++        this.http.post<PersonWithClaims>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/lock`, null, { headers }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      if (previous !== null && previous !== c.id) this.unlock(previous);
++      this.saved.emit(person);
++      this.fill(person.claims.find((x) => x.id === c.id) ?? c);
++    } catch (err) {
++      if (this.session.sheet() !== sheet) return;
++      const refused =
++        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
++      this.claimError.set({ id: c.id, message: refused || 'The claim cannot be edited now; another user may be editing it.' });
++    } finally {
++      this.busy = false;
++      this.locking.set(false);
++    }
++  }
++
++  private fill(c: Claim): void {
+     this.editing.set(c.id);
+     this.amount.set(c.amount);
+     this.date.set(c.date);
+@@ -527,6 +582,26 @@ export class Claims {
+     this.error.set('');
+   }
+ 
++  /** Close the claim's editor without saving, releasing its lock. */
++  protected cancel(): void {
++    const id = this.editing();
++    if (id !== null) {
++      if (this.claimError()?.id === id) this.claimError.set(null);
++      this.unlock(id);
++    }
++    this.reset();
++  }
++
++  /** Release the signed-in user's lock on a claim; nothing to show either way. */
++  private unlock(id: number): void {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.http.post(`/api/sheets/${encodeURIComponent(sheet)}/claims/${id}/unlock`, null, { headers }).subscribe({
++      error: () => undefined,
++    });
++  }
++
+   protected reset(): void {
+     this.editing.set(null);
+     this.amount.set('');
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index a1397a57..e084155c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -105,6 +105,13 @@ public class Claim {
+     @Column(name = "split_from")
+     private String splitFrom;
+ 
++    /**
++     * The user whose open editor locks the claim for everyone else, until it is saved or cancelled or the
++     * sheet's today changes; null when no editor holds it.
++     */
++    @Column(name = "locked_by")
++    private String lockedBy;
++
+     /** The claim's place in its person's list, newest first; the store takes it on adding and reassigning. */
+     @Column(name = "listed", insertable = false, updatable = false)
+     private Long listed;
+@@ -171,6 +178,14 @@ public class Claim {
+         this.dueBy = dueBy;
+     }
+ 
++    public String getLockedBy() {
++        return lockedBy;
++    }
++
++    public void setLockedBy(String lockedBy) {
++        this.lockedBy = lockedBy;
++    }
++
+     public LocalDate getDeferredUntil() {
+         return deferredUntil;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 408c2f0f..80773b63 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -143,6 +143,22 @@ public class ClaimController {
+         return view(sheet, id);
+     }
+ 
++    /** Open a claim's editor, locking the claim for other users. */
++    @PostMapping("/claims/{claimId}/lock")
++    public PersonView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
++        String sheet = sheetId.trim();
++        return view(sheet, claims.lock(sheet, user.trim(), claimId));
++    }
++
++    /** Cancel a claim's editor, releasing its lock. */
++    @PostMapping("/claims/{claimId}/unlock")
++    public PersonView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
++        String sheet = sheetId.trim();
++        return view(sheet, claims.unlock(sheet, user.trim(), claimId));
++    }
++
+     @PostMapping("/claims/{claimId}/open")
+     public PersonView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index cdab0a5d..bb775216 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -23,6 +23,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     @Query(value = "update claim set listed = next value for claim_listed_seq where id = :id", nativeQuery = true)
+     void relist(@Param("id") Long id);
+ 
++    /** The sheet's claims an editor holds locked. */
++    List<Claim> findBySheetIdAndLockedByIsNotNull(String sheetId);
++
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 949dfbe1..155d582d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -17,7 +17,9 @@ import net.officefloor.hq.app.sheet.SheetService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.rate.RateService;
+ import net.officefloor.hq.app.rollup.Rollup;
++import net.officefloor.hq.app.sheet.TodayChanged;
+ import org.springframework.context.ApplicationEventPublisher;
++import org.springframework.context.event.EventListener;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -127,6 +129,7 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
+         }
++        requireNotLockedByOther(claim, user);
+         if (!on.equals(claim.getDate())) {
+             people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
+         }
+@@ -137,6 +140,7 @@ public class ClaimService {
+         claim.setCorrectsDate(correctsDate);
+         claim.setDate(on);
+         claim.setNote(note == null ? "" : note);
++        claim.setLockedBy(null);
+         claims.flush();
+         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+         events.publishEvent(new ClaimChanged("CLAIM_EDITED", sheetId, user, person, claim.getAmount(),
+@@ -145,6 +149,52 @@ public class ClaimService {
+         return claim.getPersonId();
+     }
+ 
++    /**
++     * Open a claim's editor, locking the claim for every other user until the editor is saved or cancelled
++     * or the sheet's today changes. Only a DRAFT dated outside every closed period can be edited, and a claim
++     * another user's editor holds is refused; a refusal takes no lock. No audit line. Returns the person
++     * it belongs to.
++     */
++    @Transactional
++    public long lock(String sheetId, String user, long claimId) {
++        Claim claim = claim(sheetId, claimId);
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
++        }
++        requireNotLockedByOther(claim, user);
++        claim.setLockedBy(user);
++        claims.flush();
++        return claim.getPersonId();
++    }
++
++    /** Cancel a claim's editor, releasing the user's lock on it; another user's lock stays. Returns the person. */
++    @Transactional
++    public long unlock(String sheetId, String user, long claimId) {
++        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
++        if (user.equals(claim.getLockedBy())) {
++            claim.setLockedBy(null);
++            claims.flush();
++        }
++        return claim.getPersonId();
++    }
++
++    /** A change of the sheet's today releases every editor's lock on its claims. */
++    @EventListener
++    @Transactional
++    public void on(TodayChanged e) {
++        claims.findBySheetIdAndLockedByIsNotNull(e.sheetId()).forEach(c -> c.setLockedBy(null));
++        claims.flush();
++    }
++
++    private static void requireNotLockedByOther(Claim claim, String user) {
++        if (claim.getLockedBy() != null && !claim.getLockedBy().equals(user)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "The claim is being edited by " + claim.getLockedBy());
++        }
++    }
++
+     /**
+      * Move a claim to a status; a move its status does not allow, opening, settling or voiding by a role the
+      * sheet's permission matrix does not allow, settling by the user who opened
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index d1c5a7e3..97e91e56 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -54,7 +54,8 @@ public class PersonController {
+      */
+     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
+             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
+-            List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom) {
++            List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
++            String lockedBy) {
+ 
+         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
+             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
+@@ -62,7 +63,8 @@ public class PersonController {
+                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, rates),
+                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
+                     Dues.deferred(claim, rates.today()),
+-                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom());
++                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
++                    claim.getLockedBy());
+         }
+     }
+ 
+diff --git a/src/main/resources/db/migration/V46__claim_lock.sql b/src/main/resources/db/migration/V46__claim_lock.sql
+new file mode 100644
+index 00000000..289dc114
+--- /dev/null
++++ b/src/main/resources/db/migration/V46__claim_lock.sql
+@@ -0,0 +1,2 @@
++-- The user whose open editor locks a DRAFT claim for everyone else; null when no editor holds it.
++ALTER TABLE claim ADD COLUMN locked_by VARCHAR(100);
