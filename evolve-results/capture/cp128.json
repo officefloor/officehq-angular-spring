@@ -1,0 +1,68 @@
+{
+  "checkpoint": 128,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp128_transfer-merges",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    111
+  ],
+  "replaced_tests": [
+    "cp111_transfer-person.spec.ts::transfer person"
+  ],
+  "request": {
+    "spec": "A transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "47a681dec612d3979be4b4fb64d29b6e95848924",
+  "reset_sha": "",
+  "preagent_sha": "b26e1dfb12f97dedb6abaa6ec3ee8da75b9e9e3f",
+  "prev_sha": "b26e1dfb12f97dedb6abaa6ec3ee8da75b9e9e3f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4676548,
+    "input_tokens": 20,
+    "output_tokens": 4744,
+    "cache_read_tokens": 327954,
+    "cache_creation_tokens": 38388,
+    "num_turns": 11,
+    "duration_ms": 237653,
+    "duration_api_ms": 51594,
+    "model": "claude-opus-5-5",
+    "session_id": "9f609238-889e-4634-b54b-dc7f453b248b",
+    "stop_reason": "success",
+    "result_text": "Transferring a person to a sheet where someone already has the same name or alias now merges them into that person instead of being refused. `bin/e2e` passes all 4 tests.\n\nThe whole change is in `src/main/java/net/officefloor/hq/app/person/PersonTransferService.java`; no front-end or schema changes were needed.\n\n**What happens on a match:**\n- Names and aliases are compared the existing way: trimmed and ignoring case.\n- The arriving person's claims go to the matching person and are listed after that person's own claims. They take the other sheet's next numbers, the same as any transfer, and any figures a statement had bound are released.\n- The arriving person's name and aliases are added to the matching person's aliases. In the test, Ada ends up with \"Ad, Addie, addie\".\n- The other sheet's audit file gets `PERSON_TRANSFERRED \u2026 name=<name> from=<sheet id>`, then `PERSON_MERGED \u2026 from=<name> into=<name>`, then the usual rollup lines.\n\n**Edge cases the request didn't spell out.** These are my own calls, and the test doesn't exercise them:\n- **Still refused:** the names match more than one person, or match someone on a sheet below the other sheet rather than on that sheet itself.\n- **Refused:** the matching person is retired, because a normal merge refuses retired people.\n- **Contact:** on a merge the \"contact already in use\" check is skipped and the arriving person's contact is dropped, as a normal merge drops it. With no match, that check still applies.\n- **Dropped:** the arriving person's statements, holds, patron links, pool memberships and watches are dropped, as a normal transfer already does. Unlike an in-sheet merge, their patron links and pool memberships aren't carried over to the matching person.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4676548,
+        "num_turns": 11,
+        "duration_ms": 237653,
+        "duration_api_ms": 51594,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp128.agent.jsonl",
+  "agent_diff_file": "cp128.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
