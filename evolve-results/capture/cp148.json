@@ -1,0 +1,78 @@
+{
+  "checkpoint": 148,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp148_claimed-without-corrections",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    32,
+    36,
+    51,
+    56,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year",
+    "cp30_corrections.spec.ts::corrections",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date",
+    "cp36_approvals.spec.ts::approvals scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1",
+    "cp56_late-per-boundary.spec.ts::late per boundary scenario 1"
+  ],
+  "request": {
+    "spec": "A person's claimed, and the sheet's claimed-total, no longer include corrections: claimed is the\namounts of the person's claims that count, leaving out claims that correct another. Everything that\nreads claimed (the rollup lines included) follows; due figures are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's claimed, and the sheet's claimed-total, no longer include corrections: claimed is the\namounts of the person's claims that count, leaving out claims that correct another. Everything that\nreads claimed (the rollup lines included) follows; due figures are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3e5e087fdb2a7374c2fe0aaa735e78588ad08dfc",
+  "reset_sha": "",
+  "preagent_sha": "3cf6a4122675f7ac60a77b5eb8e7404a19519534",
+  "prev_sha": "3cf6a4122675f7ac60a77b5eb8e7404a19519534",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.35293440000000004,
+    "input_tokens": 20,
+    "output_tokens": 3048,
+    "cache_read_tokens": 283432,
+    "cache_creation_tokens": 29401,
+    "num_turns": 10,
+    "duration_ms": 266701,
+    "duration_api_ms": 56971,
+    "model": "claude-opus-5-5",
+    "session_id": "ca651ed4-5098-4743-ab53-51b00bacfe73",
+    "stop_reason": "success",
+    "result_text": "A person's claimed and the sheet's claimed-total no longer include corrections, and `bin/e2e` passes all 4 tests in the spec.\n\n**What changed:**\n- **New calculation:** I added `Dues.claimed` in `src/main/java/net/officefloor/hq/app/claim/Dues.java`. It adds up the amounts of the claims that count, skipping any claim that corrects another (one with a `corrects` value set).\n- **Person's claimed:** `PersonController.PersonView.of` now uses it, so the `person-claimed` column follows. I also updated the doc comment there.\n- **Rollup:** `Rollup` now uses it too, so the `ROLLUP` and `TOTALS` audit lines follow.\n- **Claimed-total on screen:** the `rollup-claimed-total` figure is just the people's claimed amounts added up in the front end, so it follows without a change.\n\nDue, overdue, settled and open figures are untouched, and so are period close-outs, which only fix due-totals. No change to the stored data or the schema was needed: claims that aren't corrections already store `corrects` as null.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.35293440000000004,
+        "num_turns": 10,
+        "duration_ms": 266701,
+        "duration_api_ms": 56971,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp148.agent.jsonl",
+  "agent_diff_file": "cp148.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

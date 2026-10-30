@@ -1,0 +1,57 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index f2c49b748..6e75c8aa5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -129,6 +129,15 @@ public final class Dues {
+         return claim.getStatus().counts() && !deferred(claim, today) && !leftOut(claim, holds, today);
+     }
+ 
++    /**
++     * A person's claimed: the sum of the amounts of the claims that {@link #counts count}, leaving out the
++     * claims that correct another.
++     */
++    public static BigDecimal claimed(List<Claim> claims, Holds holds, LocalDate today) {
++        return claims.stream().filter(c -> c.getCorrects() == null && counts(c, holds, today)).map(Claim::getAmount)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++    }
++
+     /**
+      * Whether the person's holds or retirement leave the claim out of the live totals: unless a statement
+      * binds it, an OPEN claim dated within a hold, and an OPEN or PENDING claim once the sheet's today has
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 4fb41ca5f..4c12191ea 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -108,7 +108,7 @@ public class PersonController {
+ 
+     /**
+      * A person with the grade in force on the sheet's today, their own terms (null: none), their claims, newest first, claimed: the sum of the amounts of the claims that
+-     * count (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
++     * count, leaving out corrections (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
+      * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
+@@ -137,8 +137,7 @@ public class PersonController {
+                 List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots) {
+             Grades grade = person::gradeOn;
+             Holds held = person.leaves();
+-            BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held, rates.today())).map(Claim::getAmount)
+-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
++            BigDecimal claimed = Dues.claimed(claims, held, rates.today());
+             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
+             return new PersonView(person.getId(), person.getVersion(), person.getName(),
+                     grade.on(rates.today()), person.getTerms(), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 56cca5b4f..8f6c387e2 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -87,8 +87,7 @@ public class Rollup {
+         List<BigDecimal> overdues = new ArrayList<>();
+         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
+-            BigDecimal claimed = theirs.stream().filter(c -> Dues.counts(c, person.leaves(), today)).map(Claim::getAmount)
+-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
++            BigDecimal claimed = Dues.claimed(theirs, person.leaves(), today);
+             BigDecimal due = Dues.total(person::gradeOn, theirs, table, person.leaves());
+             BigDecimal overdue = Dues.sum(person::gradeOn, Dues.overdue(theirs, person::gradeOn, table, person.leaves()), table);
+             claimedTotal = claimedTotal.add(claimed);
