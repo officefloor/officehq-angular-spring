@@ -258,7 +258,8 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(PoolMemberAdded e) {
         change(e.sheetId(), e.user(), "POOL_MEMBER_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " pool=" + e.pool()
-                + " name=" + e.name() + " share=" + e.share().setScale(2, RoundingMode.HALF_UP).toPlainString());
+                + " name=" + e.name() + " share=" + e.share().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + (e.from() == null ? "" : " from=" + e.from()) + (e.to() == null ? "" : " to=" + e.to()));
     }
 
     @TransactionalEventListener

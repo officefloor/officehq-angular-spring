@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 import { PersonWithClaims } from '../claims/claims';
 
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * A member of a pool: a person (pool null) or another pool (personId null), the share (two decimals), whether they
@@ -28,17 +29,24 @@ export interface Pool {
   balanced: boolean;
 }
 
-/** What is typed into a pool's member form (a person's id, or pool:<name>), and why its last add was refused. */
+/**
+ * What is typed into a pool's member form (a person's id, or pool:<name>; the membership's from- and to-dates, blank
+ * for none), and why its last add was refused.
+ */
 interface Draft {
   personId: string;
   share: string;
+  from: string;
+  to: string;
   error: string;
 }
 
-const EMPTY: Draft = { personId: '', share: '', error: '' };
+const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
 
 // The sheet's pools, sorted by name, each with its members and their shares, its total share and whether it is
 // balanced, and each member's cut of the pool's pot (none unless the pool is balanced and has a pot); the form that adds a pool, and on each pool's row the form that adds a person, or another pool, to it with a share.
+// A membership may be dated (from, to, either blank for no bound); a member whose dates do not include the sheet's
+// today is left out of its pool's total share, balance and cuts.
 // A person can be in several pools, each at most once; a pool is a member of at most one pool, and then its pot is
 // its cut there, while a pool that is a member of none has the sheet's pot.
 @Component({
@@ -91,6 +99,22 @@ const EMPTY: Draft = { personId: '', share: '', error: '' };
                 inputmode="decimal"
                 [value]="draft(p.name).share"
                 (input)="edit(p.name, { share: value($event) })"
+              />
+              <label [for]="'pool-member-from-' + p.name">From (blank: from the start)</label>
+              <input
+                [id]="'pool-member-from-' + p.name"
+                type="date"
+                data-testid="pool-member-from"
+                [value]="draft(p.name).from"
+                (input)="edit(p.name, { from: value($event) })"
+              />
+              <label [for]="'pool-member-to-' + p.name">To (blank: no end)</label>
+              <input
+                [id]="'pool-member-to-' + p.name"
+                type="date"
+                data-testid="pool-member-to"
+                [value]="draft(p.name).to"
+                (input)="edit(p.name, { to: value($event) })"
               />
               <button type="submit" data-testid="pool-member-add">Add member</button>
               @if (draft(p.name).error) {
@@ -199,13 +223,17 @@ export class Pools {
       refusal = 'Choose a person or a pool.';
     } else if (!SHARE.test(share) || Number(share) <= 0 || Number(share) > 100) {
       refusal = 'Enter a share with up to two decimals, more than 0.00 and at most 100.00.';
+    } else if ((draft.from !== '' && !DATE.test(draft.from)) || (draft.to !== '' && !DATE.test(draft.to))) {
+      refusal = 'Enter dates as yyyy-mm-dd.';
+    } else if (draft.from !== '' && draft.to !== '' && draft.to < draft.from) {
+      refusal = 'The to-date cannot be before the from-date.';
     } else {
       this.busy = true;
       try {
         const member = draft.personId.startsWith('pool:')
           ? { memberPool: draft.personId.slice('pool:'.length) }
           : { personId: Number(draft.personId) };
-        refusal = await this.post('/members', { pool, ...member, share });
+        refusal = await this.post('/members', { pool, ...member, share, from: draft.from, to: draft.to });
       } finally {
         this.busy = false;
       }

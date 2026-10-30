@@ -3,6 +3,8 @@ package net.officefloor.hq.app.pool;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -30,10 +32,11 @@ public class PoolController {
 
     /**
      * A member to add to the named pool: a person of the sheet, or else another pool of the sheet by name, and the
-     * share percent.
+     * share percent; the membership's from- and to-dates (yyyy-mm-dd), each optional.
      */
     public record MemberForm(@NotBlank @Size(max = 1000) String pool, Long personId,
-            @Size(max = 1000) String memberPool, @Size(max = 100) String share) {
+            @Size(max = 1000) String memberPool, @Size(max = 100) String share, @Size(max = 100) String from,
+            @Size(max = 100) String to) {
     }
 
     /**
@@ -82,14 +85,28 @@ public class PoolController {
     public List<PoolView> addMember(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody MemberForm form) {
         String sheet = sheetId.trim();
+        LocalDate from = date(form.from());
+        LocalDate to = date(form.to());
         if (form.personId() != null) {
-            pools.addMember(sheet, user.trim(), form.pool(), form.personId(), form.share());
+            pools.addMember(sheet, user.trim(), form.pool(), form.personId(), form.share(), from, to);
         } else if (form.memberPool() != null && !form.memberPool().isBlank()) {
-            pools.addPoolMember(sheet, user.trim(), form.pool(), form.memberPool(), form.share());
+            pools.addPoolMember(sheet, user.trim(), form.pool(), form.memberPool(), form.share(), from, to);
         } else {
             throw new PoolRefused("Choose a person or a pool.");
         }
         return list(sheet);
+    }
+
+    /** A date typed as yyyy-mm-dd; null when blank. */
+    private static LocalDate date(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(text.strip());
+        } catch (DateTimeParseException e) {
+            throw new PoolRefused("Enter dates as yyyy-mm-dd.");
+        }
     }
 
     @ExceptionHandler(PoolRefused.class)

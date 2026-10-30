@@ -138,7 +138,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           id="rate-preview-grade"
           data-testid="rate-preview-grade"
           [value]="previewGrade()"
-          (change)="previewGrade.set(value($event)); previewError.set('')"
+          (change)="previewGrade.set(value($event)); previewed.set(null); previewError.set('')"
         >
           @for (g of grades; track g) {
             <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
@@ -150,7 +150,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           inputmode="decimal"
           data-testid="rate-preview-pct"
           [value]="previewPct()"
-          (input)="previewPct.set(value($event)); previewError.set('')"
+          (input)="previewPct.set(value($event)); previewed.set(null); previewError.set('')"
         />
         <button type="submit" data-testid="rate-preview">Preview</button>
         @if (previewed(); as p) {
