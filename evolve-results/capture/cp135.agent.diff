@@ -1,0 +1,105 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index db1808a9f..683b33350 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -41,6 +41,10 @@ interface Draft {
+   error: string;
+ }
+ 
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
++}
++
+ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
+ 
+ // The sheet's pools, sorted by name, each with its members and their shares, its total share and whether it is
+@@ -124,6 +128,7 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
+           </li>
+         }
+       </ul>
++      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools as CSV</button>
+       <form (submit)="add($event)" aria-label="Add pool">
+         <label for="pool-form-name">Name</label>
+         <input
+@@ -242,6 +247,31 @@ export class Pools {
+     else this.drafts.update((all) => ({ ...all, [pool]: EMPTY }));
+   }
+ 
++  /** Download every pool's members as the store holds them now, as a CSV file: pools and their members in the order
++   *  they were added, a pool member as pool:<name>, the cut as shown (empty when none). */
++  protected async exportCsv(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const pools = await firstValueFrom(
++      this.http.get<Pool[]>(`/api/sheets/${encodeURIComponent(sheet)}/pools`, { params: { order: 'added' } }),
++    );
++    if (this.session.sheet() !== sheet) return;
++    const lines = [
++      'pool,member,share,cut',
++      ...pools.flatMap((p) =>
++        p.members.map((m) =>
++          [p.name, m.pool !== null ? 'pool:' + m.pool : m.name, m.share, m.cut ?? ''].map(csvField).join(','),
++        ),
++      ),
++    ];
++    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
++    const link = document.createElement('a');
++    link.href = url;
++    link.download = `pools-${sheet}.csv`;
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   /** Post a change: '' once made (the pools shown as they now stand), else why it was refused. */
+   private async post(path: string, body: object): Promise<string> {
+     const sheet = this.session.sheet();
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 01a73c256..ed7b8b3da 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -71,6 +71,12 @@ public class PoolController {
+         return pools.list(sheetId.trim()).stream().map(PoolView::of).toList();
+     }
+ 
++    /** The pools on the sheet in the order they were added, each with its members in the order they were added. */
++    @GetMapping(params = "order=added")
++    public List<PoolView> listAsAdded(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return pools.list(sheetId.trim(), true).stream().map(PoolView::of).toList();
++    }
++
+     /** Add a pool; answers with every pool on the sheet. */
+     @PostMapping
+     public List<PoolView> add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolRepository.java b/src/main/java/net/officefloor/hq/app/pool/PoolRepository.java
+index 36fb43c67..f8e2bccbb 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolRepository.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolRepository.java
+@@ -8,5 +8,7 @@ public interface PoolRepository extends JpaRepository<Pool, Long> {
+ 
+     List<Pool> findBySheetIdOrderByNameAsc(String sheetId);
+ 
++    List<Pool> findBySheetIdOrderByIdAsc(String sheetId);
++
+     Optional<Pool> findBySheetIdAndName(String sheetId, String name);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pools.java b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+index 6fae8b5b7..69e04f445 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/Pools.java
++++ b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+@@ -78,7 +78,15 @@ public class Pools {
+     /** The pools on the sheet, sorted by name, each with its members and figures. */
+     @Transactional(readOnly = true)
+     public List<Shown> list(String sheetId) {
+-        List<Pool> all = pools.findBySheetIdOrderByNameAsc(sheetId);
++        return list(sheetId, false);
++    }
++
++    /**
++     * The pools on the sheet, sorted by name or else in the order they were added, each with its members and figures.
++     */
++    @Transactional(readOnly = true)
++    public List<Shown> list(String sheetId, boolean asAdded) {
++        List<Pool> all = asAdded ? pools.findBySheetIdOrderByIdAsc(sheetId) : pools.findBySheetIdOrderByNameAsc(sheetId);
+         Map<Long, Pool> poolById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
+         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
