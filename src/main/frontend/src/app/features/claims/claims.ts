@@ -32,6 +32,16 @@ export interface Claim {
   overdue: boolean;
   /** For a correction (a negative amount), the number of the settled claim it corrects, as shown (3, P1-1); null otherwise. */
   corrects: string | null;
+  /** The claim's status log, oldest first: one line per status it has had. */
+  log: ClaimLogLine[];
+}
+
+/** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  on: string;
+  due: string | null;
 }
 
 export interface PersonWithClaims {
@@ -99,6 +109,11 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ c.overdue ? 'yes' : 'no' }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+          <ol aria-label="Status log">
+            @for (l of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
+            }
+          </ol>
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
           <input
             [id]="'claim-reject-reason-' + c.id"

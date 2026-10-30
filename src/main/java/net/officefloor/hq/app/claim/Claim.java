@@ -1,15 +1,22 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A claim a person makes: an amount (two decimals), a date, a note and a status. A negative amount is a
@@ -89,6 +96,12 @@ public class Claim {
     /** The claim's place in its person's list, newest first; the store takes it on adding and reassigning. */
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
+
+    /** The claim's status log: one line per status it has had, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimLogLine> log = new ArrayList<>();
 
     protected Claim() {
     }
@@ -186,6 +199,15 @@ public class Claim {
 
     public void setStatus(ClaimStatus status) {
         this.status = status;
+    }
+
+    public List<ClaimLogLine> getLog() {
+        return List.copyOf(log);
+    }
+
+    /** Log the status the claim has now, by a user on a date, with its due then. */
+    public void logStatus(String by, LocalDate on, BigDecimal due) {
+        log.add(new ClaimLogLine(status, by, on, due));
     }
 
     public Integer getNumber() {

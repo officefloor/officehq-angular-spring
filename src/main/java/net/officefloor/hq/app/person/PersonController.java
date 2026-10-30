@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimLogLine;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
@@ -49,13 +50,22 @@ public class PersonController {
      * correction, the number of the claim it corrects (null otherwise).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
-            String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects) {
+            String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
+            List<LogLineView> log) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getShownNumber(),
                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, rates),
-                    claim.getCorrects());
+                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
+    public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
+
+        static LogLineView of(ClaimLogLine line) {
+            return new LogLineView(line.getStatus(), line.getBy(), line.getOn(), money(line.getDue()));
         }
     }
 

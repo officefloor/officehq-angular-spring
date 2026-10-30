@@ -97,6 +97,7 @@ public class ClaimService {
         Claim claim = new Claim(sheetId, personId, amount, on, note == null ? "" : note, corrects);
         claim.setCorrectsDate(correctsDate);
         claim.setDueBy(on.plusDays(sheets.load(sheetId, user).termsFor(person.gradeOn(on))));
+        log(sheetId, user, claim, person);
         claims.saveAndFlush(claim);
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
         rollup.changed(sheetId, user, before);
@@ -172,6 +173,7 @@ public class ClaimService {
             }
         }
         claim.setStatus(next);
+        log(sheetId, user, claim, owner);
         claims.flush();
         String person = owner == null ? "" : owner.getName();
         String event = switch (next) {
@@ -202,6 +204,7 @@ public class ClaimService {
         BigDecimal fixed = dueNow(sheetId, claim, owner);
         claim.setSettledDue(fixed);
         claim.setStatus(ClaimStatus.SETTLED);
+        log(sheetId, user, claim, owner);
         claims.flush();
         events.publishEvent(new ClaimChanged("CLAIM_APPROVED", sheetId, user, owner == null ? "" : owner.getName(),
                 claim.getAmount(), claim.getDate(), claim.getShownNumber(), fixed == null ? "n/a" : fixed.toPlainString()));
@@ -219,8 +222,10 @@ public class ClaimService {
         Claim claim = pending(sheetId, user, claimId, "reject", "rejected");
         Rollup.Figures before = rollup.figures(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        log(sheetId, user, claim, owner);
         claims.flush();
-        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        String person = owner == null ? "" : owner.getName();
         events.publishEvent(new ClaimChanged("CLAIM_REJECTED", sheetId, user, person, claim.getAmount(),
                 claim.getDate(), claim.getShownNumber(), null, reason));
         rollup.changed(sheetId, user, before);
@@ -286,6 +291,13 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         periods.requireOpen(sheetId, claim.getDate());
         return claim;
+    }
+
+    /** Log the status a claim has just taken, on the sheet's today, with its due as it is now. */
+    private void log(String sheetId, String user, Claim claim, Person owner) {
+        BigDecimal due = owner == null ? (Dues.bound(claim) ? claim.getStatedDue() : claim.getSettledDue())
+                : Dues.figure(claim, owner::gradeOn, rates.table(sheetId));
+        claim.logStatus(user, sheets.today(sheetId), due);
     }
 
     /** The claim's due now, its late charge frozen in, as settling fixes it. */
