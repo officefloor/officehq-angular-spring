@@ -1,0 +1,73 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e9324f39e..2f87a38d6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -10,7 +10,7 @@ import { Claims, PersonWithClaims as Person } from '../claims/claims';
+ import { Audit } from '../audit/audit';
+ import { Search } from '../search/search';
+ import { Holidays } from '../holidays/holidays';
+-import { Period, Periods, periodOf, personPeriodTotals } from '../periods/periods';
++import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
+ import { PersonPlans, PlanList } from '../plans/plans';
+ import { Pool, Pools } from '../pools/pools';
+ import { Rates } from '../rates/rates';
+@@ -447,7 +447,7 @@ function csvField(value: string): string {
+             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
+             @if (columnShown('patrons')) {<th scope="col">Patrons</th>}@if (columnShown('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Cut total</th>
+             @for (pd of periods(); track pd.id) {
+-              <th scope="col">Due in {{ pd.name }}</th>
++              <th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>
+             }
+             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+           </tr>
+@@ -525,6 +525,7 @@ function csvField(value: string): string {
+               <td data-testid="person-cut-total">{{ (((personCuts().get(p.id) ?? 0) / 100).toFixed(2)) | figure }}</td>
+               @for (pd of periods(); track pd.id) {
+                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (periodTotals().get(p.id)?.[pd.id]) | figure }}</td>
++                <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">{{ (periodCarried().get(p.id)?.[pd.id]) | figure }}</td>
+               }
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+@@ -717,6 +718,10 @@ export class People {
+   protected readonly periodTotals = computed(
+     () => new Map(this.people().map((p) => [p.id, personPeriodTotals(this.periods(), p)])),
+   );
++  /** Per person id, their carried figure for each period on the sheet, by period id. */
++  protected readonly periodCarried = computed(
++    () => new Map(this.people().map((p) => [p.id, personPeriodCarried(this.periods(), p)])),
++  );
+   protected readonly name = signal('');
+   protected readonly grade = signal('A');
+   /** The date an edit's grade applies from; blank: the sheet's today. */
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index b9c9fdeba..7925b68c8 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -73,6 +73,27 @@ export function personPeriodTotals(periods: Period[], person: PersonWithClaims):
+   return shown;
+ }
+ 
++/** Per period id, the person's carried figure for it: the dues as shown now of their claims that count (the same
++ * claims left out as personPeriodTotals) due by a date in a period ending before it starts and still OPEN or PENDING
++ * at the end of its last day, by the status log, added up. */
++export function personPeriodCarried(periods: Period[], person: PersonWithClaims): Record<number, string> {
++  const totals: Record<number, number> = {};
++  for (const p of periods) totals[p.id] = 0;
++  for (const c of person.claims) {
++    if (c.due === null || heldOut(c, person.holds) || retiredOut(c, person.retiredNow) || c.deferred) continue;
++    const home = periodOf(periods, c.dueBy);
++    if (!home) continue;
++    for (const p of periods) {
++      if (home.to >= p.from) continue;
++      const status = statusAsOf(c, p.to);
++      if (status === 'OPEN' || status === 'PENDING') totals[p.id] += cents(c.due);
++    }
++  }
++  const shown: Record<number, string> = {};
++  for (const p of periods) shown[p.id] = (totals[p.id] / 100).toFixed(2);
++  return shown;
++}
++
+ /** Per period id, its due-total: the people's due-totals for it, added up. */
+ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
+   const totals: Record<number, number> = {};
