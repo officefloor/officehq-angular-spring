@@ -1,0 +1,326 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 158bf4d53..aaeffb3b8 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -41,6 +41,8 @@ interface Settings {
+   /** While both are set, a person whose score is at or above the high one is HIGH, at or above the mid one MID, else LOW; null when blank. Whole numbers, not dated. */
+   scoreMid: string | null;
+   scoreHigh: string | null;
++  /** While on, changing the sheet's today writes everyone's score on the day being left; null when off. Not dated. */
++  scoreLog: string | null;
+   /** The kinds of proof (receipt, photo), comma separated, a claim above the proof threshold needs one of each of; null when none. Not dated. */
+   proofKinds: string | null;
+   /** The grade quick-add and an import line with a blank grade give a new person; null when blank (A). Not dated. */
+@@ -257,6 +259,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+       <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
+       <p>Score mid threshold <strong data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</strong></p>
+       <p>Score high threshold <strong data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</strong></p>
++      <p>Score log <strong data-testid="setting-score-log-current">{{ scoreLog() ?? '' }}</strong></p>
+       <p>Proof kinds <strong data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</strong></p>
+       <p>Default grade <strong data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</strong></p>
+       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
+@@ -503,6 +506,14 @@ const ROUNDING = /^(half-up|half-even)$/;
+           (input)="scoreHighInput.set(value($event)); scoreHighTouched = true; settingsError.set('')"
+           (keydown)="scoreHighTouched = scoreHighTouched || clears($event)"
+         />
++        <label for="setting-score-log">Score log: while on, changing today writes everyone's score on the day being left (on, or blank: off)</label>
++        <input
++          id="setting-score-log"
++          data-testid="setting-score-log"
++          [value]="scoreLogInput()"
++          (input)="scoreLogInput.set(value($event)); scoreLogTouched = true; settingsError.set('')"
++          (keydown)="scoreLogTouched = scoreLogTouched || clears($event)"
++        />
+         <label for="setting-proof-kinds">Proof kinds: a claim above the proof threshold needs a proof of each (comma separated, receipt or photo; blank: none)</label>
+         <input
+           id="setting-proof-kinds"
+@@ -694,6 +705,8 @@ export class Access {
+   protected readonly scoreMidInput = signal('');
+   protected readonly scoreHigh = signal<string | null>(null);
+   protected readonly scoreHighInput = signal('');
++  protected readonly scoreLog = signal<string | null>(null);
++  protected readonly scoreLogInput = signal('');
+   protected readonly proofKinds = signal<string | null>(null);
+   protected readonly proofKindsInput = signal('');
+   protected readonly defaultGrade = signal<string | null>(null);
+@@ -741,6 +754,7 @@ export class Access {
+   protected reviewSlaTouched = false;
+   protected scoreMidTouched = false;
+   protected scoreHighTouched = false;
++  protected scoreLogTouched = false;
+   protected proofKindsTouched = false;
+   protected defaultGradeTouched = false;
+   protected parentTouched = false;
+@@ -767,7 +781,7 @@ export class Access {
+       this.delegateFrom.set('');
+       this.delegateTo.set('');
+       this.delegateError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -985,6 +999,11 @@ export class Access {
+       this.settingsError.set('Enter a score high threshold as a whole number, or leave it blank for no bands.');
+       return;
+     }
++    const scoreLog = this.scoreLogInput().trim();
++    if (this.scoreLogTouched && scoreLog !== '' && scoreLog !== 'on') {
++      this.settingsError.set('Enter on for the score log, or leave it blank for off.');
++      return;
++    }
+     const proofKinds = this.proofKindsInput().trim();
+     if (this.proofKindsTouched && proofKinds !== '' && !PROOF_KINDS.test(proofKinds)) {
+       this.settingsError.set('Enter the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
+@@ -1069,6 +1088,7 @@ export class Access {
+     if (this.reviewSlaTouched) body.reviewSla = reviewSla;
+     if (this.scoreMidTouched) body.scoreMid = scoreMid;
+     if (this.scoreHighTouched) body.scoreHigh = scoreHigh;
++    if (this.scoreLogTouched) body.scoreLog = scoreLog;
+     if (this.proofKindsTouched) body.proofKinds = proofKinds;
+     if (this.defaultGradeTouched) body.defaultGrade = defaultGrade;
+     if (this.parentTouched) body.parent = this.parentInput().trim();
+@@ -1171,6 +1191,9 @@ export class Access {
+     this.scoreHigh.set(settings.scoreHigh);
+     this.scoreHighInput.set(settings.scoreHigh ?? '');
+     this.scoreHighTouched = false;
++    this.scoreLog.set(settings.scoreLog);
++    this.scoreLogInput.set(settings.scoreLog ?? '');
++    this.scoreLogTouched = false;
+     this.proofKinds.set(settings.proofKinds);
+     this.proofKindsInput.set(settings.proofKinds ?? '');
+     this.proofKindsTouched = false;
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index db557709b..aa4c33175 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -55,6 +55,7 @@ import net.officefloor.hq.app.pool.PoolMemberAdded;
+ import net.officefloor.hq.app.rate.RateChanged;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.rollup.RollupChanged;
++import net.officefloor.hq.app.sheet.DayScores;
+ import net.officefloor.hq.app.sheet.DaySnapshot;
+ import net.officefloor.hq.app.sheet.SheetArchived;
+ import net.officefloor.hq.app.sheet.SheetCloned;
+@@ -452,6 +453,16 @@ public class SheetAudit {
+                 + " from=" + e.from() + " to=" + e.to());
+     }
+ 
++    @TransactionalEventListener
++    public void on(DayScores e) {
++        // the day being left decides whether the user acted in a delegated role, not the today it moves to
++        String delegator = access.delegator(e.sheetId(), e.user(), e.day());
++        for (Rollup.PersonScore p : e.people()) {
++            String line = "SCORE sheet=" + e.sheetId() + " by=" + e.user() + " name=" + p.name() + " score=" + p.score();
++            audit.record(delegator == null ? line : line + " for=" + delegator);
++        }
++    }
++
+     @TransactionalEventListener
+     public void on(DaySnapshot e) {
+         // the day being left decides whether the user acted in a delegated role, not the today it moves to
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index f62e972a4..c775e9745 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -61,6 +61,7 @@ public class AccessController {
+      * The proof kinds are a comma separated list of kinds (receipt, photo), null for none; they are not dated.
+      * The default grade is A, B or C, null for none (grade A); it is not dated.
+      * The score thresholds (mid, high) are whole numbers, null when blank; they are not dated.
++     * The score log is on, null when off; it is not dated.
+      */
+     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
+             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
+@@ -69,7 +70,7 @@ public class AccessController {
+             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
+             String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
+             String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC, String scoreMid,
+-            String scoreHigh) {
++            String scoreHigh, String scoreLog) {
+ 
+         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
+                 Integer graceDays, LocalDate entryDate) {
+@@ -92,7 +93,7 @@ public class AccessController {
+                     text(dated.escalateAfter()), text(dated.reviewSla()), dated.proofKindsText(),
+                     dated.defaultGradeText(), text(dated.gradeClerkLimit("A", today)),
+                     text(dated.gradeClerkLimit("B", today)), text(dated.gradeClerkLimit("C", today)),
+-                    text(dated.scoreMid()), text(dated.scoreHigh()));
++                    text(dated.scoreMid()), text(dated.scoreHigh()), dated.scoreLog() ? "on" : null);
+         }
+ 
+         /** The grade's grace days in force on the date as written; null when it has none then. */
+@@ -215,7 +216,8 @@ public class AccessController {
+             @Pattern(regexp = DATE) String clerkLimitBFrom,
+             @Pattern(regexp = DATE) String clerkLimitCFrom,
+             @Pattern(regexp = "(-?\\d{1,6})?") String scoreMid,
+-            @Pattern(regexp = "(-?\\d{1,6})?") String scoreHigh) {
++            @Pattern(regexp = "(-?\\d{1,6})?") String scoreHigh,
++            @Pattern(regexp = "\\s*(on)?\\s*") String scoreLog) {
+     }
+ 
+     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
+@@ -304,7 +306,8 @@ public class AccessController {
+                 form.alertThreshold(), dated(form.rounding(), form.roundingFrom()),
+                 dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter(),
+                 form.reviewSla(), form.proofKinds(), form.defaultGrade(), gradeClerkLimit,
+-                form.scoreMid() == null ? null : form.scoreMid().trim(), form.scoreHigh() == null ? null : form.scoreHigh().trim());
++                form.scoreMid() == null ? null : form.scoreMid().trim(), form.scoreHigh() == null ? null : form.scoreHigh().trim(),
++                form.scoreLog() == null ? null : form.scoreLog().trim());
+         return settings(sheet);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 3c564b43a..b753a55da 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -95,6 +95,7 @@ public class AccessService {
+     public static final String REVIEW_SLA = DatedSettings.REVIEW_SLA;
+     public static final String SCORE_MID = DatedSettings.SCORE_MID;
+     public static final String SCORE_HIGH = DatedSettings.SCORE_HIGH;
++    public static final String SCORE_LOG = DatedSettings.SCORE_LOG;
+ 
+     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
+ 
+@@ -276,7 +277,11 @@ public class AccessService {
+             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
+             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
+             String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
+-            String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh) {
++            String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh,
++            String scoreLog) {
++        if (scoreLog != null && !scoreLog.isEmpty() && !scoreLog.equals("on")) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The score log is on or blank");
++        }
+         if (defaultGrade != null && !defaultGrade.isEmpty() && !defaultGrade.matches("[ABC]")) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The default grade is A, B or C");
+         }
+@@ -367,6 +372,9 @@ public class AccessService {
+         if (proofKinds != null) {
+             setProofKinds(sheetId, user, proofKinds);
+         }
++        if (scoreLog != null) {
++            setUndated(sheetId, user, SCORE_LOG, scoreLog.isEmpty() ? null : scoreLog);
++        }
+         if (scoreMid != null) {
+             setUndated(sheetId, user, SCORE_MID, whole(scoreMid));
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 8f6c387e2..09ac39a9d 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -45,6 +45,10 @@ public class Rollup {
+         }
+     }
+ 
++    /** A person's score as shown (see {@link Dues#score}), a whole number. */
++    public record PersonScore(String name, String score) {
++    }
++
+     /** The sheet's claimed-total, due-total and overdue-total as shown. */
+     public record Totals(String claimed, String dueTotal, String overdueTotal) {
+     }
+@@ -72,13 +76,32 @@ public class Rollup {
+         this.events = events;
+     }
+ 
+-    /** The sheet's figures now. */
+-    public Figures figures(String sheetId) {
++    /** Everyone's score now, in list order. */
++    public List<PersonScore> scores(String sheetId) {
++        RateTable table = table(sheetId);
++        Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
++                .collect(Collectors.groupingBy(Claim::getPersonId));
++        List<PersonScore> scores = new ArrayList<>();
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
++            scores.add(new PersonScore(person.getName(),
++                    Dues.score(person::gradeOn, theirs, table, person.leaves()).toPlainString()));
++        }
++        return scores;
++    }
++
++    private RateTable table(String sheetId) {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         LocalDate today = sheet == null ? LocalDate.now() : sheet.getToday();
+-        RateTable table = new RateTable(rates.findBySheetId(sheetId), today,
++        return new RateTable(rates.findBySheetId(sheetId), today,
+                 new DatedSettings(settings.findBySheetId(sheetId)), sheet == null ? null : sheet.getPolicyDate(),
+                 parents.of(sheetId));
++    }
++
++    /** The sheet's figures now. */
++    public Figures figures(String sheetId) {
++        RateTable table = table(sheetId);
++        LocalDate today = table.today();
+         Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                 .collect(Collectors.groupingBy(Claim::getPersonId));
+         Map<Long, PersonFigures> figures = new LinkedHashMap<>();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+index 7a0e54dcd..5757fd745 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+@@ -54,6 +54,9 @@ public record DatedSettings(List<SheetSetting> values) {
+     /** A person whose score is at or above it is in the HIGH band (while the mid threshold is set too); not dated. */
+     public static final String SCORE_HIGH = "score-high";
+ 
++    /** While on, changing the sheet's today writes everyone's score on the day being left; on or blank (off); not dated. */
++    public static final String SCORE_LOG = "score-log";
++
+     /** The sheet's proof kinds, comma separated (receipt, photo): each a claim above its proof threshold needs a proof of; not dated. */
+     public static final String PROOF_KINDS = "proof-kinds";
+ 
+@@ -242,6 +245,11 @@ public record DatedSettings(List<SheetSetting> values) {
+         return on(SCORE_MID, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+     }
+ 
++    /** Whether the sheet's score log is on (not dated). */
++    public boolean scoreLog() {
++        return on(SCORE_LOG, LocalDate.MAX).map("on"::equals).orElse(false);
++    }
++
+     /** The sheet's high score threshold, a whole number (not dated); null when it is blank. */
+     public Integer scoreHigh() {
+         return on(SCORE_HIGH, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DayScores.java b/src/main/java/net/officefloor/hq/app/sheet/DayScores.java
+new file mode 100644
+index 000000000..a48b74ec7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/DayScores.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.sheet;
++
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.rollup.Rollup;
++
++/**
++ * The sheet's today is about to change while its score log is on: everyone's score as it stood on the day being
++ * left, in list order ({@code SCORE}, one line per person), and the day being left. Published before
++ * {@link DaySnapshot}.
++ */
++public record DayScores(String sheetId, String user, LocalDate day, List<Rollup.PersonScore> people) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index d323839af..b292f1730 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -184,7 +184,8 @@ public class SheetService {
+      * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
+      * days are closed) and then the figures it moves. The sheet as it stands is first written down as at
+      * the end of the today it leaves (see {@link DayEnds} and {@link SheetPasts}; the sheet as of that day
+-     * holds no snapshot line for it), and everyone's due-total on it is announced first ({@link DaySnapshot}).
++     * holds no snapshot line for it), and everyone's due-total on it is announced first ({@link DaySnapshot}), preceded
++     * by everyone's score on it while the score log is on ({@link DayScores}).
+      */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+@@ -192,6 +193,9 @@ public class SheetService {
+         Rollup.Figures before = rollup.figures(id);
+         if (!today.equals(sheet.getToday())) {
+             pasts.record(id, sheet.getToday());
++            if (new DatedSettings(settings.findBySheetId(id)).scoreLog()) {
++                events.publishEvent(new DayScores(id, user, sheet.getToday(), rollup.scores(id)));
++            }
+             events.publishEvent(new DaySnapshot(id, user, sheet.getToday(), new LinkedHashMap<>(before.people())));
+             dayEnds.record(id, sheet.getToday());
+         }

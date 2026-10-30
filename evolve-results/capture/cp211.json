@@ -1,0 +1,64 @@
+{
+  "checkpoint": 211,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp211_score-lines",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "337412941a4e5d4561a33008bd05c91403be8e7f",
+  "reset_sha": "",
+  "preagent_sha": "f14065698fea12763201f934bfeb7f8423f402ae",
+  "prev_sha": "f14065698fea12763201f934bfeb7f8423f402ae",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.76239,
+    "input_tokens": 38,
+    "output_tokens": 9123,
+    "cache_read_tokens": 757930,
+    "cache_creation_tokens": 53524,
+    "num_turns": 19,
+    "duration_ms": 337509,
+    "duration_api_ms": 103476,
+    "model": "claude-opus-5-5",
+    "session_id": "2630c784-520f-4316-be44-5adc7808748e",
+    "stop_reason": "success",
+    "result_text": "The score log switch is in, and `bin/e2e` passes all 4 tests.\n\n**What it does**\n- **The setting:** `score-log` is a new sheet setting that can be `on` or blank, and isn't dated. Saving it writes `SETTING_CHANGED \u2026 key=score-log value=on` (or `value=` when turned off). Any other value is refused, both in the form and on the server.\n- **The audit lines:** while the switch is on, changing the sheet's today writes one line per person before the usual SNAPSHOT lines: `SCORE sheet=<id> by=<user> name=<name> score=<score>`. People come in list order, and each score is worked out before the date moves, so it's the score on the day being left.\n\n**Where the changes are**\n- **Front end** (`features/access/access.ts`): a new input `setting-score-log` and a display of the current value, `setting-score-log-current`. They work the same way as the existing score threshold fields.\n- **Server:**\n  - `DatedSettings` has the new key and a `scoreLog()` check.\n  - The settings form, view and save in `AccessController` and `AccessService` handle the new value.\n  - `Rollup.scores()` returns everyone's score in list order.\n  - `SheetService.setToday` publishes a new `DayScores` event before `DaySnapshot`, and `SheetAudit` writes the SCORE lines from it.\n\nNo database change was needed, because settings are stored as key/value rows.\n\nOne choice beyond the request: if the user changing the date is acting for someone else through a delegation, SCORE lines get ` for=<delegator>` on the end, the same as SNAPSHOT lines do. None of the tests cover delegation, so that part hasn't been exercised.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.76239,
+        "num_turns": 19,
+        "duration_ms": 337509,
+        "duration_api_ms": 103476,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp211.agent.jsonl",
+  "agent_diff_file": "cp211.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
