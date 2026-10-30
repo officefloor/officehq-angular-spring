@@ -25,7 +25,19 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
-    /** The last place given in a period sequence on the sheet; 0 before any. */
-    @Query("select coalesce(max(c.periodSeqNumber), 0) from Claim c where c.sheetId = :sheetId and c.periodSequence = :sequence")
+    /**
+     * The last place given in a period sequence on the sheet, counting the places claims left when re-dated
+     * into another period; 0 before any.
+     */
+    @Query(value = "select greatest("
+            + "(select coalesce(max(period_seq_number), 0) from claim where sheet_id = :sheetId and period_sequence = :sequence), "
+            + "(select coalesce(max(period_seq_number), 0) from claim_retired_number where sheet_id = :sheetId and period_sequence = :sequence))",
+            nativeQuery = true)
     int lastInSequence(@Param("sheetId") String sheetId, @Param("sequence") String sequence);
+
+    /** Keep a place a claim leaves in a period sequence, so it is never given again. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "insert into claim_retired_number (sheet_id, period_sequence, period_seq_number) "
+            + "values (:sheetId, :sequence, :n)", nativeQuery = true)
+    void retireNumber(@Param("sheetId") String sheetId, @Param("sequence") String sequence, @Param("n") int n);
 }

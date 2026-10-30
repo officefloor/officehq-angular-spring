@@ -249,6 +249,44 @@ public class ClaimService {
     }
 
     /**
+     * A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement
+     * bound it to stays bound; its period follows the new date. While period numbering is on and the new
+     * date falls in another period (or none) than the old, the claim takes the next number of its new
+     * period's sequence, and its old place is never given again. A claim not OPEN or PENDING, one dated
+     * inside a closed period, a new date inside one or after its person's retirement date, or a re-date by
+     * anyone but a steward is refused and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long redate(String sheetId, String user, long claimId, LocalDate date) {
+        Claim claim = claim(sheetId, claimId);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can re-date a claim");
+        }
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-dated; only an OPEN or PENDING one can");
+        }
+        periods.requireOpen(sheetId, date);
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        requireNotRetired(owner, date);
+        Rollup.Figures before = rollup.figures(sheetId);
+        LocalDate old = claim.getDate();
+        claim.setDate(date);
+        if (numberingOn(sheetId) && !sequenceOf(sheetId, old).equals(sequenceOf(sheetId, date))) {
+            if (claim.getPeriodSequence() != null) {
+                claims.retireNumber(sheetId, claim.getPeriodSequence(), claim.getPeriodSeqNumber());
+            }
+            giveNumber(sheetId, claim);
+        }
+        claims.flush();
+        events.publishEvent(new ClaimRedated(sheetId, user, owner.getName(), claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), old, date));
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
+    }
+
+    /**
      * Split an amount (more than 0.00 and less than the claim's amount) off an OPEN claim. The claim keeps
      * the rest and is released from any figure a statement bound it to; a new OPEN claim of the same person
      * takes the amount split off, with the same date and note, the next number, opened by the user and
@@ -508,17 +546,32 @@ public class ClaimService {
      * taking one at the same moment wait on each other, so no number is given twice or skipped.
      */
     private void giveNumber(String sheetId, Claim claim) {
-        LocalDate from = sheets.periodNumberingFrom(sheetId);
-        if (from == null || sheets.today(sheetId).isBefore(from)) {
+        if (!numberingOn(sheetId)) {
             claim.setNumber(sheets.nextClaimNumber(sheetId));
             return;
         }
         sheetRows.lockById(sheetId);
-        Period period = periods.list(sheetId).stream().filter(p -> p.contains(claim.getDate()))
-                .findFirst().orElse(null);
-        String sequence = period == null ? "X" : "P" + period.getId();
+        Period period = periodOf(sheetId, claim.getDate());
+        String sequence = sequenceOf(sheetId, claim.getDate());
         int n = claims.lastInSequence(sheetId, sequence) + 1;
         claim.setPeriodNumber(sequence, n, (period == null ? "X" : period.getName()) + "-" + n);
+    }
+
+    /** Whether the sheet's period numbering from is set and the sheet's today is on or after it. */
+    private boolean numberingOn(String sheetId) {
+        LocalDate from = sheets.periodNumberingFrom(sheetId);
+        return from != null && !sheets.today(sheetId).isBefore(from);
+    }
+
+    /** The period whose dates contain the date, or null when none does. */
+    private Period periodOf(String sheetId, LocalDate date) {
+        return periods.list(sheetId).stream().filter(p -> p.contains(date)).findFirst().orElse(null);
+    }
+
+    /** The period sequence a claim dated on the date counts in ('P<period id>', or 'X' for no period). */
+    private String sequenceOf(String sheetId, LocalDate date) {
+        Period period = periodOf(sheetId, date);
+        return period == null ? "X" : "P" + period.getId();
     }
 
     /**

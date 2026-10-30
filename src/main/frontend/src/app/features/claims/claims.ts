@@ -173,6 +173,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <button type="button" data-testid="claim-defer" (click)="defer(c)">
             Defer<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
           </button>
+          <label [for]="'claim-date-new-' + c.id">New date</label>
+          <input
+            [id]="'claim-date-new-' + c.id"
+            type="date"
+            data-testid="claim-date-new"
+            [value]="newDates()[c.id] ?? ''"
+            (input)="setNewDate(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-redate" (click)="redate(c)">
+            Re-date<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -276,6 +287,8 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   /** The date typed for deferring each claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The new date typed for re-dating each claim, by claim id. */
+  protected readonly newDates = signal<Record<number, string>>({});
   /** The amount typed for splitting off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The id of the person chosen to reassign each claim to, by claim id. */
@@ -336,6 +349,45 @@ export class Claims {
       if (this.session.sheet() !== sheet) return;
       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be deferred to that date.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected setNewDate(id: number, date: string): void {
+    this.newDates.update((all) => ({ ...all, [id]: date }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** A steward re-dates an OPEN or PENDING claim to the date typed; a refusal shows on the claim's row. */
+  protected async redate(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const date = (this.newDates()[c.id] ?? '').trim();
+    if (!DATE.test(date)) {
+      this.claimError.set({ id: c.id, message: 'Enter the new date of the claim.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/redate`,
+          { date },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.newDates.update((all) => ({ ...all, [c.id]: '' }));
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be re-dated to that date.' });
     } finally {
       this.busy = false;
     }

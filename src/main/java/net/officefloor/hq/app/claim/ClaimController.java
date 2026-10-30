@@ -75,6 +75,10 @@ public class ClaimController {
     public record DeferForm(@NotNull LocalDate until) {
     }
 
+    /** The new date of a claim being re-dated. */
+    public record RedateForm(@NotNull LocalDate date) {
+    }
+
     /** The amount split off a claim, more than 0.00 and less than the claim's amount. */
     public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
     }
@@ -207,6 +211,15 @@ public class ClaimController {
             @Valid @RequestBody DeferForm form) {
         String sheet = sheetId.trim();
         return view(sheet, claims.defer(sheet, user.trim(), claimId, form.until()));
+    }
+
+    /** A steward re-dates an OPEN or PENDING claim. */
+    @PostMapping("/claims/{claimId}/redate")
+    public PersonView redate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody RedateForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.redate(sheet, user.trim(), claimId, form.date()));
     }
 
     /** Split an amount off an OPEN claim into a new OPEN claim of the same person. */

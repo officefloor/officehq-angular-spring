@@ -9,6 +9,7 @@ import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.claim.ClaimDeferred;
 import net.officefloor.hq.app.claim.ClaimProofAdded;
 import net.officefloor.hq.app.claim.ClaimReassigned;
+import net.officefloor.hq.app.claim.ClaimRedated;
 import net.officefloor.hq.app.claim.ClaimSplit;
 import net.officefloor.hq.app.claim.ClaimResettled;
 import net.officefloor.hq.app.period.PeriodAdded;
@@ -105,6 +106,14 @@ public class SheetAudit {
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " from=" + e.from() + " to=" + e.to());
+    }
+
+    @TransactionalEventListener
+    public void on(ClaimRedated e) {
+        change(e.sheetId(), e.user(), "CLAIM_REDATED sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + " old=" + e.old() + " new=" + e.fresh());
     }
 
     @TransactionalEventListener

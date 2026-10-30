@@ -254,6 +254,14 @@ public class Claim {
         this.periodNumber = label;
     }
 
+    public String getPeriodSequence() {
+        return periodSequence;
+    }
+
+    public Integer getPeriodSeqNumber() {
+        return periodSeqNumber;
+    }
+
     /** The number as shown: its period number, or its sheet-wide number; null while it has none. */
     public String getShownNumber() {
         return periodNumber != null ? periodNumber : number == null ? null : number.toString();
