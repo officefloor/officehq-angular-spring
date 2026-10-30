@@ -17,7 +17,9 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.DatedSettings;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.SheetSettingRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
@@ -53,10 +55,12 @@ public class Rollup {
     private final ClaimRepository claims;
     private final RateRepository rates;
     private final SheetRepository sheets;
+    private final SheetSettingRepository settings;
     private final ApplicationEventPublisher events;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            ApplicationEventPublisher events) {
+            SheetSettingRepository settings, ApplicationEventPublisher events) {
+        this.settings = settings;
         this.people = people;
         this.claims = claims;
         this.rates = rates;
@@ -69,9 +73,7 @@ public class Rollup {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? LocalDate.now() : sheet.getToday();
         RateTable table = new RateTable(rates.findBySheetId(sheetId), today,
-                sheet == null ? Sheet.DEFAULT_FLOOR : sheet.getFloor(),
-                sheet == null ? Sheet.DEFAULT_LATE_PCT : sheet.getLatePct(),
-                sheet == null ? null : sheet.getPolicyDate(), sheet == null ? null : sheet.getCap());
+                new DatedSettings(settings.findBySheetId(sheetId)), sheet == null ? null : sheet.getPolicyDate());
         Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, PersonFigures> figures = new LinkedHashMap<>();

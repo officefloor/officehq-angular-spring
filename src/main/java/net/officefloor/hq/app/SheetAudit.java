@@ -102,7 +102,8 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(SettingChanged e) {
-        audit.record("SETTING_CHANGED sheet=" + e.sheetId() + " by=" + e.user() + " key=" + e.key() + " value=" + e.value());
+        audit.record("SETTING_CHANGED sheet=" + e.sheetId() + " by=" + e.user() + " key=" + e.key() + " value=" + e.value()
+                + (e.from() == null ? "" : " from=" + e.from()));
     }
 
     @TransactionalEventListener

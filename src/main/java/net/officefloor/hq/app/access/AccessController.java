@@ -11,6 +11,7 @@ import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.sheet.DatedSettings;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -38,7 +39,8 @@ public class AccessController {
     }
 
     /**
-     * The sheet's settings as shown; a limit is a figure with two decimals, null for none; so is the floor;
+     * The sheet's settings as shown, each dated one the value in force on the sheet's today; a limit is a
+     * figure with two decimals, null for none; so is the floor;
      * the terms are a number of days, and so are the terms of grades A, B and C, null for a grade without
      * its own (it uses the sheet's); the late percent is a figure with two decimals; the policy date and
      * the period numbering from are dates (yyyy-mm-dd), null when blank; the cap is a figure with two
@@ -47,16 +49,18 @@ public class AccessController {
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String cap) {
 
-        static SettingsView of(BigDecimal limit, BigDecimal floor, int terms, Integer termsA, Integer termsB,
-                Integer termsC, BigDecimal latePct, LocalDate policyDate, LocalDate periodNumberingFrom,
-                BigDecimal cap) {
-            return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
-                    Integer.toString(terms), termsA == null ? null : termsA.toString(),
-                    termsB == null ? null : termsB.toString(), termsC == null ? null : termsC.toString(),
-                    latePct.toPlainString(),
+        static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom) {
+            return new SettingsView(text(dated.clerkLimit(today)), dated.floor(today).toPlainString(),
+                    Integer.toString(dated.terms(today)), text(dated.gradeTerms("A", today)),
+                    text(dated.gradeTerms("B", today)), text(dated.gradeTerms("C", today)),
+                    dated.latePct(today).toPlainString(),
                     policyDate == null ? null : policyDate.toString(),
                     periodNumberingFrom == null ? null : periodNumberingFrom.toString(),
-                    cap == null ? null : cap.toPlainString());
+                    text(dated.cap(today)));
+        }
+
+        private static String text(Object value) {
+            return value == null ? null : value instanceof BigDecimal d ? d.toPlainString() : value.toString();
         }
     }
 
@@ -74,7 +78,8 @@ public class AccessController {
      * grade then uses the sheet's). The late percent is 0.00 or more with up to two
      * decimals, blank putting back 0.00. The policy date is a date (yyyy-mm-dd), blank meaning the
      * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off. The cap is 0.00
-     * or more with up to two decimals, blank meaning no cap.
+     * or more with up to two decimals, blank meaning no cap. Each setting that carries a figure takes a
+     * from-date (yyyy-mm-dd) its value is in force from, blank or left out meaning the sheet's today.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -85,8 +90,19 @@ public class AccessController {
             @Pattern(regexp = "(\\d{1,10}(\\.\\d{1,2})?)?") String latePct,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String policyDate,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String periodNumberingFrom,
-            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String cap) {
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String cap,
+            @Pattern(regexp = DATE) String clerkLimitFrom,
+            @Pattern(regexp = DATE) String floorFrom,
+            @Pattern(regexp = DATE) String termsFrom,
+            @Pattern(regexp = DATE) String termsAFrom,
+            @Pattern(regexp = DATE) String termsBFrom,
+            @Pattern(regexp = DATE) String termsCFrom,
+            @Pattern(regexp = DATE) String latePctFrom,
+            @Pattern(regexp = DATE) String capFrom) {
     }
+
+    /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
+    private static final String DATE = "(\\d{4}-\\d{2}-\\d{2})?";
 
     private final AccessService service;
 
@@ -112,22 +128,32 @@ public class AccessController {
     public SettingsView setSettings(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody SettingsForm form) {
         String sheet = sheetId.trim();
-        Map<String, String> gradeTerms = new LinkedHashMap<>();
-        gradeTerms.put("A", form.termsA());
-        gradeTerms.put("B", form.termsB());
-        gradeTerms.put("C", form.termsC());
-        service.setSettings(sheet, user.trim(), form.clerkLimit(), form.floor(), form.terms(), gradeTerms,
-                form.latePct(), form.policyDate(), form.periodNumberingFrom(), form.cap());
+        Map<String, AccessService.Dated> gradeTerms = new LinkedHashMap<>();
+        gradeTerms.put("A", dated(form.termsA(), form.termsAFrom()));
+        gradeTerms.put("B", dated(form.termsB(), form.termsBFrom()));
+        gradeTerms.put("C", dated(form.termsC(), form.termsCFrom()));
+        AccessService.Dated clerkLimit = dated(form.clerkLimit(), form.clerkLimitFrom());
+        AccessService.Dated floor = dated(form.floor(), form.floorFrom());
+        AccessService.Dated terms = dated(form.terms(), form.termsFrom());
+        AccessService.Dated latePct = dated(form.latePct(), form.latePctFrom());
+        AccessService.Dated cap = dated(form.cap(), form.capFrom());
+        service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
+                form.periodNumberingFrom(), cap);
         return settings(sheet);
     }
 
     private SettingsView settings(String sheet) {
-        return SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet),
-                service.gradeTerms(sheet, "A"), service.gradeTerms(sheet, "B"), service.gradeTerms(sheet, "C"),
-                service.latePct(sheet), service.policyDate(sheet), service.periodNumberingFrom(sheet), service.cap(sheet));
+        return SettingsView.of(service.settings(sheet), service.today(sheet), service.policyDate(sheet),
+                service.periodNumberingFrom(sheet));
     }
 
-    /** A policy date or period numbering from that is no date on the calendar: the save is refused and changes nothing. */
+    /** A dated setting's value with its from-date (blank or left out: the sheet's today); null when the value is left out. */
+    private static AccessService.Dated dated(String value, String from) {
+        return value == null ? null
+                : new AccessService.Dated(value, from == null || from.isEmpty() ? null : LocalDate.parse(from));
+    }
+
+    /** A policy date, period numbering from or from-date that is no date on the calendar: the save is refused and changes nothing. */
     @ExceptionHandler(DateTimeParseException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void noSuchDate() {

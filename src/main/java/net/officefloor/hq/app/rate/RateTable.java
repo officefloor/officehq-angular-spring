@@ -7,15 +7,15 @@ import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import net.officefloor.hq.app.sheet.DatedSettings;
 
 /**
- * Every rate on a sheet, the sheet's today, its floor, its late percent, its policy date (null: the
- * sheet's today) and its cap (null: none): which rate is in force for a grade on a date, the live due it
+ * Every rate on a sheet, the sheet's today, its dated settings (the floor and late percent in force on a
+ * claim's date, the cap in force on the sheet's today) and its policy date (null: the sheet's today): which rate is in force for a grade on a date, the live due it
  * makes of an amount, the late charge an overdue figure gains, how a claim's figures round, and the most a
  * person's due-total comes to.
  */
-public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, BigDecimal latePct,
-        LocalDate policyDate, BigDecimal cap) {
+public record RateTable(List<Rate> rates, LocalDate today, DatedSettings settings, LocalDate policyDate) {
 
     /** The days in each period overdue that adds the late percent once more. */
     private static final int LATE_PERIOD_DAYS = 30;
@@ -46,13 +46,20 @@ public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, Big
         return rate.getToDate() != null && rate.getToDate().isBefore(date);
     }
 
+    /** The cap in force on the sheet's today: the most a person's due-total comes to; null when there is none. */
+    public BigDecimal cap() {
+        return settings.cap(today);
+    }
+
     /** A due-total held to the cap: the cap when the sum is above it; as it is otherwise, or when n/a (null). */
     public BigDecimal capped(BigDecimal sum) {
+        BigDecimal cap = cap();
         return sum == null || cap == null || sum.compareTo(cap) <= 0 ? sum : cap;
     }
 
     /** What a due-total's sum is above the cap: 0.00 when it is not, or when n/a (null). */
     public BigDecimal excess(BigDecimal sum) {
+        BigDecimal cap = cap();
         return sum == null || cap == null || sum.compareTo(cap) <= 0 ? BigDecimal.ZERO : sum.subtract(cap);
     }
 
@@ -72,21 +79,22 @@ public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, Big
 
     /**
      * The live due of an amount dated on the date for the grade: the amount at the rate in force then,
-     * rounded by the date, but at least the floor; null when no rate is.
+     * rounded by the date, but at least the floor in force on the date; null when no rate is.
      */
     public BigDecimal due(BigDecimal amount, String grade, LocalDate date) {
         BigDecimal due = RateService.due(amount, on(grade, date), rounding(date));
+        BigDecimal floor = settings.floor(date);
         return due == null || floor == null || due.compareTo(floor) >= 0 ? due : floor;
     }
 
     /**
-     * The late charge on a figure due by the date: the late percent of the figure for every full 30 days
-     * from that date to the sheet's today, rounded by the date its claim's rounding goes by; 0.00 when not
-     * a full 30 days overdue.
+     * The late charge on a figure of a claim dated on the date and due by the due-by: the late percent in
+     * force on its date of the figure for every full 30 days from its due-by to the sheet's today, rounded by
+     * the date its claim's rounding goes by; 0.00 when not a full 30 days overdue.
      */
-    public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate roundsBy) {
+    public BigDecimal lateCharge(BigDecimal figure, LocalDate date, LocalDate dueBy, LocalDate roundsBy) {
         long periods = dueBy.isBefore(today) ? ChronoUnit.DAYS.between(dueBy, today) / LATE_PERIOD_DAYS : 0;
-        BigDecimal pct = latePct == null ? BigDecimal.ZERO : latePct;
+        BigDecimal pct = settings.latePct(date);
         return RateService.due(figure.multiply(BigDecimal.valueOf(periods)), pct, rounding(roundsBy));
     }
 }

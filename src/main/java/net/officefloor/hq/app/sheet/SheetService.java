@@ -1,7 +1,6 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.Clock;
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,11 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final SheetSettingRepository settings;
     private final Rollup rollup;
     private final Clock clock = Clock.systemDefaultZone();
 
-    public SheetService(SheetRepository sheets, Rollup rollup) {
+    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup) {
         this.sheets = sheets;
+        this.settings = settings;
         this.rollup = rollup;
     }
 
@@ -34,24 +35,9 @@ public class SheetService {
         }
     }
 
-    /** The sheet's floor: the least live due a claim has. */
-    public BigDecimal floor(String id) {
-        return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
-    }
-
-    /** The sheet's terms: the days a claim has to be paid by, from its date. */
-    public int terms(String id) {
-        return sheets.findById(id).map(Sheet::getTerms).orElse(Sheet.DEFAULT_TERMS);
-    }
-
-    /** The sheet's late percent: what an overdue claim's due gains of its figure for every full 30 days. */
-    public BigDecimal latePct(String id) {
-        return sheets.findById(id).map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT);
-    }
-
-    /** The sheet's cap: the most a person's due-total comes to; null when there is none. */
-    public BigDecimal cap(String id) {
-        return sheets.findById(id).map(Sheet::getCap).orElse(null);
+    /** The sheet's dated settings: the floor, late percent, terms, clerk limit and cap in force on any date. */
+    public DatedSettings settings(String id) {
+        return new DatedSettings(settings.findBySheetId(id));
     }
 
     /** The sheet's policy date as set; null when blank (the sheet's today is the policy date then). */

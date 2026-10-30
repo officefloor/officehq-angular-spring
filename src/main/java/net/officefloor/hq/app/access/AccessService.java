@@ -6,9 +6,12 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.DatedSettings;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.SheetSetting;
+import net.officefloor.hq.app.sheet.SheetSettingRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,41 +24,48 @@ import org.springframework.transaction.annotation.Transactional;
  * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
  * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
  * the date from which a claim opened is numbered within its period (none: off); and its cap, the most a
- * person's due-total comes to (none: no cap).
+ * person's due-total comes to (none: no cap). The settings that carry a figure are dated (see
+ * {@link DatedSettings}): a save records its value from a from-date, the sheet's today when none is given.
  */
 @Service
 public class AccessService {
 
-    public static final String CLERK_LIMIT = "clerk-limit";
+    public static final String CLERK_LIMIT = DatedSettings.CLERK_LIMIT;
 
-    public static final String FLOOR = "floor";
+    public static final String FLOOR = DatedSettings.FLOOR;
 
-    public static final String TERMS = "terms";
+    public static final String TERMS = DatedSettings.TERMS;
 
     /** The key of a grade's own terms: terms-A, terms-B or terms-C. */
     public static String gradeTermsKey(String grade) {
-        return TERMS + "-" + grade;
+        return DatedSettings.gradeTermsKey(grade);
     }
 
-    public static final String LATE_PCT = "late-pct";
+    public static final String LATE_PCT = DatedSettings.LATE_PCT;
 
     public static final String POLICY_DATE = "policy-date";
 
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
-    public static final String CAP = "cap";
+    public static final String CAP = DatedSettings.CAP;
+
+    /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
+    public record Dated(String value, LocalDate from) {
+    }
 
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRows;
+    private final SheetSettingRepository settingRows;
     private final SheetService sheets;
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
-    public AccessService(SheetRoleRepository roles, SheetRepository sheetRows, SheetService sheets,
-            Rollup rollup, ApplicationEventPublisher events) {
+    public AccessService(SheetRoleRepository roles, SheetRepository sheetRows, SheetSettingRepository settingRows,
+            SheetService sheets, Rollup rollup, ApplicationEventPublisher events) {
         this.rollup = rollup;
         this.roles = roles;
         this.sheetRows = sheetRows;
+        this.settingRows = settingRows;
         this.sheets = sheets;
         this.events = events;
     }
@@ -72,30 +82,16 @@ public class AccessService {
         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
     }
 
+    /** The sheet's dated settings, with the sheet's today to read the values in force now. */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimit(String sheetId) {
-        return sheetRows.findById(sheetId).map(Sheet::getClerkLimit).orElse(null);
+    public DatedSettings settings(String sheetId) {
+        return sheets.settings(sheetId);
     }
 
+    /** The sheet's today. */
     @Transactional(readOnly = true)
-    public BigDecimal floor(String sheetId) {
-        return sheets.floor(sheetId);
-    }
-
-    @Transactional(readOnly = true)
-    public int terms(String sheetId) {
-        return sheets.terms(sheetId);
-    }
-
-    /** The grade's own terms; null when it has none (it uses the sheet's). */
-    @Transactional(readOnly = true)
-    public Integer gradeTerms(String sheetId, String grade) {
-        return sheetRows.findById(sheetId).map(s -> s.getGradeTerms(grade)).orElse(null);
-    }
-
-    @Transactional(readOnly = true)
-    public BigDecimal latePct(String sheetId) {
-        return sheets.latePct(sheetId);
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
     }
 
     /** The sheet's policy date as set; null when blank. */
@@ -108,12 +104,6 @@ public class AccessService {
     @Transactional(readOnly = true)
     public LocalDate periodNumberingFrom(String sheetId) {
         return sheets.periodNumberingFrom(sheetId);
-    }
-
-    /** The sheet's cap as set; null when blank (no cap). */
-    @Transactional(readOnly = true)
-    public BigDecimal cap(String sheetId) {
-        return sheets.cap(sheetId);
     }
 
     /** Give a user name a role on the sheet, replacing the one it had. */
@@ -133,27 +123,27 @@ public class AccessService {
 
     /**
      * Save the settings given, as written (blank: none, or the default), in one change; a setting left
-     * out (null) is kept as it is.
+     * out (null) is kept as it is. A dated one is saved from its from-date.
      */
     @Transactional
-    public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms,
-            Map<String, String> gradeTerms, String latePct, String policyDate, String periodNumberingFrom, String cap) {
+    public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
+            Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, Dated cap) {
         if (clerkLimit != null) {
-            setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
+            setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
         if (floor != null) {
-            setFloor(sheetId, user, floor.isEmpty() ? null : new BigDecimal(floor));
+            setDated(sheetId, user, FLOOR, money(floor.value(), Sheet.DEFAULT_FLOOR), floor.from(), true);
         }
         if (terms != null) {
-            setTerms(sheetId, user, terms.isEmpty() ? null : Integer.valueOf(terms));
+            setDated(sheetId, user, TERMS, days(terms.value(), Sheet.DEFAULT_TERMS), terms.from(), false);
         }
         gradeTerms.forEach((grade, days) -> {
             if (days != null) {
-                setGradeTerms(sheetId, user, grade, days.isEmpty() ? null : Integer.valueOf(days));
+                setDated(sheetId, user, gradeTermsKey(grade), days(days.value(), null), days.from(), false);
             }
         });
         if (latePct != null) {
-            setLatePct(sheetId, user, latePct.isEmpty() ? null : new BigDecimal(latePct));
+            setDated(sheetId, user, LATE_PCT, money(latePct.value(), Sheet.DEFAULT_LATE_PCT), latePct.from(), true);
         }
         if (policyDate != null) {
             setPolicyDate(sheetId, user, policyDate.isEmpty() ? null : LocalDate.parse(policyDate));
@@ -163,69 +153,44 @@ public class AccessService {
                     periodNumberingFrom.isEmpty() ? null : LocalDate.parse(periodNumberingFrom));
         }
         if (cap != null) {
-            setCap(sheetId, user, cap.isEmpty() ? null : new BigDecimal(cap));
+            setDated(sheetId, user, CAP, money(cap.value(), null), cap.from(), true);
         }
     }
 
-    /**
-     * Save the sheet's cap; null removes it. Every person's due-total is held to it from then on, and every
-     * figure that adds them up moves with it.
-     */
-    @Transactional
-    public BigDecimal setCap(String sheetId, String user, BigDecimal cap) {
-        Sheet sheet = sheets.load(sheetId, user);
-        BigDecimal scaled = cap == null ? null : cap.setScale(2, RoundingMode.HALF_UP);
-        Rollup.Figures before = rollup.figures(sheetId);
-        sheet.setCap(scaled);
-        sheetRows.saveAndFlush(sheet);
-        events.publishEvent(new SettingChanged(sheetId, user, CAP, scaled == null ? "" : scaled.toPlainString()));
-        rollup.changed(sheetId, user, before);
-        return scaled;
+    /** A figure as kept: two decimals; blank is the starting value given (null: none). */
+    private static String money(String value, BigDecimal start) {
+        BigDecimal figure = value.isEmpty() ? start : new BigDecimal(value).setScale(2, RoundingMode.HALF_UP);
+        return figure == null ? null : figure.toPlainString();
+    }
+
+    /** A number of days as kept; blank is the starting value given (null: none). */
+    private static String days(String value, Integer start) {
+        Integer days = value.isEmpty() ? start : Integer.valueOf(value);
+        return days == null ? null : days.toString();
     }
 
     /**
-     * Save the sheet's terms in days; null puts back the ones a sheet starts with. A claim added from
-     * then on whose grade has no terms of its own is due by its date plus them; a claim already added
-     * keeps the due-by it has.
+     * Record a dated setting's value (null: none) from the from-date (null: the sheet's today), replacing
+     * the value it had from that date and keeping the others. When the setting moves live figures (the
+     * floor, the late percent, the cap), every figure it moves is announced. The terms fix the due-by of a
+     * claim when it is added; a claim already added keeps the due-by it has.
      */
     @Transactional
-    public int setTerms(String sheetId, String user, Integer terms) {
+    public void setDated(String sheetId, String user, String key, String value, LocalDate from, boolean moves) {
         Sheet sheet = sheets.load(sheetId, user);
-        int days = terms == null ? Sheet.DEFAULT_TERMS : terms;
-        sheet.setTerms(days);
-        sheetRows.saveAndFlush(sheet);
-        events.publishEvent(new SettingChanged(sheetId, user, TERMS, Integer.toString(days)));
-        return days;
-    }
-
-    /**
-     * Save a grade's own terms in days; null removes them, the grade then using the sheet's terms. A
-     * claim added from then on whose person has the grade on its date is due by its date plus them; a
-     * claim already added keeps the due-by it has.
-     */
-    @Transactional
-    public Integer setGradeTerms(String sheetId, String user, String grade, Integer days) {
-        Sheet sheet = sheets.load(sheetId, user);
-        sheet.setGradeTerms(grade, days);
-        sheetRows.saveAndFlush(sheet);
-        events.publishEvent(new SettingChanged(sheetId, user, gradeTermsKey(grade), days == null ? "" : days.toString()));
-        return days;
-    }
-
-    /**
-     * Save the sheet's late percent; null puts back the one a sheet starts with (0.00). Every late charge
-     * not yet settled moves with it; a settled due keeps the one it had.
-     */
-    @Transactional
-    public BigDecimal setLatePct(String sheetId, String user, BigDecimal latePct) {
-        Sheet sheet = sheets.load(sheetId, user);
-        BigDecimal scaled = latePct == null ? Sheet.DEFAULT_LATE_PCT : latePct.setScale(2, RoundingMode.HALF_UP);
-        Rollup.Figures before = rollup.figures(sheetId);
-        sheet.setLatePct(scaled);
-        sheetRows.saveAndFlush(sheet);
-        events.publishEvent(new SettingChanged(sheetId, user, LATE_PCT, scaled.toPlainString()));
-        rollup.changed(sheetId, user, before);
-        return scaled;
+        LocalDate on = from == null ? sheet.getToday() : from;
+        Rollup.Figures before = moves ? rollup.figures(sheetId) : null;
+        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, key, on).orElse(null);
+        if (row == null) {
+            settingRows.saveAndFlush(new SheetSetting(sheetId, key, on, value));
+        } else {
+            row.setValue(value);
+            settingRows.flush();
+        }
+        events.publishEvent(new SettingChanged(sheetId, user, key, value == null ? "" : value, from));
+        if (moves) {
+            rollup.changed(sheetId, user, before);
+        }
     }
 
     /**
@@ -238,7 +203,7 @@ public class AccessService {
         Rollup.Figures before = rollup.figures(sheetId);
         sheet.setPolicyDate(policyDate);
         sheetRows.saveAndFlush(sheet);
-        events.publishEvent(new SettingChanged(sheetId, user, POLICY_DATE, policyDate == null ? "" : policyDate.toString()));
+        events.publishEvent(new SettingChanged(sheetId, user, POLICY_DATE, policyDate == null ? "" : policyDate.toString(), null));
         rollup.changed(sheetId, user, before);
         return policyDate;
     }
@@ -252,40 +217,13 @@ public class AccessService {
         Sheet sheet = sheets.load(sheetId, user);
         sheet.setPeriodNumberingFrom(from);
         sheetRows.saveAndFlush(sheet);
-        events.publishEvent(new SettingChanged(sheetId, user, PERIOD_NUMBERING_FROM, from == null ? "" : from.toString()));
+        events.publishEvent(new SettingChanged(sheetId, user, PERIOD_NUMBERING_FROM, from == null ? "" : from.toString(), null));
         return from;
-    }
-
-    /** Save the sheet's clerk limit; null removes it. */
-    @Transactional
-    public BigDecimal setClerkLimit(String sheetId, String user, BigDecimal limit) {
-        Sheet sheet = sheets.load(sheetId, user);
-        BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.HALF_UP);
-        sheet.setClerkLimit(scaled);
-        sheetRows.saveAndFlush(sheet);
-        events.publishEvent(new SettingChanged(sheetId, user, CLERK_LIMIT, scaled == null ? "" : scaled.toPlainString()));
-        return scaled;
-    }
-
-    /**
-     * Save the sheet's floor; null puts back the one a sheet starts with. Every live due moves with it;
-     * a settled, stated or closed figure keeps the one it had.
-     */
-    @Transactional
-    public BigDecimal setFloor(String sheetId, String user, BigDecimal floor) {
-        Sheet sheet = sheets.load(sheetId, user);
-        BigDecimal scaled = floor == null ? Sheet.DEFAULT_FLOOR : floor.setScale(2, RoundingMode.HALF_UP);
-        Rollup.Figures before = rollup.figures(sheetId);
-        sheet.setFloor(scaled);
-        sheetRows.saveAndFlush(sheet);
-        events.publishEvent(new SettingChanged(sheetId, user, FLOOR, scaled.toPlainString()));
-        rollup.changed(sheetId, user, before);
-        return scaled;
     }
 
     /**
      * Whether the user may settle a claim of the given due outright: a steward settles anything, a clerk
-     * a due up to the clerk limit (a due of n/a, null, is within any limit). A clerk's settle above it
+     * a due up to the clerk limit in force on the sheet's today (a due of n/a, null, is within any limit). A clerk's settle above it
      * leaves the claim PENDING for a steward.
      */
     @Transactional(readOnly = true)
@@ -293,7 +231,7 @@ public class AccessService {
         if (due == null) {
             return true;
         }
-        BigDecimal limit = clerkLimit(sheetId);
+        BigDecimal limit = sheets.settings(sheetId).clerkLimit(sheets.today(sheetId));
         return limit == null || due.compareTo(limit) <= 0 || roleOf(sheetId, user) != Role.CLERK;
     }
 }

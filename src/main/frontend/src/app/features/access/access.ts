@@ -38,6 +38,10 @@ const ROLES = ['clerk', 'steward'];
 const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
 const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
+/** The settings that carry a figure: each is saved from a from-date. */
+const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap'] as const;
+type Dated = (typeof DATED)[number];
+const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '' };
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -50,8 +54,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
 // (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
 // numbered within its period (blank: off), and the cap, the most a person's due-total comes to (blank: no
-// cap). Each input shows the value saved; a save sends only the
-// settings whose input was changed (a Delete or Backspace in a blank input asks to save it blank).
+// cap). The settings that carry a figure are dated: each is saved from its from-date (blank: the sheet's
+// today), and each shows, as does its input, the value in force on the sheet's today. A save sends only
+// the settings whose input (or from-date) was changed (a Delete or Backspace in a blank input asks to
+// save it blank).
 @Component({
   selector: 'app-access',
   template: `
@@ -115,6 +121,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="limitInput.set(value($event)); limitTouched = true; settingsError.set('')"
           (keydown)="limitTouched = limitTouched || clears($event)"
         />
+        <label for="setting-clerk-limit-from">Clerk limit in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-clerk-limit-from"
+          type="date"
+          data-testid="setting-clerk-limit-from"
+          [value]="fromInput().clerkLimit"
+          (input)="setFrom('clerkLimit', value($event)); limitTouched = true; settingsError.set('')"
+        />
         <label for="setting-floor">Floor (blank: 1.00)</label>
         <input
           id="setting-floor"
@@ -124,6 +138,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="floorInput.set(value($event)); floorTouched = true; settingsError.set('')"
           (keydown)="floorTouched = floorTouched || clears($event)"
         />
+        <label for="setting-floor-from">Floor in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-floor-from"
+          type="date"
+          data-testid="setting-floor-from"
+          [value]="fromInput().floor"
+          (input)="setFrom('floor', value($event)); floorTouched = true; settingsError.set('')"
+        />
         <label for="setting-terms">Terms in days (blank: 14)</label>
         <input
           id="setting-terms"
@@ -132,6 +154,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="termsInput()"
           (input)="termsInput.set(value($event)); termsTouched = true; settingsError.set('')"
           (keydown)="termsTouched = termsTouched || clears($event)"
+        />
+        <label for="setting-terms-from">Terms in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-terms-from"
+          type="date"
+          data-testid="setting-terms-from"
+          [value]="fromInput().terms"
+          (input)="setFrom('terms', value($event)); termsTouched = true; settingsError.set('')"
         />
         @for (g of grades; track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} in days (blank: the sheet's terms)</label>
@@ -143,6 +173,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             (input)="setGradeTermsInput(g, value($event)); gradeTermsTouched[g] = true; settingsError.set('')"
             (keydown)="gradeTermsTouched[g] = gradeTermsTouched[g] || clears($event)"
           />
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} in force from (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-terms-' + g + '-from'"
+            type="date"
+            [attr.data-testid]="'setting-terms-' + g + '-from'"
+            [value]="fromInput()[GRADE_TERMS[g]]"
+            (input)="setFrom(GRADE_TERMS[g], value($event)); gradeTermsTouched[g] = true; settingsError.set('')"
+          />
         }
         <label for="setting-late-pct">Late percent per full 30 days overdue (blank: 0.00)</label>
         <input
@@ -152,6 +190,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="latePctInput()"
           (input)="latePctInput.set(value($event)); latePctTouched = true; settingsError.set('')"
           (keydown)="latePctTouched = latePctTouched || clears($event)"
+        />
+        <label for="setting-late-pct-from">Late percent in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-late-pct-from"
+          type="date"
+          data-testid="setting-late-pct-from"
+          [value]="fromInput().latePct"
+          (input)="setFrom('latePct', value($event)); latePctTouched = true; settingsError.set('')"
         />
         <label for="setting-policy-date">Policy date: claims before it round half up, on or after it half to even (blank: the sheet's today)</label>
         <input
@@ -179,6 +225,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="capInput()"
           (input)="capInput.set(value($event)); capTouched = true; settingsError.set('')"
           (keydown)="capTouched = capTouched || clears($event)"
+        />
+        <label for="setting-cap-from">Cap in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-cap-from"
+          type="date"
+          data-testid="setting-cap-from"
+          [value]="fromInput().cap"
+          (input)="setFrom('cap', value($event)); capTouched = true; settingsError.set('')"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
@@ -214,6 +268,9 @@ export class Access {
   protected readonly numberingFromInput = signal('');
   protected readonly cap = signal<string | null>(null);
   protected readonly capInput = signal('');
+  protected readonly GRADE_TERMS = GRADE_TERMS;
+  /** The from-date typed for each dated setting; blank: the sheet's today. */
+  protected readonly fromInput = signal<Record<Dated, string>>(NO_FROM);
   /** Whether each settings input was changed since the settings were last shown. */
   protected limitTouched = false;
   protected floorTouched = false;
@@ -244,6 +301,10 @@ export class Access {
   /** Whether a key asks to clear the input: Delete or Backspace, even on an input already blank. */
   protected clears(e: KeyboardEvent): boolean {
     return e.key === 'Delete' || e.key === 'Backspace';
+  }
+
+  protected setFrom(key: Dated, v: string): void {
+    this.fromInput.update((f) => ({ ...f, [key]: v }));
   }
 
   protected setGradeTermsInput(grade: Grade, v: string): void {
@@ -337,7 +398,15 @@ export class Access {
       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank for no cap.');
       return;
     }
-    const body: Partial<Settings> = {};
+    const froms = this.fromInput();
+    for (const k of DATED) {
+      const from = froms[k].trim();
+      if (from !== '' && !DATE.test(from)) {
+        this.settingsError.set('Enter a from-date, or leave it blank for the sheet\'s today.');
+        return;
+      }
+    }
+    const body: Partial<Record<keyof Settings | `${Dated}From`, string>> = {};
     if (this.limitTouched) body.clerkLimit = clerkLimit;
     if (this.floorTouched) body.floor = floor;
     if (this.termsTouched) body.terms = terms;
@@ -348,6 +417,9 @@ export class Access {
     if (this.policyDateTouched) body.policyDate = policyDate;
     if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
     if (this.capTouched) body.cap = cap;
+    for (const k of DATED) {
+      if (body[k] !== undefined && froms[k].trim() !== '') body[`${k}From`] = froms[k].trim();
+    }
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
@@ -399,5 +471,6 @@ export class Access {
     this.cap.set(settings.cap);
     this.capInput.set(settings.cap ?? '');
     this.capTouched = false;
+    this.fromInput.set(NO_FROM);
   }
 }
