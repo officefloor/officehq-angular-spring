@@ -524,7 +524,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Score</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
             @if (columnShown('statement-count')) {<th scope="col">Statements</th>}@if (columnShown('stated-total')) {<th scope="col">Last stated total</th>}@if (columnShown('statement-date')) {<th scope="col">Last statement</th>}
             @if (columnShown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columnShown('hold')) {<th scope="col">On hold</th>}
             @if (columnShown('overdue-count')) {<th scope="col">Overdue</th>}@if (columnShown('overdue-total')) {<th scope="col">Overdue total</th>}
@@ -572,6 +572,7 @@ function csvField(value: string): string {
               }
               <td data-testid="person-settled-total">{{ p.settledTotal | figure }}</td>
               <td data-testid="person-open-total">{{ p.openTotal | figure }}</td>
+              <td data-testid="person-score">{{ p.score }}</td>
               @if (columnShown('excess')) {
                 <td data-testid="person-excess">{{ p.excess | figure }}</td>
               }
@@ -990,12 +991,13 @@ export class People {
   /**
    * The ids of the people a restricted user may see listed: the person with their name and the leads and members of
    * the crews that person leads or belongs to; none without such a person. Null (everyone) for any other role.
+   * People this screen added since the sheet was last read stay listed until it is read again.
    */
   private readonly visible = computed(() => {
     if (this.role() !== 'restricted') return null;
     const me = this.me();
-    if (me === null) return new Set<number>();
-    const ids = new Set<number>([me.id]);
+    if (me === null) return new Set<number>(this.addedHere());
+    const ids = new Set<number>([me.id, ...this.addedHere()]);
     for (const c of this.crews()) {
       const crew = [...(c.lead ? [c.lead] : []), ...c.members];
       if (crew.some((w) => w.personId === me.id)) crew.forEach((w) => ids.add(w.personId));
@@ -1065,6 +1067,8 @@ export class People {
   protected readonly overdueCount = computed(() => this.people().reduce((sum, p) => sum + p.overdueCount, 0));
   /** The role the signed-in user acts in on the sheet (as of the as-of date while one is set); null until read. */
   private readonly role = signal<string | null>(null);
+  /** The people this screen added since the sheet was last read. */
+  private readonly addedHere = signal<ReadonlySet<number>>(new Set());
   /**
    * The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count, counted;
    * null (the cells empty) when the signed-in user is not a steward.
@@ -1125,6 +1129,7 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.role.set(null);
+      this.addedHere.set(new Set());
       this.descendants.set([]);
       this.watched.set(new Set());
       this.personError.set(null);
@@ -2297,6 +2302,7 @@ export class People {
 
   /** Show a person as saved: in their place, or added at the end when new. */
   protected replace(saved: Person): void {
+    if (!this.people().some((p) => p.id === saved.id)) this.addedHere.update((ids) => new Set(ids).add(saved.id));
     this.people.update((ps) =>
       ps.some((p) => p.id === saved.id) ? ps.map((p) => (p.id === saved.id ? saved : p)) : [...ps, saved],
     );
@@ -2345,6 +2351,7 @@ export class People {
     ]);
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.people.set(people);
+      this.addedHere.set(new Set());
       this.role.set(role.role);
       this.watched.set(new Set(watched));
       if (this.columnSaves === 0) this.hidden.set(new Set(hidden));

@@ -192,6 +192,8 @@ export interface PersonWithClaims {
    *  and from their OPEN and PENDING claims that count; a claim with no figure is skipped. */
   settledTotal: string;
   openTotal: string;
+  /** Their settled figures divided by 100, minus 5 for every overdue claim that counts, rounded half to even. */
+  score: string;
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
   /** Whether their name or an alias is another's on a sheet of the sheet's tree; every edit is refused until it is not. */

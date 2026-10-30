@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -279,6 +280,16 @@ public final class Dues {
      */
     public static BigDecimal openTotal(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
         return part(grades, claims, rates, holds, false);
+    }
+
+    /**
+     * A person's score: their {@link #settledTotal settled figures} divided by 100, minus 5 for every
+     * {@link #overdue overdue claim that counts}, rounded half to even to a whole number.
+     */
+    public static BigDecimal score(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
+        return settledTotal(grades, claims, rates, holds).movePointLeft(2)
+                .subtract(BigDecimal.valueOf(5L * overdue(claims, grades, rates, holds).size()))
+                .setScale(0, RoundingMode.HALF_EVEN);
     }
 
     private static BigDecimal part(Grades grades, List<Claim> claims, RateTable rates, Holds holds, boolean settled) {

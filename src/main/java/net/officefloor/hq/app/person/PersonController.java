@@ -125,7 +125,8 @@ public class PersonController {
      * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
      * transferred from (null: none), their past retirements, earliest first, their snapshot lines, oldest first, and
      * their statement lines: one per statement still standing, in the order taken, and the reason of their flag
-     * while it is in force on the sheet's today (null otherwise, see {@link Person#flagOn}), and their approver (null: none).
+     * while it is in force on the sheet's today (null otherwise, see {@link Person#flagOn}), and their approver (null: none),
+     * and their score (see {@link Dues#score}), a whole number.
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<String> tags,
@@ -136,7 +137,7 @@ public class PersonController {
             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
             List<SnapshotView> snapshots, List<StatementLineView> statementLines, String flag,
-            String approver) {
+            String approver, String score) {
 
         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -166,7 +167,8 @@ public class PersonController {
                     statements.lines().stream()
                             .map(l -> new StatementLineView(l.date(), l.dueTotal() == null ? "n/a" : money(l.dueTotal())))
                             .toList(),
-                    person.flagOn(rates.today()), person.getApprover());
+                    person.flagOn(rates.today()), person.getApprover(),
+                    Dues.score(grade, claims, rates, held).toPlainString());
         }
     }
 
