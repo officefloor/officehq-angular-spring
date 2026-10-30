@@ -1,0 +1,71 @@
+{
+  "checkpoint": 96,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp96_holidays-redate",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    83,
+    94
+  ],
+  "replaced_tests": [
+    "cp83_holidays.spec.ts::holidays",
+    "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 1",
+    "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 3"
+  ],
+  "request": {
+    "spec": "Adding a holiday now re-fixes the due-by of every claim on the sheet that is not SETTLED or VOID\nand whose due-by is on or after the new holiday: each is worked out again from the claim's date,\nwith the terms it was fixed with, over the holidays now on the sheet. A claim whose overdue state\nor late charge moves as a result moves figures like any other change, so HOLIDAY_ADDED is\nfollowed by the rollup lines when any figure moved.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdding a holiday now re-fixes the due-by of every claim on the sheet that is not SETTLED or VOID\nand whose due-by is on or after the new holiday: each is worked out again from the claim's date,\nwith the terms it was fixed with, over the holidays now on the sheet. A claim whose overdue state\nor late charge moves as a result moves figures like any other change, so HOLIDAY_ADDED is\nfollowed by the rollup lines when any figure moved.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "eb12e1640f4a88e003931c83ed7113cbd4a482b5",
+  "reset_sha": "",
+  "preagent_sha": "ac519994e06fce35fa7020fec6e04bcd180cc688",
+  "prev_sha": "ac519994e06fce35fa7020fec6e04bcd180cc688",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7791810000000001,
+    "input_tokens": 40,
+    "output_tokens": 9256,
+    "cache_read_tokens": 899305,
+    "cache_creation_tokens": 51755,
+    "num_turns": 21,
+    "duration_ms": 853599,
+    "duration_api_ms": 129565,
+    "model": "claude-opus-5-5",
+    "session_id": "3fe023a8-b4b4-4145-9da3-97cdb1b0ef9c",
+    "stop_reason": "success",
+    "result_text": "Adding a holiday now re-fixes the due-by of the open claims it affects, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works:** when a holiday is added, every claim on the sheet that isn't SETTLED or VOID and is due on or after that date gets its due-by worked out again from its own date and original terms, counting over all the sheet's holidays. `HOLIDAY_ADDED` is written first. If any figure moved, the usual rollup lines follow it.\n\n**What changed:**\n- **Stored terms:** a claim didn't keep the terms its due-by was fixed with, so I added a `terms` column to `Claim`. Claims added or split now record their terms in `ClaimService`.\n- **Existing claims:** a new migration, `V59__claim_terms`, fills in the column for claims already on a sheet. It counts the business days from each claim's date to its due-by, over the sheet's current holidays. Before this change a holiday added later never moved a due-by, so that count gives back the original terms. The one exception is a sheet that had a holiday added after some of its claims were fixed. Those claims get one term too few, so the next holiday added would set their due-by a business day early.\n- **The re-fix:** `HolidayService.add` takes the figures before the change, saves the holiday, re-fixes the affected claims, then writes `HOLIDAY_ADDED` and the rollup lines.\n\nThe request didn't mention closed periods, so a re-fixed due-by may now land in, or move out of, a closed period without any check.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7791810000000001,
+        "num_turns": 21,
+        "duration_ms": 853599,
+        "duration_api_ms": 129565,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp96.agent.jsonl",
+  "agent_diff_file": "cp96.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

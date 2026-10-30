@@ -1,0 +1,212 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 67ca64ee..e62331df 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -95,11 +95,16 @@ public class Claim {
+ 
+     /**
+      * The date the claim is due by, fixed when it was added: the terms-th business day after its date, by the
+-     * terms then of its person's grade on its date and the holidays on the sheet then.
++     * terms then of its person's grade on its date and the holidays on the sheet then. A holiday added later
++     * fixes it again over the holidays then, with the same terms (see {@link #terms}).
+      */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
++    /** The terms (in business days) the claim's due-by was fixed with. */
++    @Column(name = "terms", nullable = false)
++    private int terms;
++
+     /** The date the claim is deferred until; null when it was never deferred. See {@link Dues#deferred}. */
+     @Column(name = "deferred_until")
+     private LocalDate deferredUntil;
+@@ -211,6 +216,14 @@ public class Claim {
+         this.dueBy = dueBy;
+     }
+ 
++    public int getTerms() {
++        return terms;
++    }
++
++    public void setTerms(int terms) {
++        this.terms = terms;
++    }
++
+     public String getLockedBy() {
+         return lockedBy;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 814f596d..b0909d19 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -132,8 +132,8 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         LocalDate on = date != null ? date : sheets.claimDate(sheetId);
+         sheets.load(sheetId, user);
+-        LocalDate dueBy = holidays.dueBy(sheetId, on,
+-                sheets.settings(sheetId).termsFor(person.getTerms(), person.gradeOn(on), on));
++        int terms = sheets.settings(sheetId).termsFor(person.getTerms(), person.gradeOn(on), on);
++        LocalDate dueBy = holidays.dueBy(sheetId, on, terms);
+         periods.requireOpen(sheetId, dueBy);
+         requireNotRetired(person, on);
+         LocalDate correctsDate = requireCorrects(sheetId, personId, amount, corrects);
+@@ -142,6 +142,7 @@ public class ClaimService {
+         claim.setCorrectsDate(correctsDate);
+         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy).isPresent());
+         claim.setDueBy(dueBy);
++        claim.setTerms(terms);
+         claim.setRef(reference);
+         claim.setTags(tagged);
+         log(sheetId, user, claim, person);
+@@ -459,8 +460,9 @@ public class ClaimService {
+         claim.unbind();
+         Claim part = new Claim(sheetId, owner.getId(), amount, claim.getDate(), claim.getNote(), null);
+         sheets.load(sheetId, user);
+-        part.setDueBy(holidays.dueBy(sheetId, claim.getDate(),
+-                sheets.settings(sheetId).termsFor(owner.getTerms(), owner.gradeOn(claim.getDate()), claim.getDate())));
++        int terms = sheets.settings(sheetId).termsFor(owner.getTerms(), owner.gradeOn(claim.getDate()), claim.getDate());
++        part.setDueBy(holidays.dueBy(sheetId, claim.getDate(), terms));
++        part.setTerms(terms);
+         part.setSplitFrom(claim.getShownNumber());
+         part.setTags(claim.getTags());
+         part.setLateEntry(claim.isLateEntry());
+diff --git a/src/main/java/net/officefloor/hq/app/claim/V59__claim_terms.java b/src/main/java/net/officefloor/hq/app/claim/V59__claim_terms.java
+new file mode 100644
+index 00000000..33b455e9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/V59__claim_terms.java
+@@ -0,0 +1,59 @@
++package net.officefloor.hq.app.claim;
++
++import java.sql.Connection;
++import java.sql.PreparedStatement;
++import java.sql.ResultSet;
++import java.sql.SQLException;
++import java.sql.Statement;
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++import org.flywaydb.core.api.migration.BaseJavaMigration;
++import org.flywaydb.core.api.migration.Context;
++import org.springframework.stereotype.Component;
++
++/**
++ * Each claim keeps the terms its due-by was fixed with, so a holiday added later can fix it again. The terms of
++ * a claim already on a sheet are read back from its due-by: the business days after its date up to it, over
++ * the holidays on its sheet now.
++ */
++@Component
++public class V59__claim_terms extends BaseJavaMigration {
++
++    @Override
++    public void migrate(Context context) throws SQLException {
++        Connection db = context.getConnection();
++        try (Statement alter = db.createStatement()) {
++            alter.execute("ALTER TABLE claim ADD COLUMN terms INT NOT NULL DEFAULT 0");
++        }
++        Map<String, Set<LocalDate>> holidays = new HashMap<>();
++        try (PreparedStatement select = db.prepareStatement("SELECT sheet_id, holiday_date FROM holiday");
++                ResultSet rows = select.executeQuery()) {
++            while (rows.next()) {
++                holidays.computeIfAbsent(rows.getString(1), k -> new HashSet<>()).add(rows.getDate(2).toLocalDate());
++            }
++        }
++        try (PreparedStatement select = db.prepareStatement("SELECT id, sheet_id, claim_date, due_by FROM claim");
++                PreparedStatement update = db.prepareStatement("UPDATE claim SET terms = ? WHERE id = ?");
++                ResultSet rows = select.executeQuery()) {
++            while (rows.next()) {
++                Set<LocalDate> days = holidays.getOrDefault(rows.getString(2), Set.of());
++                LocalDate dueBy = rows.getDate(4).toLocalDate();
++                int terms = 0;
++                for (LocalDate day = rows.getDate(3).toLocalDate().plusDays(1); !day.isAfter(dueBy);
++                        day = day.plusDays(1)) {
++                    DayOfWeek dow = day.getDayOfWeek();
++                    if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY && !days.contains(day)) {
++                        terms++;
++                    }
++                }
++                update.setInt(1, terms);
++                update.setLong(2, rows.getLong(1));
++                update.executeUpdate();
++            }
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index f494929b..429d4439 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -5,6 +5,10 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.stream.Collectors;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.context.ApplicationEventPublisher;
+@@ -14,7 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
+ /**
+  * The holidays on a sheet, earliest first; no date is on it twice. A claim's due-by, when it is fixed as the
+  * claim is added, is the terms-th business day after its date, skipping weekends and the holidays on the sheet
+- * then (see {@link #dueBy}); a holiday added later leaves the due-by dates already fixed as they are.
++ * then (see {@link #dueBy}). A holiday added later fixes again the due-by of every claim on the sheet that is
++ * not SETTLED or VOID and is due on or after it, from the claim's date with the terms it was fixed with.
+  */
+ @Service
+ public class HolidayService {
+@@ -22,13 +27,17 @@ public class HolidayService {
+     private final HolidayRepository holidays;
+     private final SheetService sheets;
+     private final SheetRepository sheetRows;
++    private final ClaimRepository claims;
++    private final Rollup rollup;
+     private final ApplicationEventPublisher events;
+ 
+     public HolidayService(HolidayRepository holidays, SheetService sheets, SheetRepository sheetRows,
+-            ApplicationEventPublisher events) {
++            ClaimRepository claims, Rollup rollup, ApplicationEventPublisher events) {
+         this.holidays = holidays;
+         this.sheets = sheets;
+         this.sheetRows = sheetRows;
++        this.claims = claims;
++        this.rollup = rollup;
+         this.events = events;
+     }
+ 
+@@ -37,7 +46,10 @@ public class HolidayService {
+         return holidays.findBySheetIdOrderByDayAsc(sheetId);
+     }
+ 
+-    /** Add a holiday; refused when the date is already on the sheet's list. */
++    /**
++     * Add a holiday, fixing again the due-by of each claim not SETTLED or VOID due on or after it; refused when
++     * the date is already on the sheet's list.
++     */
+     @Transactional
+     public Holiday add(String sheetId, String user, LocalDate date) {
+         sheets.load(sheetId, user);
+@@ -45,8 +57,18 @@ public class HolidayService {
+         if (holidays.existsBySheetIdAndDay(sheetId, date)) {
+             throw new HolidayRefused("That date is already a holiday on this sheet.");
+         }
++        Rollup.Figures before = rollup.figures(sheetId);
+         Holiday saved = holidays.saveAndFlush(new Holiday(sheetId, date));
++        Set<LocalDate> days = list(sheetId).stream().map(Holiday::getDay).collect(Collectors.toSet());
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (claim.getStatus() != ClaimStatus.SETTLED && claim.getStatus() != ClaimStatus.VOID
++                    && !claim.getDueBy().isBefore(date)) {
++                claim.setDueBy(businessDaysAfter(claim.getDate(), claim.getTerms(), days));
++            }
++        }
++        claims.flush();
+         events.publishEvent(new HolidayAdded(sheetId, user, date));
++        rollup.changed(sheetId, user, before);
+         return saved;
+     }
+ 
