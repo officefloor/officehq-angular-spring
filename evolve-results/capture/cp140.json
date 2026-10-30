@@ -1,0 +1,72 @@
+{
+  "checkpoint": 140,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp140_remainder-to-smallest",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "The remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e38ceb7c1969c11e2e4dd346f200c26269b4561b",
+  "reset_sha": "",
+  "preagent_sha": "e897499665cf55d3ecd89c18a63807e385102946",
+  "prev_sha": "e897499665cf55d3ecd89c18a63807e385102946",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.28047160000000004,
+    "input_tokens": 14,
+    "output_tokens": 3035,
+    "cache_read_tokens": 162258,
+    "cache_creation_tokens": 23408,
+    "num_turns": 7,
+    "duration_ms": 141183,
+    "duration_api_ms": 30001,
+    "model": "claude-opus-5-5",
+    "session_id": "255a1d52-6d6a-43d0-9265-bbf4c92977dd",
+    "stop_reason": "success",
+    "result_text": "A pool's leftover cent (the remainder) now goes to the member with the smallest non-zero cut. `bin/e2e` passes all 4 acceptance tests.\n\nThe change is all in `cut()` in `src/main/java/net/officefloor/hq/app/pool/Pools.java`. The front end only shows the cuts the server sends, so it needed no change, and nothing changed in stored data or audit records.\n\nHow it now works:\n- **Who gets the remainder:** the member whose cut, before the remainder is added, is the smallest non-zero one. On a tie it goes to the one added latest. Previously it went to the member with the largest share, the earliest added on a tie.\n- **Who is skipped:** retired members and anyone with a hold covering the sheet's today have no cut, so they never get the remainder.\n- **When every cut is zero:** it goes to the last member who has a cut and a non-zero share. If all their shares are zero too, it goes to the last member with a cut.\n\nThe request didn't spell out the all-zero case exactly. I took \"a member with a share\" to mean a member who has a cut and a non-zero share. The tests don't reach that case, so it isn't checked.\n\nI also updated the class and method comments to describe the new rule.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.28047160000000004,
+        "num_turns": 7,
+        "duration_ms": 141183,
+        "duration_api_ms": 30001,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp140.agent.jsonl",
+  "agent_diff_file": "cp140.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
