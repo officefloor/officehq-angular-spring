@@ -1,0 +1,39 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 683d6702d..1206334b7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -56,6 +56,11 @@ function overdueTotalOf(people: Person[]): number {
+   return trimmedSum(people.map((p) => cents(p.overdueTotal)));
+ }
+ 
++/** A name as names are compared: trimmed, in lower case. */
++function nameKey(name: string): string {
++  return name.trim().toLowerCase();
++}
++
+ /** A sheet's figures that are consolidated over it and its descendants. */
+ interface SheetFigures {
+   people: number;
+@@ -92,6 +97,8 @@ function csvField(value: string): string {
+       }
+       <p>Due total <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
++      <p>My due total <strong data-testid="my-due-total">{{ me() === null ? '' : (me()!.dueTotal ?? 'n/a') }}</strong></p>
++      <p>My overdue total <strong data-testid="my-overdue-total">{{ me()?.overdueTotal ?? '' }}</strong></p>
+     </header>
+     <section aria-label="Consolidated figures">
+       <h2>Consolidated over this sheet and its descendants</h2>
+@@ -697,6 +704,13 @@ export class People {
+ 
+   /** Everyone's overdue claims counted up. */
+   protected readonly overdueCount = computed(() => this.people().reduce((sum, p) => sum + p.overdueCount, 0));
++  /** The person on the sheet with the signed-in user's name or alias, as names are compared; null when none. */
++  protected readonly me = computed(() => {
++    const user = this.session.user();
++    if (user === null) return null;
++    const key = nameKey(user);
++    return this.people().find((p) => [p.name, ...(p.aliases ?? [])].some((n) => nameKey(n) === key)) ?? null;
++  });
+   /** Everyone's overdue-total added up, trimmed (see {@link trimmedSum}). */
+   protected readonly overdueTotal = computed(() => (overdueTotalOf(this.people()) / 100).toFixed(2));
+   /** The figures of each of the sheet's descendants (its children, theirs, and so on), as each shows them. */
