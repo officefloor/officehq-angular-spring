@@ -47,6 +47,8 @@ export interface Claim {
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null when no editor holds it. */
   lockedBy: string | null;
+  /** Whether the claim was added while its period was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
@@ -148,6 +150,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+          <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">
             Add proof<span class="visually-hidden"> to claim {{ c.amount }} {{ c.date }}</span>
           </button>

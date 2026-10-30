@@ -30,17 +30,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class PeriodController {
 
     /**
-     * A period as shown; once closed, with the due-total fixed then (null while open) and per person id the
-     * person's due-total fixed then (empty while open).
+     * A period as shown, whether it is closed or soft-closed; once either, with the due-total fixed then (null
+     * while open) and per person id the person's due-total fixed then (empty while open).
      */
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal,
-            Map<Long, String> personTotals) {
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+            String closedTotal, Map<Long, String> personTotals) {
 
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, t) -> personTotals.put(id, t.setScale(2, RoundingMode.HALF_UP).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
-                    period.isClosed(), period.getClosedTotal() == null ? null
+                    period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null
                             : period.getClosedTotal().setScale(2, RoundingMode.HALF_UP).toPlainString(),
                     personTotals);
         }
@@ -84,6 +84,12 @@ public class PeriodController {
     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
             @RequestHeader("X-User") @NotBlank String user) {
         return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
+    }
+
+    @PostMapping("/{periodId}/soft-close")
+    public PeriodView softClose(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        return PeriodView.of(service.softClose(sheetId.trim(), user.trim(), periodId));
     }
 
     @PostMapping("/{periodId}/reopen")

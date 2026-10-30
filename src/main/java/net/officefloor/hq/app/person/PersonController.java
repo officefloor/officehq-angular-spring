@@ -50,12 +50,13 @@ public class PersonController {
      * due by (fixed when it was added: its date plus its person's own terms, else the terms then of their grade on its date, else the sheet's), whether it is overdue (see {@link Dues#overdue}) and, for a
      * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
      * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}),
-     * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise).
+     * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
+     * and whether it was added while its period was soft-closed.
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
-            String lockedBy) {
+            String lockedBy, boolean lateEntry) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
@@ -64,7 +65,7 @@ public class PersonController {
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
                     Dues.deferred(claim, rates.today()),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.getLockedBy());
+                    claim.getLockedBy(), claim.isLateEntry());
         }
     }
 

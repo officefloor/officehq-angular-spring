@@ -4,7 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * A claim was added ({@code CLAIM_ADDED}), edited ({@code CLAIM_EDITED}), opened
+ * A claim was added ({@code CLAIM_ADDED}), added while its period was soft-closed ({@code LATE_ENTRY}, after its
+ * {@code CLAIM_ADDED}), edited ({@code CLAIM_EDITED}), opened
  * ({@code CLAIM_OPENED}), settled ({@code CLAIM_SETTLED}), left pending ({@code CLAIM_PENDING}), approved
  * ({@code CLAIM_APPROVED}), rejected ({@code CLAIM_REJECTED}) or voided ({@code CLAIM_VOIDED}) on a sheet.
  * The number is the claim's number, or null when it has none. The due is the due fixed by settling or

@@ -183,7 +183,7 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(PeriodClosed e) {
-        change(e.sheetId(), e.user(), "PERIOD_CLOSED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), (e.soft() ? "PERIOD_SOFT_CLOSED" : "PERIOD_CLOSED") + " sheet=" + e.sheetId() + " by=" + e.user()
                 + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.auto() ? " auto=yes" : ""));
     }

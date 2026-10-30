@@ -11,7 +11,9 @@ export interface Period {
   from: string;
   to: string;
   closed: boolean;
-  /** The due-total fixed when the period was closed; null while it is open. */
+  /** Whether the period is soft-closed: its figures are fixed, but claims dated inside it can still change. */
+  softClosed: boolean;
+  /** The due-total fixed when the period was closed or soft-closed; null while it is open. */
   closedTotal: string | null;
   /** Per person id, the person's due-total fixed when the period was closed; empty while it is open. */
   personTotals: Record<number, string>;
@@ -22,6 +24,11 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The period whose dates contain the date, or undefined when none does. */
 export function periodOf(periods: Period[], date: string): Period | undefined {
   return periods.find((p) => p.from <= date && date <= p.to);
+}
+
+/** Whether the period's figures are fixed: it is closed or soft-closed. */
+export function isFixed(p: Period): boolean {
+  return p.closed || p.softClosed;
 }
 
 /** Cents in an amount shown with two decimals ("12.50" is 1250). */
@@ -38,7 +45,7 @@ export function statusAsOf(c: Claim, day: string): ClaimStatus | undefined {
 }
 
 /** Per period id, the person's due-total for it: the dues as shown now of their claims dated in it that counted
- * (OPEN, PENDING or SETTLED) at the end of its last day, added up, or once closed the figure fixed then (0.00
+ * (OPEN, PENDING or SETTLED) at the end of its last day, added up, or once closed or soft-closed the figure fixed then (0.00
  * for a person added later); an unbound OPEN claim dated within a hold of its person counts in none, nor does
  * a deferred claim. */
 export function personPeriodTotals(periods: Period[], person: PersonWithClaims): Record<number, string> {
@@ -47,13 +54,13 @@ export function personPeriodTotals(periods: Period[], person: PersonWithClaims):
   for (const c of person.claims) {
     if (c.due === null || heldOut(c, person.holds) || c.deferred) continue;
     const period = periodOf(periods, c.date);
-    if (!period || period.closed) continue;
+    if (!period || isFixed(period)) continue;
     const status = statusAsOf(c, period.to);
     if (status === 'OPEN' || status === 'PENDING' || status === 'SETTLED') totals[period.id] += cents(c.due);
   }
   const shown: Record<number, string> = {};
   for (const p of periods) {
-    shown[p.id] = p.closed ? (p.personTotals?.[person.id] ?? '0.00') : (totals[p.id] / 100).toFixed(2);
+    shown[p.id] = isFixed(p) ? (p.personTotals?.[person.id] ?? '0.00') : (totals[p.id] / 100).toFixed(2);
   }
   return shown;
 }
@@ -74,7 +81,7 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
 // The sheet's periods, earliest first, each with its due-total: the people's due-totals for it added up,
 // each the dues of their claims whose date falls in it that counted (OPEN, PENDING and SETTLED) at the end
 // of its last day, see personPeriodTotals, or once
-// closed the figure fixed then; and the form that
+// closed or soft-closed the figure fixed then; and the form that
 // adds one. No two periods share a name or a date.
 @Component({
   selector: 'app-periods',
@@ -92,9 +99,10 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals()[p.id] }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" [attr.aria-label]="'Close period ' + p.name" (click)="act(p, 'close')">Close</button>
+                <button type="button" data-testid="period-soft-close" [attr.aria-label]="'Soft-close period ' + p.name" (click)="act(p, 'soft-close')">Soft-close</button>
                 <button type="button" data-testid="period-reopen" [attr.aria-label]="'Reopen period ' + p.name" (click)="act(p, 'reopen')">Reopen</button>
                 @if (rowError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ rowError()?.message }}</p>
@@ -291,10 +299,11 @@ export class Periods {
   }
 
   /**
-   * Close a period, fixing its due-total, or reopen a closed one (a steward only), making it live again;
+   * Close a period, fixing its due-total, soft-close it, fixing its figures while its claims can still change,
+   * or reopen a closed or soft-closed one (a steward only), making it live again;
    * a refusal is shown on its row.
    */
-  protected async act(p: Period, action: 'close' | 'reopen'): Promise<void> {
+  protected async act(p: Period, action: 'close' | 'soft-close' | 'reopen'): Promise<void> {
     if (this.busy) return;
     this.rowError.set(null);
     const sheet = this.session.sheet();
@@ -310,7 +319,7 @@ export class Periods {
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
       const message = err instanceof HttpErrorResponse && err.status === 409
-        ? (err.error?.message ?? (action === 'close' ? 'The period is already closed.' : 'The period cannot be reopened.'))
+        ? (err.error?.message ?? (action === 'reopen' ? 'The period cannot be reopened.' : 'The period is already closed.'))
         : `Could not ${action} the period.`;
       this.rowError.set({ id: p.id, message });
     } finally {

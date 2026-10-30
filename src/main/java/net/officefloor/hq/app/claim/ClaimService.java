@@ -104,11 +104,15 @@ public class ClaimService {
         Rollup.Figures before = rollup.figures(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, on, note == null ? "" : note, corrects);
         claim.setCorrectsDate(correctsDate);
+        claim.setLateEntry(periods.softClosedOn(sheetId, on).isPresent());
         sheets.load(sheetId, user);
         claim.setDueBy(on.plusDays(sheets.settings(sheetId).termsFor(person.getTerms(), person.gradeOn(on), on)));
         log(sheetId, user, claim, person);
         claims.saveAndFlush(claim);
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
+        if (claim.isLateEntry()) {
+            events.publishEvent(new ClaimChanged("LATE_ENTRY", sheetId, user, person.getName(), amount, on, null, null));
+        }
         rollup.changed(sheetId, user, before);
         return personId;
     }
