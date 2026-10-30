@@ -277,6 +277,7 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
           (input)="rolloverYear.set(value($event)); rolloverError.set('')"
         />
         <button type="submit" data-testid="rollover">Roll over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo last rollover</button>
         @if (rolloverMade() !== null) {
           <span>Made <strong data-testid="rollover-made">{{ rolloverMade() }}</strong></span>
         }
@@ -509,6 +510,32 @@ export class Periods {
       if (this.session.sheet() !== sheet) return;
       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
       this.rolloverError.set(refusal ?? 'Could not roll the year over.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Undo the last rollover (only the steward who made it, on the same sheet-today): its periods are removed and
+   * the opening balances it set taken back.
+   */
+  protected async undoRollover(): Promise<void> {
+    if (this.busy) return;
+    this.rolloverError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/rollover/undo`, {}, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.periods.set(result);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.rolloverError.set(refusal ?? 'Could not undo the rollover.');
     } finally {
       this.busy = false;
     }

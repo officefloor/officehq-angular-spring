@@ -131,6 +131,15 @@ public class PeriodController {
         return new RolloverResult(made, views(sheet, service.list(sheet)));
     }
 
+    /** Undo the last rollover: the sheet's periods as they now stand. */
+    @PostMapping("/rollover/undo")
+    public List<PeriodView> undoRollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        service.undoRollover(sheet, user.trim());
+        return views(sheet, service.list(sheet));
+    }
+
     /** A calendar year: its four quarterly periods. */
     public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
     }

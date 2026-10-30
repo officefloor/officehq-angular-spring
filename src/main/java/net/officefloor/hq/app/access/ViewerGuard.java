@@ -13,7 +13,8 @@ import org.springframework.web.servlet.HandlerMapping;
 /**
  * Refuses every change a viewer asks for on a sheet, and every change anyone asks for on an archived sheet
  * (403, writing nothing). Reading, and loading a sheet, go through; so do the bulk actions, which answer
- * with nothing done and every selected item refused, and a viewer's plan generate, which makes nothing.
+ * with nothing done and every selected item refused, and a viewer's plan generate and monthly period generate,
+ * which make nothing.
  */
 @Component
 public class ViewerGuard implements HandlerInterceptor {
@@ -50,7 +51,8 @@ public class ViewerGuard implements HandlerInterceptor {
         }
         String refusal = access.isArchived(id.trim()) ? ARCHIVED
                 : access.isViewer(id.trim(), user.trim()) ? REFUSAL : null;
-        if (refusal == null || (refusal == REFUSAL && path.endsWith("/plans/generate"))) {
+        if (refusal == null || (refusal == REFUSAL
+                && (path.endsWith("/plans/generate") || path.endsWith("/periods/generate")))) {
             return true;
         }
         response.setStatus(HttpStatus.FORBIDDEN.value());

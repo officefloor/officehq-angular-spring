@@ -50,11 +50,13 @@ public class PeriodService {
     private final AccessService access;
     private final ApplicationEventPublisher events;
     private final Pools pools;
+    private final LastRolloverRepository lastRollovers;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetRows,
             ClaimRepository claims, PersonRepository people, RateService rates, AccessService access,
-            ApplicationEventPublisher events, @Lazy Pools pools) {
+            ApplicationEventPublisher events, @Lazy Pools pools, LastRolloverRepository lastRollovers) {
         this.pools = pools;
+        this.lastRollovers = lastRollovers;
         this.periods = periods;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -101,11 +103,14 @@ public class PeriodService {
      * Generate one period per calendar month from the from-date's month to the to-date's month, each running
      * from the first to the last day of its month and named yyyy-mm. A month whose name is already a period on
      * the sheet, or whose days overlap one, is left out; the others are still made. Refused when the to-date is
-     * before the from-date. Returns the periods made, earliest first.
+     * before the from-date. A viewer makes none. Returns the periods made, earliest first.
      */
     @Transactional
     public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
         sheets.load(sheetId, user);
+        if (access.isViewer(sheetId, user)) {
+            return List.of();
+        }
         sheetRows.lockById(sheetId);
         if (to.isBefore(from)) {
             throw new PeriodRefused("The to-date is before the from-date.");
@@ -182,8 +187,10 @@ public class PeriodService {
      * at the end of the old year's last period to their carried figure for the new year's first period, as an
      * opening balance. The open figure is the due of their claims that count (see {@link Dues#countsAsOf}) due by a
      * date inside a period of the old year and still OPEN or PENDING at the end of that last period, by the status
-     * log; a person whose figure is 0.00 gets none. Refused unless the user is a steward, and when the old year has
-     * no periods on the sheet. Returns the periods made, earliest first.
+     * log; a person whose figure is 0.00 gets none, and none are set when the new year's first period was already on
+     * the sheet (the year was rolled over before). Refused unless the user is a steward, and when the old year has
+     * no periods on the sheet. Kept as the sheet's last rollover, so it can be undone (see {@link #undoRollover}).
+     * Returns the periods made, earliest first.
      */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
@@ -206,17 +213,64 @@ public class PeriodService {
         LocalDate newStart = YearMonth.of(year + 1, startMonth).atDay(1);
         Period first = list(sheetId).stream().filter(p -> p.contains(newStart)).findFirst()
                 .orElseThrow(() -> new PeriodRefused("The new fiscal year's first period overlaps another period."));
+        Map<Long, BigDecimal> set = new HashMap<>();
+        boolean madeFirst = made.contains(first);
         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> {
             BigDecimal amount = open.get(person.getId());
-            if (amount == null || amount.signum() == 0) {
+            if (!madeFirst || amount == null || amount.signum() == 0) {
                 return;
             }
             first.addOpening(person.getId(), amount);
+            set.put(person.getId(), amount);
             events.publishEvent(new OpeningSet(sheetId, user, person.getName(), first.getName(), amount));
         });
         periods.flush();
+        lastRollovers.findById(sheetId).ifPresent(last -> {
+            lastRollovers.delete(last);
+            lastRollovers.flush();
+        });
+        lastRollovers.saveAndFlush(new LastRollover(sheetId, user, sheets.today(sheetId), fy, first.getId(),
+                made.stream().map(Period::getId).collect(Collectors.toSet()), set));
         events.publishEvent(new RolledOver(sheetId, user, fy, made.size()));
         return made;
+    }
+
+    /**
+     * Undo the sheet's last rollover: remove the periods it generated and take back the opening balances it set.
+     * Refused when there is none to undo, unless the user is the steward who made it, on the same sheet-today it
+     * was made, and when a claim is due by a date inside one of the periods it generated, or one of them is closed
+     * or soft-closed.
+     */
+    @Transactional
+    public void undoRollover(String sheetId, String user) {
+        sheets.load(sheetId, user);
+        sheetRows.lockById(sheetId);
+        LastRollover last = lastRollovers.findById(sheetId)
+                .orElseThrow(() -> new PeriodRefused("There is no rollover to undo."));
+        if (!last.getMadeBy().equals(user) || access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodRefused("Only the steward who rolled the year over may undo it.");
+        }
+        if (!last.getMadeOn().equals(sheets.today(sheetId))) {
+            throw new PeriodRefused("A rollover can only be undone on the day it was made.");
+        }
+        List<Period> made = list(sheetId).stream().filter(p -> last.getPeriodIds().contains(p.getId())).toList();
+        if (made.stream().anyMatch(Period::isFixed)) {
+            throw new PeriodRefused("A period the rollover made is closed.");
+        }
+        if (claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .anyMatch(c -> made.stream().anyMatch(p -> p.contains(c.getDueBy())))) {
+            throw new PeriodRefused("A claim belongs to a period the rollover made.");
+        }
+        if (last.getFirstPeriodId() != null) {
+            periods.findByIdAndSheetId(last.getFirstPeriodId(), sheetId)
+                    .ifPresent(first -> last.getOpenings().forEach(first::takeBackOpening));
+        }
+        periods.flush();
+        periods.deleteAll(made);
+        periods.flush();
+        lastRollovers.delete(last);
+        lastRollovers.flush();
+        events.publishEvent(new RolloverUndone(sheetId, user, last.getFy()));
     }
 
     /**

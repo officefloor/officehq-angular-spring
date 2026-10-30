@@ -183,6 +183,16 @@ public class Period {
         personOpenings.merge(personId, amount, BigDecimal::add);
     }
 
+    /** Take an opening balance back off the person's carried figure for the period; none is left at 0.00. */
+    public void takeBackOpening(Long personId, BigDecimal amount) {
+        BigDecimal left = personOpenings.getOrDefault(personId, BigDecimal.ZERO).subtract(amount);
+        if (left.signum() == 0) {
+            personOpenings.remove(personId);
+        } else {
+            personOpenings.put(personId, left);
+        }
+    }
+
     /** Close the period, fixing each person's due-total for it and its own, their sum. */
     public void close(Map<Long, BigDecimal> personTotals) {
         close(personTotals, Map.of(), false);

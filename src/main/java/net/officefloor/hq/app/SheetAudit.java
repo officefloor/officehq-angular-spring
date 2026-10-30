@@ -29,6 +29,7 @@ import net.officefloor.hq.app.holiday.HolidayAdded;
 import net.officefloor.hq.app.period.OpeningSet;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
+import net.officefloor.hq.app.period.RolloverUndone;
 import net.officefloor.hq.app.period.PeriodLocked;
 import net.officefloor.hq.app.period.PeriodReopened;
 import net.officefloor.hq.app.period.PeriodUnlocked;
@@ -428,6 +429,11 @@ public class SheetAudit {
     public void on(RolledOver e) {
         change(e.sheetId(), e.user(), "ROLLOVER sheet=" + e.sheetId() + " by=" + e.user() + " fy=" + e.fy()
                 + " periods=" + e.periods());
+    }
+
+    @TransactionalEventListener
+    public void on(RolloverUndone e) {
+        change(e.sheetId(), e.user(), "ROLLOVER_UNDONE sheet=" + e.sheetId() + " by=" + e.user() + " fy=" + e.fy());
     }
 
     @TransactionalEventListener
