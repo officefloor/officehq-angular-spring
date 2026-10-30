@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.rate.RateService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,10 +35,12 @@ public class ClaimController {
 
     private final ClaimService claims;
     private final PersonService people;
+    private final RateService rates;
 
-    public ClaimController(ClaimService claims, PersonService people) {
+    public ClaimController(ClaimService claims, PersonService people, RateService rates) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
     }
 
     @PostMapping("/people/{personId}/claims")
@@ -59,6 +62,7 @@ public class ClaimController {
     }
 
     private PersonView view(String sheetId, long personId) {
-        return PersonView.of(people.get(sheetId, personId), claims.forPerson(sheetId, personId));
+        return PersonView.of(people.get(sheetId, personId), claims.forPerson(sheetId, personId),
+                rates.byGrade(sheetId));
     }
 }

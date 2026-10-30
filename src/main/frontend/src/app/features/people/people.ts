@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
+import { Rates } from '../rates/rates';
 
 const GRADES = ['A', 'B', 'C'];
 
@@ -15,11 +16,13 @@ function cents(amount: string): number {
 // one form that adds a person or, once a person's editor is opened, edits them.
 @Component({
   selector: 'app-people',
-  imports: [Claims],
+  imports: [Claims, Rates],
   template: `
+    <app-rates (changed)="reloadSheet()" />
     <section aria-label="People">
       <h2>People</h2>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
         <label for="person-form-name">Name</label>
         <input
@@ -52,7 +55,7 @@ function cents(amount: string): number {
       <table>
         <thead>
           <tr>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -62,6 +65,7 @@ function cents(amount: string): number {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ p.claimed }}</td>
+              <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -87,6 +91,10 @@ export class People {
   protected readonly error = signal('');
   protected readonly claimedTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
+  );
+  /** Everyone's due-total added up; a person whose grade has no rate is skipped. */
+  protected readonly dueTotal = computed(() =>
+    (this.people().reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0) / 100).toFixed(2),
   );
 
   constructor() {
@@ -159,6 +167,12 @@ export class People {
     this.people.update((ps) =>
       ps.some((p) => p.id === saved.id) ? ps.map((p) => (p.id === saved.id ? saved : p)) : [...ps, saved],
     );
+  }
+
+  /** Show the people again as the store holds them, once a rate changed what they are due. */
+  protected reloadSheet(): void {
+    const sheet = this.session.sheet();
+    if (sheet) void this.reload(sheet);
   }
 
   private async reload(sheet: string): Promise<void> {

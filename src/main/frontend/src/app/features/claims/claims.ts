@@ -8,6 +8,8 @@ export interface Claim {
   amount: string;
   date: string;
   note: string;
+  /** The amount at the rate for the person's grade; null when the grade has no rate. */
+  due: string | null;
 }
 
 export interface PersonWithClaims {
@@ -16,6 +18,8 @@ export interface PersonWithClaims {
   grade: string;
   claims: Claim[];
   claimed: string;
+  /** Claimed at the rate for the person's grade; null when the grade has no rate. */
+  dueTotal: string | null;
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -32,6 +36,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Due <span data-testid="claim-due">{{ c.due ?? 'n/a' }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="edit(c)">
             Edit claim<span class="visually-hidden"> {{ c.amount }} {{ c.date }}</span>
           </button>
