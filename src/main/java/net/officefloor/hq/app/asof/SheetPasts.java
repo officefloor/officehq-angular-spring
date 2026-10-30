@@ -68,6 +68,7 @@ public class SheetPasts {
             new Scope("POOL_MEMBER", "pool_id IN (SELECT id FROM pool WHERE sheet_id = ?)"),
             new Scope("CREW", "sheet_id = ?"),
             new Scope("CREW_MEMBER", "crew_id IN (SELECT id FROM crew WHERE sheet_id = ?)"),
+            new Scope("SHEET_NOTE", "sheet_id = ?"),
             new Scope("SHEET_PLAN", "sheet_id = ?"),
             new Scope("SHEET_PLAN_CLAIM", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"));
 

@@ -137,7 +137,7 @@ public final class Dues {
 
     /**
      * Whether the claim counts in the live totals on the sheet's today: OPEN, PENDING and SETTLED claims do,
-     * except that an OPEN claim dated within one of its person's holds, and an OPEN or PENDING claim of a
+     * except that an OPEN or PENDING claim dated within one of its person's holds, and an OPEN or PENDING claim of a
      * person whose retirement date that today has reached, counts in none, unless a statement binds it, and a claim {@link #deferred deferred} on that today counts in none.
      */
     public static boolean counts(Claim claim, Holds holds, LocalDate today) {
@@ -155,11 +155,11 @@ public final class Dues {
 
     /**
      * Whether the person's holds or retirement leave the claim out of the live totals: unless a statement
-     * binds it, an OPEN claim dated within a hold, and an OPEN or PENDING claim once the sheet's today has
+     * binds it, an OPEN or PENDING claim dated within a hold, and an OPEN or PENDING claim once the sheet's today has
      * reached the person's retirement date.
      */
     private static boolean leftOut(Claim claim, Holds holds, LocalDate today) {
-        return !bound(claim) && ((claim.getStatus() == ClaimStatus.OPEN && holds.on(claim.getDate()))
+        return !bound(claim) && ((claim.getStatus().unpaid() && holds.on(claim.getDate()))
                 || (claim.getStatus().unpaid() && holds.retiredOn(today)));
     }
 

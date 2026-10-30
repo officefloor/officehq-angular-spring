@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimEscalated;
 import net.officefloor.hq.app.claim.ClaimSplit;
 import net.officefloor.hq.app.claim.ClaimResettled;
 import net.officefloor.hq.app.claim.TemplateSaved;
+import net.officefloor.hq.app.note.NoteAdded;
 import net.officefloor.hq.app.claim.VoidReasonAdded;
 import net.officefloor.hq.app.holiday.HolidayAdded;
 import net.officefloor.hq.app.period.OpeningSet;
@@ -305,6 +306,11 @@ public class SheetAudit {
     public void on(TemplateSaved e) {
         change(e.sheetId(), e.user(), "TEMPLATE_SAVED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString() + " note=" + e.note());
+    }
+
+    @TransactionalEventListener
+    public void on(NoteAdded e) {
+        change(e.sheetId(), e.user(), "NOTE_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " text=" + e.text());
     }
 
     @TransactionalEventListener
