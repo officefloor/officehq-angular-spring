@@ -14,8 +14,16 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.rate.Grades;
+import net.officefloor.hq.app.rate.RateTable;
 import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.claim.Holds;
@@ -325,6 +333,16 @@ public class Person {
     /** Whether the retirement date is reached on the sheet's today: on or after it. */
     public boolean retiredOn(LocalDate today) {
         return retiredFrom != null && !today.isBefore(retiredFrom);
+    }
+
+    /** Each of the people's parts of the shared claims given, by person id (see {@link Dues#parts}). */
+    public static Map<Long, Dues.Parts> parts(Collection<Person> people, Collection<Claim> claims, RateTable rates) {
+        Map<Long, Person> byId = people.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+        Function<Long, Grades> grades = id -> {
+            Person person = byId.get(id);
+            return person == null ? null : person::gradeOn;
+        };
+        return Dues.parts(claims, grades, id -> byId.containsKey(id) ? byId.get(id).leaves() : null, rates);
     }
 
     /** The person's holds and retirement, as they leave claims out of the live totals. */

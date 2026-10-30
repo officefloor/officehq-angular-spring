@@ -13,6 +13,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.statement.StatementService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -95,9 +96,10 @@ public class ClaimTemplateController {
         String sheet = sheetId.trim();
         long id = templates.addClaim(sheet, user.trim(), personId, form.name());
         Person person = people.get(sheet, id);
-        return PersonView.of(person, claims.forPerson(sheet, id), rates.table(sheet),
+        RateTable table = rates.table(sheet);
+        return PersonView.of(person, claims.forPerson(sheet, id), table,
                 statements.forPerson(sheet, id), people.patrons(sheet, id), people.clashing(sheet, person),
-                people.snapshots(sheet, id));
+                people.snapshots(sheet, id), claims.parts(sheet, id, table));
     }
 
     @ExceptionHandler(ClaimTemplateRefused.class)

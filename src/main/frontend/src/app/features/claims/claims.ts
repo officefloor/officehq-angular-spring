@@ -66,6 +66,9 @@ export interface Claim {
   waived: boolean;
   /** Whether the claim is held: it still counts in every total; a hold no longer leaves it out. */
   held: boolean;
+  /** The other people the claim is shared with, in the order they were added: each holds a share (a percent with
+   *  two decimals) of its due, which counts in their due-total, settled-total and open-total, and not in its own person's. */
+  shares: ClaimShare[];
   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
   remindedOn: string | null;
   /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
@@ -80,6 +83,12 @@ export interface Claim {
   lines: ClaimLine[];
   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, and not left out by a retirement or a deferral (a hold leaves it counting). */
   counts: boolean;
+}
+
+/** A share of a claim: the id of the person holding it and their percent with two decimals. */
+export interface ClaimShare {
+  personId: number;
+  share: string;
 }
 
 /** A line of a claim: its label, quantity (a whole number) and unit amount (two decimals). */
@@ -214,6 +223,8 @@ export interface PersonWithClaims {
 const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
 const NUMBER = /^([1-9]\d{0,8}|.{1,100}-[1-9]\d{0,8})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A share percent: up to three whole digits and up to two decimals. */
+const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
 // opened, edits it. Each claim can be opened, settled, approved, rejected (with a reason), re-settled or voided. A saved or moved claim answers with
@@ -433,6 +444,29 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <button type="button" data-testid="claim-reassign" (click)="reassign(c)">
             Reassign<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
           </button>
+          <span>Shared with <span data-testid="claim-shares">{{ sharesOf(c) }}</span></span>
+          <label [for]="'claim-share-select-' + c.id">Share with</label>
+          <select
+            [id]="'claim-share-select-' + c.id"
+            data-testid="claim-share-select"
+            (change)="setShareWith(c.id, value($event))"
+          >
+            <option value="" [selected]="!shareWith()[c.id]">Choose a person</option>
+            @for (o of people(); track o.id) {
+              <option [value]="o.id" [selected]="shareWith()[c.id] === '' + o.id">{{ o.name }}</option>
+            }
+          </select>
+          <label [for]="'claim-share-pct-' + c.id">Share percent</label>
+          <input
+            [id]="'claim-share-pct-' + c.id"
+            inputmode="decimal"
+            data-testid="claim-share-pct"
+            [value]="sharePcts()[c.id] ?? ''"
+            (input)="setSharePct(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-share-add" (click)="share(c)">
+            Share<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           @if (claimError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
@@ -581,6 +615,10 @@ export class Claims implements OnInit {
   protected readonly commentTexts = signal<Record<number, string>>({});
   /** The new amount typed on each claim's row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
+  /** The id of the person chosen to share each claim with, by claim id. */
+  protected readonly shareWith = signal<Record<number, string>>({});
+  /** The share percent typed for each claim, by claim id. */
+  protected readonly sharePcts = signal<Record<number, string>>({});
   /** The id of the person chosen to reassign each claim to, by claim id. */
   protected readonly reassignTo = signal<Record<number, string>>({});
   /** The proof kind chosen on each claim's row; none chosen adds a receipt. */
@@ -972,6 +1010,62 @@ export class Claims implements OnInit {
       if (this.session.sheet() !== sheet) return;
       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'A proof cannot be added to this claim.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** The holders of the claim's shares as shown: each as their name and share, comma and space separated. */
+  protected sharesOf(c: Claim): string {
+    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    return (c.shares ?? []).map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
+  }
+
+  protected setShareWith(id: number, personId: string): void {
+    this.shareWith.update((all) => ({ ...all, [id]: personId }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  protected setSharePct(id: number, pct: string): void {
+    this.sharePcts.update((all) => ({ ...all, [id]: pct }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Share a claim with the chosen person at the percent typed; a refusal shows on the claim's row. */
+  protected async share(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const to = this.shareWith()[c.id] ?? '';
+    const pct = (this.sharePcts()[c.id] ?? '').trim();
+    if (to === '') {
+      this.claimError.set({ id: c.id, message: 'Choose the person to share the claim with.' });
+      return;
+    }
+    if (!SHARE.test(pct) || Number(pct) <= 0) {
+      this.claimError.set({ id: c.id, message: 'Enter a share percent with two decimals, more than 0.00.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const moved = await firstValueFrom(
+        this.http.post<PersonWithClaims[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/share`,
+          { personId: Number(to), share: pct },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.shareWith.update((all) => ({ ...all, [c.id]: '' }));
+      this.sharePcts.update((all) => ({ ...all, [c.id]: '' }));
+      for (const person of moved) this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be shared.' });
     } finally {
       this.busy = false;
     }

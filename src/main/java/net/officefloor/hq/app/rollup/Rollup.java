@@ -108,10 +108,14 @@ public class Rollup {
         BigDecimal claimedTotal = BigDecimal.ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+        List<Person> everyone = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        Map<Long, Dues.Parts> parts = Person.parts(everyone, bySheet.values().stream().flatMap(List::stream).toList(),
+                table);
+        for (Person person : everyone) {
             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
             BigDecimal claimed = Dues.claimed(theirs, person.leaves(), today);
-            BigDecimal due = Dues.total(person::gradeOn, theirs, table, person.leaves());
+            BigDecimal due = Dues.total(person::gradeOn, theirs, table, person.leaves(),
+                    parts.getOrDefault(person.getId(), Dues.Parts.NONE));
             BigDecimal overdue = Dues.sum(person::gradeOn, Dues.overdue(theirs, person::gradeOn, table, person.leaves()), table);
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue.setScale(2, RoundingMode.HALF_UP));

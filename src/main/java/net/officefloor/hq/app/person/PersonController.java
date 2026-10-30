@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimComment;
 import net.officefloor.hq.app.claim.ClaimLine;
 import net.officefloor.hq.app.claim.ClaimLogLine;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.claim.Holds;
@@ -67,7 +68,7 @@ public class PersonController {
             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, int proofsReceipt, int proofsPhoto, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
             String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch, List<LineView> lines,
-            boolean reviewLate, boolean waived, boolean held) {
+            boolean reviewLate, boolean waived, boolean held, List<ShareView> shares) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates, Holds held) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
@@ -81,7 +82,15 @@ public class PersonController {
                     claim.getComments().stream().map(CommentView::of).toList(),
                     Dues.counts(claim, held, rates.today()), claim.getSettleBatch(),
                     claim.getLines().stream().map(LineView::of).toList(), Dues.reviewLate(claim, rates), claim.isWaived(),
-                    claim.isHeld());
+                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList());
+        }
+    }
+
+    /** A share of a claim: the id of the person holding it and their percent with two decimals. */
+    public record ShareView(long personId, String share) {
+
+        static ShareView of(ClaimShare share) {
+            return new ShareView(share.getPersonId(), money(share.getShare()));
         }
     }
 
@@ -143,6 +152,12 @@ public class PersonController {
         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
                 List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots) {
+            return of(person, claims, rates, statements, patrons, clashing, snapshots, Dues.Parts.NONE);
+        }
+
+        /** The person as shown, with their parts of the sheet's shared claims (see {@link Dues#parts}). */
+        public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
+                List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots, Dues.Parts parts) {
             Grades grade = person::gradeOn;
             Holds held = person.leaves();
             BigDecimal claimed = Dues.claimed(claims, held, rates.today());
@@ -150,7 +165,7 @@ public class PersonController {
             BigDecimal score = Dues.score(grade, claims, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
                     grade.on(rates.today()), person.termsOn(rates.today()), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
-                    money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
+                    money(Dues.total(grade, claims, rates, held, parts)), money(Dues.excess(grade, claims, rates, held, parts)),
                     statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
                     person.getRetiredFrom(), person.isHeld(),
@@ -161,8 +176,8 @@ public class PersonController {
                     money(Dues.aged(grade, claims, rates, held, 0, 30)),
                     money(Dues.aged(grade, claims, rates, held, 31, 60)),
                     money(Dues.aged(grade, claims, rates, held, 61, Long.MAX_VALUE)),
-                    money(Dues.settledTotal(grade, claims, rates, held)),
-                    money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing,
+                    money(Dues.settledTotal(grade, claims, rates, held, parts)),
+                    money(Dues.openTotal(grade, claims, rates, held, parts)), person.getAliases(), clashing,
                     person.getOrigin(), person.getRetirements().stream()
                             .map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
                     snapshots.stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList(),
@@ -277,11 +292,15 @@ public class PersonController {
         Map<Long, List<Long>> patrons = service.patronsBySheet(sheet);
         Set<Long> clashing = service.clashing(sheet);
         Map<Long, List<PersonSnapshot>> snapshots = service.snapshotsBySheet(sheet);
-        return service.list(sheet).stream()
+        List<Person> everyone = service.list(sheet);
+        Map<Long, Dues.Parts> parts = Person.parts(everyone,
+                bySheet.values().stream().flatMap(List::stream).toList(), table);
+        return everyone.stream()
                 .map(p -> PersonView.of(p, bySheet.getOrDefault(p.getId(), List.of()), table,
                         stated.getOrDefault(p.getId(), Statements.NONE),
                         patrons.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()),
-                        snapshots.getOrDefault(p.getId(), List.of()))).toList();
+                        snapshots.getOrDefault(p.getId(), List.of()),
+                        parts.getOrDefault(p.getId(), Dues.Parts.NONE))).toList();
     }
 
     /** The people of the sheet's tree whose name or an alias contains the text (see {@link PersonService#search}). */
@@ -488,9 +507,11 @@ public class PersonController {
 
     private PersonView view(String sheet, Person person) {
         long personId = person.getId();
-        return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
+        RateTable table = rates.table(sheet);
+        return PersonView.of(person, claims.forPerson(sheet, personId), table,
                 statements.forPerson(sheet, personId), service.patrons(sheet, personId),
-                service.clashing(sheet, person), service.snapshots(sheet, personId));
+                service.clashing(sheet, person), service.snapshots(sheet, personId),
+                claims.parts(sheet, personId, table));
     }
 
     /** Another save took the name or contact first: the unique name or contact on the sheet refuses this one. */

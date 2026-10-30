@@ -49,6 +49,7 @@ public class SheetPasts {
             new Scope("PERSON_SNAPSHOT", "sheet_id = ?"),
             new Scope("CLAIM", "sheet_id = ?"),
             new Scope("CLAIM_LINE", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
+            new Scope("CLAIM_SHARE", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
             new Scope("CLAIM_LOG", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
             new Scope("CLAIM_COMMENT", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
             new Scope("CLAIM_RETIRED_NUMBER", "sheet_id = ?"),

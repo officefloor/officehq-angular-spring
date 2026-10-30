@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.statement.StatementService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -89,6 +90,10 @@ public class ClaimController {
     }
 
     public record VoidForm(@Size(max = 1000) String reason) {
+    }
+
+    /** The person a claim is shared with and their share, a percent with two decimals. */
+    public record ShareForm(@NotNull Long personId, @NotBlank @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
     }
 
     /** The person a claim is reassigned to. */
@@ -338,6 +343,17 @@ public class ClaimController {
         return List.of(view(sheet, moved[0]), view(sheet, moved[1]));
     }
 
+    /** Share a claim with another person; answers with the claim's own person and each holder of a share. */
+    @PostMapping("/claims/{claimId}/share")
+    public List<PersonView> share(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody ShareForm form) {
+        String sheet = sheetId.trim();
+        List<Long> moved = claims.share(sheet, user.trim(), claimId, form.personId(),
+                new BigDecimal(form.share().trim()));
+        return moved.stream().map(id -> view(sheet, id)).toList();
+    }
+
     /** Defer an OPEN claim until a date after the sheet's today. */
     @PostMapping("/claims/{claimId}/defer")
     public PersonView defer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -462,9 +478,11 @@ public class ClaimController {
 
     private PersonView view(String sheetId, long personId) {
         Person person = people.get(sheetId, personId);
+        RateTable table = rates.table(sheetId);
         return PersonView.of(person, claims.forPerson(sheetId, personId),
-                rates.table(sheetId), statements.forPerson(sheetId, personId), people.patrons(sheetId, personId),
-                people.clashing(sheetId, person), people.snapshots(sheetId, personId));
+                table, statements.forPerson(sheetId, personId), people.patrons(sheetId, personId),
+                people.clashing(sheetId, person), people.snapshots(sheetId, personId),
+                claims.parts(sheetId, personId, table));
     }
 
     /** A claim due by a date inside a closed period: refused, nothing changed. */

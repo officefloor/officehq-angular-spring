@@ -4,8 +4,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import net.officefloor.hq.app.rate.Grades;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
@@ -292,6 +296,99 @@ public final class Dues {
         return settledTotal(grades, uncorrecting, rates, holds).movePointLeft(2)
                 .subtract(BigDecimal.valueOf(5L * overdue(claims, grades, rates, holds).size()))
                 .setScale(0, RoundingMode.HALF_EVEN);
+    }
+
+    /**
+     * A person's parts of shared claims that count, net: what their settled and open figures gain as a holder and
+     * give up as the claim's own person, and whether they hold a part of any such claim.
+     */
+    public record Parts(BigDecimal settled, BigDecimal open, boolean holder) {
+
+        public static final Parts NONE = new Parts(BigDecimal.ZERO, BigDecimal.ZERO, false);
+
+        /** The settled and open parts added up. */
+        public BigDecimal total() {
+            return settled.add(open);
+        }
+
+        Parts plus(BigDecimal part, boolean settledPart, boolean holding) {
+            return new Parts(settledPart ? settled.add(part) : settled, settledPart ? open : open.add(part),
+                    holder || holding);
+        }
+    }
+
+    /**
+     * A holder's part of a shared claim: the claim's due times their share divided by 100, rounded half to even to
+     * two decimals.
+     */
+    public static BigDecimal part(BigDecimal due, BigDecimal share) {
+        return due.multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    /**
+     * Everyone's {@link Parts} by person id: each shared claim that counts (see {@link #counts}, by its own person's
+     * holds) and has a due figure (by its own person's grades) gives each holder their {@link #part} and takes the
+     * same from its own person, as a settled part when it is SETTLED, else as an open part. A claim of a person
+     * not given (null grades or holds) is skipped.
+     */
+    public static Map<Long, Parts> parts(Collection<Claim> claims, Function<Long, Grades> grades,
+            Function<Long, Holds> holds, RateTable rates) {
+        Map<Long, Parts> parts = new HashMap<>();
+        for (Claim claim : claims) {
+            if (claim.getShares().isEmpty()) {
+                continue;
+            }
+            Grades owner = grades.apply(claim.getPersonId());
+            Holds held = holds.apply(claim.getPersonId());
+            if (owner == null || held == null || !counts(claim, held, rates.today())) {
+                continue;
+            }
+            BigDecimal due = figure(claim, owner, rates);
+            if (due == null) {
+                continue;
+            }
+            boolean settled = claim.getStatus() == ClaimStatus.SETTLED;
+            for (ClaimShare share : claim.getShares()) {
+                BigDecimal part = part(due, share.getShare());
+                parts.merge(share.getPersonId(), Parts.NONE.plus(part, settled, true),
+                        (a, b) -> a.plus(b.total(), settled, true));
+                parts.merge(claim.getPersonId(), Parts.NONE.plus(part.negate(), settled, false),
+                        (a, b) -> a.plus(b.total(), settled, false));
+            }
+        }
+        return parts;
+    }
+
+    /** A person's due-total (see {@link #total}) with their {@link Parts} of shared claims. */
+    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts) {
+        return rates.capped(uncapped(grades, claims, rates, holds, parts));
+    }
+
+    /** What a person's {@link #uncapped} sum with their {@link Parts} is above the sheet's cap. */
+    public static BigDecimal excess(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts) {
+        return rates.excess(uncapped(grades, claims, rates, holds, parts));
+    }
+
+    /**
+     * A person's {@link #uncapped} sum plus their {@link Parts} of shared claims; a holder of a part has a sum
+     * (0.00 for their own claims) even when their own would be n/a.
+     */
+    public static BigDecimal uncapped(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts) {
+        BigDecimal own = uncapped(grades, claims, rates, holds);
+        if (own == null && !parts.holder()) {
+            return null;
+        }
+        return (own == null ? BigDecimal.ZERO : own).add(parts.total());
+    }
+
+    /** A person's {@link #settledTotal} with the settled part of their {@link Parts}. */
+    public static BigDecimal settledTotal(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts) {
+        return settledTotal(grades, claims, rates, holds).add(parts.settled());
+    }
+
+    /** A person's {@link #openTotal} with the open part of their {@link Parts}. */
+    public static BigDecimal openTotal(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts) {
+        return openTotal(grades, claims, rates, holds).add(parts.open());
     }
 
     private static BigDecimal part(Grades grades, List<Claim> claims, RateTable rates, Holds holds, boolean settled) {

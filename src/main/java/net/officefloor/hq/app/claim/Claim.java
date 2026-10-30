@@ -201,6 +201,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<ClaimLine> lines = new ArrayList<>();
 
+    /** The other people the claim is shared with, in the order they were added. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_share", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimShare> shares = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -469,6 +475,15 @@ public class Claim {
         lines.add(new ClaimLine(label, qty, unit));
         amount = lines.stream().map(ClaimLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    public List<ClaimShare> getShares() {
+        return List.copyOf(shares);
+    }
+
+    /** Share the claim with another person on the sheet, holding the percent given. */
+    public void share(Long personId, BigDecimal share) {
+        shares.add(new ClaimShare(personId, share));
     }
 
     public Integer getNumber() {

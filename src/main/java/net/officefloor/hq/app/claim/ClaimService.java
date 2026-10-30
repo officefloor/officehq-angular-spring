@@ -2,6 +2,7 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -18,6 +19,7 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.TodayChanged;
 import org.springframework.context.ApplicationEventPublisher;
@@ -1051,6 +1053,56 @@ public class ClaimService {
                 claim.getShownNumber(), from.getName(), to.getName()));
         rollup.changed(sheetId, user, before);
         return new long[] { from.getId(), to.getId() };
+    }
+
+    /**
+     * Share a claim with another person on the sheet, who then holds the percent given (two decimals, more than
+     * 0.00) of its due. The claim's own person, a person already holding a share of it, shares totalling more
+     * than 100.00, or a SETTLED, VOID or DELETED claim is refused and nothing changes. Returns the claim's own
+     * person and each holder of a share, the new one last.
+     */
+    @Transactional
+    public List<Long> share(String sheetId, String user, long claimId, long withPersonId, BigDecimal share) {
+        if (share.scale() > 2 || share.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A share is a percent with two decimals, more than 0.00");
+        }
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot be shared");
+        }
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Person with = people.findByIdAndSheetId(withPersonId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Choose a person on the sheet"));
+        if (owner.getId().equals(with.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim cannot be shared with its own person");
+        }
+        if (claim.getShares().stream().anyMatch(s -> s.getPersonId().equals(with.getId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, with.getName() + " already holds a share of the claim");
+        }
+        BigDecimal at = share.setScale(2);
+        BigDecimal total = claim.getShares().stream().map(ClaimShare::getShare).reduce(at, BigDecimal::add);
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's shares would total more than 100.00");
+        }
+        Rollup.Figures before = rollup.figures(sheetId);
+        claim.share(with.getId(), at);
+        claims.flush();
+        events.publishEvent(new ClaimShared(sheetId, user, owner.getName(), claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), with.getName(), at));
+        rollup.changed(sheetId, user, before);
+        List<Long> moved = new ArrayList<>();
+        moved.add(owner.getId());
+        claim.getShares().forEach(s -> moved.add(s.getPersonId()));
+        return moved;
+    }
+
+    /** The person's parts of the sheet's shared claims (see {@link Dues#parts}). */
+    @Transactional(readOnly = true)
+    public Dues.Parts parts(String sheetId, long personId, RateTable rates) {
+        return Person.parts(people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+                claims.findBySheetIdOrderByIdDesc(sheetId), rates).getOrDefault(personId, Dues.Parts.NONE);
     }
 
     /** The PENDING claim a steward, or the person's approver, is to approve or reject; refused for anyone else or any other claim. */
