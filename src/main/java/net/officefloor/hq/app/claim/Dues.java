@@ -111,6 +111,31 @@ public final class Dues {
     }
 
     /**
+     * The status the claim had at the end of the given day, as its status log records it (each line on the
+     * sheet's today then); null when it was added after that day.
+     */
+    public static ClaimStatus statusAsOf(Claim claim, LocalDate day) {
+        ClaimStatus status = null;
+        for (ClaimLogLine line : claim.getLog()) {
+            if (!line.getOn().isAfter(day)) {
+                status = line.getStatus();
+            }
+        }
+        return status;
+    }
+
+    /**
+     * Whether the claim counts in a period ending on {@code end}: its status at the end of that day (see
+     * {@link #statusAsOf}) is OPEN, PENDING or SETTLED, and it is neither left out by a hold nor deferred on the
+     * sheet's today, as in {@link #counts}.
+     */
+    public static boolean countsAsOf(Claim claim, Holds holds, LocalDate today, LocalDate end) {
+        ClaimStatus then = statusAsOf(claim, end);
+        return then != null && then.counts() && !deferred(claim, today) && !(claim.getStatus() == ClaimStatus.OPEN
+                && !bound(claim) && holds.on(claim.getDate()));
+    }
+
+    /**
      * A person's due-total (see {@link #total}); a person not on hold.
      */
     public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates) {

@@ -83,8 +83,9 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims that count (OPEN, PENDING and SETTLED,
-     * but not an unbound OPEN claim dated within a hold of its person) dated inside it, added up per person. Refused when it is already closed. Takes turns with claim changes on the
+     * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims dated inside it that counted (OPEN, PENDING and SETTLED,
+     * but not an unbound OPEN claim dated within a hold of its person, nor a deferred one) at the end of its last day,
+     * see {@link Dues#countsAsOf}, added up per person. Refused when it is already closed. Takes turns with claim changes on the
      * sheet, so the total fixed is the one the claims had at that moment.
      */
     @Transactional
@@ -101,7 +102,8 @@ public class PeriodService {
         Map<Long, BigDecimal> totals = new HashMap<>();
         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
         claims.findBySheetIdOrderByIdDesc(sheetId).stream()
-                .filter(c -> Dues.counts(c, byId.get(c.getPersonId())::heldOn, table.today()) && period.contains(c.getDate()))
+                .filter(c -> period.contains(c.getDate())
+                        && Dues.countsAsOf(c, byId.get(c.getPersonId())::heldOn, table.today(), period.getToDate()))
                 .forEach(c -> {
                     BigDecimal due = Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table);
                     if (due != null) {

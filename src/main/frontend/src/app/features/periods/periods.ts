@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { heldOut, type PersonWithClaims } from '../claims/claims';
+import { heldOut, type Claim, type ClaimStatus, type PersonWithClaims } from '../claims/claims';
 
 export interface Period {
   id: number;
@@ -29,18 +29,27 @@ function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
-/** Per period id, the person's due-total for it: the dues of their claims that count whose date falls in it,
- * added up, or once closed the figure fixed then (0.00 for a person added later); an unbound OPEN claim dated
- * within a hold of its person counts in none, nor does a deferred claim. */
+/** The status the claim had at the end of the day given, as its status log records it; undefined when it was
+ * added after that day. */
+export function statusAsOf(c: Claim, day: string): ClaimStatus | undefined {
+  let status: ClaimStatus | undefined;
+  for (const l of c.log) if (l.on <= day) status = l.status;
+  return status;
+}
+
+/** Per period id, the person's due-total for it: the dues as shown now of their claims dated in it that counted
+ * (OPEN, PENDING or SETTLED) at the end of its last day, added up, or once closed the figure fixed then (0.00
+ * for a person added later); an unbound OPEN claim dated within a hold of its person counts in none, nor does
+ * a deferred claim. */
 export function personPeriodTotals(periods: Period[], person: PersonWithClaims): Record<number, string> {
   const totals: Record<number, number> = {};
   for (const p of periods) totals[p.id] = 0;
   for (const c of person.claims) {
-    const unpaid = c.status === 'OPEN' || c.status === 'PENDING';
-    if ((!unpaid && c.status !== 'SETTLED') || c.due === null) continue;
-    if (heldOut(c, person.holds) || c.deferred) continue;
+    if (c.due === null || heldOut(c, person.holds) || c.deferred) continue;
     const period = periodOf(periods, c.date);
-    if (period && !period.closed) totals[period.id] += cents(c.due);
+    if (!period || period.closed) continue;
+    const status = statusAsOf(c, period.to);
+    if (status === 'OPEN' || status === 'PENDING' || status === 'SETTLED') totals[period.id] += cents(c.due);
   }
   const shown: Record<number, string> = {};
   for (const p of periods) {
@@ -63,7 +72,8 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
 }
 
 // The sheet's periods, earliest first, each with its due-total: the people's due-totals for it added up,
-// each the dues of their claims that count (OPEN, PENDING and SETTLED) whose date falls in it, or once
+// each the dues of their claims whose date falls in it that counted (OPEN, PENDING and SETTLED) at the end
+// of its last day, see personPeriodTotals, or once
 // closed the figure fixed then; and the form that
 // adds one. No two periods share a name or a date.
 @Component({
