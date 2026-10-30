@@ -2,12 +2,15 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import net.officefloor.hq.app.asof.SheetPasts;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.statement.DayEnds;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Loads a sheet by id, starting an empty one when the id was never used, and keeps the sheet's
@@ -21,12 +24,14 @@ public class SheetService {
     private final SheetSettingRepository settings;
     private final Rollup rollup;
     private final DayEnds dayEnds;
+    private final SheetPasts pasts;
     private final ApplicationEventPublisher events;
     private final Clock clock = Clock.systemDefaultZone();
 
     public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup, DayEnds dayEnds,
-            ApplicationEventPublisher events) {
+            SheetPasts pasts, ApplicationEventPublisher events) {
         this.dayEnds = dayEnds;
+        this.pasts = pasts;
         this.sheets = sheets;
         this.settings = settings;
         this.rollup = rollup;
@@ -40,6 +45,11 @@ public class SheetService {
             // Another user started the same sheet at the same moment: theirs is the one.
             return sheets.findById(id).orElseThrow(() -> e);
         }
+    }
+
+    /** The sheet as it stands; refused (404) when it was never loaded. */
+    public Sheet get(String id) {
+        return sheets.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet"));
     }
 
     /** The sheet's dated settings: the floor, late percent, terms, clerk limit and cap in force on any date. */
@@ -88,7 +98,7 @@ public class SheetService {
      * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
      * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
      * days are closed) and then the figures it moves. The sheet as it stands is first written down as at
-     * the end of the today it leaves (see {@link DayEnds}).
+     * the end of the today it leaves (see {@link DayEnds} and {@link SheetPasts}).
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
@@ -96,6 +106,7 @@ public class SheetService {
         Rollup.Figures before = rollup.figures(id);
         if (!today.equals(sheet.getToday())) {
             dayEnds.record(id, sheet.getToday());
+            pasts.record(id, sheet.getToday());
         }
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);

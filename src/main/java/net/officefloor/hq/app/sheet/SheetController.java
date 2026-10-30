@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import net.officefloor.hq.app.access.AccessService;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -43,6 +44,12 @@ public class SheetController {
     public SheetView load(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank String user) {
         return SheetView.of(service.load(id.trim(), user.trim()));
+    }
+
+    /** The sheet as shown: under an as-of view, its today is the as-of date and the rest as it stood then. */
+    @GetMapping("/{id}")
+    public SheetView get(@PathVariable @NotBlank @Size(max = 100) String id) {
+        return SheetView.of(service.get(id.trim()));
     }
 
     @PutMapping("/{id}/today")

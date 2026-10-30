@@ -698,7 +698,8 @@ export class People {
 
   /**
    * Take a statement for the person as of a date on or before the sheet's today (blank: now): their claims
-   * that counted then are bound to the figures they had then. The date entry is cleared once it is taken.
+   * that counted then are bound to the figures they had then. The date entry is cleared once it is taken or
+   * refused, so a refused date never carries into the next statement.
    */
   protected async statement(p: Person, asOf: HTMLInputElement): Promise<void> {
     if (this.stating) return;
@@ -726,6 +727,7 @@ export class People {
       this.replace(saved);
     } catch {
       if (this.session.sheet() !== sheet) return;
+      asOf.value = '';
       this.personError.set({
         id: p.id,
         message: date
