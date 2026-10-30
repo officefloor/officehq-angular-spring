@@ -1,0 +1,74 @@
+{
+  "checkpoint": 136,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp136_bindings-follow",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    107,
+    108,
+    111,
+    128
+  ],
+  "replaced_tests": [
+    "cp107_merge-people.spec.ts::merge people",
+    "cp108_patron-shares.spec.ts::patron shares scenario 1",
+    "cp111_transfer-person.spec.ts::transfer person",
+    "cp128_transfer-merges.spec.ts::transfer merges"
+  ],
+  "request": {
+    "spec": "Claims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d5aac7cfeca152062563adca0204b2faddb68be7",
+  "reset_sha": "",
+  "preagent_sha": "d80038aaf40137d8d628274b3c7cd9b6a2f329a9",
+  "prev_sha": "d80038aaf40137d8d628274b3c7cd9b6a2f329a9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5435632000000001,
+    "input_tokens": 20,
+    "output_tokens": 5184,
+    "cache_read_tokens": 369896,
+    "cache_creation_tokens": 45728,
+    "num_turns": 11,
+    "duration_ms": 217046,
+    "duration_api_ms": 51656,
+    "model": "claude-opus-5-5",
+    "session_id": "d0a30dbe-7b65-4942-b644-97e450051d28",
+    "stop_reason": "success",
+    "result_text": "When someone is merged or transferred, the claims that move with them now keep the figure a statement bound them to. Their statements move too, so the receiving person's count is their own plus the other's. All 4 tests in `bin/e2e` pass.\n\nOnly the server needed changing. There's no database migration and no front-end change, because the screen already shows the count, the last statement's total and each claim's bound figure.\n\n- **Merging** (`PersonMergeService`): the claims that move to the other person no longer drop their bound figure. The merged person's statements are moved onto the other person instead of being deleted.\n- **Transferring** (`PersonTransferService`): each claim copied to the other sheet keeps its bound figure. The person's statements go with them, whether they arrive as a new person or are merged into someone already on that sheet.\n- **Moving statements** (new `StatementService.carry`): the app treats whichever statement row has the highest id as a person's \"last\" one. So the incoming statements are saved first and the receiver's own are saved again after them. That keeps the receiver's last statement as theirs, or makes it the other person's if the receiver had none. One side effect: the receiver's existing statements get new ids. Those ids aren't shown anywhere or used by anything else.\n\nI updated the descriptions at the top of the merge and transfer services to match. Copying a whole sheet (`SheetCloneService`) also uses the claim-copying code, and it still drops bound figures as before. I put the keep-the-figure step in the transfer code only, so copying a sheet isn't affected.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5435632000000001,
+        "num_turns": 11,
+        "duration_ms": 217046,
+        "duration_api_ms": 51656,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp136.agent.jsonl",
+  "agent_diff_file": "cp136.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
