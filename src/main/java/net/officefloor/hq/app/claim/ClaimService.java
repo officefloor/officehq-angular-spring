@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.access.Permission;
 import net.officefloor.hq.app.access.Role;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -32,7 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
  * period instead of sheet-wide. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
  * (at least the sheet's floor then), or at the
  * figure a statement bound it to, plus the late charge it has then. A claim belongs to the period containing its due-by
- * (fixed when it was added); no claim due by a date inside a closed period can be added, edited or moved,
+ * (fixed when it was added, moved past the sheet's holidays then); no claim due by a date inside a closed period can be added, edited or moved,
  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
  * settling a claim whose due is above the sheet's clerk limit leaves it PENDING instead; a steward settles
  * anything, and approves a PENDING claim (settling it, its due fixed then) or rejects it with a reason
@@ -54,11 +55,13 @@ public class ClaimService {
     private final PeriodService periods;
     private final AccessService access;
     private final WatchService watches;
+    private final HolidayService holidays;
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetRows, RateService rates, Rollup rollup, PeriodService periods, AccessService access,
-            WatchService watches, ApplicationEventPublisher events) {
+            WatchService watches, HolidayService holidays, ApplicationEventPublisher events) {
+        this.holidays = holidays;
         this.access = access;
         this.watches = watches;
         this.rollup = rollup;
@@ -100,7 +103,8 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.claimDate(sheetId);
         sheets.load(sheetId, user);
-        LocalDate dueBy = on.plusDays(sheets.settings(sheetId).termsFor(person.getTerms(), person.gradeOn(on), on));
+        LocalDate dueBy = holidays.pastHolidays(sheetId,
+                on.plusDays(sheets.settings(sheetId).termsFor(person.getTerms(), person.gradeOn(on), on)));
         periods.requireOpen(sheetId, dueBy);
         requireNotRetired(person, on);
         LocalDate correctsDate = requireCorrects(sheetId, personId, amount, corrects);
@@ -371,8 +375,8 @@ public class ClaimService {
         claim.unbind();
         Claim part = new Claim(sheetId, owner.getId(), amount, claim.getDate(), claim.getNote(), null);
         sheets.load(sheetId, user);
-        part.setDueBy(claim.getDate().plusDays(
-                sheets.settings(sheetId).termsFor(owner.getTerms(), owner.gradeOn(claim.getDate()), claim.getDate())));
+        part.setDueBy(holidays.pastHolidays(sheetId, claim.getDate().plusDays(
+                sheets.settings(sheetId).termsFor(owner.getTerms(), owner.gradeOn(claim.getDate()), claim.getDate()))));
         part.setSplitFrom(claim.getShownNumber());
         part.setLateEntry(claim.isLateEntry());
         giveNumber(sheetId, part);

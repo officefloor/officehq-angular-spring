@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimRedated;
 import net.officefloor.hq.app.claim.ClaimReminded;
 import net.officefloor.hq.app.claim.ClaimSplit;
 import net.officefloor.hq.app.claim.ClaimResettled;
+import net.officefloor.hq.app.holiday.HolidayAdded;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
 import net.officefloor.hq.app.period.PeriodReopened;
@@ -189,6 +190,11 @@ public class SheetAudit {
     public void on(PeriodAdded e) {
         change(e.sheetId(), e.user(), "PERIOD_ADDED sheet=" + e.sheetId() + " by=" + e.user()
                 + " period=" + e.name() + " from=" + e.from() + " to=" + e.to());
+    }
+
+    @TransactionalEventListener
+    public void on(HolidayAdded e) {
+        change(e.sheetId(), e.user(), "HOLIDAY_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " date=" + e.date());
     }
 
     @TransactionalEventListener

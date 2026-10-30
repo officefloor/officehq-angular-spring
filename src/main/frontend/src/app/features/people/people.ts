@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Access } from '../access/access';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
+import { Holidays } from '../holidays/holidays';
 import { Period, Periods, personPeriodTotals } from '../periods/periods';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
@@ -37,7 +38,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [Access, Claims, Periods, Rates, Summary],
+  imports: [Access, Claims, Holidays, Periods, Rates, Summary],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -50,6 +51,7 @@ function csvField(value: string): string {
     <app-rates (changed)="reloadSheet()" />
     <app-access />
     <app-periods [people]="people()" [(periods)]="periods" />
+    <app-holidays />
     <app-summary [people]="people()" [periods]="periods()" />
     <section aria-label="People">
       <h2>People</h2>
