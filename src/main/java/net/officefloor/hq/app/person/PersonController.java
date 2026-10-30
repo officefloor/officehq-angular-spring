@@ -59,10 +59,12 @@ public class PersonController {
      * A person with their claims, newest first, claimed: the sum of the amounts of the claims that
      * count (OPEN and SETTLED), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
-     * there is none or it was n/a) and date (null when there is none).
+     * there is none or it was n/a) and date (null when there is none), whether they are retired and
+     * the date they are retired from (null when not).
      */
     public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
-            String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate) {
+            String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate,
+            boolean retired, LocalDate retiredFrom) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements) {
@@ -72,7 +74,7 @@ public class PersonController {
             return new PersonView(person.getId(), person.getVersion(), person.getName(), grade,
                     claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates)), statements.count(), money(statements.lastDueTotal()),
-                    statements.lastDate());
+                    statements.lastDate(), person.isRetired(), person.getRetiredFrom());
         }
     }
 
@@ -83,6 +85,10 @@ public class PersonController {
     /** A person as entered; an edit carries the version its editor loaded (none: no check). */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version) {
+    }
+
+    /** A retirement as entered; a date left out takes the sheet's today. */
+    public record RetireForm(LocalDate from) {
     }
 
     private final PersonService service;
@@ -133,6 +139,17 @@ public class PersonController {
         String sheet = sheetId.trim();
         statements.take(sheet, user.trim(), personId);
         return PersonView.of(service.get(sheet, personId), claims.forPerson(sheet, personId), rates.table(sheet),
+                statements.forPerson(sheet, personId));
+    }
+
+    /** Retire the person from a date; answers with the person as retired. */
+    @PostMapping("/{personId}/retire")
+    public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @RequestBody(required = false) RetireForm form) {
+        String sheet = sheetId.trim();
+        Person person = service.retire(sheet, user.trim(), personId, form == null ? null : form.from());
+        return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
                 statements.forPerson(sheet, personId));
     }
 

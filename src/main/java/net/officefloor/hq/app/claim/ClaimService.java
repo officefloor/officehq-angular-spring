@@ -21,7 +21,8 @@ import org.springframework.web.server.ResponseStatusException;
  * The claims on a sheet: listed per person newest first, added, edited and moved through their
  * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
  * its number, which is never reused. Settling a claim fixes its due at the rate its person's grade has then on the claim's date, or at the
- * figure a statement bound it to. No claim dated inside a closed period can be added, edited or moved.
+ * figure a statement bound it to. No claim dated inside a closed period can be added, edited or moved,
+ * and no claim dated after its person's retirement date can be added or edited to that date.
  */
 @Service
 public class ClaimService {
@@ -64,6 +65,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         periods.requireOpen(sheetId, on);
+        requireNotRetired(person, on);
         Rollup.Figures before = rollup.figures(sheetId);
         claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note == null ? "" : note));
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
@@ -85,6 +87,9 @@ public class ClaimService {
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
+        }
+        if (!on.equals(claim.getDate())) {
+            people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
         }
         Rollup.Figures before = rollup.figures(sheetId);
         claim.setAmount(amount);
@@ -148,5 +153,14 @@ public class ClaimService {
         events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number, due));
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
+    }
+
+    /** Refuse a claim dated after its person's retirement date. */
+    private static void requireNotRetired(Person person, LocalDate date) {
+        if (person.isRetired() && date.isAfter(person.getRetiredFrom())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    person.getName() + " is retired from " + person.getRetiredFrom()
+                            + "; a claim cannot be dated after that");
+        }
     }
 }

@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -10,17 +12,20 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /** The people on a sheet: listed in the order they were added, added and edited one at a time;
- * an edit made from a version someone else has saved since is refused. */
+ * an edit made from a version someone else has saved since is refused. A person can be retired from a
+ * date; no claim dated after it can then be added for them. */
 @Service
 public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final SheetRepository sheetRows;
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
-    public PersonService(PersonRepository people, SheetService sheets, Rollup rollup,
+    public PersonService(PersonRepository people, SheetService sheets, SheetRepository sheetRows, Rollup rollup,
             ApplicationEventPublisher events) {
+        this.sheetRows = sheetRows;
         this.rollup = rollup;
         this.people = people;
         this.sheets = sheets;
@@ -69,6 +74,22 @@ public class PersonService {
         people.flush();
         events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, grade));
         rollup.changed(sheetId, user, before);
+        return person;
+    }
+
+    /**
+     * Retire the person from a date; a date left out takes the sheet's today. The sheet stays locked
+     * until the change commits, so a claim added meanwhile is checked against the new date.
+     */
+    @Transactional
+    public Person retire(String sheetId, String user, long personId, LocalDate from) {
+        sheetRows.lockById(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        person.setRetiredFrom(on);
+        people.flush();
+        events.publishEvent(new PersonRetired(sheetId, user, person.getName(), on));
         return person;
     }
 

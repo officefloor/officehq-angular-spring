@@ -5,6 +5,7 @@ import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
 import net.officefloor.hq.app.person.PersonChanged;
+import net.officefloor.hq.app.person.PersonRetired;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
@@ -30,6 +31,12 @@ public class SheetAudit {
     public void on(PersonChanged e) {
         audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
                 + " name=" + e.name() + " grade=" + e.grade());
+    }
+
+    @TransactionalEventListener
+    public void on(PersonRetired e) {
+        audit.record("PERSON_RETIRED sheet=" + e.sheetId() + " by=" + e.user()
+                + " name=" + e.name() + " from=" + e.from());
     }
 
     @TransactionalEventListener

@@ -42,6 +42,10 @@ export interface PersonWithClaims {
   statedTotal: string | null;
   /** The sheet's today when the last statement was taken; null when there is none. */
   statementDate: string | null;
+  /** Whether a retirement date is set: retired at once, whatever the date. */
+  retired: boolean;
+  /** The date the person is retired from; no claim dated after it can be added. Null when not retired. */
+  retiredFrom: string | null;
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;

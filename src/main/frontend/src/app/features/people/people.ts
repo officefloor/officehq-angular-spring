@@ -15,7 +15,8 @@ function cents(amount: string): number {
 }
 
 // The people on the active sheet, in the order they were added, each with their claims, and the
-// one form that adds a person or, once a person's editor is opened, edits them.
+// one form that adds a person or, once a person's editor is opened, edits them. Retired people are
+// left out of the list unless "show retired" is on; their claims keep counting in the totals.
 @Component({
   selector: 'app-people',
   imports: [Claims, Periods, Rates],
@@ -76,16 +77,27 @@ function cents(amount: string): number {
           <p role="alert" data-testid="quick-error">{{ quickError() }}</p>
         }
       </form>
+      <p>
+        <input
+          id="show-retired"
+          type="checkbox"
+          data-testid="show-retired"
+          [checked]="showRetired()"
+          (change)="showRetired.set(checked($event))"
+        />
+        <label for="show-retired">Show retired</label>
+      </p>
       <table>
         <thead>
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -94,12 +106,25 @@ function cents(amount: string): number {
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a') }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 <button type="button" data-testid="person-statement" (click)="statement(p)">
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+                <label [for]="'person-retire-date-' + p.id">Retire {{ p.name }} from</label>
+                <input
+                  #retireDate
+                  type="date"
+                  [id]="'person-retire-date-' + p.id"
+                  data-testid="person-retire-date"
+                  (input)="clearError(p)"
+                />
+                <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)">
+                  Retire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
@@ -137,6 +162,14 @@ export class People {
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   /** A statement still waiting for its answer: another press meanwhile is ignored. */
   private stating = false;
+  /** A retirement still waiting for its answer: another press meanwhile is ignored. */
+  private retiring = false;
+  /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
+  protected readonly showRetired = signal(false);
+  /** The people listed: everyone, or only those not retired unless "show retired" is on. */
+  protected readonly shown = computed(() =>
+    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+  );
   protected readonly claimedTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
   );
@@ -161,6 +194,14 @@ export class People {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  protected checked(e: Event): boolean {
+    return (e.target as HTMLInputElement).checked;
+  }
+
+  protected clearError(p: Person): void {
+    if (this.personError()?.id === p.id) this.personError.set(null);
   }
 
   protected edit(p: Person): void {
@@ -284,6 +325,37 @@ export class People {
       this.personError.set({ id: p.id, message: 'Could not take the statement.' });
     } finally {
       this.stating = false;
+    }
+  }
+
+  /** Retire the person from a date; a date left blank takes the sheet's today. */
+  protected async retire(p: Person, from: string): Promise<void> {
+    if (this.retiring) return;
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const date = from.trim();
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.personError.set({ id: p.id, message: 'Enter a date, or leave it blank for today.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.retiring = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/retire`,
+          { from: date || null },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({ id: p.id, message: 'Could not retire the person.' });
+    } finally {
+      this.retiring = false;
     }
   }
 
