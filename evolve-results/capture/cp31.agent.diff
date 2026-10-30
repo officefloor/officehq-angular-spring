@@ -1,0 +1,176 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 87270215..e5d9f0d5 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,6 +6,7 @@ import { Access } from '../access/access';
+ import { Claims, PersonWithClaims as Person } from '../claims/claims';
+ import { Period, Periods } from '../periods/periods';
+ import { Rates } from '../rates/rates';
++import { Summary } from '../summary/summary';
+ 
+ const GRADES = ['A', 'B', 'C'];
+ const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+@@ -22,11 +23,12 @@ function cents(amount: string): number {
+ // others on the sheet as their patrons; their backing is their patrons' due-totals added up.
+ @Component({
+   selector: 'app-people',
+-  imports: [Access, Claims, Periods, Rates],
++  imports: [Access, Claims, Periods, Rates, Summary],
+   template: `
+     <app-rates (changed)="reloadSheet()" />
+     <app-access />
+     <app-periods [people]="people()" [(periods)]="periods" />
++    <app-summary [people]="people()" [periods]="periods()" />
+     <section aria-label="People">
+       <h2>People</h2>
+       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index ce25576d..dc2fbc55 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -27,6 +27,25 @@ function cents(amount: string): number {
+   return Math.round(Number(amount) * 100);
+ }
+ 
++/** Per period id, the dues of the claims that count whose date falls in it, added up, or once closed the
++ * due-total fixed then; the OPEN claims of a person on hold count in none. */
++export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
++  const totals: Record<number, number> = {};
++  for (const p of periods) totals[p.id] = 0;
++  const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
++  for (const person of people) {
++    for (const c of person.claims) {
++      if ((c.status !== 'OPEN' && c.status !== 'SETTLED') || c.due === null) continue;
++      if (person.held && c.status === 'OPEN') continue;
++      const period = periodOf(periods, c.date);
++      if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
++    }
++  }
++  const shown: Record<number, string> = {};
++  for (const id of Object.keys(totals)) shown[+id] = closed.get(+id) ?? (totals[+id] / 100).toFixed(2);
++  return shown;
++}
++
+ // The sheet's periods, earliest first, each with its due-total: the dues of the claims that count
+ // (OPEN and SETTLED) whose date falls in it, or once closed the due-total fixed then; and the form that
+ // adds one. No two periods share a name or a date.
+@@ -97,24 +116,7 @@ export class Periods {
+   readonly people = input.required<PersonWithClaims[]>();
+   readonly periods = model<Period[]>([]);
+ 
+-  /** Per period id, the dues of the claims that count whose date falls in it, added up; the OPEN claims
+-   * of a person on hold count in none. */
+-  protected readonly dueTotals = computed<Record<number, string>>(() => {
+-    const totals: Record<number, number> = {};
+-    for (const p of this.periods()) totals[p.id] = 0;
+-    const closed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
+-    for (const person of this.people()) {
+-      for (const c of person.claims) {
+-        if ((c.status !== 'OPEN' && c.status !== 'SETTLED') || c.due === null) continue;
+-        if (person.held && c.status === 'OPEN') continue;
+-        const period = periodOf(this.periods(), c.date);
+-        if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
+-      }
+-    }
+-    const shown: Record<number, string> = {};
+-    for (const id of Object.keys(totals)) shown[+id] = closed.get(+id) ?? (totals[+id] / 100).toFixed(2);
+-    return shown;
+-  });
++  protected readonly dueTotals = computed(() => periodDueTotals(this.periods(), this.people()));
+   protected readonly name = signal('');
+   protected readonly from = signal('');
+   protected readonly to = signal('');
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+new file mode 100644
+index 00000000..f91c7cad
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -0,0 +1,88 @@
++import { Component, computed, input } from '@angular/core';
++import type { PersonWithClaims } from '../claims/claims';
++import { Period, periodDueTotals } from '../periods/periods';
++
++const GRADES = ['A', 'B', 'C'];
++const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
++
++/** Cents in an amount shown with two decimals ("12.50" is 1250). */
++function cents(amount: string): number {
++  return Math.round(Number(amount) * 100);
++}
++
++// The sheet's figures summed from the list: per grade, the people on it today (retired people left
++// out) and their due-totals added up (n/a skipped); per period, its due-total; per status, how many
++// claims have it.
++@Component({
++  selector: 'app-summary',
++  template: `
++    <section aria-label="Summary">
++      <h2>Summary</h2>
++      <table>
++        <caption>By grade</caption>
++        <thead>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (g of byGrade(); track g.grade) {
++            <tr>
++              <th scope="row">{{ g.grade }}</th>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>By period</caption>
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (p of byPeriod(); track p.name) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>By status</caption>
++        <thead>
++          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
++        </thead>
++        <tbody>
++          @for (s of byStatus(); track s.status) {
++            <tr>
++              <th scope="row">{{ s.status }}</th>
++              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Summary {
++  readonly people = input.required<PersonWithClaims[]>();
++  readonly periods = input.required<Period[]>();
++
++  protected readonly byGrade = computed(() =>
++    GRADES.map((grade) => {
++      const on = this.people().filter((p) => !p.retired && p.grade === grade);
++      const due = on.reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0);
++      return { grade, count: on.length, dueTotal: (due / 100).toFixed(2) };
++    }),
++  );
++
++  protected readonly byPeriod = computed(() => {
++    const totals = periodDueTotals(this.periods(), this.people());
++    return this.periods().map((p) => ({ name: p.name, dueTotal: totals[p.id] }));
++  });
++
++  protected readonly byStatus = computed(() => {
++    const claims = this.people().flatMap((p) => p.claims);
++    return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
++  });
++}

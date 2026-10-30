@@ -1,0 +1,64 @@
+{
+  "checkpoint": 31,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp31_summary",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add a summary panel to the screen. Per grade: the count of people on that grade today (retired\npeople excluded) and their due-totals added up. Per period: its due-total. Per status: the count\nof claims with that status. Every figure must agree with the list.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd a summary panel to the screen. Per grade: the count of people on that grade today (retired\npeople excluded) and their due-totals added up. Per period: its due-total. Per status: the count\nof claims with that status. Every figure must agree with the list.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1ea5d418ab9d1b0a5c8c74c35c31446178ec77ec",
+  "reset_sha": "",
+  "preagent_sha": "de89f28c53a12a405cf3b2d824fd58c27bd5e7de",
+  "prev_sha": "de89f28c53a12a405cf3b2d824fd58c27bd5e7de",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5460988,
+    "input_tokens": 24,
+    "output_tokens": 5240,
+    "cache_read_tokens": 388694,
+    "cache_creation_tokens": 45433,
+    "num_turns": 13,
+    "duration_ms": 146363,
+    "duration_api_ms": 59544,
+    "model": "claude-opus-5-5",
+    "session_id": "7da9664a-aed2-4719-b7f6-4f8790a7bcd5",
+    "stop_reason": "success",
+    "result_text": "The summary panel is in, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What it shows** (new component `src/main/frontend/src/app/features/summary/summary.ts`, placed under the Periods section):\n- **Per grade (A, B, C):** how many people are on that grade today, leaving out retired people, and their due-totals added up. A person whose due-total shows \"n/a\" (no rate for their grade) adds nothing.\n- **Per period:** its due-total.\n- **Per status (DRAFT, OPEN, PENDING, SETTLED, VOID):** how many claims have that status, counting every claim, including retired people's.\n\n**How the figures stay in line with the list:** the panel works everything out from the same people, claims and periods the screen already loads, so it can't drift from the list. To make sure the period totals match exactly, I moved the period due-total calculation into one shared function (`periodDueTotals` in `periods.ts`). The period table and the summary both use it now; the period table behaves as before.\n\n**Things you might not expect:**\n- No server or database changes were needed.\n- No audit records were added, since the spec doesn't ask for any.\n- The app has no PENDING status, so that count is always 0. It's there because the test expects it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5460988,
+        "num_turns": 13,
+        "duration_ms": 146363,
+        "duration_api_ms": 59544,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp31.agent.jsonl",
+  "agent_diff_file": "cp31.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
