@@ -49,6 +49,8 @@ export interface Claim {
   lockedBy: string | null;
   /** Whether the claim was added while its period was soft-closed. */
   lateEntry: boolean;
+  /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
+  remindedOn: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
@@ -164,6 +166,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+          <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+          <button type="button" data-testid="claim-remind" (click)="remind(c)">
+            Remind<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">
             Add proof<span class="visually-hidden"> to claim {{ c.amount }} {{ c.date }}</span>
           </button>
@@ -458,6 +464,30 @@ export class Claims implements OnInit {
       const refusal =
         err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be split by that amount.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Remind an OPEN or PENDING claim, once per sheet's today; a refusal shows on the claim's row. */
+  protected async remind(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/remind`, {}, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be reminded.' });
     } finally {
       this.busy = false;
     }

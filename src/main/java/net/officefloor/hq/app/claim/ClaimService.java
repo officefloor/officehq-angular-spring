@@ -408,6 +408,31 @@ public class ClaimService {
     }
 
     /**
+     * Remind an OPEN or PENDING claim: it takes the sheet's today as its reminded date. A claim can be
+     * reminded once per sheet's today; a claim in any other status, one already reminded on the sheet's today,
+     * or a claim due by a date inside a closed period is refused and nothing changes. Returns the person it
+     * belongs to.
+     */
+    @Transactional
+    public long remind(String sheetId, String user, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        if (!claim.getStatus().unpaid()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reminded; only an OPEN or PENDING one can");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (today.equals(claim.getRemindedOn())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim was already reminded today (" + today + ")");
+        }
+        claim.setRemindedOn(today);
+        claims.flush();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new ClaimReminded(sheetId, user, person, claim.getAmount(), claim.getDate(),
+                claim.getShownNumber()));
+        return claim.getPersonId();
+    }
+
+    /**
      * Refuse opening a claim with an empty note whose due (null: n/a) is above the sheet's note threshold in
      * force on the claim's date.
      */

@@ -247,6 +247,14 @@ public class ClaimController {
         return view(sheet, claims.split(sheet, user.trim(), claimId, new BigDecimal(form.amount())));
     }
 
+    /** Remind an OPEN or PENDING claim, once per sheet's today. */
+    @PostMapping("/claims/{claimId}/remind")
+    public PersonView remind(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.remind(sheet, user.trim(), claimId));
+    }
+
     /** Add a proof to a claim, raising its proofs count by one. */
     @PostMapping("/claims/{claimId}/proof")
     public PersonView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
