@@ -163,7 +163,8 @@ public class ClaimService {
      * leaves as it was fixed), or
      * when the date it is left with is after its person's retirement date, or when its external reference
      * (surrounding spaces removed; blank: none) is carried by another claim on the sheet, compared without
-     * regard to case. Its tags are those in the comma separated text (see {@link Tags#normalize}; null: none).
+     * regard to case, or when the claim has lines and the amount is another than theirs added up. Its tags are
+     * those in the comma separated text (see {@link Tags#normalize}; null: none).
      * Returns the person it belongs to.
      */
     @Transactional
@@ -180,6 +181,10 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
         }
         requireNotLockedByOther(claim, user);
+        if (claim.hasLines() && amount.compareTo(claim.getAmount()) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim's amount is its lines added up (" + claim.getAmount().toPlainString() + ")");
+        }
         people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
         LocalDate correctsDate = requireCorrects(sheetId, claim.getPersonId(), amount, corrects);
         Rollup.Figures before = rollup.figures(sheetId);
@@ -555,6 +560,40 @@ public class ClaimService {
                 part.getDate(), part.getShownNumber(), null));
         rollup.changed(sheetId, user, before);
         return owner.getId();
+    }
+
+    /**
+     * Add a line to a DRAFT claim: its amount becomes its lines' quantities times their unit amounts added up.
+     * Adding a line counts as editing the claim: a claim not a DRAFT, one due by a date inside a closed period
+     * or one another user's editor holds is refused and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long addLine(String sheetId, String user, long claimId, String label, int qty, BigDecimal unit) {
+        if (label == null || label.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A line needs a label");
+        }
+        if (qty < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A line's quantity must be at least 1");
+        }
+        if (unit.scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A line's unit amount has two decimals");
+        }
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
+        }
+        requireNotLockedByOther(claim, user);
+        Rollup.Figures before = rollup.figures(sheetId);
+        BigDecimal at = unit.setScale(2);
+        claim.addLine(label.strip(), qty, at);
+        claim.setEditedBy(user);
+        claims.flush();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new ClaimLineAdded(sheetId, user, person, claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), label.strip(), qty, at));
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
     }
 
     /**

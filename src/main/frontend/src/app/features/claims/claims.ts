@@ -64,8 +64,17 @@ export interface Claim {
   voidReason: string | null;
   /** The claim's comments, oldest first. */
   comments: ClaimComment[];
+  /** The claim's lines, in the order they were added; with any, its amount is theirs added up. */
+  lines: ClaimLine[];
   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, and not left out by a hold, a retirement or a deferral. */
   counts: boolean;
+}
+
+/** A line of a claim: its label, quantity (a whole number) and unit amount (two decimals). */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today when it was written, and its text. */
@@ -225,6 +234,37 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
             }
           </ol>
+          <ol aria-label="Lines">
+            @for (l of c.lines; track $index) {
+              <li data-testid="claim-lines-line">{{ l.label }} {{ l.qty }} x {{ l.unit }}</li>
+            }
+          </ol>
+          <label [for]="'claim-line-label-' + c.id">Line label</label>
+          <input
+            [id]="'claim-line-label-' + c.id"
+            data-testid="claim-line-label"
+            [value]="lineFields()[c.id]?.label ?? ''"
+            (input)="setLineField(c.id, 'label', value($event))"
+          />
+          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+          <input
+            [id]="'claim-line-qty-' + c.id"
+            data-testid="claim-line-qty"
+            inputmode="numeric"
+            [value]="lineFields()[c.id]?.qty ?? ''"
+            (input)="setLineField(c.id, 'qty', value($event))"
+          />
+          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+          <input
+            [id]="'claim-line-unit-' + c.id"
+            data-testid="claim-line-unit"
+            inputmode="decimal"
+            [value]="lineFields()[c.id]?.unit ?? ''"
+            (input)="setLineField(c.id, 'unit', value($event))"
+          />
+          <button type="button" data-testid="claim-line-add" (click)="addLine(c)">
+            Add line<span class="visually-hidden"> to claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           <ol aria-label="Comments">
             @for (m of c.comments; track $index) {
               <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
@@ -447,6 +487,8 @@ export class Claims implements OnInit {
   protected readonly newDates = signal<Record<number, string>>({});
   /** The amount typed for splitting off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The line typed for each claim, by claim id. */
+  protected readonly lineFields = signal<Record<number, { label: string; qty: string; unit: string }>>({});
   /** The comment typed for each claim, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
   /** The new amount typed on each claim's row, by claim id. */
@@ -621,6 +663,51 @@ export class Claims implements OnInit {
       const refusal =
         err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be reminded.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected setLineField(id: number, field: 'label' | 'qty' | 'unit', text: string): void {
+    this.lineFields.update((all) => ({ ...all, [id]: { ...(all[id] ?? { label: '', qty: '', unit: '' }), [field]: text } }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Add the line typed to the claim; a line not filled in rightly, or a refusal, shows on the claim's row. */
+  protected async addLine(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const f = this.lineFields()[c.id] ?? { label: '', qty: '', unit: '' };
+    const label = f.label.trim();
+    const qty = f.qty.trim();
+    const unit = f.unit.trim();
+    if (!label || !/^[1-9]\d{0,5}$/.test(qty) || !/^\d{1,12}(\.\d{1,2})?$/.test(unit)) {
+      this.claimError.set({
+        id: c.id,
+        message: 'Enter a label, a whole quantity of at least 1 and a unit amount with up to two decimals.',
+      });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/lines`,
+          { label, qty, unit },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.lineFields.update((all) => ({ ...all, [c.id]: { label: '', qty: '', unit: '' } }));
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The line cannot be added to this claim.' });
     } finally {
       this.busy = false;
     }

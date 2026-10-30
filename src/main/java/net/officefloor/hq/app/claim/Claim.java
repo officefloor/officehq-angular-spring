@@ -164,6 +164,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** The claim's lines, in the order they were added; with any, its amount is theirs added up. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_line", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimLine> lines = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -186,7 +192,7 @@ public class Claim {
 
     /**
      * The claim as it arrives on another sheet for the person there: its status, dates, note, tags, frozen
-     * figures, log and comments; unnumbered (to be given the other sheet's next), released from any figure a
+     * figures, log, comments and lines; unnumbered (to be given the other sheet's next), released from any figure a
      * statement bound, without its reference, settle batch or editor lock.
      */
     public Claim arriving(String sheetId, Long personId) {
@@ -207,6 +213,7 @@ public class Claim {
         arrived.lateEntry = lateEntry;
         log.forEach(l -> arrived.log.add(new ClaimLogLine(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
         comments.forEach(c -> arrived.comments.add(new ClaimComment(c.getBy(), c.getOn(), c.getText())));
+        lines.forEach(l -> arrived.lines.add(new ClaimLine(l.getLabel(), l.getQty(), l.getUnit())));
         return arrived;
     }
 
@@ -355,6 +362,22 @@ public class Claim {
     /** Add a comment by a user on a date. */
     public void comment(String by, LocalDate on, String text) {
         comments.add(new ClaimComment(by, on, text));
+    }
+
+    public List<ClaimLine> getLines() {
+        return List.copyOf(lines);
+    }
+
+    /** Whether the claim has lines, which its amount is then the sum of. */
+    public boolean hasLines() {
+        return !lines.isEmpty();
+    }
+
+    /** Add a line; the claim's amount becomes its lines' amounts added up. */
+    public void addLine(String label, int qty, BigDecimal unit) {
+        lines.add(new ClaimLine(label, qty, unit));
+        amount = lines.stream().map(ClaimLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     public Integer getNumber() {

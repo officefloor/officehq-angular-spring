@@ -103,6 +103,11 @@ public class ClaimController {
     public record CommentForm(@NotBlank @Size(max = 1000) String text) {
     }
 
+    /** A line added to a claim: a label, a quantity (a whole number, at least 1) and a unit amount (two decimals). */
+    public record LineForm(@NotBlank @Size(max = 200) String label, @NotNull @Pattern(regexp = "[1-9]\\d{0,5}") String qty,
+            @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String unit) {
+    }
+
     /** The number of the sheet's last settle batch; null when there has been none. */
     public record SettleBatchView(Integer last) {
     }
@@ -320,6 +325,16 @@ public class ClaimController {
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
         String sheet = sheetId.trim();
         return view(sheet, claims.addProof(sheet, user.trim(), claimId));
+    }
+
+    /** Add a line to a DRAFT claim, as the signed-in user. */
+    @PostMapping("/claims/{claimId}/lines")
+    public PersonView addLine(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody LineForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.addLine(sheet, user.trim(), claimId, form.label(), Integer.parseInt(form.qty()),
+                new BigDecimal(form.unit())));
     }
 
     /** Comment a claim, as the signed-in user on the sheet's today. */

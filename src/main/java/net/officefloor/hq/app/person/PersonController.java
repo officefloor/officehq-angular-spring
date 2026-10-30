@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimComment;
+import net.officefloor.hq.app.claim.ClaimLine;
 import net.officefloor.hq.app.claim.ClaimLogLine;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
@@ -58,13 +59,13 @@ public class PersonController {
      * correction, the number of the claim it corrects (null otherwise), and whether it was deferred until a date after the
      * sheet's today, whatever its status since (its counting follows {@link Dues#deferred}), and the date it is deferred until (null when never),
      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
-     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}) and the bulk settle batch that settled it (null when none).
+     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none) and its lines, in the order they were added.
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
-            String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch) {
+            String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch, List<LineView> lines) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates, Holds held) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
@@ -76,7 +77,16 @@ public class PersonController {
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     Tags.list(claim.getTags()), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(),
-                    Dues.counts(claim, held, rates.today()), claim.getSettleBatch());
+                    Dues.counts(claim, held, rates.today()), claim.getSettleBatch(),
+                    claim.getLines().stream().map(LineView::of).toList());
+        }
+    }
+
+    /** A line of a claim: its label, quantity and unit amount. */
+    public record LineView(String label, int qty, String unit) {
+
+        static LineView of(ClaimLine line) {
+            return new LineView(line.getLabel(), line.getQty(), money(line.getUnit()));
         }
     }
 

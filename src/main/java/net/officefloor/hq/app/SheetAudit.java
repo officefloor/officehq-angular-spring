@@ -8,6 +8,7 @@ import net.officefloor.hq.app.access.SettingChanged;
 import net.officefloor.hq.app.claim.BatchSettled;
 import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.claim.ClaimCommented;
+import net.officefloor.hq.app.claim.ClaimLineAdded;
 import net.officefloor.hq.app.claim.ClaimDeferred;
 import net.officefloor.hq.app.claim.ClaimProofAdded;
 import net.officefloor.hq.app.claim.ClaimReassigned;
@@ -196,6 +197,14 @@ public class SheetAudit {
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " proofs=" + e.proofs());
+    }
+
+    @TransactionalEventListener
+    public void on(ClaimLineAdded e) {
+        change(e.sheetId(), e.user(), "CLAIM_LINE_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + " label=" + e.label() + " qty=" + e.qty() + " unit=" + e.unit().toPlainString());
     }
 
     @TransactionalEventListener
