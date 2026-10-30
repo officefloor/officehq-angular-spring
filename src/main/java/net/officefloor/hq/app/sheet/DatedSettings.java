@@ -10,7 +10,7 @@ import java.util.Optional;
  * A sheet's dated settings: the value of each in force on a date is the one with the latest from-date on
  * or before it (a value with no from-date applying from the beginning of time); before every from-date,
  * and where that value was saved blank, the sheet's starting value (1.00 for the floor, 0.00 for the late
- * percent, 14 days for the terms; none for the clerk limit, the cap, the proof threshold and the note threshold; the sheet's terms for a grade's own
+ * percent, 14 days for the terms; none for a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold; the sheet's terms for a grade's own
  * terms).
  */
 public record DatedSettings(List<SheetSetting> values) {
@@ -31,6 +31,13 @@ public record DatedSettings(List<SheetSetting> values) {
 
     /** A sheet with no value saved: every setting has its starting value on every date. */
     public static final DatedSettings NONE = new DatedSettings(List.of());
+
+    public static final String GRACE = "grace";
+
+    /** The key of a grade's grace days: grace-A, grace-B or grace-C. */
+    public static String gradeGraceKey(String grade) {
+        return GRACE + "-" + grade;
+    }
 
     /** The key of a grade's own terms: terms-A, terms-B or terms-C. */
     public static String gradeTermsKey(String grade) {
@@ -64,6 +71,14 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The grade's own terms on the date; null when it has none then (it uses the sheet's). */
     public Integer gradeTerms(String grade, LocalDate date) {
         return grade == null ? null : on(gradeTermsKey(grade), date).map(Integer::valueOf).orElse(null);
+    }
+
+    /**
+     * The grade's grace days on the date: the days past a claim's due-by before it is overdue; 0 when the
+     * grade has none then (or it was saved blank).
+     */
+    public int grace(String grade, LocalDate date) {
+        return grade == null ? 0 : on(gradeGraceKey(grade), date).map(Integer::valueOf).orElse(0);
     }
 
     /** The terms that fix the due-by of a claim of the grade dated on the date: the grade's own, or the sheet's. */

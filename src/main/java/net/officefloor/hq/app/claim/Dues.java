@@ -29,8 +29,8 @@ public final class Dues {
         if (base == null || claim.isCorrection()) {
             return base;
         }
-        BigDecimal due = overdue(claim, rates)
-                ? base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()))
+        BigDecimal due = overdue(claim, grades, rates)
+                ? base.add(rates.lateCharge(base, graceBy(claim, grades, rates), claim.getRoundsBy()))
                 : base;
         return rates.floored(due, claim.getDate());
     }
@@ -60,7 +60,7 @@ public final class Dues {
 
     /**
      * The figure the claim would have today as an OPEN claim bound by no statement: its rate figure plus the
-     * late charge it has today on that figure when its due-by has passed, but at least the floor in force on
+     * late charge it has today on that figure when its due-by plus its grace has passed, but at least the floor in force on
      * its date; a correction has neither floor nor late charge. Null when there is none. Re-settling a claim
      * fixes its due at this figure.
      */
@@ -69,8 +69,9 @@ public final class Dues {
         if (base == null || claim.isCorrection()) {
             return base;
         }
-        BigDecimal due = claim.getDueBy().isBefore(rates.today())
-                ? base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()))
+        LocalDate graceBy = graceBy(claim, grades, rates);
+        BigDecimal due = graceBy.isBefore(rates.today())
+                ? base.add(rates.lateCharge(base, graceBy, claim.getRoundsBy()))
                 : base;
         return rates.floored(due, claim.getDate());
     }
@@ -82,10 +83,19 @@ public final class Dues {
 
     /**
      * Whether the claim is overdue: OPEN or PENDING, not {@link #deferred deferred}, and due by a date before
-     * the sheet's today (its due-by, fixed when it was added).
+     * the sheet's today (its due-by, fixed when it was added, plus its {@link #graceBy grace}).
      */
-    public static boolean overdue(Claim claim, RateTable rates) {
-        return claim.getStatus().unpaid() && !deferred(claim, rates.today()) && claim.getDueBy().isBefore(rates.today());
+    public static boolean overdue(Claim claim, Grades grades, RateTable rates) {
+        return claim.getStatus().unpaid() && !deferred(claim, rates.today())
+                && graceBy(claim, grades, rates).isBefore(rates.today());
+    }
+
+    /**
+     * The date a claim's overdue and late charge count from: its due-by plus the grace days in force on its
+     * date for its person's grade in force then (none: its due-by). The due-by shown is unchanged.
+     */
+    public static LocalDate graceBy(Claim claim, Grades grades, RateTable rates) {
+        return claim.getDueBy().plusDays(rates.settings().grace(grades.on(claim.getDate()), claim.getDate()));
     }
 
     /** Whether the claim is deferred on the given today: OPEN and deferred until a date after it. */
@@ -95,8 +105,8 @@ public final class Dues {
     }
 
     /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */
-    public static List<Claim> overdue(List<Claim> claims, RateTable rates, Holds holds) {
-        return claims.stream().filter(c -> counts(c, holds, rates.today()) && overdue(c, rates)).toList();
+    public static List<Claim> overdue(List<Claim> claims, Grades grades, RateTable rates, Holds holds) {
+        return claims.stream().filter(c -> counts(c, holds, rates.today()) && overdue(c, grades, rates)).toList();
     }
 
     /** The sum of the due figures of the claims given (0.00 with none); a claim with none is skipped. */

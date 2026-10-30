@@ -49,12 +49,13 @@ public class AccessController {
      * when blank (off); the cap is a figure with two
      * decimals, null for none; so are the proof threshold and the note threshold. Each entry of the permission matrix (open, settle,
      * void, reassign, close, reopen) is the roles that may take the action as written, comma separated; null
-     * when blank (the standing rule). The entry date is a date (yyyy-mm-dd), null when blank (off).
+     * when blank (the standing rule). The entry date is a date (yyyy-mm-dd), null when blank (off). The grace
+     * days of grades A, B and C are a number of days, null for a grade with none.
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
-            String permClose, String permReopen, String entryDate) {
+            String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
                 Integer graceDays, LocalDate entryDate) {
@@ -68,7 +69,13 @@ public class AccessController {
                     perm(dated, Permission.OPEN, today), perm(dated, Permission.SETTLE, today),
                     perm(dated, Permission.VOID, today), perm(dated, Permission.REASSIGN, today),
                     perm(dated, Permission.CLOSE, today), perm(dated, Permission.REOPEN, today),
-                    entryDate == null ? null : entryDate.toString());
+                    entryDate == null ? null : entryDate.toString(), text(grace(dated, "A", today)),
+                    text(grace(dated, "B", today)), text(grace(dated, "C", today)));
+        }
+
+        /** The grade's grace days in force on the date as written; null when it has none then. */
+        private static String grace(DatedSettings dated, String grade, LocalDate today) {
+            return dated.on(DatedSettings.gradeGraceKey(grade), today).orElse(null);
         }
 
         private static String perm(DatedSettings dated, Permission permission, LocalDate today) {
@@ -113,7 +120,7 @@ public class AccessController {
      * from-date (yyyy-mm-dd) its value is in force from, blank or left out meaning the sheet's today. Each
      * entry of the permission matrix is a comma separated list of roles (clerk, steward), blank putting back
      * the standing rule; it is not dated. The entry date is a date (yyyy-mm-dd), blank meaning off; not
-     * dated.
+     * dated. A grade's grace days are a whole number of days, blank meaning none; dated.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -144,7 +151,13 @@ public class AccessController {
             @Pattern(regexp = Permission.ROLES) String permReassign,
             @Pattern(regexp = Permission.ROLES) String permClose,
             @Pattern(regexp = Permission.ROLES) String permReopen,
-            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String entryDate) {
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String entryDate,
+            @Pattern(regexp = "(\\d{1,5})?") String graceA,
+            @Pattern(regexp = "(\\d{1,5})?") String graceB,
+            @Pattern(regexp = "(\\d{1,5})?") String graceC,
+            @Pattern(regexp = DATE) String graceAFrom,
+            @Pattern(regexp = DATE) String graceBFrom,
+            @Pattern(regexp = DATE) String graceCFrom) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -191,6 +204,10 @@ public class AccessController {
         gradeTerms.put("A", dated(form.termsA(), form.termsAFrom()));
         gradeTerms.put("B", dated(form.termsB(), form.termsBFrom()));
         gradeTerms.put("C", dated(form.termsC(), form.termsCFrom()));
+        Map<String, AccessService.Dated> gradeGrace = new LinkedHashMap<>();
+        gradeGrace.put("A", dated(form.graceA(), form.graceAFrom()));
+        gradeGrace.put("B", dated(form.graceB(), form.graceBFrom()));
+        gradeGrace.put("C", dated(form.graceC(), form.graceCFrom()));
         AccessService.Dated clerkLimit = dated(form.clerkLimit(), form.clerkLimitFrom());
         AccessService.Dated floor = dated(form.floor(), form.floorFrom());
         AccessService.Dated terms = dated(form.terms(), form.termsFrom());
@@ -204,7 +221,7 @@ public class AccessController {
         permissions.put(Permission.CLOSE, form.permClose());
         permissions.put(Permission.REOPEN, form.permReopen());
         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
-                form.periodNumberingFrom(), form.graceDays(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
+                form.periodNumberingFrom(), form.graceDays(), gradeGrace, cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
                 dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate());
         return settings(sheet);
     }

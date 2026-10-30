@@ -23,7 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
  * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
  * clerk limit, the most due a clerk may settle on a claim (none: no limit); and the sheet's floor, the
  * least live due a claim has; its terms, the days a claim has to be paid by from its date, and the terms
- * of each grade that has its own (a grade without uses the sheet's); and its late
+ * of each grade that has its own (a grade without uses the sheet's), and the grace days of each grade that
+ * has them, the days past a claim's due-by before it is overdue; and its late
  * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
  * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
  * the date from which a claim opened is numbered within its period (none: off); and its cap, the most a
@@ -43,6 +44,11 @@ public class AccessService {
     /** The key of a grade's own terms: terms-A, terms-B or terms-C. */
     public static String gradeTermsKey(String grade) {
         return DatedSettings.gradeTermsKey(grade);
+    }
+
+    /** The key of a grade's grace days: grace-A, grace-B or grace-C. */
+    public static String gradeGraceKey(String grade) {
+        return DatedSettings.gradeGraceKey(grade);
     }
 
     public static final String LATE_PCT = DatedSettings.LATE_PCT;
@@ -231,7 +237,7 @@ public class AccessService {
     @Transactional
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
-            Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate) {
+            Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -259,6 +265,11 @@ public class AccessService {
         if (graceDays != null) {
             setGraceDays(sheetId, user, graceDays.isEmpty() ? null : Integer.valueOf(graceDays));
         }
+        gradeGrace.forEach((grade, days) -> {
+            if (days != null) {
+                setDated(sheetId, user, gradeGraceKey(grade), days(days.value(), null), days.from(), true);
+            }
+        });
         if (cap != null) {
             setDated(sheetId, user, CAP, money(cap.value(), null), cap.from(), true);
         }

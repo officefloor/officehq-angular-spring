@@ -64,7 +64,7 @@ public class PersonController {
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getShownNumber(),
-                    claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, rates),
+                    claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, grade, rates),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
                     Dues.deferred(claim, rates.today()),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
@@ -107,7 +107,7 @@ public class PersonController {
             Holds held = person.leaves();
             BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held, rates.today())).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            List<Claim> overdue = Dues.overdue(claims, rates, held);
+            List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
                     grade.on(rates.today()), person.getTerms(), claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),

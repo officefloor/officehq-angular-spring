@@ -42,6 +42,10 @@ interface Settings {
   permReassign: string | null;
   permClose: string | null;
   permReopen: string | null;
+  /** The days past a claim's due-by before a claim of grade A, B or C is overdue; null when the grade has none. */
+  graceA: string | null;
+  graceB: string | null;
+  graceC: string | null;
 }
 
 /** The steward role delegated by a steward (by) to a user, from a from-date to a to-date (yyyy-mm-dd), inclusive. */
@@ -63,10 +67,11 @@ const ROLES = ['clerk', 'steward', 'viewer'];
 const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
 const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
+const GRADE_GRACE = { A: 'graceA', B: 'graceB', C: 'graceC' } as const;
 /** The settings that carry a figure: each is saved from a from-date. */
-const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold'] as const;
+const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold', 'graceA', 'graceB', 'graceC'] as const;
 type Dated = (typeof DATED)[number];
-const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '' };
+const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', graceA: '', graceB: '', graceC: '' };
 /** The permission matrix: each action with its setting and the roles that take it when left blank. */
 const PERMS = [
   { action: 'open', field: 'permOpen', standing: 'clerk, steward' },
@@ -92,7 +97,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
 // (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
 // numbered within its period (blank: off), and the grace days, the days after an open period's to-date
-// before a change of the sheet's today closes it (blank: off; not dated), and the entry date, the date a
+// before a change of the sheet's today closes it (blank: off; not dated), and each grade's grace days, the days
+// past a claim's due-by before it is overdue and its late charge counts from (blank: none), and the entry date, the date a
 // new claim given no date takes in place of the sheet's today (blank: off; not dated), and the cap, the most a person's due-total comes to (blank: no
 // cap), and the proof threshold, the most due a claim may have to be settled or approved with no proof
 // (blank: none), and the permission matrix, the roles that may open, settle, void, reassign, close and
@@ -196,6 +202,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
       <p>Grace days <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
+      @for (g of grades; track g) {
+        <p>Grace days for grade {{ g }} <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</strong></p>
+      }
       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
@@ -318,6 +327,25 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="graceDaysInput.set(value($event)); graceDaysTouched = true; settingsError.set('')"
           (keydown)="graceDaysTouched = graceDaysTouched || clears($event)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }}: a claim is overdue only once its due-by plus these days has passed (blank: none)</label>
+          <input
+            [id]="'setting-grace-' + g"
+            inputmode="numeric"
+            [attr.data-testid]="'setting-grace-' + g"
+            [value]="gradeGraceInput()[g]"
+            (input)="setGradeGraceInput(g, value($event)); gradeGraceTouched[g] = true; settingsError.set('')"
+            (keydown)="gradeGraceTouched[g] = gradeGraceTouched[g] || clears($event)"
+          />
+          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} in force from (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-grace-' + g + '-from'"
+            type="date"
+            [attr.data-testid]="'setting-grace-' + g + '-from'"
+            [value]="fromInput()[GRADE_GRACE[g]]"
+            (input)="setFrom(GRADE_GRACE[g], value($event)); gradeGraceTouched[g] = true; settingsError.set('')"
+          />
+        }
         <label for="setting-entry-date">Entry date: a new claim given no date takes it in place of the sheet's today (blank: off)</label>
         <input
           id="setting-entry-date"
@@ -419,6 +447,8 @@ export class Access {
   protected readonly termsInput = signal('');
   protected readonly gradeTerms = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
   protected readonly gradeTermsInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
+  protected readonly gradeGrace = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
+  protected readonly gradeGraceInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly latePct = signal('');
   protected readonly latePctInput = signal('');
   protected readonly policyDate = signal<string | null>(null);
@@ -436,6 +466,7 @@ export class Access {
   protected readonly noteThreshold = signal<string | null>(null);
   protected readonly noteThresholdInput = signal('');
   protected readonly GRADE_TERMS = GRADE_TERMS;
+  protected readonly GRADE_GRACE = GRADE_GRACE;
   protected readonly perms = PERMS;
   protected readonly perm = signal<Record<Perm, string | null>>({ ...NO_PERMS });
   protected readonly permInput = signal<Record<Perm, string>>(NO_PERMS);
@@ -447,6 +478,7 @@ export class Access {
   protected floorTouched = false;
   protected termsTouched = false;
   protected gradeTermsTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
+  protected gradeGraceTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
   protected latePctTouched = false;
   protected policyDateTouched = false;
   protected numberingFromTouched = false;
@@ -472,7 +504,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -489,6 +521,10 @@ export class Access {
 
   protected setGradeTermsInput(grade: Grade, v: string): void {
     this.gradeTermsInput.update((t) => ({ ...t, [grade]: v }));
+  }
+
+  protected setGradeGraceInput(grade: Grade, v: string): void {
+    this.gradeGraceInput.update((t) => ({ ...t, [grade]: v }));
   }
 
   protected setPermInput(key: Perm, v: string): void {
@@ -602,6 +638,14 @@ export class Access {
         return;
       }
     }
+    const gradeGrace = this.gradeGraceInput();
+    for (const g of GRADES) {
+      const days = gradeGrace[g].trim();
+      if (this.gradeGraceTouched[g] && days !== '' && !DAYS.test(days)) {
+        this.settingsError.set(`Enter grace days for grade ${g} of 0 or more whole days, or leave them blank for none.`);
+        return;
+      }
+    }
     const latePct = this.latePctInput().trim();
     if (this.latePctTouched && latePct !== '' && !PERCENT.test(latePct)) {
       this.settingsError.set('Enter a late percent of 0.00 or more, with up to two decimals, or leave it blank for 0.00.');
@@ -669,6 +713,9 @@ export class Access {
     if (this.policyDateTouched) body.policyDate = policyDate;
     if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
     if (this.graceDaysTouched) body.graceDays = graceDays;
+    for (const g of GRADES) {
+      if (this.gradeGraceTouched[g]) body[GRADE_GRACE[g]] = gradeGrace[g].trim();
+    }
     if (this.entryDateTouched) body.entryDate = entryDate;
     if (this.capTouched) body.cap = cap;
     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
@@ -721,6 +768,9 @@ export class Access {
     this.gradeTerms.set({ A: settings.termsA, B: settings.termsB, C: settings.termsC });
     this.gradeTermsInput.set({ A: settings.termsA ?? '', B: settings.termsB ?? '', C: settings.termsC ?? '' });
     this.gradeTermsTouched = { A: false, B: false, C: false };
+    this.gradeGrace.set({ A: settings.graceA, B: settings.graceB, C: settings.graceC });
+    this.gradeGraceInput.set({ A: settings.graceA ?? '', B: settings.graceB ?? '', C: settings.graceC ?? '' });
+    this.gradeGraceTouched = { A: false, B: false, C: false };
     this.policyDate.set(settings.policyDate);
     this.policyDateInput.set(settings.policyDate ?? '');
     this.latePctTouched = false;
