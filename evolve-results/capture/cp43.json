@@ -1,0 +1,64 @@
+{
+  "checkpoint": 43,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp43_cap",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a cap (two decimals, settings, blank means none; SETTING_CHANGED key=cap\nvalue=<cap>). A person's due-total is at most the cap: when the sum of their figures is above it,\ntheir due-total shows the cap and their excess shows the difference, otherwise the excess is\n0.00. Everything that adds up due-totals (the sheet's due-total, a grade's, backing, the ROLLUP\nand TOTALS lines, the export) uses the capped figure. A due-total of n/a is not capped.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a cap (two decimals, settings, blank means none; SETTING_CHANGED key=cap\nvalue=<cap>). A person's due-total is at most the cap: when the sum of their figures is above it,\ntheir due-total shows the cap and their excess shows the difference, otherwise the excess is\n0.00. Everything that adds up due-totals (the sheet's due-total, a grade's, backing, the ROLLUP\nand TOTALS lines, the export) uses the capped figure. A due-total of n/a is not capped.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "25568ade6d09ff1e3e01e52823ba94cce7bbc815",
+  "reset_sha": "",
+  "preagent_sha": "73aaa29a992c7e90455f30817d157fb544aa5dd1",
+  "prev_sha": "73aaa29a992c7e90455f30817d157fb544aa5dd1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1201699999999999,
+    "input_tokens": 42,
+    "output_tokens": 10548,
+    "cache_read_tokens": 1214930,
+    "cache_creation_tokens": 83257,
+    "num_turns": 22,
+    "duration_ms": 246871,
+    "duration_api_ms": 98553,
+    "model": "claude-opus-5-5",
+    "session_id": "5d46245c-4b05-4a92-b6dd-c51daf7529b1",
+    "stop_reason": "success",
+    "result_text": "I've added the sheet cap, and all 4 tests in `bin/e2e` pass.\n\n**How it works**\n- **Setting:** a new **Cap** setting sits on the settings form. It takes a figure with up to two decimals; blank means no cap. Saving it writes `SETTING_CHANGED key=cap value=<cap>` (an empty value when cleared). Because the cap changes figures, the save then writes the `ROLLUP` and `TOTALS` lines for whatever moved, the same way the late-percent and floor settings do.\n- **Per person:** if the sum of a person's figures is above the cap, their due-total shows the cap. A new **Excess** column (`person-excess`) shows the difference; otherwise it shows 0.00. A due-total of n/a is never capped, and its excess is 0.00.\n- **Everything that adds up due-totals uses the capped figure.** Those are the sheet's due-total, each grade's, backing, the `ROLLUP`/`TOTALS` lines and the CSV export. I applied the cap once on the server, in the one place a person's due-total is worked out. The screen totals and the export already add up that value, so they needed no changes.\n\n**One effect to know about:** a statement now records the capped due-total too. The test expects this (`STATEMENT \u2026 due-total=8.00`), so the \"last stated total\" a person shows is also capped.\n\n**Files changed**\n- New migration `V33__sheet_cap.sql` adds a nullable `due_cap` column to the sheet.\n- Server:\n  - `Sheet`, `SheetService` and `RateTable`/`RateService` carry the cap.\n  - In `Dues`, `total` returns the capped due-total, and `uncapped` and `excess` are new.\n  - `Rollup` passes the cap through to the totals.\n  - `PersonController` adds an `excess` field to each person.\n  - `AccessService` and `AccessController` save and show the setting.\n- Front end: `access.ts` has the cap setting and its input check. `people.ts` and `claims.ts` add the Excess column and field.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1201699999999999,
+        "num_turns": 22,
+        "duration_ms": 246871,
+        "duration_api_ms": 98553,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp43.agent.jsonl",
+  "agent_diff_file": "cp43.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
