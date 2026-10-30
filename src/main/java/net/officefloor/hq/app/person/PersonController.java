@@ -2,12 +2,14 @@ package net.officefloor.hq.app.person;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.claim.Claim;
@@ -141,14 +143,21 @@ public class PersonController {
     public record RetireForm(LocalDate from) {
     }
 
+    /** A grade for the selected people as entered: from a date (none: the sheet's today). */
+    public record BulkGradeForm(@NotEmpty List<@NotNull Long> personIds,
+            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
+    }
+
     private final PersonService service;
+    private final BulkGradeService bulkGrade;
     private final ClaimService claims;
     private final RateService rates;
     private final StatementService statements;
 
-    public PersonController(PersonService service, ClaimService claims, RateService rates,
-            StatementService statements) {
+    public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
+            RateService rates, StatementService statements) {
         this.service = service;
+        this.bulkGrade = bulkGrade;
         this.claims = claims;
         this.rates = rates;
         this.statements = statements;
@@ -182,6 +191,14 @@ public class PersonController {
         String sheet = sheetId.trim();
         return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(),
                 form.grade(), form.gradeFrom(), form.termsDays()));
+    }
+
+    /** Give the selected people the grade from the date, in list order; answers how many were changed. */
+    @PostMapping("/grade")
+    public BulkGradeService.Result grade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkGradeForm form) {
+        return bulkGrade.grade(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.personIds()), form.grade(),
+                form.from());
     }
 
     /** A statement as asked for: as of a date on or before the sheet's today (none: as of now). */
