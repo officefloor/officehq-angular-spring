@@ -11,6 +11,7 @@ import { Search } from '../search/search';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
 import { PersonPlans, PlanList } from '../plans/plans';
+import { Crews } from '../crews/crews';
 import { Pool, Pools } from '../pools/pools';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
@@ -135,7 +136,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
+  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Crews, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -160,6 +161,7 @@ function csvField(value: string): string {
     <app-void-reasons />
     <app-claim-templates />
     <app-pools [people]="people()" [(pools)]="pools" />
+    <app-crews [people]="people()" />
     <app-summary [people]="people()" [periods]="periods()" />
     <app-tags [people]="people()" />
     <app-search />

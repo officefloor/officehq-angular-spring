@@ -13,6 +13,7 @@ import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.crew.Crews;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -45,6 +46,7 @@ public class PersonMergeService {
     private final ClaimRepository claims;
     private final StatementService statements;
     private final PoolMemberRepository poolMembers;
+    private final Crews crews;
     private final AccessService access;
     private final SheetRepository sheetRows;
     private final Rollup rollup;
@@ -52,13 +54,14 @@ public class PersonMergeService {
 
     public PersonMergeService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, StatementService statements, PoolMemberRepository poolMembers,
-            AccessService access, SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
+            Crews crews, AccessService access, SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
         this.claims = claims;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.access = access;
         this.sheetRows = sheetRows;
         this.rollup = rollup;
@@ -99,6 +102,7 @@ public class PersonMergeService {
 
         mergePatrons(sheetId, personId, intoId);
         mergePools(personId, intoId);
+        crews.merge(personId, intoId);
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
         statements.carry(sheetId, personId, sheetId, intoId);
         watches.flush();

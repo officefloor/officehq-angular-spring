@@ -35,6 +35,8 @@ import net.officefloor.hq.app.person.PersonUnretired;
 import net.officefloor.hq.app.person.PersonTransferred;
 import net.officefloor.hq.app.person.PersonWatched;
 import net.officefloor.hq.app.person.WatcherNotified;
+import net.officefloor.hq.app.crew.CrewAdded;
+import net.officefloor.hq.app.crew.CrewMemberAdded;
 import net.officefloor.hq.app.pool.PoolAdded;
 import net.officefloor.hq.app.pool.PoolMemberAdded;
 import net.officefloor.hq.app.rate.RateChanged;
@@ -299,6 +301,18 @@ public class SheetAudit {
         change(e.sheetId(), e.user(), "POOL_MEMBER_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " pool=" + e.pool()
                 + " name=" + e.name() + " share=" + e.share().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.from() == null ? "" : " from=" + e.from()) + (e.to() == null ? "" : " to=" + e.to()));
+    }
+
+    @TransactionalEventListener
+    public void on(CrewAdded e) {
+        change(e.sheetId(), e.user(), "CREW_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                + " lead=" + e.lead());
+    }
+
+    @TransactionalEventListener
+    public void on(CrewMemberAdded e) {
+        change(e.sheetId(), e.user(), "CREW_MEMBER_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " crew="
+                + e.crew() + " name=" + e.name());
     }
 
     @TransactionalEventListener

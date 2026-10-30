@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Tags;
+import net.officefloor.hq.app.crew.Crews;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -54,6 +55,7 @@ public class PersonTransferService {
     private final Tags tags;
     private final StatementService statements;
     private final PoolMemberRepository poolMembers;
+    private final Crews crews;
     private final AccessService access;
     private final SheetService sheets;
     private final SheetRepository sheetRows;
@@ -62,7 +64,7 @@ public class PersonTransferService {
 
     public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, ClaimService claimService, Tags tags, StatementService statements,
-            PoolMemberRepository poolMembers, AccessService access, SheetService sheets, SheetRepository sheetRows,
+            PoolMemberRepository poolMembers, Crews crews, AccessService access, SheetService sheets, SheetRepository sheetRows,
             Rollup rollup, ApplicationEventPublisher events) {
         this.people = people;
         this.patrons = patrons;
@@ -72,6 +74,7 @@ public class PersonTransferService {
         this.tags = tags;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.access = access;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -187,6 +190,7 @@ public class PersonTransferService {
         patrons.deleteAll(patrons.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
         patrons.deleteAll(patrons.findBySheetIdAndPatronIdOrderByIdAsc(sheetId, personId));
         poolMembers.deleteAll(poolMembers.findByPersonId(personId));
+        crews.remove(personId);
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
         statements.carry(sheetId, personId, toSheet, arrived.getId());
         claims.deleteAll(leaving);
