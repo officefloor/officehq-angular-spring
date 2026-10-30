@@ -27,15 +27,28 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId, user);
-        return people.save(new Person(sheetId, name, grade));
+        String trimmed = name.trim();
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
+            throw nameInUse();
+        }
+        return people.saveAndFlush(new Person(sheetId, trimmed, grade));
     }
 
     @Transactional
     public Person edit(String sheetId, long personId, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        person.setName(name);
+        String trimmed = name.trim();
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)) {
+            throw nameInUse();
+        }
+        person.setName(trimmed);
         person.setGrade(grade);
+        people.flush();
         return person;
+    }
+
+    private static ResponseStatusException nameInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Name already in use");
     }
 }
