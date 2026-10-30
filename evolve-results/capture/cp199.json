@@ -1,0 +1,64 @@
+{
+  "checkpoint": 199,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp199_approvers",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have an approver: a user name on the row (an entry and a button; APPROVER_SET\nname=<name> user=<user>). That user may approve or reject the person's PENDING claims as a steward\nmay (the opener and the last editor still may not approve their own).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have an approver: a user name on the row (an entry and a button; APPROVER_SET\nname=<name> user=<user>). That user may approve or reject the person's PENDING claims as a steward\nmay (the opener and the last editor still may not approve their own).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4581d7cfbc5b1e338e2bef6fcc0c64c652fa96f3",
+  "reset_sha": "",
+  "preagent_sha": "1d5281dd9e97e157413a36bbf86a724099926162",
+  "prev_sha": "1d5281dd9e97e157413a36bbf86a724099926162",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3877698,
+    "input_tokens": 78,
+    "output_tokens": 14498,
+    "cache_read_tokens": 2272169,
+    "cache_creation_tokens": 80383,
+    "num_turns": 40,
+    "duration_ms": 653243,
+    "duration_api_ms": 153422,
+    "model": "claude-opus-5-5",
+    "session_id": "0c008699-a8cb-4cdf-9d69-b53ef1993314",
+    "stop_reason": "success",
+    "result_text": "Each person can now have an approver, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works**\n- **Stored data:** a new migration `V100__person_approver.sql` adds a nullable `approver` column to `person`. A cloned sheet copies the approver along with the rest of the person.\n- **Setting it:** `POST /api/sheets/{sheet}/people/{id}/approver` with body `{ user }`. The name is trimmed and a blank one is refused. A successful set writes `APPROVER_SET sheet=\u2026 by=\u2026 name=<person> user=<user>` to the audit file.\n- **Approving and rejecting:** the server check behind approve and reject (`ClaimService.pending`) now lets through a steward or the person's approver. The existing rules still apply on top of that, so whoever opened the claim or last edited it still can't approve it.\n- **Screen:** each person row now shows the approver (`person-approver`), with an entry (`person-approver-input`) and a \"Set approver\" button (`person-approver-save`). A refusal shows on the row's existing `person-error`.\n\n**Decisions you may want to change**\n- Any user who can edit the sheet can set an approver. Viewers are still blocked by the existing viewer guard. The spec has a clerk set it, so I didn't limit it to stewards.\n- There is no way to remove an approver once set, because blank names are refused. The request didn't ask for one.\n\n**A fix outside the request:** scenario 3 failed on `rollup-cut-total` because of a bug that was already there. The table that holds imported opening balances (`PERIOD_PERSON_OPENING`) was missing from the list of tables `SheetPasts` saves and restores when showing the sheet as of a past date. After an opening was imported, the pools list failed with a 409, so every cut showed 0.00. I added the table to `SheetPasts.TABLES`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3877698,
+        "num_turns": 40,
+        "duration_ms": 653243,
+        "duration_api_ms": 153422,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp199.agent.jsonl",
+  "agent_diff_file": "cp199.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
