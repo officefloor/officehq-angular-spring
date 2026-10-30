@@ -1,0 +1,64 @@
+{
+  "checkpoint": 205,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp205_plan-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0aff8f6ccb41568e62f3c3270be7263fda105301",
+  "reset_sha": "",
+  "preagent_sha": "f260319e5bd109002c34ea0518ae2057209b92c5",
+  "prev_sha": "f260319e5bd109002c34ea0518ae2057209b92c5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6889554,
+    "input_tokens": 30,
+    "output_tokens": 8361,
+    "cache_read_tokens": 594717,
+    "cache_creation_tokens": 50334,
+    "num_turns": 16,
+    "duration_ms": 283943,
+    "duration_api_ms": 70372,
+    "model": "claude-opus-5-5",
+    "session_id": "313fceb4-f0e7-4eed-8dfd-6a3479185a55",
+    "stop_reason": "success",
+    "result_text": "A plan's amount can now be changed, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works**\n- Each plan row has a new amount entry (`plan-amount`) and a save button (`plan-amount-save`).\n- A bad amount is refused: the row shows `plan-error` and nothing is stored or written to the audit file. \"Bad\" means the same rule as adding a plan, up to two decimals, so `1.005` is refused. The server checks this as well as the screen.\n- A saved change replaces the plan's current amount, and that's the amount the next generate uses. Claims already generated keep their own amounts.\n- Each change is stored with the sheet's today as its date. The plan lists its changes oldest first as `plan-change-line` entries, for example `2026-03-05 amount=20.00`.\n- Each change writes `PLAN_CHANGED sheet=<id> by=<user> name=<person> start=<plan start> amount=<new amount>` to the audit file.\n\n**What changed**\n- **Stored data:** a new table for the changes, added in `V102__plan_change.sql`.\n- **Server:** a new `PlanChange` record type with its repository and a `PlanChanged` event, plus a `changeAmount` method in `Plans.java`. A new endpoint, `POST /api/sheets/{sheetId}/plans/{planId}/amount`, is in `PlanController.java`, and each plan sent to the screen now carries its list of changes. The audit line is written in `SheetAudit.java`.\n- **Front end:** the entry, save button and change list are in `features/plans/plans.ts`.\n\nThe new amount applies to every claim generated after the change, including any made then for dates before it. The test expects this: claims dated 03-07 and 03-10 were generated on 03-11 and got 20.00. A claim the claim form refused earlier and that is retried later will also get the new amount.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6889554,
+        "num_turns": 16,
+        "duration_ms": 283943,
+        "duration_api_ms": 70372,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp205.agent.jsonl",
+  "agent_diff_file": "cp205.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
