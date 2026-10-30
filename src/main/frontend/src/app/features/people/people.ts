@@ -45,6 +45,29 @@ function trimmedSum(figures: number[]): number {
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
 }
 
+/** A sheet's due-total in cents as the sheet shows it: its people's, trimmed, a person showing n/a skipped. */
+function dueTotalOf(people: Person[]): number {
+  return trimmedSum(people.flatMap((p) => (p.dueTotal === null ? [] : [cents(p.dueTotal)])));
+}
+
+/** A sheet's overdue-total in cents as the sheet shows it: its people's, trimmed. */
+function overdueTotalOf(people: Person[]): number {
+  return trimmedSum(people.map((p) => cents(p.overdueTotal)));
+}
+
+/** A sheet's figures that are consolidated over it and its descendants. */
+interface SheetFigures {
+  people: number;
+  /** In cents. */
+  due: number;
+  /** In cents. */
+  overdue: number;
+}
+
+function figuresOf(people: Person[]): SheetFigures {
+  return { people: people.length, due: dueTotalOf(people), overdue: overdueTotalOf(people) };
+}
+
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
@@ -69,6 +92,12 @@ function csvField(value: string): string {
       <p>Due total <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
     </header>
+    <section aria-label="Consolidated figures">
+      <h2>Consolidated over this sheet and its descendants</h2>
+      <p>People <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
+      <p>Due total <strong data-testid="consolidated-due-total">{{ consolidated().due }}</strong></p>
+      <p>Overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdue }}</strong></p>
+    </section>
     <app-rates (changed)="reloadSheet()" />
     <app-access />
     <app-periods [people]="people()" [(periods)]="periods" />
@@ -537,9 +566,7 @@ export class People {
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
   );
   /** Everyone's due-total added up, trimmed (see {@link trimmedSum}); a person showing n/a is skipped. */
-  protected readonly dueTotal = computed(() =>
-    (trimmedSum(this.people().flatMap((p) => (p.dueTotal === null ? [] : [cents(p.dueTotal)]))) / 100).toFixed(2),
-  );
+  protected readonly dueTotal = computed(() => (dueTotalOf(this.people()) / 100).toFixed(2));
   /** Everyone's settled-total added up, not trimmed. */
   protected readonly settledTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.settledTotal), 0) / 100).toFixed(2),
@@ -573,15 +600,25 @@ export class People {
   /** Everyone's overdue claims counted up. */
   protected readonly overdueCount = computed(() => this.people().reduce((sum, p) => sum + p.overdueCount, 0));
   /** Everyone's overdue-total added up, trimmed (see {@link trimmedSum}). */
-  protected readonly overdueTotal = computed(() =>
-    (trimmedSum(this.people().map((p) => cents(p.overdueTotal))) / 100).toFixed(2),
-  );
+  protected readonly overdueTotal = computed(() => (overdueTotalOf(this.people()) / 100).toFixed(2));
+  /** The figures of each of the sheet's descendants (its children, theirs, and so on), as each shows them. */
+  private readonly descendants = signal<SheetFigures[]>([]);
+  /** The people counted, and the due- and overdue-totals added up, over the sheet and all its descendants. */
+  protected readonly consolidated = computed(() => {
+    const all = [figuresOf(this.people()), ...this.descendants()];
+    return {
+      people: all.reduce((sum, f) => sum + f.people, 0),
+      due: (all.reduce((sum, f) => sum + f.due, 0) / 100).toFixed(2),
+      overdue: (all.reduce((sum, f) => sum + f.overdue, 0) / 100).toFixed(2),
+    };
+  });
 
   constructor() {
     effect(() => {
       const sheet = this.session.sheet();
       this.session.loads();
       this.people.set([]);
+      this.descendants.set([]);
       this.watched.set(new Set());
       this.personError.set(null);
       this.patronError.set(null);
@@ -1258,7 +1295,7 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, watched, batch] = await Promise.all([
+    const [people, watched, batch, descendants] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
       firstValueFrom(
         this.http.get<number[]>(`/api/sheets/${encodeURIComponent(sheet)}/watches`, {
@@ -1268,11 +1305,23 @@ export class People {
       firstValueFrom(
         this.http.get<{ last: number | null }>(`/api/sheets/${encodeURIComponent(sheet)}/claims/settle-batch`),
       ),
+      this.descendantFigures(sheet),
     ]);
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.people.set(people);
       this.watched.set(new Set(watched));
       this.settleBatch.set(batch.last);
+      this.descendants.set(descendants);
     }
+  }
+
+  /** The figures of each of the sheet's descendants, each read from its own people as that sheet shows them. */
+  private async descendantFigures(sheet: string): Promise<SheetFigures[]> {
+    const ids = await firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/descendants`));
+    return Promise.all(
+      ids.map(async (id) =>
+        figuresOf(await firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(id)}/people`))),
+      ),
+    );
   }
 }

@@ -2,7 +2,11 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.asof.SheetPasts;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.statement.DayEnds;
@@ -56,6 +60,24 @@ public class SheetService {
     /** The sheet's dated settings: the floor, late percent, terms, clerk limit and cap in force on any date. */
     public DatedSettings settings(String id) {
         return new DatedSettings(settings.findBySheetId(id));
+    }
+
+    /**
+     * The ids of the sheet's descendants: its children (the sheets naming it as their parent), their
+     * children, and so on, each once, nearest first.
+     */
+    public List<String> descendants(String id) {
+        Set<String> seen = new LinkedHashSet<>(List.of(id));
+        Deque<String> next = new ArrayDeque<>(List.of(id));
+        while (!next.isEmpty()) {
+            String sheet = next.poll();
+            for (SheetSetting s : settings.findByKeyAndValue(DatedSettings.PARENT, sheet)) {
+                if (sheet.equals(settings(s.getSheetId()).parent()) && seen.add(s.getSheetId())) {
+                    next.add(s.getSheetId());
+                }
+            }
+        }
+        return seen.stream().skip(1).toList();
     }
 
     /** The sheet's policy date as set; null when blank (the sheet's today is the policy date then). */

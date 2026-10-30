@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
 import net.officefloor.hq.app.access.AccessService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,6 +48,12 @@ public class SheetController {
     @GetMapping("/{id}")
     public SheetView get(@PathVariable @NotBlank @Size(max = 100) String id) {
         return view(service.get(id.trim()));
+    }
+
+    /** The ids of the sheet's descendants: its children, their children, and so on, nearest first. */
+    @GetMapping("/{id}/descendants")
+    public List<String> descendants(@PathVariable @NotBlank @Size(max = 100) String id) {
+        return service.descendants(id.trim());
     }
 
     @PutMapping("/{id}/today")

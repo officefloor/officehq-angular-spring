@@ -9,6 +9,9 @@ public interface SheetSettingRepository extends JpaRepository<SheetSetting, Long
 
     List<SheetSetting> findBySheetId(String sheetId);
 
+    /** Every value saved for the key that equals the value given. */
+    List<SheetSetting> findByKeyAndValue(String key, String value);
+
     /** The key's value with this from-date. */
     Optional<SheetSetting> findBySheetIdAndKeyAndFromDate(String sheetId, String key, LocalDate fromDate);
 }
