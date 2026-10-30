@@ -1,0 +1,64 @@
+{
+  "checkpoint": 134,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp134_sorting",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "db16bffe06a25686a49f21236094599e317e83dd",
+  "reset_sha": "",
+  "preagent_sha": "1881dbe9ca0178228f5d00bf388b65bcde1a5141",
+  "prev_sha": "1881dbe9ca0178228f5d00bf388b65bcde1a5141",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7764926000000001,
+    "input_tokens": 24,
+    "output_tokens": 3821,
+    "cache_read_tokens": 606136,
+    "cache_creation_tokens": 15480,
+    "num_turns": 11,
+    "duration_ms": 159411,
+    "duration_api_ms": 84248,
+    "model": "claude-opus-5-5",
+    "session_id": "18f706c8-a4fb-4c92-bd15-c95576d187a4",
+    "stop_reason": "success",
+    "result_text": "The people list can now be sorted by added, name, grade or due-total. All 4 tests in `bin/e2e` pass. The change is front-end only; the stored data and the server are untouched.\n\n**Sorting** (`src/main/frontend/src/app/features/people/people.ts`)\n- There's a new **Sort by** select (`data-testid=\"sort-by\"`) next to \"Show retired\", set to `added` when the screen opens.\n- Each user's choice applies only to their own screen. Re-loading a sheet keeps it; another user signing in starts at `added`.\n- Only the table display is sorted. The list order itself doesn't change, so the positions, the rollup lines, the bulk actions and the other panels still follow it.\n- How each sort works:\n  - **name:** uses the app's existing name rule, ignoring spaces at either end and letter case, so \"ada\" comes before \"Ben\".\n  - **grade:** A, then B, then C.\n  - **due-total:** smallest amount first, with `n/a` last.\n  - **Ties:** people with the same value stay in list order.\n\n**One change beyond the sort itself.** The test expects the order to change right after the cap setting is saved. Until now, saving settings didn't re-read the people, so their dues on screen stayed stale until the sheet was re-loaded.\n- The settings panel (`features/access/access.ts`) now asks the people screen to re-read the people from the store after a save, and waits for that before showing the saved values.\n- If that re-read fails, the save still counts as successful.\n- A visible side effect: saving any setting now refreshes everyone's figures on screen straight away, not just the sort order.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7764926000000001,
+        "num_turns": 11,
+        "duration_ms": 159411,
+        "duration_api_ms": 84248,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp134.agent.jsonl",
+  "agent_diff_file": "cp134.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
