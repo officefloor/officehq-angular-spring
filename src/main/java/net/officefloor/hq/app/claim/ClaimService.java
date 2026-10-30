@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.access.Permission;
 import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
@@ -142,7 +143,8 @@ public class ClaimService {
     }
 
     /**
-     * Move a claim to a status; a move its status does not allow, settling by the user who opened
+     * Move a claim to a status; a move its status does not allow, opening, settling or voiding by a role the
+     * sheet's permission matrix does not allow, settling by the user who opened
      * the claim, or moving a claim dated inside a closed period, is refused and changes nothing. Settling
      * by a clerk a claim whose due is above the clerk limit leaves it PENDING.
      * Returns the person it belongs to.
@@ -153,6 +155,16 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
+        }
+        Permission permission = switch (next) {
+            case OPEN -> Permission.OPEN;
+            case SETTLED -> Permission.SETTLE;
+            case VOID -> Permission.VOID;
+            default -> null;
+        };
+        if (permission != null && !access.allows(sheetId, user, permission)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Your role may not " + permission.action() + " a claim on this sheet");
         }
         if (next == ClaimStatus.SETTLED && Dues.deferred(claim, sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -338,13 +350,13 @@ public class ClaimService {
      * number and date, is released from any figure a statement bound it to (live again until its new
      * person's next statement), and lists as its new person's newest claim. A settled or voided claim, a
      * correction, a claim dated inside a closed period or after the new person's retirement date, or a move
-     * by anyone but a steward is refused and nothing changes. Returns the people it moved from and to.
+     * by a role the sheet's permission matrix does not allow (a steward, unless set) is refused and nothing changes. Returns the people it moved from and to.
      */
     @Transactional
     public long[] reassign(String sheetId, String user, long claimId, long toPersonId) {
         Claim claim = claim(sheetId, claimId);
-        if (access.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can reassign a claim");
+        if (!access.allows(sheetId, user, Permission.REASSIGN)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Your role may not reassign a claim on this sheet");
         }
         if (claim.getStatus() != ClaimStatus.DRAFT && claim.getStatus() != ClaimStatus.OPEN
                 && claim.getStatus() != ClaimStatus.PENDING) {

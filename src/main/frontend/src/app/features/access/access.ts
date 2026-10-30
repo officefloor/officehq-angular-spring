@@ -29,6 +29,13 @@ interface Settings {
   cap: string | null;
   /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
   proofThreshold: string | null;
+  /** The roles that may open, settle, void, reassign, close or reopen, comma separated; null when blank (the standing rule). */
+  permOpen: string | null;
+  permSettle: string | null;
+  permVoid: string | null;
+  permReassign: string | null;
+  permClose: string | null;
+  permReopen: string | null;
 }
 
 interface AccessView {
@@ -44,6 +51,19 @@ const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
 const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold'] as const;
 type Dated = (typeof DATED)[number];
 const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '' };
+/** The permission matrix: each action with its setting and the roles that take it when left blank. */
+const PERMS = [
+  { action: 'open', field: 'permOpen', standing: 'clerk, steward' },
+  { action: 'settle', field: 'permSettle', standing: 'clerk, steward' },
+  { action: 'void', field: 'permVoid', standing: 'clerk, steward' },
+  { action: 'reassign', field: 'permReassign', standing: 'steward' },
+  { action: 'close', field: 'permClose', standing: 'clerk, steward' },
+  { action: 'reopen', field: 'permReopen', standing: 'steward' },
+] as const;
+type Perm = (typeof PERMS)[number]['field'];
+const NO_PERMS: Record<Perm, string> = { permOpen: '', permSettle: '', permVoid: '', permReassign: '', permClose: '', permReopen: '' };
+const NO_PERMS_TOUCHED: Record<Perm, boolean> = { permOpen: false, permSettle: false, permVoid: false, permReassign: false, permClose: false, permReopen: false };
+const PERM_ROLES = /^\s*(clerk|steward)\s*(,\s*(clerk|steward)\s*)*$/;
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -57,7 +77,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
 // numbered within its period (blank: off), and the cap, the most a person's due-total comes to (blank: no
 // cap), and the proof threshold, the most due a claim may have to be settled or approved with no proof
-// (blank: none). The settings that carry a figure are dated: each is saved from its from-date (blank: the sheet's
+// (blank: none), and the permission matrix, the roles that may open, settle, void, reassign, close and
+// reopen, each a comma separated list (blank: the standing rule; not dated). The settings that carry a figure are dated: each is saved from its from-date (blank: the sheet's
 // today), and each shows, as does its input, the value in force on the sheet's today. A save sends only
 // the settings whose input (or from-date) was changed (a Delete or Backspace in a blank input asks to
 // save it blank).
@@ -115,6 +136,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
+      @for (p of perms; track p.field) {
+        <p>Roles that may {{ p.action }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
+      }
       <form (submit)="saveSettings($event)" aria-label="Save settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
@@ -255,6 +279,16 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput().proofThreshold"
           (input)="setFrom('proofThreshold', value($event)); proofThresholdTouched = true; settingsError.set('')"
         />
+        @for (p of perms; track p.field) {
+          <label [for]="'setting-perm-' + p.action">Roles that may {{ p.action }}, comma separated (blank: {{ p.standing }})</label>
+          <input
+            [id]="'setting-perm-' + p.action"
+            [attr.data-testid]="'setting-perm-' + p.action"
+            [value]="permInput()[p.field]"
+            (input)="setPermInput(p.field, value($event)); permTouched[p.field] = true; settingsError.set('')"
+            (keydown)="permTouched[p.field] = permTouched[p.field] || clears($event)"
+          />
+        }
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -292,6 +326,10 @@ export class Access {
   protected readonly proofThreshold = signal<string | null>(null);
   protected readonly proofThresholdInput = signal('');
   protected readonly GRADE_TERMS = GRADE_TERMS;
+  protected readonly perms = PERMS;
+  protected readonly perm = signal<Record<Perm, string | null>>({ ...NO_PERMS });
+  protected readonly permInput = signal<Record<Perm, string>>(NO_PERMS);
+  protected permTouched: Record<Perm, boolean> = { ...NO_PERMS_TOUCHED };
   /** The from-date typed for each dated setting; blank: the sheet's today. */
   protected readonly fromInput = signal<Record<Dated, string>>(NO_FROM);
   /** Whether each settings input was changed since the settings were last shown. */
@@ -316,7 +354,7 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, cap: null, proofThreshold: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, cap: null, proofThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -333,6 +371,10 @@ export class Access {
 
   protected setGradeTermsInput(grade: Grade, v: string): void {
     this.gradeTermsInput.update((t) => ({ ...t, [grade]: v }));
+  }
+
+  protected setPermInput(key: Perm, v: string): void {
+    this.permInput.update((p) => ({ ...p, [key]: v }));
   }
 
   protected value(e: Event): string {
@@ -427,6 +469,14 @@ export class Access {
       this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const perms = this.permInput();
+    for (const p of PERMS) {
+      const roles = perms[p.field].trim();
+      if (this.permTouched[p.field] && roles !== '' && !PERM_ROLES.test(roles)) {
+        this.settingsError.set(`Enter the roles that may ${p.action} (clerk, steward), separated by commas, or leave it blank for ${p.standing}.`);
+        return;
+      }
+    }
     const froms = this.fromInput();
     for (const k of DATED) {
       const from = froms[k].trim();
@@ -447,6 +497,9 @@ export class Access {
     if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
     if (this.capTouched) body.cap = cap;
     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
+    for (const p of PERMS) {
+      if (this.permTouched[p.field]) body[p.field] = perms[p.field].trim();
+    }
     for (const k of DATED) {
       if (body[k] !== undefined && froms[k].trim() !== '') body[`${k}From`] = froms[k].trim();
     }
@@ -505,5 +558,14 @@ export class Access {
     this.proofThresholdInput.set(settings.proofThreshold ?? '');
     this.proofThresholdTouched = false;
     this.fromInput.set(NO_FROM);
+    const perm = { ...NO_PERMS } as Record<Perm, string | null>;
+    const input = { ...NO_PERMS };
+    for (const p of PERMS) {
+      perm[p.field] = settings[p.field];
+      input[p.field] = settings[p.field] ?? '';
+    }
+    this.perm.set(perm);
+    this.permInput.set(input);
+    this.permTouched = { ...NO_PERMS_TOUCHED };
   }
 }

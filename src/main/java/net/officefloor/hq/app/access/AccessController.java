@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,11 +45,14 @@ public class AccessController {
      * the terms are a number of days, and so are the terms of grades A, B and C, null for a grade without
      * its own (it uses the sheet's); the late percent is a figure with two decimals; the policy date and
      * the period numbering from are dates (yyyy-mm-dd), null when blank; the cap is a figure with two
-     * decimals, null for none; so is the proof threshold.
+     * decimals, null for none; so is the proof threshold. Each entry of the permission matrix (open, settle,
+     * void, reassign, close, reopen) is the roles that may take the action as written, comma separated; null
+     * when blank (the standing rule).
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String cap,
-            String proofThreshold) {
+            String proofThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+            String permClose, String permReopen) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom) {
             return new SettingsView(text(dated.clerkLimit(today)), dated.floor(today).toPlainString(),
@@ -57,7 +61,14 @@ public class AccessController {
                     dated.latePct(today).toPlainString(),
                     policyDate == null ? null : policyDate.toString(),
                     periodNumberingFrom == null ? null : periodNumberingFrom.toString(),
-                    text(dated.cap(today)), text(dated.proofThreshold(today)));
+                    text(dated.cap(today)), text(dated.proofThreshold(today)),
+                    perm(dated, Permission.OPEN, today), perm(dated, Permission.SETTLE, today),
+                    perm(dated, Permission.VOID, today), perm(dated, Permission.REASSIGN, today),
+                    perm(dated, Permission.CLOSE, today), perm(dated, Permission.REOPEN, today));
+        }
+
+        private static String perm(DatedSettings dated, Permission permission, LocalDate today) {
+            return dated.on(permission.key(), today).orElse(null);
         }
 
         private static String text(Object value) {
@@ -80,7 +91,9 @@ public class AccessController {
      * decimals, blank putting back 0.00. The policy date is a date (yyyy-mm-dd), blank meaning the
      * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off. The cap is 0.00
      * or more with up to two decimals, blank meaning no cap; so is the proof threshold, blank meaning none. Each setting that carries a figure takes a
-     * from-date (yyyy-mm-dd) its value is in force from, blank or left out meaning the sheet's today.
+     * from-date (yyyy-mm-dd) its value is in force from, blank or left out meaning the sheet's today. Each
+     * entry of the permission matrix is a comma separated list of roles (clerk, steward), blank putting back
+     * the standing rule; it is not dated.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -101,7 +114,13 @@ public class AccessController {
             @Pattern(regexp = DATE) String termsCFrom,
             @Pattern(regexp = DATE) String latePctFrom,
             @Pattern(regexp = DATE) String capFrom,
-            @Pattern(regexp = DATE) String proofThresholdFrom) {
+            @Pattern(regexp = DATE) String proofThresholdFrom,
+            @Pattern(regexp = Permission.ROLES) String permOpen,
+            @Pattern(regexp = Permission.ROLES) String permSettle,
+            @Pattern(regexp = Permission.ROLES) String permVoid,
+            @Pattern(regexp = Permission.ROLES) String permReassign,
+            @Pattern(regexp = Permission.ROLES) String permClose,
+            @Pattern(regexp = Permission.ROLES) String permReopen) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -140,8 +159,15 @@ public class AccessController {
         AccessService.Dated terms = dated(form.terms(), form.termsFrom());
         AccessService.Dated latePct = dated(form.latePct(), form.latePctFrom());
         AccessService.Dated cap = dated(form.cap(), form.capFrom());
+        Map<Permission, String> permissions = new EnumMap<>(Permission.class);
+        permissions.put(Permission.OPEN, form.permOpen());
+        permissions.put(Permission.SETTLE, form.permSettle());
+        permissions.put(Permission.VOID, form.permVoid());
+        permissions.put(Permission.REASSIGN, form.permReassign());
+        permissions.put(Permission.CLOSE, form.permClose());
+        permissions.put(Permission.REOPEN, form.permReopen());
         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
-                form.periodNumberingFrom(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()));
+                form.periodNumberingFrom(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()), permissions);
         return settings(sheet);
     }
 

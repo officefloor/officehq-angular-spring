@@ -131,7 +131,7 @@ public class AccessService {
     @Transactional
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, Dated cap,
-            Dated proofThreshold) {
+            Dated proofThreshold, Map<Permission, String> permissions) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -162,6 +162,41 @@ public class AccessService {
         if (proofThreshold != null) {
             setDated(sheetId, user, PROOF_THRESHOLD, money(proofThreshold.value(), null), proofThreshold.from(), false);
         }
+        permissions.forEach((permission, roles) -> {
+            if (roles != null) {
+                setPermission(sheetId, user, permission, roles.trim());
+            }
+        });
+    }
+
+    /** The roles that may take the action as set (comma separated); null when blank (the standing rule). */
+    @Transactional(readOnly = true)
+    public String permission(String sheetId, Permission permission) {
+        return sheets.settings(sheetId).on(permission.key(), sheets.today(sheetId)).orElse(null);
+    }
+
+    /** Whether the user's role on the sheet may take the action under the sheet's permission matrix. */
+    @Transactional(readOnly = true)
+    public boolean allows(String sheetId, String user, Permission permission) {
+        return permission.allows(permission(sheetId, permission), roleOf(sheetId, user));
+    }
+
+    /**
+     * Record which roles may take an action, as written (blank: the standing rule). The permission matrix is
+     * not dated: the value holds from the beginning of time, replacing the one it had.
+     */
+    @Transactional
+    public void setPermission(String sheetId, String user, Permission permission, String roles) {
+        sheets.load(sheetId, user);
+        String value = roles.isEmpty() ? null : roles;
+        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, permission.key(), null).orElse(null);
+        if (row == null) {
+            settingRows.saveAndFlush(new SheetSetting(sheetId, permission.key(), null, value));
+        } else {
+            row.setValue(value);
+            settingRows.flush();
+        }
+        events.publishEvent(new SettingChanged(sheetId, user, permission.key(), roles, null));
     }
 
     /** A figure as kept: two decimals; blank is the starting value given (null: none). */
