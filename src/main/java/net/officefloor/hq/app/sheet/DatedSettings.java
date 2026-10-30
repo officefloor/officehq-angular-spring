@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.sheet;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
@@ -10,7 +11,7 @@ import java.util.Optional;
  * A sheet's dated settings: the value of each in force on a date is the one with the latest from-date on
  * or before it (a value with no from-date applying from the beginning of time); before every from-date,
  * and where that value was saved blank, the sheet's starting value (1.00 for the floor, 0.00 for the late
- * percent, 14 days for the terms; none for a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's proof threshold and the note threshold; the sheet's terms for a grade's own
+ * percent, 14 days for the terms; none for the rounding mode, a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's proof threshold and the note threshold; the sheet's terms for a grade's own
  * terms).
  */
 public record DatedSettings(List<SheetSetting> values) {
@@ -24,6 +25,9 @@ public record DatedSettings(List<SheetSetting> values) {
     public static final String LATE_PCT = "late-pct";
 
     public static final String CAP = "cap";
+
+    /** How a claim's figures round: half-up or half-even; none (blank) leaves it to the policy date. */
+    public static final String ROUNDING = "rounding";
 
     public static final String PROOF_THRESHOLD = "proof-threshold";
 
@@ -81,6 +85,20 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The percent an overdue claim gains of its figure for a 30-day boundary past its due-by falling on the date. */
     public BigDecimal latePct(LocalDate date) {
         return on(LATE_PCT, date).map(BigDecimal::new).orElse(Sheet.DEFAULT_LATE_PCT);
+    }
+
+    /** The rounding mode in force on the date: half-up or half-even; null when none is (the policy date decides). */
+    public RoundingMode rounding(LocalDate date) {
+        return on(ROUNDING, date).map(DatedSettings::roundingMode).orElse(null);
+    }
+
+    /** A rounding mode as written (half-up or half-even); null for anything else. */
+    public static RoundingMode roundingMode(String value) {
+        return switch (value) {
+            case "half-up" -> RoundingMode.HALF_UP;
+            case "half-even" -> RoundingMode.HALF_EVEN;
+            default -> null;
+        };
     }
 
     /** The sheet's terms for a claim dated on the date, in days. */

@@ -58,6 +58,8 @@ interface Settings {
   proofThresholdA: string | null;
   proofThresholdB: string | null;
   proofThresholdC: string | null;
+  /** How a claim's figures round: half-up or half-even; null when none (the policy date decides). */
+  rounding: string | null;
 }
 
 /** The steward role delegated by a steward (by) to a user, from a from-date to a to-date (yyyy-mm-dd), inclusive. */
@@ -82,9 +84,9 @@ const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
 const GRADE_GRACE = { A: 'graceA', B: 'graceB', C: 'graceC' } as const;
 const GRADE_PROOF = { A: 'proofThresholdA', B: 'proofThresholdB', C: 'proofThresholdC' } as const;
 /** The settings that carry a figure: each is saved from a from-date. */
-const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold', 'graceA', 'graceB', 'graceC', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC'] as const;
+const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold', 'graceA', 'graceB', 'graceC', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC', 'rounding'] as const;
 type Dated = (typeof DATED)[number];
-const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', graceA: '', graceB: '', graceC: '', proofThresholdA: '', proofThresholdB: '', proofThresholdC: '' };
+const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', graceA: '', graceB: '', graceC: '', proofThresholdA: '', proofThresholdB: '', proofThresholdC: '', rounding: '' };
 /** The permission matrix: each action with its setting and the roles that take it when left blank. */
 const PERMS = [
   { action: 'open', field: 'permOpen', standing: 'clerk, steward' },
@@ -103,13 +105,15 @@ const DAYS = /^\d{1,5}$/;
 const MONTH = /^([1-9]|0[1-9]|1[0-2])$/;
 const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ROUNDING = /^(half-up|half-even)$/;
 
 // The sheet's roles (any name without one is a clerk) with the form that sets one, and the
 // sheet's settings: the clerk limit, the most due a clerk may settle (blank: no limit), and the floor,
 // the least live due a claim has (blank: 1.00), and the terms, the days a claim has to be paid by
 // from its date (blank: 14), and each grade's own terms (blank: the sheet's terms), and the late percent, what an overdue claim's due gains of its figure for
 // every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
-// (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
+// (blank: the sheet's today), and the rounding mode, how a claim's figures round, half-up or half-even, overriding the
+// policy date for a claim whose date has one in force (blank: none), and the period numbering from, the date from which a claim opened is
 // numbered within its period (blank: off), and the grace days, the days after an open period's to-date
 // before a change of the sheet's today closes it (blank: off; not dated), and each grade's grace days, the days
 // past a claim's due-by before it is overdue and its late charge counts from (blank: none), and the entry date, the date a
@@ -213,6 +217,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <p>Terms for grade {{ g }} (days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</strong></p>
       }
       <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
+      <p>Rounding mode <strong data-testid="setting-rounding-current">{{ rounding() ?? '' }}</strong></p>
       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
       <p>Grace days <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
@@ -320,6 +325,22 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           data-testid="setting-late-pct-from"
           [value]="fromInput().latePct"
           (input)="setFrom('latePct', value($event)); latePctTouched = true; settingsError.set('')"
+        />
+        <label for="setting-rounding">Rounding mode: half-up or half-even (blank: none, the policy date decides)</label>
+        <input
+          id="setting-rounding"
+          data-testid="setting-rounding"
+          [value]="roundingInput()"
+          (input)="roundingInput.set(value($event)); roundingTouched = true; settingsError.set('')"
+          (keydown)="roundingTouched = roundingTouched || clears($event)"
+        />
+        <label for="setting-rounding-from">Rounding mode in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-rounding-from"
+          type="date"
+          data-testid="setting-rounding-from"
+          [value]="fromInput().rounding"
+          (input)="setFrom('rounding', value($event)); roundingTouched = true; settingsError.set('')"
         />
         <label for="setting-policy-date">Policy date: claims before it round half up, on or after it half to even (blank: the sheet's today)</label>
         <input
@@ -528,6 +549,8 @@ export class Access {
   protected readonly gradeGraceInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly latePct = signal('');
   protected readonly latePctInput = signal('');
+  protected readonly rounding = signal<string | null>(null);
+  protected readonly roundingInput = signal('');
   protected readonly policyDate = signal<string | null>(null);
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFrom = signal<string | null>(null);
@@ -568,6 +591,7 @@ export class Access {
   protected gradeTermsTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
   protected gradeGraceTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
   protected latePctTouched = false;
+  protected roundingTouched = false;
   protected policyDateTouched = false;
   protected numberingFromTouched = false;
   protected graceDaysTouched = false;
@@ -597,7 +621,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -748,6 +772,11 @@ export class Access {
       this.settingsError.set('Enter a late percent of 0.00 or more, with up to two decimals, or leave it blank for 0.00.');
       return;
     }
+    const rounding = this.roundingInput().trim();
+    if (this.roundingTouched && rounding !== '' && !ROUNDING.test(rounding)) {
+      this.settingsError.set('Enter a rounding mode of half-up or half-even, or leave it blank for none.');
+      return;
+    }
     const policyDate = this.policyDateInput().trim();
     if (this.policyDateTouched && policyDate !== '' && !DATE.test(policyDate)) {
       this.settingsError.set('Enter a policy date, or leave it blank for the sheet\'s today.');
@@ -830,6 +859,7 @@ export class Access {
       if (this.gradeTermsTouched[g]) body[GRADE_TERMS[g]] = gradeTerms[g].trim();
     }
     if (this.latePctTouched) body.latePct = latePct;
+    if (this.roundingTouched) body.rounding = rounding;
     if (this.policyDateTouched) body.policyDate = policyDate;
     if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
     if (this.graceDaysTouched) body.graceDays = graceDays;
@@ -901,6 +931,9 @@ export class Access {
     this.gradeGrace.set({ A: settings.graceA, B: settings.graceB, C: settings.graceC });
     this.gradeGraceInput.set({ A: settings.graceA ?? '', B: settings.graceB ?? '', C: settings.graceC ?? '' });
     this.gradeGraceTouched = { A: false, B: false, C: false };
+    this.rounding.set(settings.rounding);
+    this.roundingInput.set(settings.rounding ?? '');
+    this.roundingTouched = false;
     this.policyDate.set(settings.policyDate);
     this.policyDateInput.set(settings.policyDate ?? '');
     this.latePctTouched = false;

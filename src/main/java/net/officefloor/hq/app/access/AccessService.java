@@ -70,6 +70,8 @@ public class AccessService {
 
     public static final String CAP = DatedSettings.CAP;
 
+    public static final String ROUNDING = DatedSettings.ROUNDING;
+
     public static final String PROOF_THRESHOLD = DatedSettings.PROOF_THRESHOLD;
 
     public static final String NOTE_THRESHOLD = DatedSettings.NOTE_THRESHOLD;
@@ -259,10 +261,13 @@ public class AccessService {
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
-            String alertThreshold) {
+            String alertThreshold, Dated rounding) {
         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
+        }
+        if (rounding != null && !rounding.value().isEmpty() && DatedSettings.roundingMode(rounding.value()) == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The rounding mode is half-up or half-even");
         }
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
@@ -280,6 +285,9 @@ public class AccessService {
         });
         if (latePct != null) {
             setDated(sheetId, user, LATE_PCT, money(latePct.value(), Sheet.DEFAULT_LATE_PCT), latePct.from(), true);
+        }
+        if (rounding != null) {
+            setDated(sheetId, user, ROUNDING, rounding.value().isEmpty() ? null : rounding.value(), rounding.from(), true);
         }
         if (policyDate != null) {
             setPolicyDate(sheetId, user, policyDate.isEmpty() ? null : LocalDate.parse(policyDate));

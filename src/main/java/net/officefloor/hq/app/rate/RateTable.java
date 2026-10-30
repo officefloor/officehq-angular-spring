@@ -98,10 +98,15 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
     }
 
     /**
-     * How the figures of a claim whose rounding goes by the date round: half up when it is before the
-     * policy date (the sheet's today when none is set), half to even on or after it.
+     * How the figures of a claim whose rounding goes by the date round: by the rounding mode in force on
+     * that date when one is; otherwise half up when it is before the policy date (the sheet's today when
+     * none is set), half to even on or after it.
      */
     public RoundingMode rounding(LocalDate roundsBy) {
+        RoundingMode mode = settings.rounding(roundsBy);
+        if (mode != null) {
+            return mode;
+        }
         LocalDate policy = policyDate == null ? today : policyDate;
         return roundsBy.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }

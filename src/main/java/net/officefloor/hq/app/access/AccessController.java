@@ -55,13 +55,14 @@ public class AccessController {
      * pot is a figure with two decimals, null for none; it is not dated. The parent is the id of the parent
      * sheet, null for none; it is not dated. The fiscal start month is the month (1 to 12) the sheet's fiscal
      * year starts in; it is not dated. The alert threshold is a figure with two decimals, null when off; it is not dated.
+     * The rounding mode is half-up or half-even, null for none (the policy date decides); it is dated.
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
-            String fiscalStartMonth, String alertThreshold) {
+            String fiscalStartMonth, String alertThreshold, String rounding) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
                 Integer graceDays, LocalDate entryDate) {
@@ -79,7 +80,8 @@ public class AccessController {
                     text(grace(dated, "B", today)), text(grace(dated, "C", today)),
                     text(dated.gradeProofThreshold("A", today)), text(dated.gradeProofThreshold("B", today)),
                     text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent(),
-                    Integer.toString(dated.fiscalStartMonth()), text(dated.alertThreshold()));
+                    Integer.toString(dated.fiscalStartMonth()), text(dated.alertThreshold()),
+                    dated.on(DatedSettings.ROUNDING, today).orElse(null));
         }
 
         /** The grade's grace days in force on the date as written; null when it has none then. */
@@ -134,7 +136,7 @@ public class AccessController {
      * 0.00 or more with up to two decimals, blank meaning none; not dated. The parent is the id of a sheet
      * that has been loaded, blank meaning none; not dated. The fiscal start month is a month, 1 to 12, blank
      * putting back 1; not dated. The alert threshold is 0.00 or more with up to two decimals, blank meaning off;
-     * not dated.
+     * not dated. The rounding mode is half-up or half-even, blank meaning none (the policy date decides); dated.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -181,7 +183,9 @@ public class AccessController {
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String pot,
             @Size(max = 100) String parent,
             @Pattern(regexp = "(\\d{1,2})?") String fiscalStartMonth,
-            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String alertThreshold) {
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String alertThreshold,
+            @Pattern(regexp = "(half-up|half-even)?") String rounding,
+            @Pattern(regexp = DATE) String roundingFrom) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -252,7 +256,7 @@ public class AccessController {
                 form.periodNumberingFrom(), form.graceDays(), gradeGrace, cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
                 dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold,
                 form.pot(), form.parent() == null ? null : form.parent().trim(), form.fiscalStartMonth(),
-                form.alertThreshold());
+                form.alertThreshold(), dated(form.rounding(), form.roundingFrom()));
         return settings(sheet);
     }
 

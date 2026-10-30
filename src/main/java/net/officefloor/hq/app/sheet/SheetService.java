@@ -183,17 +183,17 @@ public class SheetService {
      * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
      * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
      * days are closed) and then the figures it moves. The sheet as it stands is first written down as at
-     * the end of the today it leaves (see {@link DayEnds} and {@link SheetPasts}), and everyone's due-total
-     * on it is announced first ({@link DaySnapshot}).
+     * the end of the today it leaves (see {@link DayEnds} and {@link SheetPasts}; the sheet as of that day
+     * holds no snapshot line for it), and everyone's due-total on it is announced first ({@link DaySnapshot}).
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
         Rollup.Figures before = rollup.figures(id);
         if (!today.equals(sheet.getToday())) {
+            pasts.record(id, sheet.getToday());
             events.publishEvent(new DaySnapshot(id, user, sheet.getToday(), new LinkedHashMap<>(before.people())));
             dayEnds.record(id, sheet.getToday());
-            pasts.record(id, sheet.getToday());
         }
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
