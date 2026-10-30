@@ -28,6 +28,8 @@ import net.officefloor.hq.app.person.PersonHeld;
 import net.officefloor.hq.app.person.PersonRetired;
 import net.officefloor.hq.app.person.PersonWatched;
 import net.officefloor.hq.app.person.WatcherNotified;
+import net.officefloor.hq.app.pool.PoolAdded;
+import net.officefloor.hq.app.pool.PoolMemberAdded;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
@@ -224,6 +226,17 @@ public class SheetAudit {
     public void on(TemplateSaved e) {
         change(e.sheetId(), e.user(), "TEMPLATE_SAVED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString() + " note=" + e.note());
+    }
+
+    @TransactionalEventListener
+    public void on(PoolAdded e) {
+        change(e.sheetId(), e.user(), "POOL_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
+    }
+
+    @TransactionalEventListener
+    public void on(PoolMemberAdded e) {
+        change(e.sheetId(), e.user(), "POOL_MEMBER_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " pool=" + e.pool()
+                + " name=" + e.name() + " share=" + e.share().setScale(2, RoundingMode.HALF_UP).toPlainString());
     }
 
     @TransactionalEventListener
