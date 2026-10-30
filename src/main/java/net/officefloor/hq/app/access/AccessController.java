@@ -216,6 +216,17 @@ public class AccessController {
                 settings(sheet), delegations(sheet));
     }
 
+    /**
+     * The role the signed-in user acts in on the sheet on its today (a delegation covering it makes them a
+     * steward); while the sheet is shown as of a date, the role they had then.
+     */
+    @GetMapping("/role")
+    public RoleView role(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        String name = user.trim();
+        return new RoleView(name, service.roleOf(sheetId.trim(), name).key());
+    }
+
     @PostMapping("/delegations")
     public List<DelegationView> delegate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody DelegateForm form) {

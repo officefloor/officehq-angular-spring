@@ -149,6 +149,12 @@ function csvField(value: string): string {
       <p>My overdue total <strong data-testid="my-overdue-total">{{ (me()?.overdueTotal ?? '') | figure }}</strong></p>
       <p>My crew due total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
     </header>
+    <section aria-label="Steward dashboard">
+      <h2>Steward dashboard</h2>
+      <p>PENDING claims <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong></p>
+      <p>REVIEW claims <strong data-testid="dash-review-count">{{ dashboard()?.review ?? '' }}</strong></p>
+      <p>Overdue claims <strong data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' }}</strong></p>
+    </section>
     <section aria-label="Consolidated figures">
       <h2>Consolidated over this sheet and its descendants</h2>
       <p>People <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
@@ -910,6 +916,18 @@ export class People {
 
   /** Everyone's overdue claims counted up. */
   protected readonly overdueCount = computed(() => this.people().reduce((sum, p) => sum + p.overdueCount, 0));
+  /** The role the signed-in user acts in on the sheet (as of the as-of date while one is set); null until read. */
+  private readonly role = signal<string | null>(null);
+  /**
+   * The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count, counted;
+   * null (the cells empty) when the signed-in user is not a steward.
+   */
+  protected readonly dashboard = computed(() => {
+    if (this.role() !== 'steward') return null;
+    const counts = this.statusCounts();
+    const count = (status: string) => counts.find((s) => s.status === status)?.count ?? 0;
+    return { pending: count('PENDING'), review: count('REVIEW'), overdue: this.overdueCount() };
+  });
   /** The person on the sheet with the signed-in user's name or alias, as names are compared; null when none. */
   protected readonly me = computed(() => {
     const user = this.session.user();
@@ -957,6 +975,7 @@ export class People {
       const sheet = this.session.sheet();
       this.session.loads();
       this.people.set([]);
+      this.role.set(null);
       this.descendants.set([]);
       this.watched.set(new Set());
       this.personError.set(null);
@@ -2025,8 +2044,13 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, watched, batch, descendants, hidden] = await Promise.all([
+    const [people, role, watched, batch, descendants, hidden] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
+      firstValueFrom(
+        this.http.get<{ role: string }>(`/api/sheets/${encodeURIComponent(sheet)}/role`, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      ),
       firstValueFrom(
         this.http.get<number[]>(`/api/sheets/${encodeURIComponent(sheet)}/watches`, {
           headers: { 'X-User': this.session.user() ?? '' },
@@ -2042,6 +2066,7 @@ export class People {
     ]);
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.people.set(people);
+      this.role.set(role.role);
       this.watched.set(new Set(watched));
       if (this.columnSaves === 0) this.hidden.set(new Set(hidden));
       this.settleBatch.set(batch.last);
