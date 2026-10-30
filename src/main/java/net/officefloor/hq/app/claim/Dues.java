@@ -27,7 +27,7 @@ public final class Dues {
         if (base == null || claim.isCorrection() || !overdue(claim, rates)) {
             return base;
         }
-        return base.add(rates.lateCharge(base, claim.getDate(), claim.getDueBy(), claim.getRoundsBy()));
+        return base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()));
     }
 
     /**
@@ -62,7 +62,7 @@ public final class Dues {
         if (base == null || claim.isCorrection() || !claim.getDueBy().isBefore(rates.today())) {
             return base;
         }
-        return base.add(rates.lateCharge(base, claim.getDate(), claim.getDueBy(), claim.getRoundsBy()));
+        return base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()));
     }
 
     /** Whether a statement binds the claim's figure: it is stated and not PENDING. */

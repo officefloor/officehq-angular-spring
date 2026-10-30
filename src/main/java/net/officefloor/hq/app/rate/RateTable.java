@@ -10,8 +10,8 @@ import java.util.Optional;
 import net.officefloor.hq.app.sheet.DatedSettings;
 
 /**
- * Every rate on a sheet, the sheet's today, its dated settings (the floor and late percent in force on a
- * claim's date, the cap in force on the sheet's today) and its policy date (null: the sheet's today): which rate is in force for a grade on a date, the live due it
+ * Every rate on a sheet, the sheet's today, its dated settings (the floor in force on a claim's date, the late
+ * percent in force on each 30-day boundary past its due-by, the cap in force on the sheet's today) and its policy date (null: the sheet's today): which rate is in force for a grade on a date, the live due it
  * makes of an amount, the late charge an overdue figure gains, how a claim's figures round, and the most a
  * person's due-total comes to.
  */
@@ -88,13 +88,21 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
     }
 
     /**
-     * The late charge on a figure of a claim dated on the date and due by the due-by: the late percent in
-     * force on its date of the figure for every full 30 days from its due-by to the sheet's today, rounded by
-     * the date its claim's rounding goes by; 0.00 when not a full 30 days overdue.
+     * The late charge on a figure of a claim due by the due-by: for every full 30 days from its due-by to the
+     * sheet's today, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of
+     * the figure, each rounded by the date its claim's rounding goes by, added up; a boundary whose percent is
+     * 0.00 adds nothing. 0.00 when not a full 30 days overdue.
      */
-    public BigDecimal lateCharge(BigDecimal figure, LocalDate date, LocalDate dueBy, LocalDate roundsBy) {
+    public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate roundsBy) {
         long periods = dueBy.isBefore(today) ? ChronoUnit.DAYS.between(dueBy, today) / LATE_PERIOD_DAYS : 0;
-        BigDecimal pct = settings.latePct(date);
-        return RateService.due(figure.multiply(BigDecimal.valueOf(periods)), pct, rounding(roundsBy));
+        RoundingMode rounding = rounding(roundsBy);
+        BigDecimal charge = BigDecimal.ZERO.setScale(2);
+        for (long n = 1; n <= periods; n++) {
+            BigDecimal pct = settings.latePct(dueBy.plusDays(n * LATE_PERIOD_DAYS));
+            if (pct.signum() != 0) {
+                charge = charge.add(RateService.due(figure, pct, rounding));
+            }
+        }
+        return charge;
     }
 }

@@ -49,7 +49,7 @@ public record DatedSettings(List<SheetSetting> values) {
         return on(FLOOR, date).map(BigDecimal::new).orElse(Sheet.DEFAULT_FLOOR);
     }
 
-    /** The percent an overdue claim dated on the date gains of its figure for every full 30 days. */
+    /** The percent an overdue claim gains of its figure for a 30-day boundary past its due-by falling on the date. */
     public BigDecimal latePct(LocalDate date) {
         return on(LATE_PCT, date).map(BigDecimal::new).orElse(Sheet.DEFAULT_LATE_PCT);
     }
