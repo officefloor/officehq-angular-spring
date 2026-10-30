@@ -1,0 +1,387 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 938893061..d95564c54 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -36,6 +36,8 @@ interface Settings {
+   alertThreshold: string | null;
+   /** A claim reminded at least this many days after its previous reminder is escalated; null when blank (off). Not dated. */
+   escalateAfter: string | null;
++  /** A REVIEW claim whose review day plus this many days is before the sheet's today is late; null when blank (none). Not dated. */
++  reviewSla: string | null;
+   /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; null when none. Not dated. */
+   parent: string | null;
+   /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
+@@ -234,6 +236,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+       <p>Pot <strong data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</strong></p>
+       <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
+       <p>Escalate after (days) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
++      <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
+       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
+       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
+       <p>Cap <strong data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</strong></p>
+@@ -432,6 +435,15 @@ const ROUNDING = /^(half-up|half-even)$/;
+           (input)="escalateAfterInput.set(value($event)); escalateAfterTouched = true; settingsError.set('')"
+           (keydown)="escalateAfterTouched = escalateAfterTouched || clears($event)"
+         />
++        <label for="setting-review-sla">Review SLA: a claim in review more than this many days is late (blank: none)</label>
++        <input
++          id="setting-review-sla"
++          inputmode="numeric"
++          data-testid="setting-review-sla"
++          [value]="reviewSlaInput()"
++          (input)="reviewSlaInput.set(value($event)); reviewSlaTouched = true; settingsError.set('')"
++          (keydown)="reviewSlaTouched = reviewSlaTouched || clears($event)"
++        />
+         <label for="setting-parent">Parent sheet id: its rates are used for a grade with none in force (blank: none)</label>
+         <input
+           id="setting-parent"
+@@ -599,6 +611,8 @@ export class Access {
+   protected readonly alertThresholdInput = signal('');
+   protected readonly escalateAfter = signal<string | null>(null);
+   protected readonly escalateAfterInput = signal('');
++  protected readonly reviewSla = signal<string | null>(null);
++  protected readonly reviewSlaInput = signal('');
+   protected readonly parent = signal<string | null>(null);
+   protected readonly parentInput = signal('');
+   protected readonly fiscalStartMonth = signal('1');
+@@ -637,6 +651,7 @@ export class Access {
+   protected potTouched = false;
+   protected alertThresholdTouched = false;
+   protected escalateAfterTouched = false;
++  protected reviewSlaTouched = false;
+   protected parentTouched = false;
+   protected fiscalStartMonthTouched = false;
+   protected capTouched = false;
+@@ -661,7 +676,7 @@ export class Access {
+       this.delegateFrom.set('');
+       this.delegateTo.set('');
+       this.delegateError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -852,6 +867,11 @@ export class Access {
+       this.settingsError.set('Enter an escalation gap as a whole number of days, or leave it blank for off.');
+       return;
+     }
++    const reviewSla = this.reviewSlaInput().trim();
++    if (this.reviewSlaTouched && reviewSla !== '' && !DAYS.test(reviewSla)) {
++      this.settingsError.set('Enter a review SLA as a whole number of days, or leave it blank for none.');
++      return;
++    }
+     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
+     if (this.fiscalStartMonthTouched && fiscalStartMonth !== '' && !MONTH.test(fiscalStartMonth)) {
+       this.settingsError.set('Enter a fiscal year start month from 1 to 12, or leave it blank for 1.');
+@@ -920,6 +940,7 @@ export class Access {
+     if (this.potTouched) body.pot = pot;
+     if (this.alertThresholdTouched) body.alertThreshold = alertThreshold;
+     if (this.escalateAfterTouched) body.escalateAfter = escalateAfter;
++    if (this.reviewSlaTouched) body.reviewSla = reviewSla;
+     if (this.parentTouched) body.parent = this.parentInput().trim();
+     if (this.fiscalStartMonthTouched) body.fiscalStartMonth = fiscalStartMonth === '' ? '' : String(Number(fiscalStartMonth));
+     if (this.capTouched) body.cap = cap;
+@@ -1008,6 +1029,9 @@ export class Access {
+     this.escalateAfter.set(settings.escalateAfter);
+     this.escalateAfterInput.set(settings.escalateAfter ?? '');
+     this.escalateAfterTouched = false;
++    this.reviewSla.set(settings.reviewSla);
++    this.reviewSlaInput.set(settings.reviewSla ?? '');
++    this.reviewSlaTouched = false;
+     this.parent.set(settings.parent);
+     this.parentInput.set(settings.parent ?? '');
+     this.parentTouched = false;
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index d2e105bce..6b79ca651 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -56,6 +56,8 @@ export interface Claim {
+   lockedBy: string | null;
+   /** Whether the claim was added while its period was soft-closed. */
+   lateEntry: boolean;
++  /** Whether the claim is REVIEW and its review day plus the sheet's review SLA is before the sheet's today. */
++  reviewLate: boolean;
+   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
+   remindedOn: string | null;
+   /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
+@@ -241,6 +243,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+           <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
+           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
++          <span>Review late <span data-testid="claim-review-late">{{ c.reviewLate ? 'yes' : 'no' }}</span></span>
+           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+           <button type="button" data-testid="claim-remind" (click)="remind(c)">
+             Remind<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index d59061d20..e5e386a65 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -21,7 +21,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+ // The sheet's figures summed from the list: per grade, the people on it today (retired people left
+ // out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total and its change from the period before it by start date (none for the earliest); per month any claim is dated in, the dues of
+ // its claims that count; per status, how many
+-// claims have it; per reason on the sheet's void reasons, how many VOID claims were voided with it. Beside it the classic
++// claims have it, and how many REVIEW claims are late in review; per reason on the sheet's void reasons, how many VOID claims were voided with it. Beside it the classic
+ // summary: per period, its due-total counting each claim by its status now (see classicPeriodDueTotals), and the
+ // sheet's due-total untrimmed: everyone's due-total added up (n/a skipped).
+ @Component({
+@@ -89,6 +89,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+           }
+         </tbody>
+       </table>
++      <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
+       <table>
+         <caption>By void reason</caption>
+         <thead>
+@@ -175,6 +176,8 @@ export class Summary {
+ 
+   protected readonly byStatus = computed(() => statusCounts(this.people()));
+ 
++  protected readonly reviewLateCount = computed(() => this.people().flatMap((p) => p.claims).filter((c) => c.reviewLate).length);
++
+   protected readonly byVoidReason = computed(() => {
+     const voided = this.people().flatMap((p) => p.claims).filter((c) => c.status === 'VOID');
+     return this.voidReasons.reasons().map((reason) => ({ reason, count: voided.filter((c) => c.voidReason === reason).length }));
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index 87f3c2913..2d741641e 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -56,6 +56,7 @@ public class AccessController {
+      * sheet, null for none; it is not dated. The fiscal start month is the month (1 to 12) the sheet's fiscal
+      * year starts in; it is not dated. The alert threshold is a figure with two decimals, null when off; it is not dated.
+      * The escalation gap is a number of days, null when off; it is not dated.
++     * The review SLA is a number of days, null for none; it is not dated.
+      * The rounding mode is half-up or half-even, null for none (the policy date decides); it is dated.
+      */
+     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
+@@ -63,7 +64,7 @@ public class AccessController {
+             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
+             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
+-            String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter) {
++            String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla) {
+ 
+         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
+                 Integer graceDays, LocalDate entryDate) {
+@@ -83,7 +84,7 @@ public class AccessController {
+                     text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent(),
+                     Integer.toString(dated.fiscalStartMonth()), text(dated.alertThreshold()),
+                     dated.on(DatedSettings.ROUNDING, today).orElse(null), text(dated.reviewThreshold(today)),
+-                    text(dated.escalateAfter()));
++                    text(dated.escalateAfter()), text(dated.reviewSla()));
+         }
+ 
+         /** The grade's grace days in force on the date as written; null when it has none then. */
+@@ -140,6 +141,7 @@ public class AccessController {
+      * putting back 1; not dated. The alert threshold is 0.00 or more with up to two decimals, blank meaning off;
+      * not dated. The rounding mode is half-up or half-even, blank meaning none (the policy date decides); dated.
+      * The escalation gap is a whole number of days, blank meaning off; not dated.
++     * The review SLA is a whole number of days, blank meaning none; not dated.
+      */
+     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
+@@ -191,7 +193,8 @@ public class AccessController {
+             @Pattern(regexp = DATE) String roundingFrom,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String reviewThreshold,
+             @Pattern(regexp = DATE) String reviewThresholdFrom,
+-            @Pattern(regexp = "(\\d{1,5})?") String escalateAfter) {
++            @Pattern(regexp = "(\\d{1,5})?") String escalateAfter,
++            @Pattern(regexp = "(\\d{1,5})?") String reviewSla) {
+     }
+ 
+     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
+@@ -263,7 +266,8 @@ public class AccessController {
+                 dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold,
+                 form.pot(), form.parent() == null ? null : form.parent().trim(), form.fiscalStartMonth(),
+                 form.alertThreshold(), dated(form.rounding(), form.roundingFrom()),
+-                dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter());
++                dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter(),
++                form.reviewSla());
+         return settings(sheet);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 5e6afaec7..a3b85565e 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -85,6 +85,7 @@ public class AccessService {
+     public static final String PARENT = DatedSettings.PARENT;
+ 
+     public static final String ESCALATE_AFTER = DatedSettings.ESCALATE_AFTER;
++    public static final String REVIEW_SLA = DatedSettings.REVIEW_SLA;
+ 
+     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
+ 
+@@ -265,7 +266,7 @@ public class AccessService {
+             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
+             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
+-            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter) {
++            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla) {
+         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
+                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
+@@ -342,6 +343,9 @@ public class AccessService {
+         if (escalateAfter != null) {
+             setEscalateAfter(sheetId, user, days(escalateAfter, null));
+         }
++        if (reviewSla != null) {
++            setReviewSla(sheetId, user, days(reviewSla, null));
++        }
+         if (parent != null) {
+             setParent(sheetId, user, parent.isEmpty() ? null : parent);
+         }
+@@ -408,6 +412,15 @@ public class AccessService {
+         setUndated(sheetId, user, ESCALATE_AFTER, days);
+     }
+ 
++    /**
++     * Record the sheet's review SLA, a number of days (null: none). Not dated: the value holds from the
++     * beginning of time, replacing the one it had.
++     */
++    @Transactional
++    public void setReviewSla(String sheetId, String user, String days) {
++        setUndated(sheetId, user, REVIEW_SLA, days);
++    }
++
+     /** Record an undated setting as written (null: none), replacing the one it had. */
+     private void setUndated(String sheetId, String user, String key, String value) {
+         sheets.load(sheetId, user);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 5fe14a9da..b679d5582 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -121,6 +121,10 @@ public class Claim {
+     @Column(name = "reminded_on")
+     private LocalDate remindedOn;
+ 
++    /** The sheet's today when the claim last went to REVIEW; null when it never did. */
++    @Column(name = "review_on")
++    private LocalDate reviewOn;
++
+     /** Whether a reminder ever escalated the claim; a claim is escalated at most once. */
+     @Column(name = "escalated", nullable = false)
+     private boolean escalated;
+@@ -215,6 +219,7 @@ public class Claim {
+         arrived.deferredUntil = deferredUntil;
+         arrived.remindedOn = remindedOn;
+         arrived.escalated = escalated;
++        arrived.reviewOn = reviewOn;
+         arrived.proofs = proofs;
+         arrived.splitFrom = splitFrom;
+         arrived.tags = tags;
+@@ -313,6 +318,14 @@ public class Claim {
+         this.remindedOn = remindedOn;
+     }
+ 
++    public LocalDate getReviewOn() {
++        return reviewOn;
++    }
++
++    public void setReviewOn(LocalDate reviewOn) {
++        this.reviewOn = reviewOn;
++    }
++
+     public boolean isEscalated() {
+         return escalated;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ce9c36a62..913262a4a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -379,6 +379,9 @@ public class ClaimService {
+         if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) {
+             claim.setOpenedBy(user);
+         }
++        if (next == ClaimStatus.REVIEW) {
++            claim.setReviewOn(sheets.today(sheetId));
++        }
+         String number = claim.getShownNumber();
+         String due = null;
+         if (next == ClaimStatus.SETTLED) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index c1416908c..5da1bc9c5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -82,6 +82,16 @@ public final class Dues {
+         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+     }
+ 
++    /**
++     * Whether the claim is late in review: REVIEW, with the sheet's review SLA set, and its review day (the
++     * sheet's today when it went to REVIEW) plus the SLA days before the sheet's today.
++     */
++    public static boolean reviewLate(Claim claim, RateTable rates) {
++        Integer sla = rates.settings().reviewSla();
++        return claim.getStatus() == ClaimStatus.REVIEW && sla != null && claim.getReviewOn() != null
++                && claim.getReviewOn().plusDays(sla).isBefore(rates.today());
++    }
++
+     /**
+      * Whether the claim is overdue: OPEN or PENDING, not {@link #deferred deferred}, and due by a date before
+      * the sheet's today (its due-by, fixed when it was added, plus its {@link #graceBy grace}).
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index db241bd69..6e8a34838 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -60,13 +60,14 @@ public class PersonController {
+      * correction, the number of the claim it corrects (null otherwise), and whether it was deferred until a date after the
+      * sheet's today, whatever its status since (its counting follows {@link Dues#deferred}), and the date it is deferred until (null when never),
+      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
+-     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none) and its lines, in the order they were added.
++     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none), its lines, in the order they were added, and whether it is late in review (see {@link Dues#reviewLate}).
+      */
+     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
+             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
+             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
+             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
+-            String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch, List<LineView> lines) {
++            String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch, List<LineView> lines,
++            boolean reviewLate) {
+ 
+         static ClaimView of(Claim claim, Grades grade, RateTable rates, Holds held) {
+             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
+@@ -79,7 +80,7 @@ public class PersonController {
+                     Tags.list(claim.getTags()), claim.getVoidReason(),
+                     claim.getComments().stream().map(CommentView::of).toList(),
+                     Dues.counts(claim, held, rates.today()), claim.getSettleBatch(),
+-                    claim.getLines().stream().map(LineView::of).toList());
++                    claim.getLines().stream().map(LineView::of).toList(), Dues.reviewLate(claim, rates));
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+index bf9286331..6aa58f5d0 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+@@ -45,6 +45,9 @@ public record DatedSettings(List<SheetSetting> values) {
+     /** A claim reminded at least this many days after its previous reminder is escalated; not dated. */
+     public static final String ESCALATE_AFTER = "escalate-after";
+ 
++    /** A REVIEW claim is late once its review day plus this many days is before the sheet's today; not dated. */
++    public static final String REVIEW_SLA = "review-sla";
++
+     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
+     public static final String PARENT = "parent";
+ 
+@@ -190,6 +193,11 @@ public record DatedSettings(List<SheetSetting> values) {
+         return on(ESCALATE_AFTER, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+     }
+ 
++    /** The sheet's review SLA in days (not dated: it holds on every date); null when there is none. */
++    public Integer reviewSla() {
++        return on(REVIEW_SLA, LocalDate.MAX).map(Integer::valueOf).orElse(null);
++    }
++
+     /** The month (1 to 12) the sheet's fiscal year starts in (not dated); 1 when none is set. */
+     public int fiscalStartMonth() {
+         return on(FISCAL_START_MONTH, LocalDate.MAX).map(Integer::valueOf).orElse(DEFAULT_FISCAL_START_MONTH);
+diff --git a/src/main/resources/db/migration/V89__claim_review_on.sql b/src/main/resources/db/migration/V89__claim_review_on.sql
+new file mode 100644
+index 000000000..983590f67
+--- /dev/null
++++ b/src/main/resources/db/migration/V89__claim_review_on.sql
+@@ -0,0 +1,3 @@
++-- The sheet's today when a claim went to REVIEW; null for a claim that never did. With the sheet's review SLA
++-- (not dated) it decides whether a REVIEW claim is late.
++ALTER TABLE claim ADD COLUMN review_on DATE;
