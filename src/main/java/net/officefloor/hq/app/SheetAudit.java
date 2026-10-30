@@ -24,6 +24,7 @@ import net.officefloor.hq.app.person.WatcherNotified;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
+import net.officefloor.hq.app.sheet.DaySnapshot;
 import net.officefloor.hq.app.sheet.SheetArchived;
 import net.officefloor.hq.app.statement.StatementCancelled;
 import net.officefloor.hq.app.statement.StatementTaken;
@@ -213,6 +214,14 @@ public class SheetAudit {
     public void on(Delegated e) {
         change(e.sheetId(), e.user(), "DELEGATED sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name()
                 + " from=" + e.from() + " to=" + e.to());
+    }
+
+    @TransactionalEventListener
+    public void on(DaySnapshot e) {
+        for (Rollup.PersonFigures p : e.people()) {
+            audit.record("SNAPSHOT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + p.name()
+                    + " due-total=" + p.dueTotal());
+        }
     }
 
     @TransactionalEventListener
