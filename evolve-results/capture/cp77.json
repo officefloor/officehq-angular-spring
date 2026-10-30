@@ -1,0 +1,64 @@
+{
+  "checkpoint": 77,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp77_note-required",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e38398483814ae6af3b3ee5b2d7ac3cd43b5f175",
+  "reset_sha": "",
+  "preagent_sha": "4b099c23c5309783bac6b8040f6c2a0dd84debef",
+  "prev_sha": "4b099c23c5309783bac6b8040f6c2a0dd84debef",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7262852000000001,
+    "input_tokens": 30,
+    "output_tokens": 7086,
+    "cache_read_tokens": 626626,
+    "cache_creation_tokens": 57390,
+    "num_turns": 16,
+    "duration_ms": 250829,
+    "duration_api_ms": 77189,
+    "model": "claude-opus-5-5",
+    "session_id": "67339595-bdb1-464c-ad1c-cf30ce4994d3",
+    "stop_reason": "success",
+    "result_text": "I added the note threshold, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- **The setting:** the note threshold is a dated setting that works like the floor. You can give it a from-date, blank means there is no threshold, and saving it writes `SETTING_CHANGED key=note-threshold value=<amount>`, with `from=<date>` added when a from-date is given.\n- **The rule:** a claim can't be opened if its note is empty or only spaces and its due is above the threshold in force on the claim's date. The due compared is the live figure shown on the row, floor included.\n- **When it's refused:** the claim's error shows and nothing is stored or written to the audit file. Bulk open counts the claim as refused, because it opens each claim through the same check.\n\n**What changed**\n- **Server:** `DatedSettings` has a new `noteThreshold(date)`. `AccessService.setSettings` and `AccessController` accept, save and return the setting. `ClaimService.move` runs the new check before a claim is numbered as it opens.\n- **Front end:** the settings panel in `features/access/access.ts` has the input, its from-date and the \"current\" value, using the `setting-note-threshold*` test ids the spec expects.\n- **Database:** no migration was needed, because the setting is stored in the existing settings table.\n\nSplitting a claim also creates an open part, and that path doesn't check the note threshold. The request only covers opening a claim on its own or in bulk, so I left it alone; it's a small addition if you want it covered too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7262852000000001,
+        "num_turns": 16,
+        "duration_ms": 250829,
+        "duration_api_ms": 77189,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp77.agent.jsonl",
+  "agent_diff_file": "cp77.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
