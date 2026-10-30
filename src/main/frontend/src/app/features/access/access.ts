@@ -40,9 +40,19 @@ interface Settings {
   permReopen: string | null;
 }
 
+/** The steward role delegated by a steward (by) to a user, from a from-date to a to-date (yyyy-mm-dd), inclusive. */
+interface DelegationRow {
+  id: number;
+  user: string;
+  by: string;
+  from: string;
+  to: string;
+}
+
 interface AccessView {
   roles: RoleRow[];
   settings: Settings;
+  delegations: DelegationRow[];
 }
 
 const ROLES = ['clerk', 'steward', 'viewer'];
@@ -123,6 +133,49 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <button type="submit" data-testid="role-form-submit">Set role</button>
         @if (roleError()) {
           <p role="alert" data-testid="role-form-error">{{ roleError() }}</p>
+        }
+      </form>
+    </section>
+    <section aria-label="Delegations">
+      <h2>Delegations</h2>
+      <p>A steward can delegate the steward role to a user from a from-date to a to-date, inclusive, by the sheet's today.</p>
+      <ul aria-label="Delegations made">
+        @for (d of delegations(); track d.id) {
+          <li data-testid="delegate-line">
+            <span data-testid="delegate-line-user">{{ d.user }}</span> acts as steward for
+            <span data-testid="delegate-line-by">{{ d.by }}</span> from
+            <span data-testid="delegate-line-from">{{ d.from }}</span> to
+            <span data-testid="delegate-line-to">{{ d.to }}</span>
+          </li>
+        }
+      </ul>
+      <form (submit)="delegate($event)" aria-label="Delegate the steward role">
+        <label for="delegate-user">User name</label>
+        <input
+          id="delegate-user"
+          data-testid="delegate-user"
+          [value]="delegateUser()"
+          (input)="delegateUser.set(value($event)); delegateError.set('')"
+        />
+        <label for="delegate-from">From (blank: the sheet's today)</label>
+        <input
+          id="delegate-from"
+          type="date"
+          data-testid="delegate-from"
+          [value]="delegateFrom()"
+          (input)="delegateFrom.set(value($event)); delegateError.set('')"
+        />
+        <label for="delegate-to">To</label>
+        <input
+          id="delegate-to"
+          type="date"
+          data-testid="delegate-to"
+          [value]="delegateTo()"
+          (input)="delegateTo.set(value($event)); delegateError.set('')"
+        />
+        <button type="submit" data-testid="delegate-submit">Delegate</button>
+        @if (delegateError()) {
+          <p role="alert" data-testid="delegate-error">{{ delegateError() }}</p>
         }
       </form>
     </section>
@@ -321,6 +374,11 @@ export class Access {
   protected readonly roleUser = signal('');
   protected readonly role = signal('');
   protected readonly roleError = signal('');
+  protected readonly delegations = signal<DelegationRow[]>([]);
+  protected readonly delegateUser = signal('');
+  protected readonly delegateFrom = signal('');
+  protected readonly delegateTo = signal('');
+  protected readonly delegateError = signal('');
   protected readonly limitInput = signal('');
   protected readonly floor = signal('');
   protected readonly floorInput = signal('');
@@ -370,6 +428,11 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
+      this.delegations.set([]);
+      this.delegateUser.set('');
+      this.delegateFrom.set('');
+      this.delegateTo.set('');
+      this.delegateError.set('');
       this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, cap: null, proofThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
@@ -426,6 +489,46 @@ export class Access {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.roleError.set('Could not set the role.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected async delegate(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.busy) return;
+    this.delegateError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const user = this.delegateUser().trim();
+    const from = this.delegateFrom().trim() || (this.session.today() ?? '');
+    const to = this.delegateTo().trim();
+    if (!user) {
+      this.delegateError.set('Enter a user name.');
+      return;
+    }
+    if (!DATE.test(from) || !DATE.test(to)) {
+      this.delegateError.set('Enter a from-date (or leave it blank for the sheet\'s today) and a to-date.');
+      return;
+    }
+    if (to < from) {
+      this.delegateError.set('Enter a to-date on or after the from-date.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<DelegationRow[]>(`/api/sheets/${encodeURIComponent(sheet)}/delegations`, { user, from, to }, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.delegations.set(saved);
+      this.delegateUser.set('');
+      this.delegateFrom.set('');
+      this.delegateTo.set('');
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.delegateError.set('Could not delegate: only a steward can delegate the steward role.');
     } finally {
       this.busy = false;
     }
@@ -546,6 +649,7 @@ export class Access {
     const view = await firstValueFrom(this.http.get<AccessView>(`/api/sheets/${encodeURIComponent(sheet)}/access`));
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.roles.set(view.roles);
+      this.delegations.set(view.delegations);
       this.showSettings(view.settings);
     }
   }

@@ -59,16 +59,18 @@ public class AccessService {
     }
 
     private final SheetRoleRepository roles;
+    private final DelegationRepository delegations;
     private final SheetRepository sheetRows;
     private final SheetSettingRepository settingRows;
     private final SheetService sheets;
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
-    public AccessService(SheetRoleRepository roles, SheetRepository sheetRows, SheetSettingRepository settingRows,
+    public AccessService(SheetRoleRepository roles, DelegationRepository delegations, SheetRepository sheetRows, SheetSettingRepository settingRows,
             SheetService sheets, Rollup rollup, ApplicationEventPublisher events) {
         this.rollup = rollup;
         this.roles = roles;
+        this.delegations = delegations;
         this.sheetRows = sheetRows;
         this.settingRows = settingRows;
         this.sheets = sheets;
@@ -81,10 +83,56 @@ public class AccessService {
         return roles.findBySheetIdOrderByUserName(sheetId);
     }
 
-    /** The user's role on the sheet: clerk unless one was set. */
+    /**
+     * The role the user acts in on the sheet: steward while the sheet's today is inside a delegation to
+     * them, otherwise the role set (clerk unless one was set).
+     */
     @Transactional(readOnly = true)
     public Role roleOf(String sheetId, String user) {
+        return delegator(sheetId, user) != null ? Role.STEWARD : roleSet(sheetId, user);
+    }
+
+    /** The role set for the user on the sheet, whatever is delegated to them: clerk unless one was set. */
+    private Role roleSet(String sheetId, String user) {
         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
+    }
+
+    /** The delegations made on the sheet, in the order they were made. */
+    @Transactional(readOnly = true)
+    public List<Delegation> delegations(String sheetId) {
+        return delegations.findBySheetIdOrderById(sheetId);
+    }
+
+    /**
+     * The steward who delegated the steward role to the user for a range holding the sheet's today (the
+     * latest such delegation); null when the user acts in no delegated role now.
+     */
+    @Transactional(readOnly = true)
+    public String delegator(String sheetId, String user) {
+        List<Delegation> made = delegations.findBySheetIdAndUserNameOrderByIdDesc(sheetId, user);
+        if (made.isEmpty()) {
+            return null;
+        }
+        LocalDate today = sheets.today(sheetId);
+        return made.stream().filter(d -> d.covers(today)).map(Delegation::getDelegatedBy).findFirst().orElse(null);
+    }
+
+    /**
+     * Delegate the steward role to a user name from a from-date to a to-date, inclusive. Only a steward by
+     * the role set (not by a delegation) may delegate, and the to-date may not be before the from-date.
+     */
+    @Transactional
+    public Delegation delegate(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+        sheets.load(sheetId, user);
+        if (roleSet(sheetId, user) != Role.STEWARD) {
+            throw new DelegationRefused("Only a steward can delegate the steward role");
+        }
+        if (to.isBefore(from)) {
+            throw new DelegationRefused("The to-date is before the from-date");
+        }
+        Delegation row = delegations.saveAndFlush(new Delegation(sheetId, name, from, to, user));
+        events.publishEvent(new Delegated(sheetId, user, name, from, to));
+        return row;
     }
 
     /** Whether the user is a viewer on the sheet: one who sees everything and can change nothing. */

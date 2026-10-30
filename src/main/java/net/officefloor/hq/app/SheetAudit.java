@@ -1,6 +1,8 @@
 package net.officefloor.hq.app;
 
 import java.math.RoundingMode;
+import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.access.Delegated;
 import net.officefloor.hq.app.access.RoleSet;
 import net.officefloor.hq.app.access.SettingChanged;
 import net.officefloor.hq.app.claim.ClaimChanged;
@@ -28,38 +30,50 @@ import org.springframework.transaction.event.TransactionalEventListener;
 /**
  * Writes one audit line per change to a sheet, once the change is committed: a refused change
  * rolls back and writes nothing. Each line is the event, {@code sheet=} and {@code by=}, then the
- * event's fields.
+ * event's fields; a change by a user acting in a delegated steward role then ends with {@code for=}
+ * the steward who delegated it (not the ROLLUP and TOTALS lines, nor NOTIFY, which only report).
  */
 @Component
 public class SheetAudit {
 
     private final Audit audit;
+    private final AccessService access;
 
-    public SheetAudit(Audit audit) {
+    public SheetAudit(Audit audit, AccessService access) {
         this.audit = audit;
+        this.access = access;
+    }
+
+    /**
+     * Record the line of a change the user made: while the user acts in the steward role delegated to
+     * them, it ends with {@code for=} the steward who delegated it.
+     */
+    private void change(String sheetId, String user, String line) {
+        String delegator = access.delegator(sheetId, user);
+        audit.record(delegator == null ? line : line + " for=" + delegator);
     }
 
     @TransactionalEventListener
     public void on(PersonChanged e) {
-        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
                 + " name=" + e.name() + " grade=" + e.grade());
     }
 
     @TransactionalEventListener
     public void on(PersonRetired e) {
-        audit.record("PERSON_RETIRED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "PERSON_RETIRED sheet=" + e.sheetId() + " by=" + e.user()
                 + " name=" + e.name() + " from=" + e.from());
     }
 
     @TransactionalEventListener
     public void on(PersonHeld e) {
-        audit.record("PERSON_HELD sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+        change(e.sheetId(), e.user(), "PERSON_HELD sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " from=" + e.from());
     }
 
     @TransactionalEventListener
     public void on(PersonWatched e) {
-        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
+        change(e.sheetId(), e.user(), e.event() + " sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
     }
 
     @TransactionalEventListener
@@ -70,13 +84,13 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(PatronAdded e) {
-        audit.record("PATRON_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "PATRON_ADDED sheet=" + e.sheetId() + " by=" + e.user()
                 + " name=" + e.name() + " patron=" + e.patron());
     }
 
     @TransactionalEventListener
     public void on(ClaimChanged e) {
-        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + (e.due() == null ? "" : " due=" + e.due())
@@ -85,7 +99,7 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(ClaimReassigned e) {
-        audit.record("CLAIM_REASSIGNED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "CLAIM_REASSIGNED sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " from=" + e.from() + " to=" + e.to());
@@ -93,14 +107,14 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(ClaimSplit e) {
-        audit.record("CLAIM_SPLIT sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "CLAIM_SPLIT sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + " number=" + e.number() + " into=" + e.into());
     }
 
     @TransactionalEventListener
     public void on(ClaimDeferred e) {
-        audit.record("CLAIM_DEFERRED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "CLAIM_DEFERRED sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " until=" + e.until());
@@ -108,7 +122,7 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(ClaimProofAdded e) {
-        audit.record("CLAIM_PROOF_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "CLAIM_PROOF_ADDED sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " proofs=" + e.proofs());
@@ -116,7 +130,7 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(ClaimResettled e) {
-        audit.record("CLAIM_RESETTLED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "CLAIM_RESETTLED sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " old=" + figure(e.old()) + " new=" + figure(e.fresh()));
@@ -128,7 +142,7 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(RateChanged e) {
-        audit.record("RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
                 + " grade=" + e.grade() + " rate=" + e.rate().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.from() == null ? "" : " from=" + e.from())
                 + (e.to() == null ? "" : " to=" + e.to()));
@@ -136,39 +150,45 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(RoleSet e) {
-        audit.record("ROLE_SET sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name() + " role=" + e.role());
+        change(e.sheetId(), e.user(), "ROLE_SET sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name() + " role=" + e.role());
     }
 
     @TransactionalEventListener
     public void on(SettingChanged e) {
-        audit.record("SETTING_CHANGED sheet=" + e.sheetId() + " by=" + e.user() + " key=" + e.key() + " value=" + e.value()
+        change(e.sheetId(), e.user(), "SETTING_CHANGED sheet=" + e.sheetId() + " by=" + e.user() + " key=" + e.key() + " value=" + e.value()
                 + (e.from() == null ? "" : " from=" + e.from()));
     }
 
     @TransactionalEventListener
     public void on(PeriodAdded e) {
-        audit.record("PERIOD_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "PERIOD_ADDED sheet=" + e.sheetId() + " by=" + e.user()
                 + " period=" + e.name() + " from=" + e.from() + " to=" + e.to());
     }
 
     @TransactionalEventListener
     public void on(PeriodClosed e) {
-        audit.record("PERIOD_CLOSED sheet=" + e.sheetId() + " by=" + e.user()
+        change(e.sheetId(), e.user(), "PERIOD_CLOSED sheet=" + e.sheetId() + " by=" + e.user()
                 + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.auto() ? " auto=yes" : ""));
     }
 
     @TransactionalEventListener
     public void on(PeriodReopened e) {
-        audit.record("PERIOD_REOPENED sheet=" + e.sheetId() + " by=" + e.user() + " period=" + e.name());
+        change(e.sheetId(), e.user(), "PERIOD_REOPENED sheet=" + e.sheetId() + " by=" + e.user() + " period=" + e.name());
     }
 
     @TransactionalEventListener
     public void on(StatementTaken e) {
-        audit.record("STATEMENT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+        change(e.sheetId(), e.user(), "STATEMENT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " due-total=" + (e.dueTotal() == null ? "n/a"
                         : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())
                 + " claims=" + e.claims());
+    }
+
+    @TransactionalEventListener
+    public void on(Delegated e) {
+        change(e.sheetId(), e.user(), "DELEGATED sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name()
+                + " from=" + e.from() + " to=" + e.to());
     }
 
     @TransactionalEventListener
