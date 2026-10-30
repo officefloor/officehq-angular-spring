@@ -1,0 +1,64 @@
+{
+  "checkpoint": 99,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp99_person-contact",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1a55d9f053fb0370f90ade138584210ce9366d7b",
+  "reset_sha": "",
+  "preagent_sha": "3d59706fe484c0098cdc9d0fb1c517fa4d6517dc",
+  "prev_sha": "3d59706fe484c0098cdc9d0fb1c517fa4d6517dc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7616111999999999,
+    "input_tokens": 38,
+    "output_tokens": 8726,
+    "cache_read_tokens": 813976,
+    "cache_creation_tokens": 53018,
+    "num_turns": 20,
+    "duration_ms": 340138,
+    "duration_api_ms": 105751,
+    "model": "claude-opus-5-5",
+    "session_id": "18969323-16f7-4575-a038-df37f5411208",
+    "stop_reason": "success",
+    "result_text": "People now have a contact field, and all 4 Playwright tests in `e2e/specs/acceptance.spec.ts` pass under `bin/e2e`.\n\n**How it behaves**\n- The person form has a new contact field (`person-form-contact`). Each person's row shows it in a new Contact column (`person-contact`).\n- A contact is stored with surrounding spaces removed and in lower case, so `\" Ada@X \"` becomes `ada@x`. A blank contact means the person has none.\n- If another person on the sheet already has that contact, the form shows its error and nothing is saved. The same message now covers both cases: \"That name or contact is already in use on this sheet.\"\n- `PERSON_ADDED` ends with `contact=<contact>` when a contact was given.\n- `PERSON_EDITED` ends with `contact=<contact>` only when the contact changed, and with `contact=` when it was cleared.\n\n**What changed**\n- **Database:** a new migration, `V61__person_contact.sql`, adds a `contact` column. A unique constraint on sheet plus contact means two saves at the same moment can't both take the same contact; the loser gets the same error.\n- **Server:** the cleanup and the duplicate check happen on the server (`PersonController`, `PersonService`). The contact is added to the stored person, the person sent to the screen, the change event and the audit line in `SheetAudit`.\n- **Other callers:** quick-add creates people with no contact. The bulk grade action keeps each person's existing contact.\n- **Front end:** the form, the row and the person type. Opening the editor fills the contact in, and so does the reload after someone else's save is refused.\n\nI wrote the test output to `.run/e2e.log` because `/tmp` wasn't writable here.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7616111999999999,
+        "num_turns": 20,
+        "duration_ms": 340138,
+        "duration_api_ms": 105751,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp99.agent.jsonl",
+  "agent_diff_file": "cp99.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
