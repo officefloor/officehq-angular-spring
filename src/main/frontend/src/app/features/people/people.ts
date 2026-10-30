@@ -161,7 +161,7 @@ function csvField(value: string): string {
     <app-holidays />
     <app-void-reasons />
     <app-claim-templates />
-    <app-pools [people]="people()" [(pools)]="pools" />
+    <app-pools [people]="people()" [crews]="crews()" [(pools)]="pools" />
     <app-crews [people]="people()" [(crews)]="crews" />
     <app-summary [people]="people()" [periods]="periods()" />
     <app-tags [people]="people()" />

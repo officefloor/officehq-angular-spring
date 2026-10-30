@@ -1,9 +1,10 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, model, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PersonWithClaims } from '../claims/claims';
+import { Crew } from '../crews/crews';
 
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -22,12 +23,16 @@ export interface PoolMember {
   cut: string | null;
 }
 
-/** A pool: its members, its total share (a retired member's share counted as given) and whether that is exactly 100.00. */
+/**
+ * A pool: its members, its total share (a retired member's share counted as given), whether that is exactly 100.00 and
+ * whether it is a crew's, whose members are the crew's lead and members at equal shares.
+ */
 export interface Pool {
   name: string;
   members: PoolMember[];
   total: string;
   balanced: boolean;
+  crew: boolean;
 }
 
 /**
@@ -54,6 +59,7 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
 // today is left out of its pool's total share, balance and cuts.
 // A person can be in several pools, each at most once; a pool is a member of at most one pool, and then its pot is
 // its cut there, while a pool that is a member of none has the sheet's pot.
+// Every crew is listed as a pool too: its members come from the crew, so it has no form to add one.
 @Component({
   selector: 'app-pools',
   imports: [FigurePipe],
@@ -78,55 +84,57 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
                 </li>
               }
             </ul>
-            <form (submit)="addMember($event, p.name)" [attr.aria-label]="'Add member to pool ' + p.name">
-              <label [for]="'pool-member-select-' + p.name">Person or pool</label>
-              <select
-                [id]="'pool-member-select-' + p.name"
-                data-testid="pool-member-select"
-                [value]="draft(p.name).personId"
-                (change)="edit(p.name, { personId: value($event) })"
-              >
-                <option value="" [selected]="draft(p.name).personId === ''">Choose a person or pool</option>
-                @for (person of people(); track person.id) {
-                  <option [value]="'' + person.id" [selected]="draft(p.name).personId === '' + person.id">
-                    {{ person.name }}
-                  </option>
+            @if (!p.crew) {
+              <form (submit)="addMember($event, p.name)" [attr.aria-label]="'Add member to pool ' + p.name">
+                <label [for]="'pool-member-select-' + p.name">Person or pool</label>
+                <select
+                  [id]="'pool-member-select-' + p.name"
+                  data-testid="pool-member-select"
+                  [value]="draft(p.name).personId"
+                  (change)="edit(p.name, { personId: value($event) })"
+                >
+                  <option value="" [selected]="draft(p.name).personId === ''">Choose a person or pool</option>
+                  @for (person of people(); track person.id) {
+                    <option [value]="'' + person.id" [selected]="draft(p.name).personId === '' + person.id">
+                      {{ person.name }}
+                    </option>
+                  }
+                  @for (other of storedPools(); track other.name) {
+                    <option [value]="'pool:' + other.name" [selected]="draft(p.name).personId === 'pool:' + other.name">
+                      pool:{{ other.name }}
+                    </option>
+                  }
+                </select>
+                <label [for]="'pool-member-share-' + p.name">Share %</label>
+                <input
+                  [id]="'pool-member-share-' + p.name"
+                  data-testid="pool-member-share"
+                  inputmode="decimal"
+                  [value]="draft(p.name).share"
+                  (input)="edit(p.name, { share: value($event) })"
+                />
+                <label [for]="'pool-member-from-' + p.name">From (blank: from the start)</label>
+                <input
+                  [id]="'pool-member-from-' + p.name"
+                  type="date"
+                  data-testid="pool-member-from"
+                  [value]="draft(p.name).from"
+                  (input)="edit(p.name, { from: value($event) })"
+                />
+                <label [for]="'pool-member-to-' + p.name">To (blank: no end)</label>
+                <input
+                  [id]="'pool-member-to-' + p.name"
+                  type="date"
+                  data-testid="pool-member-to"
+                  [value]="draft(p.name).to"
+                  (input)="edit(p.name, { to: value($event) })"
+                />
+                <button type="submit" data-testid="pool-member-add">Add member</button>
+                @if (draft(p.name).error) {
+                  <p role="alert" data-testid="pool-error">{{ draft(p.name).error }}</p>
                 }
-                @for (other of pools(); track other.name) {
-                  <option [value]="'pool:' + other.name" [selected]="draft(p.name).personId === 'pool:' + other.name">
-                    pool:{{ other.name }}
-                  </option>
-                }
-              </select>
-              <label [for]="'pool-member-share-' + p.name">Share %</label>
-              <input
-                [id]="'pool-member-share-' + p.name"
-                data-testid="pool-member-share"
-                inputmode="decimal"
-                [value]="draft(p.name).share"
-                (input)="edit(p.name, { share: value($event) })"
-              />
-              <label [for]="'pool-member-from-' + p.name">From (blank: from the start)</label>
-              <input
-                [id]="'pool-member-from-' + p.name"
-                type="date"
-                data-testid="pool-member-from"
-                [value]="draft(p.name).from"
-                (input)="edit(p.name, { from: value($event) })"
-              />
-              <label [for]="'pool-member-to-' + p.name">To (blank: no end)</label>
-              <input
-                [id]="'pool-member-to-' + p.name"
-                type="date"
-                data-testid="pool-member-to"
-                [value]="draft(p.name).to"
-                (input)="edit(p.name, { to: value($event) })"
-              />
-              <button type="submit" data-testid="pool-member-add">Add member</button>
-              @if (draft(p.name).error) {
-                <p role="alert" data-testid="pool-error">{{ draft(p.name).error }}</p>
-              }
-            </form>
+              </form>
+            }
           </li>
         }
       </ul>
@@ -154,8 +162,13 @@ export class Pools {
   /** Everyone on the sheet, retired people included: the choices for a member, re-read as they change. */
   readonly people = input.required<PersonWithClaims[]>();
 
+  /** The sheet's crews, each also a pool: the pools are re-read as they change. */
+  readonly crews = input<Crew[]>([]);
+
   /** The pools as shown, shared with the sheet's people, whose cut totals add up their cuts. */
   readonly pools = model<Pool[]>([]);
+  /** The pools that can be a member of another: not a crew's. */
+  protected readonly storedPools = computed(() => this.pools().filter((p) => !p.crew));
   protected readonly name = signal('');
   protected readonly error = signal('');
   protected readonly drafts = signal<Record<string, Draft>>({});
@@ -175,9 +188,11 @@ export class Pools {
       this.drafts.set({});
       if (sheet) void this.reload(sheet);
     });
-    // a member's retirement changes the pool's total: re-read the pools whenever the people change
+    // a member's retirement changes the pool's total, and a crew is a pool: re-read the pools whenever the people
+    // or the crews change
     effect(() => {
       this.people();
+      this.crews();
       const sheet = this.session.sheet();
       if (sheet) void this.reload(sheet);
     });

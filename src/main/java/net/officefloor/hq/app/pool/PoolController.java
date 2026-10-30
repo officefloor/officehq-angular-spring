@@ -46,14 +46,14 @@ public class PoolController {
     public record MemberView(Long personId, String pool, String name, String share, boolean retired, String cut) {
     }
 
-    /** A pool on the sheet; its total share with two decimals. */
-    public record PoolView(String name, List<MemberView> members, String total, boolean balanced) {
+    /** A pool on the sheet; its total share with two decimals; whether it is a crew's, its members the crew's. */
+    public record PoolView(String name, List<MemberView> members, String total, boolean balanced, boolean crew) {
 
         static PoolView of(Pools.Shown p) {
             return new PoolView(p.name(), p.members().stream()
                     .map(m -> new MemberView(m.personId(), m.pool(), m.name(), m.share().toPlainString(), m.retired(),
                             m.cut() == null ? null : m.cut().toPlainString())).toList(),
-                    p.total().toPlainString(), p.balanced());
+                    p.total().toPlainString(), p.balanced(), p.crew());
         }
     }
 

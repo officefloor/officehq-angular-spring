@@ -6,6 +6,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,9 +37,11 @@ public class Crews {
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final ApplicationEventPublisher events;
+    private final PoolRepository pools;
 
     public Crews(CrewRepository crews, CrewMemberRepository members, PersonRepository people, SheetService sheets,
-            SheetRepository sheetRows, ApplicationEventPublisher events) {
+            SheetRepository sheetRows, ApplicationEventPublisher events, PoolRepository pools) {
+        this.pools = pools;
         this.crews = crews;
         this.members = members;
         this.people = people;
@@ -65,7 +68,10 @@ public class Crews {
         return p == null ? null : new Who(p.getId(), p.getName());
     }
 
-    /** Add a crew under its name, trimmed, led by a person of the sheet; refused when the name is blank, too long or already a crew's. */
+    /**
+     * Add a crew under its name, trimmed, led by a person of the sheet; refused when the name is blank, too long or
+     * already a crew's or a pool's (a crew is also a pool under its name).
+     */
     @Transactional
     public void add(String sheetId, String user, String text, Long leadId) {
         String name = text == null ? "" : text.strip();
@@ -84,6 +90,9 @@ public class Crews {
                 .orElseThrow(() -> new CrewRefused("Choose a lead on this sheet."));
         if (crews.findBySheetIdAndName(sheetId, name).isPresent()) {
             throw new CrewRefused("There is already a crew named " + name + ".");
+        }
+        if (pools.findBySheetIdAndName(sheetId, name).isPresent()) {
+            throw new CrewRefused("There is already a pool named " + name + ".");
         }
         crews.saveAndFlush(new Crew(sheetId, name, lead.getId()));
         events.publishEvent(new CrewAdded(sheetId, user, name, lead.getName()));
