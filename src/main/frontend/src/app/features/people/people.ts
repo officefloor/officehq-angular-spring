@@ -208,7 +208,7 @@ function csvField(value: string): string {
         }
       </form>
       <form (submit)="importPeople($event)" aria-label="Import people">
-        <label for="import-people">Import people, a line each: name,grade,terms,contact (terms and contact may be left out)</label>
+        <label for="import-people">Import people, a line each: name,grade,terms,contact (terms and contact may be left out; a name on the sheet updates that person)</label>
         <textarea
           id="import-people"
           data-testid="import-people"
@@ -217,8 +217,9 @@ function csvField(value: string): string {
           (input)="importText.set(value($event)); importError.set('')"
         ></textarea>
         <button type="submit" data-testid="import-submit">Import people</button>
-        @if (importAdded() !== null) {
-          <span>Added <strong data-testid="import-added">{{ importAdded() }}</strong></span>
+        @if (importResult(); as imported) {
+          <span>Added <strong data-testid="import-added">{{ imported.added }}</strong></span>
+          <span>Updated <strong data-testid="import-updated">{{ imported.updated }}</strong></span>
         }
         @if (importError()) {
           <p role="alert" data-testid="import-error">{{ importError() }}</p>
@@ -535,8 +536,8 @@ export class People {
   /** A paste still waiting for its answer: another press meanwhile is ignored. */
   private pasting = false;
   protected readonly importText = signal('');
-  /** How many people the last import added; null while it runs. */
-  protected readonly importAdded = signal<number | null>(null);
+  /** How many people the last import added and updated; null while it runs. */
+  protected readonly importResult = signal<{ added: number; updated: number } | null>(null);
   protected readonly importError = signal('');
   /** An import still waiting for its answer: another press meanwhile is ignored. */
   private importing = false;
@@ -688,7 +689,7 @@ export class People {
       this.pasteAdded.set(null);
       this.pasteError.set('');
       this.importText.set('');
-      this.importAdded.set(null);
+      this.importResult.set(null);
       this.importError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -1051,11 +1052,14 @@ export class People {
     }
   }
 
-  /** Add a person per pasted line, in order, each as the person form would; one refused line adds none. */
+  /**
+   * Per pasted line, in order, update the person on the sheet it names or add one, each as the person form
+   * would; one refused line imports none.
+   */
   protected async importPeople(e: Event): Promise<void> {
     e.preventDefault();
     if (this.importing) return;
-    this.importAdded.set(null);
+    this.importResult.set(null);
     this.importError.set('');
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -1068,13 +1072,13 @@ export class People {
     this.importing = true;
     try {
       const result = await firstValueFrom(
-        this.http.post<{ added: number }>(`/api/sheets/${encodeURIComponent(sheet)}/people/import`, { text }, { headers }),
+        this.http.post<{ added: number; updated: number }>(`/api/sheets/${encodeURIComponent(sheet)}/people/import`, { text }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       await this.reload(sheet);
       if (this.session.sheet() !== sheet) return;
       this.importText.set('');
-      this.importAdded.set(result.added);
+      this.importResult.set(result);
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;

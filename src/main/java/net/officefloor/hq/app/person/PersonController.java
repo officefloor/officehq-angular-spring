@@ -187,10 +187,6 @@ public class PersonController {
     public record ImportForm(@NotNull @Size(max = 100_000) String text) {
     }
 
-    /** How many people an import added. */
-    public record ImportResult(int added) {
-    }
-
     private final PersonService service;
     private final PersonImportService imports;
     private final BulkGradeService bulkGrade;
@@ -236,11 +232,11 @@ public class PersonController {
                 rates.table(sheet), Statements.NONE, List.of(), false);
     }
 
-    /** Add a person per pasted line, in order; one refused line adds none. */
+    /** Update or add a person per pasted line, in order; one refused line imports none. */
     @PostMapping("/import")
-    public ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+    public PersonImportService.Result importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody ImportForm form) {
-        return new ImportResult(imports.importPeople(sheetId.trim(), user.trim(), form.text()));
+        return imports.importPeople(sheetId.trim(), user.trim(), form.text());
     }
 
     @PutMapping("/{personId}")

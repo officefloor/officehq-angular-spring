@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -13,10 +14,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Import people: lines of {@code name,grade,terms,contact} (terms and contact may be left out or blank), each a
- * person added as the person form adds them. Every line is first held to the person form's rules: a name in
- * use as a name or alias on the sheet's tree, a contact another person on the sheet has, or a name or contact
- * given twice in the paste is refused, and the whole import is one change: a refused line adds nothing.
+ * Import people: lines of {@code name,grade,terms,contact} (terms and contact may be left out or blank). A line
+ * whose name is the name or an alias of a person on the sheet (compared as names are) updates that person as
+ * the person form edits them: their grade is recorded from the sheet's today, and their terms and contact are
+ * set when the line gives them. Any other line adds a person as the person form adds them. Every line is first
+ * held to the person form's rules: a new name in use as a name or alias on the sheet's tree, a contact another
+ * person on the sheet has, or a name, person or contact given twice in the paste is refused, and the whole
+ * import is one change: a refused line imports nothing.
  */
 @Service
 public class PersonImportService {
@@ -29,6 +33,14 @@ public class PersonImportService {
     private record Line(String name, String grade, Integer terms, String contact) {
     }
 
+    /** A line to import, with the person on the sheet it updates (none: it adds one). */
+    private record Planned(Line line, Person person) {
+    }
+
+    /** How many people an import added and how many it updated. */
+    public record Result(int added, int updated) {
+    }
+
     private final PersonService service;
     private final PersonRepository people;
     private final SheetRepository sheetRows;
@@ -39,39 +51,55 @@ public class PersonImportService {
         this.sheetRows = sheetRows;
     }
 
-    /** Add a person per line, in order; returns how many were added. */
+    /** Update or add a person per line, in order; returns how many were added and updated. */
     @Transactional
-    public int importPeople(String sheetId, String user, String text) {
+    public Result importPeople(String sheetId, String user, String text) {
         sheetRows.lockById(sheetId);
-        List<Line> lines = new ArrayList<>();
+        List<Planned> planned = new ArrayList<>();
         Set<String> names = new HashSet<>();
+        Set<Long> updated = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         for (String raw : text.split("\\R")) {
             if (raw.isBlank()) continue;
             Line line = parse(raw);
-            if (service.inUse(sheetId, line.name(), null)) {
+            Optional<Person> match = service.findByNameOrAlias(sheetId, line.name());
+            if (match.isEmpty() && service.inUse(sheetId, line.name(), null)) {
                 throw refused(raw, "the name \"" + line.name() + "\" is already in use");
             }
-            if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
+            if (!names.add(line.name().toLowerCase(Locale.ROOT))
+                    || match.isPresent() && !updated.add(match.get().getId())) {
                 throw refused(raw, "the name \"" + line.name() + "\" is given twice in the paste");
             }
             if (line.contact() != null) {
-                if (people.existsBySheetIdAndContact(sheetId, line.contact())) {
+                boolean taken = match.isPresent()
+                        ? people.existsBySheetIdAndContactAndIdNot(sheetId, line.contact(), match.get().getId())
+                        : people.existsBySheetIdAndContact(sheetId, line.contact());
+                if (taken) {
                     throw refused(raw, "the contact \"" + line.contact() + "\" is already in use");
                 }
                 if (!contacts.add(line.contact())) {
                     throw refused(raw, "the contact \"" + line.contact() + "\" is given twice in the paste");
                 }
             }
-            lines.add(line);
+            planned.add(new Planned(line, match.orElse(null)));
         }
-        if (lines.isEmpty()) {
+        if (planned.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Paste at least one line");
         }
-        for (Line line : lines) {
-            service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact());
+        int added = 0;
+        for (Planned p : planned) {
+            Line line = p.line();
+            if (p.person() == null) {
+                service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact());
+                added++;
+            } else {
+                Person person = p.person();
+                service.edit(sheetId, user, person.getId(), null, person.getName(), line.grade(), null,
+                        line.terms() != null ? line.terms() : person.getTerms(),
+                        line.contact() != null ? line.contact() : person.getContact());
+            }
         }
-        return lines.size();
+        return new Result(added, planned.size() - added);
     }
 
     private static Line parse(String raw) {
