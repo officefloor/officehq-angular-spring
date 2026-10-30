@@ -1,0 +1,339 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 292153b1..6b171f86 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -299,6 +299,27 @@ export class RateStore {
+     }
+   }
+ 
++  /**
++   * Withdraw the newest version of the grade's rate for the from-date (null: from the beginning of time): the version
++   * before it applies again, and with none the rate is gone.
++   */
++  async withdraw(sheet: string, grade: string, from: string | null): Promise<void> {
++    const params: Record<string, string> = from === null ? {} : { from };
++    const r = await firstValueFrom(
++      this.http.post<RateView | null>(
++        `/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}/withdraw`,
++        null,
++        { params },
++      ),
++    );
++    if (this.session.sheetId() === sheet) {
++      this.list.update((l) =>
++        [...l.filter((x) => x.grade !== grade || x.from !== from), ...(r ? [r] : [])].sort(byGradeThenFrom),
++      );
++      await this.loadApplying(sheet);
++    }
++  }
++
+   /**
+    * Set a rate for each line of grade,rate,from,to, in order, all of them or none; the store checks every line by the
+    * rate form's rules first. Resolves to how many were set.
+@@ -458,7 +479,7 @@ export class RateStore {
+       <table>
+         <caption>All rates</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (r of store.list(); track r.grade + '-' + (r.from ?? 'start')) {
+@@ -468,6 +489,16 @@ export class RateStore {
+               <td data-testid="rate-to">{{ (r.to ?? '') | fig }}</td>
+               <td data-testid="rate-pct">{{ r.pct | fig }}</td>
+               <td data-testid="rate-version">{{ r.version | fig }}</td>
++              <td>
++                <button
++                  type="button"
++                  data-testid="rate-withdraw"
++                  [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' from ' + (r.from ?? 'the start')"
++                  (click)="withdraw(r)"
++                >
++                  Withdraw
++                </button>
++              </td>
+             </tr>
+           }
+         </tbody>
+@@ -570,6 +601,23 @@ export class Rates {
+     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+ 
++  /** Withdraws the rate's newest version; only a steward may, anyone else is shown the refusal. */
++  protected async withdraw(r: RateView): Promise<void> {
++    if (this.submitting) return;
++    this.error.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    this.submitting = true;
++    try {
++      await this.store.withdraw(sheet, r.grade, r.from);
++    } catch (err) {
++      const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
++      this.error.set(reason ? reason : 'Could not withdraw that rate.');
++    } finally {
++      this.submitting = false;
++    }
++  }
++
+   protected async submit(e: Event): Promise<void> {
+     e.preventDefault();
+     if (this.submitting) return;
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index bcafdd42..1f44de85 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -127,6 +127,14 @@ public class Rate {
+         this.afterMark = afterMark;
+     }
+ 
++    /** Replaces this, the newest version, with the older one before it, which the caller then drops. */
++    public void restore(RateVersion older) {
++        this.version = older.getVersion();
++        this.pct = older.getPct();
++        this.to = older.getTo();
++        this.afterMark = older.getAfterMark();
++    }
++
+     /**
+      * The rates a claim added at the mark sees among one sheet's rate versions, given oldest first: for each grade and
+      * from-date, the newest version that applies to it (see {@link #appliesTo}); none for one with no such version.
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChange.java b/src/main/java/net/officefloor/hq/app/rate/RateChange.java
+index b898f1da..f6865223 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChange.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChange.java
+@@ -43,6 +43,10 @@ public class RateChange {
+     @Column(name = "after_mark")
+     private Long afterMark;
+ 
++    /** Whether this change withdrew the newest version set for the grade and from-date, rather than setting one. */
++    @Column(name = "withdrawn", nullable = false)
++    private boolean withdrawn;
++
+     protected RateChange() {
+     }
+ 
+@@ -56,6 +60,17 @@ public class RateChange {
+         this.afterMark = rate.getAfterMark();
+     }
+ 
++    /** The withdrawal of the grade's newest version for the from-date, while the sheet's today was the day. */
++    public static RateChange withdrawal(Rate rate, LocalDate madeOn) {
++        RateChange c = new RateChange(rate, madeOn);
++        c.withdrawn = true;
++        return c;
++    }
++
++    public boolean isWithdrawn() {
++        return withdrawn;
++    }
++
+     public String getGrade() {
+         return grade;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChangeRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateChangeRepository.java
+index 0605db5f..a9880aa9 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChangeRepository.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChangeRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.rate;
+ 
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -16,17 +17,40 @@ public interface RateChangeRepository extends JpaRepository<RateChange, Long> {
+      * sheet's today was on or before the day.
+      */
+     default List<Rate> ratesAsOf(String sheetId, LocalDate day) {
+-        Map<List<Object>, Rate> by = new LinkedHashMap<>();
+-        for (RateChange c : findBySheetIdOrderByIdAsc(sheetId)) {
+-            if (c.madeBy(day)) {
+-                by.put(Arrays.asList(c.getGrade(), c.getFrom()), c.rate());
+-            }
+-        }
+-        return List.copyOf(by.values());
++        return stacksAsOf(sheetId, day).values().stream().map(l -> l.get(l.size() - 1)).toList();
+     }
+ 
+-    /** Every rate set while the sheet's today was on or before the day, in the order set (see {@link Rate#seenBy}). */
++    /**
++     * Every rate set while the sheet's today was on or before the day and not withdrawn by then, each grade and
++     * from-date's in the order set (see {@link Rate#seenBy}).
++     */
+     default List<Rate> versionsAsOf(String sheetId, LocalDate day) {
+-        return findBySheetIdOrderByIdAsc(sheetId).stream().filter(c -> c.madeBy(day)).map(RateChange::rate).toList();
++        return stacksAsOf(sheetId, day).values().stream().flatMap(List::stream).toList();
++    }
++
++    /**
++     * For each grade and from-date, the versions set while the sheet's today was on or before the day, oldest first,
++     * each withdrawal by then taking off the newest; one with none left is left out.
++     */
++    private Map<List<Object>, List<Rate>> stacksAsOf(String sheetId, LocalDate day) {
++        Map<List<Object>, List<Rate>> by = new LinkedHashMap<>();
++        for (RateChange c : findBySheetIdOrderByIdAsc(sheetId)) {
++            if (!c.madeBy(day)) {
++                continue;
++            }
++            List<Object> key = Arrays.asList(c.getGrade(), c.getFrom());
++            if (c.isWithdrawn()) {
++                List<Rate> stack = by.get(key);
++                if (stack != null) {
++                    stack.remove(stack.size() - 1);
++                    if (stack.isEmpty()) {
++                        by.remove(key);
++                    }
++                }
++            } else {
++                by.computeIfAbsent(key, k -> new ArrayList<>()).add(c.rate());
++            }
++        }
++        return by;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index a0a19196..ee88bd3c 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -15,6 +15,8 @@ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.session.SessionController;
+ import net.officefloor.hq.app.settings.ViewerPasses;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.http.ResponseEntity;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.bind.annotation.SessionAttribute;
+ 
+@@ -117,6 +120,20 @@ public class RateController {
+         return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), form.pct()));
+     }
+ 
++    /**
++     * Withdraws the newest version of the grade's rate for the from-date (none: from the beginning of time); only a
++     * steward may. Returns the rate as it now is, or nothing when it is gone.
++     */
++    @PostMapping("/{grade}/withdraw")
++    public ResponseEntity<RateView> withdraw(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
++            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++            @SessionAttribute(SessionController.USER) String user) {
++        Rate left = service.withdraw(user, sheetId, grade, from);
++        return left == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(RateView.of(left));
++    }
++
+     /** Sets a rate for each line of the import box, in order, all of them or none; the rates set, in line order. */
+     @PostMapping("/import")
+     public List<RateView> importRates(
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 97a4a6f2..279285b9 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -6,6 +6,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -23,17 +24,19 @@ public class RateService {
+     private final RateChain chain;
+     private final SheetService sheets;
+     private final RollupService rollup;
++    private final SettingsService settings;
+     private final Audit audit;
+ 
+     public RateService(RateRepository rates, RateChangeRepository changes,
+             RateVersionRepository versions, RateChain chain, SheetService sheets,
+-            RollupService rollup, Audit audit) {
++            RollupService rollup, SettingsService settings, Audit audit) {
+         this.rates = rates;
+         this.changes = changes;
+         this.versions = versions;
+         this.chain = chain;
+         this.sheets = sheets;
+         this.rollup = rollup;
++        this.settings = settings;
+         this.audit = audit;
+     }
+ 
+@@ -93,4 +96,37 @@ public class RateService {
+         rollup.recordChanges(by, sheetId, before);
+         return saved;
+     }
++
++    /**
++     * Withdraws the newest version of the grade's rate for the from-date (null: from the beginning of time): the
++     * version before it applies again, and with none the rate is gone. Refused unless the user is a steward, and for a
++     * grade and from-date with no rate. Returns the rate as it now is, or null when it is gone.
++     */
++    @Transactional
++    public Rate withdraw(String by, String sheetId, String grade, LocalDate from) {
++        if (!settings.isSteward(sheetId, by)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can withdraw a rate.");
++        }
++        Rate rate = rates.findExact(sheetId, grade, from).orElseThrow(
++                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "There is no such rate to withdraw."));
++        LocalDate today = sheets.load(sheetId).getToday();
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        changes.saveAndFlush(RateChange.withdrawal(rate, today));
++        RateVersion older = versions.findByRateIdAndVersion(rate.getId(), rate.getVersion() - 1).orElse(null);
++        Rate left;
++        if (older == null) {
++            rates.delete(rate);
++            rates.flush();
++            left = null;
++        } else {
++            rate.restore(older);
++            versions.delete(older);
++            versions.flush();
++            left = rates.saveAndFlush(rate);
++        }
++        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + by + " grade=" + grade
++                + (from != null ? " from=" + from : ""));
++        rollup.recordChanges(by, sheetId, before);
++        return left;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
+index 3707e2e5..947d6c8b 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.rate;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Query;
+ 
+@@ -10,4 +11,7 @@ public interface RateVersionRepository extends JpaRepository<RateVersion, Long>
+     @Query("SELECT v FROM RateVersion v WHERE v.rateId IN (SELECT r.id FROM Rate r WHERE r.sheetId = :sheetId)"
+             + " ORDER BY v.rateId, v.version")
+     List<RateVersion> findBySheet(String sheetId);
++
++    /** The rate's older version with the number, if it has one. */
++    Optional<RateVersion> findByRateIdAndVersion(Long rateId, int version);
+ }
+diff --git a/src/main/resources/db/migration/V121__rate_withdrawn.sql b/src/main/resources/db/migration/V121__rate_withdrawn.sql
+new file mode 100644
+index 00000000..3aeb1349
+--- /dev/null
++++ b/src/main/resources/db/migration/V121__rate_withdrawn.sql
+@@ -0,0 +1,4 @@
++-- A steward can withdraw a rate's newest version: the version before it applies again, and with none the rate is gone.
++-- The change log keeps a withdrawal as a change of its own, marked withdrawn, so the rates as of a day leave out the
++-- version it withdrew.
++ALTER TABLE rate_change ADD COLUMN withdrawn BOOLEAN DEFAULT FALSE NOT NULL;
