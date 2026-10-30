@@ -1075,14 +1075,16 @@ export class People {
   /** The people this screen added since the sheet was last read. */
   private readonly addedHere = signal<ReadonlySet<number>>(new Set());
   /**
-   * The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count, counted;
-   * null (the cells empty) when the signed-in user is not a steward.
+   * The steward's dashboard: the PENDING and REVIEW claims and the overdue claims that count, over the sheet and
+   * all its descendants, counted; null (the cells empty) when the signed-in user is not a steward.
    */
   protected readonly dashboard = computed(() => {
     if (this.role() !== 'steward') return null;
-    const counts = this.statusCounts();
+    const people = [...this.people(), ...this.descendants().flat()];
+    const counts = statusCounts(people);
     const count = (status: string) => counts.find((s) => s.status === status)?.count ?? 0;
-    return { pending: count('PENDING'), review: count('REVIEW'), overdue: this.overdueCount() };
+    const overdue = people.reduce((sum, p) => sum + p.overdueCount, 0);
+    return { pending: count('PENDING'), review: count('REVIEW'), overdue };
   });
   /** The person on the sheet with the signed-in user's name or alias, as names are compared; null when none. */
   protected readonly me = computed(() => {
