@@ -45,6 +45,11 @@ public class Statement {
         this.claims = claims;
     }
 
+    /** The statement as carried to another person (on the same or another sheet), as it was taken. */
+    public Statement carried(String sheetId, Long personId) {
+        return new Statement(sheetId, personId, takenOn, dueTotal, claims);
+    }
+
     public Long getId() {
         return id;
     }

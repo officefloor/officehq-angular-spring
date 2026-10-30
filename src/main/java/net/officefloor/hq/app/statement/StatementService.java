@@ -2,6 +2,7 @@ package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -123,6 +124,25 @@ public class StatementService {
         statements.saveAndFlush(new Statement(sheetId, personId, on, dueTotal, counting));
         events.publishEvent(new StatementTaken(sheetId, user, person.getName(), dueTotal, counting, asOf));
         rollup.changed(sheetId, user, before);
+    }
+
+    /**
+     * Carry a person's statements to the person receiving them in a merge or transfer: the receiver's count
+     * becomes their own plus the other's, and the receiver's last statement stays theirs (or, having none,
+     * becomes the other's). The other's statements are dropped from them.
+     */
+    @Transactional
+    public void carry(String fromSheet, long fromPerson, String toSheet, long toPerson) {
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(fromSheet, fromPerson);
+        List<Statement> own = statements.findBySheetIdAndPersonIdOrderByIdAsc(toSheet, toPerson);
+        // taken in order by id: the other's come first, then the receiver's own taken again after them
+        List<Statement> carried = new ArrayList<>();
+        theirs.forEach(s -> carried.add(s.carried(toSheet, toPerson)));
+        own.forEach(s -> carried.add(s.carried(toSheet, toPerson)));
+        statements.deleteAll(theirs);
+        statements.deleteAll(own);
+        statements.flush();
+        statements.saveAllAndFlush(carried);
     }
 
     /** Cancel the person's last statement; only a steward may, and only while the person has one. */

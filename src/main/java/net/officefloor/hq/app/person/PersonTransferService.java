@@ -23,7 +23,7 @@ import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
-import net.officefloor.hq.app.statement.StatementRepository;
+import net.officefloor.hq.app.statement.StatementService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -38,8 +38,9 @@ import org.springframework.web.server.ResponseStatusException;
  * aliases joined to the other's aliases, their contact dropped. The person arrives with their grades (each from its date), terms, contact and aliases, and their
  * claims with status, dates, notes, tags, frozen figures, logs and comments; each claim that had a number
  * takes the other sheet's next one, in the order the claims were opened (by the sheet's today when each was
- * opened, then by the order they were added). Figures a statement bound are released and references dropped.
- * The person leaves this sheet entirely: their statements, holds, patron links, pool memberships and
+ * opened, then by the order they were added). Figures a statement bound are kept and references dropped. Their
+ * statements go with them: a person merged into keeps their own last statement (or, having none, takes the
+ * arriving person's last) with the count of both. The person leaves this sheet entirely: their holds, patron links, pool memberships and
  * watches are dropped.
  */
 @Service
@@ -51,7 +52,7 @@ public class PersonTransferService {
     private final ClaimRepository claims;
     private final ClaimService claimService;
     private final Tags tags;
-    private final StatementRepository statements;
+    private final StatementService statements;
     private final PoolMemberRepository poolMembers;
     private final AccessService access;
     private final SheetService sheets;
@@ -60,7 +61,7 @@ public class PersonTransferService {
     private final ApplicationEventPublisher events;
 
     public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
-            ClaimRepository claims, ClaimService claimService, Tags tags, StatementRepository statements,
+            ClaimRepository claims, ClaimService claimService, Tags tags, StatementService statements,
             PoolMemberRepository poolMembers, AccessService access, SheetService sheets, SheetRepository sheetRows,
             Rollup rollup, ApplicationEventPublisher events) {
         this.people = people;
@@ -152,6 +153,9 @@ public class PersonTransferService {
         Map<Claim, Long> addedAs = new HashMap<>();
         for (Claim claim : leaving) {
             Claim copy = claim.arriving(toSheet, arrived.getId());
+            if (claim.isStated()) {
+                copy.bind(claim.getStatedDue());
+            }
             arriving.add(copy);
             if (claim.getShownNumber() != null) {
                 oldNumbers.put(copy, claim.getShownNumber());
@@ -184,7 +188,7 @@ public class PersonTransferService {
         patrons.deleteAll(patrons.findBySheetIdAndPatronIdOrderByIdAsc(sheetId, personId));
         poolMembers.deleteAll(poolMembers.findByPersonId(personId));
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+        statements.carry(sheetId, personId, toSheet, arrived.getId());
         claims.deleteAll(leaving);
         claims.flush();
         people.delete(person);
