@@ -35,6 +35,12 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
     public static final String PARENT = "parent";
 
+    /** The month (1 to 12) the sheet's fiscal year starts in; not dated. */
+    public static final String FISCAL_START_MONTH = "fiscal-start-month";
+
+    /** The month a fiscal year starts in when none is set: January. */
+    public static final int DEFAULT_FISCAL_START_MONTH = 1;
+
     /** A sheet with no value saved: every setting has its starting value on every date. */
     public static final DatedSettings NONE = new DatedSettings(List.of());
 
@@ -140,6 +146,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's pot (not dated: it holds on every date); null when there is none. */
     public BigDecimal pot() {
         return on(POT, LocalDate.MAX).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The month (1 to 12) the sheet's fiscal year starts in (not dated); 1 when none is set. */
+    public int fiscalStartMonth() {
+        return on(FISCAL_START_MONTH, LocalDate.MAX).map(Integer::valueOf).orElse(DEFAULT_FISCAL_START_MONTH);
     }
 
     /** The id of the sheet's parent sheet (not dated); null when it has none. */

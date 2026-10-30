@@ -78,6 +78,8 @@ public class AccessService {
 
     public static final String PARENT = DatedSettings.PARENT;
 
+    public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
+
     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
     public record Dated(String value, LocalDate from) {
     }
@@ -254,7 +256,11 @@ public class AccessService {
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
-            Map<String, Dated> gradeProofThreshold, String pot, String parent) {
+            Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth) {
+        if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
+                && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
+        }
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -314,6 +320,10 @@ public class AccessService {
         }
         if (parent != null) {
             setParent(sheetId, user, parent.isEmpty() ? null : parent);
+        }
+        if (fiscalStartMonth != null) {
+            setFiscalStartMonth(sheetId, user, fiscalStartMonth.isEmpty()
+                    ? DatedSettings.DEFAULT_FISCAL_START_MONTH : Integer.parseInt(fiscalStartMonth));
         }
     }
 
@@ -396,6 +406,27 @@ public class AccessService {
         }
         events.publishEvent(new SettingChanged(sheetId, user, PARENT, parent == null ? "" : parent, null));
         rollup.changed(sheetId, user, before);
+    }
+
+    /**
+     * Record the month (1 to 12) the sheet's fiscal year starts in. Not dated: the value holds from the beginning
+     * of time, replacing the one it had. Refused (409, changing nothing) for any other month.
+     */
+    @Transactional
+    public void setFiscalStartMonth(String sheetId, String user, int month) {
+        if (month < 1 || month > 12) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
+        }
+        sheets.load(sheetId, user);
+        String value = Integer.toString(month);
+        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, FISCAL_START_MONTH, null).orElse(null);
+        if (row == null) {
+            settingRows.saveAndFlush(new SheetSetting(sheetId, FISCAL_START_MONTH, null, value));
+        } else {
+            row.setValue(value);
+            settingRows.flush();
+        }
+        events.publishEvent(new SettingChanged(sheetId, user, FISCAL_START_MONTH, value, null));
     }
 
     /** A figure as kept: two decimals; blank is the starting value given (null: none). */

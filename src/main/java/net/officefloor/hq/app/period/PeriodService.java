@@ -117,6 +117,33 @@ public class PeriodService {
         return made;
     }
 
+    /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */
+    @Transactional(readOnly = true)
+    public int fiscalStartMonth(String sheetId) {
+        return sheets.settings(sheetId).fiscalStartMonth();
+    }
+
+    /**
+     * The fiscal year the date falls in, named FY and the calendar year its first day falls in: the year the
+     * fiscal year starting in the given month (1 to 12) on or before the date begins.
+     */
+    public static String fiscalYear(LocalDate date, int startMonth) {
+        int year = date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1;
+        return "FY" + year;
+    }
+
+    /**
+     * Generate the twelve monthly periods of the fiscal year whose first day falls in the given calendar year,
+     * from the sheet's fiscal start month on, exactly as {@link #generate} does. Returns the periods made,
+     * earliest first.
+     */
+    @Transactional
+    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
+        sheets.load(sheetId, user);
+        YearMonth first = YearMonth.of(year, fiscalStartMonth(sheetId));
+        return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
+    }
+
     /**
      * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims due by a date inside it that counted (OPEN, PENDING and SETTLED,
      * but not an unbound OPEN claim dated within a hold of its person, nor a deferred one) at the end of its last day,

@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.period;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -31,18 +33,19 @@ public class PeriodController {
 
     /**
      * A period as shown, whether it is closed or soft-closed; once either, with the due-total fixed then (null
-     * while open) and per person id the person's due-total fixed then (empty while open).
+     * while open) and per person id the person's due-total fixed then (empty while open); and the fiscal year
+     * (FY and a year) its from-date falls in.
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
-            String closedTotal, Map<Long, String> personTotals) {
+            String closedTotal, Map<Long, String> personTotals, String fy) {
 
-        static PeriodView of(Period period) {
+        static PeriodView of(Period period, int fiscalStartMonth) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, t) -> personTotals.put(id, t.setScale(2, RoundingMode.HALF_UP).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null
                             : period.getClosedTotal().setScale(2, RoundingMode.HALF_UP).toPlainString(),
-                    personTotals);
+                    personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth));
         }
     }
 
@@ -61,13 +64,15 @@ public class PeriodController {
 
     @GetMapping
     public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
+        String sheet = sheetId.trim();
+        return views(sheet, service.list(sheet));
     }
 
     @PostMapping
     public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PeriodForm form) {
-        return PeriodView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to()));
+        String sheet = sheetId.trim();
+        return view(sheet, service.add(sheet, user.trim(), form.name().trim(), form.from(), form.to()));
     }
 
     /** A from and to date: one period per calendar month from the from-date's month to the to-date's. */
@@ -77,25 +82,49 @@ public class PeriodController {
     @PostMapping("/generate")
     public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody GenerateForm form) {
-        return service.generate(sheetId.trim(), user.trim(), form.from(), form.to()).stream().map(PeriodView::of).toList();
+        String sheet = sheetId.trim();
+        return views(sheet, service.generate(sheet, user.trim(), form.from(), form.to()));
+    }
+
+    /** A calendar year: the twelve monthly periods of the fiscal year whose first day falls in it. */
+    public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9999) Integer year) {
+    }
+
+    @PostMapping("/generate-fy")
+    public List<PeriodView> generateFiscalYear(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody GenerateFiscalYearForm form) {
+        String sheet = sheetId.trim();
+        return views(sheet, service.generateFiscalYear(sheet, user.trim(), form.year()));
+    }
+
+    private PeriodView view(String sheet, Period period) {
+        return PeriodView.of(period, service.fiscalStartMonth(sheet));
+    }
+
+    private List<PeriodView> views(String sheet, List<Period> periods) {
+        int fiscalStartMonth = service.fiscalStartMonth(sheet);
+        return periods.stream().map(p -> PeriodView.of(p, fiscalStartMonth)).toList();
     }
 
     @PostMapping("/{periodId}/close")
     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
             @RequestHeader("X-User") @NotBlank String user) {
-        return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
+        String sheet = sheetId.trim();
+        return view(sheet, service.close(sheet, user.trim(), periodId));
     }
 
     @PostMapping("/{periodId}/soft-close")
     public PeriodView softClose(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
             @RequestHeader("X-User") @NotBlank String user) {
-        return PeriodView.of(service.softClose(sheetId.trim(), user.trim(), periodId));
+        String sheet = sheetId.trim();
+        return view(sheet, service.softClose(sheet, user.trim(), periodId));
     }
 
     @PostMapping("/{periodId}/reopen")
     public PeriodView reopen(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
             @RequestHeader("X-User") @NotBlank String user) {
-        return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
+        String sheet = sheetId.trim();
+        return view(sheet, service.reopen(sheet, user.trim(), periodId));
     }
 
     @ExceptionHandler(PeriodRefused.class)

@@ -17,9 +17,12 @@ export interface Period {
   closedTotal: string | null;
   /** Per person id, the person's due-total fixed when the period was closed; empty while it is open. */
   personTotals: Record<number, string>;
+  /** The fiscal year its from-date falls in: FY and the calendar year that fiscal year's first day falls in. */
+  fy: string;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const YEAR = /^\d{4}$/;
 
 /** The period whose dates contain the date, or undefined when none does. */
 export function periodOf(periods: Period[], date: string): Period | undefined {
@@ -91,7 +94,7 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
       <h2>Periods</h2>
       <table>
         <thead>
-          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -99,6 +102,7 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
+              <td data-testid="period-fy">{{ p.fy }}</td>
               <td data-testid="period-due-total">{{ dueTotals()[p.id] }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
@@ -167,6 +171,17 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
           <p role="alert" data-testid="period-generate-error">{{ genError() }}</p>
         }
       </form>
+      <form (submit)="generateFy($event)" aria-label="Generate a fiscal year's monthly periods">
+        <label for="period-generate-fy-year">Fiscal year (the calendar year its first day falls in)</label>
+        <input
+          id="period-generate-fy-year"
+          inputmode="numeric"
+          data-testid="period-generate-fy-year"
+          [value]="fyYear()"
+          (input)="fyYear.set(value($event)); genError.set('')"
+        />
+        <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
     </section>
   `,
 })
@@ -184,6 +199,7 @@ export class Periods {
   protected readonly error = signal('');
   protected readonly genFrom = signal('');
   protected readonly genTo = signal('');
+  protected readonly fyYear = signal('');
   /** How many periods the last generate made; null while it runs. */
   protected readonly generated = signal<number | null>(null);
   protected readonly genError = signal('');
@@ -203,6 +219,7 @@ export class Periods {
       this.error.set('');
       this.genFrom.set('');
       this.genTo.set('');
+      this.fyYear.set('');
       this.generated.set(null);
       this.genError.set('');
       this.rowError.set(null);
@@ -278,11 +295,35 @@ export class Periods {
       this.genError.set('The to-date is before the from-date.');
       return;
     }
+    await this.runGenerate(sheet, 'generate', { from, to });
+  }
+
+  /**
+   * Generate the twelve monthly periods of the fiscal year whose first day falls in the year given, from the
+   * sheet's fiscal start month on, as the monthly generate does. Shows how many were made.
+   */
+  protected async generateFy(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.busy) return;
+    this.generated.set(null);
+    this.genError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const year = this.fyYear().trim();
+    if (!YEAR.test(year)) {
+      this.genError.set('Enter a year, such as 2026.');
+      return;
+    }
+    await this.runGenerate(sheet, 'generate-fy', { year: Number(year) });
+  }
+
+  /** Post a generate and show the periods made and how many, or the refusal. */
+  private async runGenerate(sheet: string, path: string, body: object): Promise<void> {
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
       const made = await firstValueFrom(
-        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, { from, to }, { headers }),
+        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${path}`, body, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       const ids = new Set(made.map((p) => p.id));

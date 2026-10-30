@@ -53,13 +53,15 @@ public class AccessController {
      * days of grades A, B and C are a number of days, null for a grade with none; the proof thresholds of
      * grades A, B and C are figures with two decimals, null for a grade with none (it uses the sheet's). The
      * pot is a figure with two decimals, null for none; it is not dated. The parent is the id of the parent
-     * sheet, null for none; it is not dated.
+     * sheet, null for none; it is not dated. The fiscal start month is the month (1 to 12) the sheet's fiscal
+     * year starts in; it is not dated.
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
-            String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent) {
+            String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
+            String fiscalStartMonth) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
                 Integer graceDays, LocalDate entryDate) {
@@ -76,7 +78,8 @@ public class AccessController {
                     entryDate == null ? null : entryDate.toString(), text(grace(dated, "A", today)),
                     text(grace(dated, "B", today)), text(grace(dated, "C", today)),
                     text(dated.gradeProofThreshold("A", today)), text(dated.gradeProofThreshold("B", today)),
-                    text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent());
+                    text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent(),
+                    Integer.toString(dated.fiscalStartMonth()));
         }
 
         /** The grade's grace days in force on the date as written; null when it has none then. */
@@ -129,7 +132,8 @@ public class AccessController {
      * dated. A grade's grace days are a whole number of days, blank meaning none; dated. A grade's proof
      * threshold is 0.00 or more with up to two decimals, blank meaning none (the sheet's); dated. The pot is
      * 0.00 or more with up to two decimals, blank meaning none; not dated. The parent is the id of a sheet
-     * that has been loaded, blank meaning none; not dated.
+     * that has been loaded, blank meaning none; not dated. The fiscal start month is a month, 1 to 12, blank
+     * putting back 1; not dated.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -174,7 +178,8 @@ public class AccessController {
             @Pattern(regexp = DATE) String proofThresholdBFrom,
             @Pattern(regexp = DATE) String proofThresholdCFrom,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String pot,
-            @Size(max = 100) String parent) {
+            @Size(max = 100) String parent,
+            @Pattern(regexp = "(\\d{1,2})?") String fiscalStartMonth) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -244,7 +249,7 @@ public class AccessController {
         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
                 form.periodNumberingFrom(), form.graceDays(), gradeGrace, cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
                 dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold,
-                form.pot(), form.parent() == null ? null : form.parent().trim());
+                form.pot(), form.parent() == null ? null : form.parent().trim(), form.fiscalStartMonth());
         return settings(sheet);
     }
 

@@ -1775,8 +1775,15 @@ export class People {
   /** Show the people again as the store holds them, once a setting changed what they are due. */
   protected readonly reloadAfterSettings = async (): Promise<void> => {
     const sheet = this.session.sheet();
-    if (sheet) await this.reload(sheet).catch(() => undefined);
+    if (sheet) await Promise.all([this.reload(sheet), this.reloadPeriods(sheet)]).catch(() => undefined);
   };
+
+  /** Re-read the sheet's periods: a setting such as the fiscal start month changes how they are shown. */
+  private async reloadPeriods(sheet: string): Promise<void> {
+    const loads = this.session.loads();
+    const periods = await firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`));
+    if (this.session.sheet() === sheet && this.session.loads() === loads) this.periods.set(periods);
+  }
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
