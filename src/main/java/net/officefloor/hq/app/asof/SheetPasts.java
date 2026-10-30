@@ -50,6 +50,7 @@ public class SheetPasts {
             new Scope("CLAIM_LOG", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
             new Scope("CLAIM_COMMENT", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
             new Scope("CLAIM_RETIRED_NUMBER", "sheet_id = ?"),
+            new Scope("SHEET_FISCAL_NUMBER", "sheet_id = ?"),
             new Scope("RATE", "sheet_id = ?"),
             new Scope("SHEET_SETTING", "sheet_id = ?"),
             new Scope("SHEET_ROLE", "sheet_id = ?"),

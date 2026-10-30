@@ -890,12 +890,14 @@ public class ClaimService {
     /**
      * Give a claim being opened its number: while the sheet's period numbering from is set and the
      * sheet's today is on or after it, the next in the period its due-by falls in (<period name>-<n>), or
-     * in the sequence of claims in no period (X-<n>); otherwise the next sheet-wide number. Two users
+     * in the sequence of claims in no period (X-<n>); otherwise the next sheet-wide number within the fiscal
+     * year (by the sheet's fiscal start month) its due-by falls in (<FY>-<n>). Two users
      * taking one at the same moment wait on each other, so no number is given twice or skipped.
      */
     private void giveNumber(String sheetId, Claim claim) {
         if (!numberingOn(sheetId)) {
-            claim.setNumber(sheets.nextClaimNumber(sheetId));
+            String fiscalYear = PeriodService.fiscalYear(claim.getDueBy(), sheets.settings(sheetId).fiscalStartMonth());
+            claim.setFiscalNumber(fiscalYear, sheets.nextClaimNumber(sheetId, fiscalYear));
             return;
         }
         sheetRows.lockById(sheetId);

@@ -53,6 +53,10 @@ public class Claim {
     @Column(name = "claim_number")
     private Integer number;
 
+    /** The fiscal year (FY<year>) a sheet-wide number counts in, shown <FY>-<n>; null for a number given before. */
+    @Column(name = "fiscal_year")
+    private String fiscalYear;
+
     /** The sequence a period-numbered claim counts in ('P<period id>', or 'X' for no period); null otherwise. */
     @Column(name = "period_sequence")
     private String periodSequence;
@@ -388,9 +392,20 @@ public class Claim {
         this.number = number;
     }
 
+    /** Number the claim sheet-wide within the fiscal year, shown <FY>-<n>. */
+    public void setFiscalNumber(String fiscalYear, int n) {
+        this.fiscalYear = fiscalYear;
+        this.number = n;
+    }
+
+    public String getFiscalYear() {
+        return fiscalYear;
+    }
+
     /** Take away the claim's number, sheet-wide or within a period, so it can be given a new one. */
     public void clearNumber() {
         this.number = null;
+        this.fiscalYear = null;
         this.periodSequence = null;
         this.periodSeqNumber = null;
         this.periodNumber = null;
@@ -413,7 +428,8 @@ public class Claim {
 
     /** The number as shown: its period number, or its sheet-wide number; null while it has none. */
     public String getShownNumber() {
-        return periodNumber != null ? periodNumber : number == null ? null : number.toString();
+        return periodNumber != null ? periodNumber : number == null ? null
+                : fiscalYear == null ? number.toString() : fiscalYear + "-" + number;
     }
 
     public Integer getSettleBatch() {

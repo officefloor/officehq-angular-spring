@@ -15,6 +15,7 @@ import net.officefloor.hq.app.statement.DayEnds;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,10 +34,12 @@ public class SheetService {
     private final DayEnds dayEnds;
     private final SheetPasts pasts;
     private final ApplicationEventPublisher events;
+    private final JdbcTemplate jdbc;
     private final Clock clock = Clock.systemDefaultZone();
 
     public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup, DayEnds dayEnds,
-            SheetPasts pasts, ApplicationEventPublisher events) {
+            SheetPasts pasts, ApplicationEventPublisher events, JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
         this.dayEnds = dayEnds;
         this.pasts = pasts;
         this.sheets = sheets;
@@ -132,21 +135,28 @@ public class SheetService {
     }
 
     /**
-     * The next claim number on the sheet: the sheets of a tree share one sequence, so the next after the
-     * last number given on any sheet of the sheet's tree (1 for the first). Two users taking one at the
-     * same moment wait on each other, so no number is given twice or skipped.
+     * The next claim number on the sheet within the fiscal year: the sheets of a tree share one sequence per
+     * fiscal year, so the next after the last number given in that year on any sheet of the sheet's tree (1 for
+     * the first). Two users taking one at the same moment wait on each other, so no number is given twice or
+     * skipped.
      */
     @Transactional
-    public int nextClaimNumber(String id) {
+    public int nextClaimNumber(String id, String fiscalYear) {
         List<String> tree = new ArrayList<>(tree(id));
         Collections.sort(tree);
         for (String sheetId : tree) {
-            sheets.lockById(sheetId);
+            if (sheets.lockById(sheetId) == null && sheetId.equals(id)) {
+                throw new IllegalStateException("No such sheet " + id);
+            }
         }
-        int next = sheets.lastClaimNumberOf(tree) + 1;
-        if (sheets.setLastClaimNumber(id, next) != 1) {
-            throw new IllegalStateException("No such sheet " + id);
-        }
+        String in = String.join(",", Collections.nCopies(tree.size(), "?"));
+        List<Object> args = new ArrayList<>(tree);
+        args.add(fiscalYear);
+        Integer last = jdbc.queryForObject("SELECT COALESCE(MAX(last_number), 0) FROM sheet_fiscal_number"
+                + " WHERE sheet_id IN (" + in + ") AND fiscal_year = ?", Integer.class, args.toArray());
+        int next = (last == null ? 0 : last) + 1;
+        jdbc.update("MERGE INTO sheet_fiscal_number (sheet_id, fiscal_year, last_number) KEY (sheet_id, fiscal_year)"
+                + " VALUES (?, ?, ?)", id, fiscalYear, next);
         return next;
     }
 
