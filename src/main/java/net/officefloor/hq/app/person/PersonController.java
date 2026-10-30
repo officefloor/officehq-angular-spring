@@ -57,24 +57,26 @@ public class PersonController {
 
     /**
      * A person with their claims, newest first, claimed: the sum of the amounts of the claims that
-     * count (OPEN and SETTLED), dueTotal: the sum of the due figures of the claims that count (see
+     * count (OPEN and SETTLED, but only SETTLED while on hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
-     * the date they are retired from (null when not).
+     * the date they are retired from (null when not), and whether they are on hold.
      */
     public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
             String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate,
-            boolean retired, LocalDate retiredFrom) {
+            boolean retired, LocalDate retiredFrom, boolean held) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements) {
             String grade = person.getGrade();
-            BigDecimal claimed = claims.stream().filter(c -> c.getStatus().counts()).map(Claim::getAmount)
+            boolean held = person.isHeld();
+            BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             return new PersonView(person.getId(), person.getVersion(), person.getName(), grade,
                     claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
-                    money(Dues.total(grade, claims, rates)), statements.count(), money(statements.lastDueTotal()),
-                    statements.lastDate(), person.isRetired(), person.getRetiredFrom());
+                    money(Dues.total(grade, claims, rates, held)), statements.count(),
+                    money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
+                    person.getRetiredFrom(), held);
         }
     }
 
@@ -149,6 +151,21 @@ public class PersonController {
             @RequestBody(required = false) RetireForm form) {
         String sheet = sheetId.trim();
         Person person = service.retire(sheet, user.trim(), personId, form == null ? null : form.from());
+        return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
+                statements.forPerson(sheet, personId));
+    }
+
+    /** A hold as asked for: on hold (true) or released (false). */
+    public record HoldForm(@NotNull Boolean held) {
+    }
+
+    /** Put the person on hold or take them off it; answers with the person as they are now. */
+    @PostMapping("/{personId}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody HoldForm form) {
+        String sheet = sheetId.trim();
+        Person person = service.hold(sheet, user.trim(), personId, form.held());
         return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
                 statements.forPerson(sheet, personId));
     }

@@ -31,12 +31,27 @@ public final class Dues {
     }
 
     /**
-     * The sum of the due figures of the claims that count (0.00 with none). Null (n/a) when the grade has
+     * Whether the claim counts in the live totals: OPEN and SETTLED claims do, except that the OPEN
+     * claims of a person on hold count in none.
+     */
+    public static boolean counts(Claim claim, boolean held) {
+        return claim.getStatus().counts() && !(held && claim.getStatus() == ClaimStatus.OPEN);
+    }
+
+    /**
+     * The sum of the due figures of the claims that count (0.00 with none); a person not on hold.
+     */
+    public static BigDecimal total(String grade, List<Claim> claims, RateTable rates) {
+        return total(grade, claims, rates, false);
+    }
+
+    /**
+     * The sum of the due figures of the claims that count (0.00 with none), see {@link #counts}. Null (n/a) when the grade has
      * no rate on the sheet's today, unless a claim that counts keeps a figure: then it is the sum of the
      * figures there are.
      */
-    public static BigDecimal total(String grade, List<Claim> claims, RateTable rates) {
-        List<Claim> counting = claims.stream().filter(c -> c.getStatus().counts()).toList();
+    public static BigDecimal total(String grade, List<Claim> claims, RateTable rates, boolean held) {
+        List<Claim> counting = claims.stream().filter(c -> counts(c, held)).toList();
         boolean shown = rates.current(grade) != null || counting.stream().anyMatch(Dues::kept);
         return shown ? counting.stream().map(c -> figure(c, grade, rates))
                 .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add) : null;

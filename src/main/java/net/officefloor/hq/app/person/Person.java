@@ -11,7 +11,7 @@ import java.time.LocalDate;
 
 /**
  * A person on a sheet, with a name and a grade (A, B or C), the date they are retired from (null while
- * not retired) and the version it was last saved at.
+ * not retired), whether they are on hold and the version it was last saved at.
  */
 @Entity
 @Table(name = "person")
@@ -32,6 +32,9 @@ public class Person {
 
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
+
+    @Column(name = "held", nullable = false)
+    private boolean held;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -80,6 +83,15 @@ public class Person {
 
     public void setRetiredFrom(LocalDate retiredFrom) {
         this.retiredFrom = retiredFrom;
+    }
+
+    /** Whether the person is on hold: their OPEN claims then count in no live total. */
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
     }
 
     /** Whether a retirement date is set: retired at once, whatever the date. */

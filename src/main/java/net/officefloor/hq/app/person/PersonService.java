@@ -93,6 +93,27 @@ public class PersonService {
         return person;
     }
 
+    /**
+     * Put the person on hold or take them off it, moving the figures their OPEN claims count in. Asking
+     * for the state they are already in changes nothing. Takes turns with claim changes on the sheet.
+     */
+    @Transactional
+    public Person hold(String sheetId, String user, long personId, boolean held) {
+        sheetRows.lockById(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (person.isHeld() == held) {
+            return person;
+        }
+        Rollup.Figures before = rollup.figures(sheetId);
+        person.setHeld(held);
+        people.flush();
+        events.publishEvent(new PersonHeld(held ? "PERSON_HELD" : "PERSON_RELEASED", sheetId, user,
+                person.getName()));
+        rollup.changed(sheetId, user, before);
+        return person;
+    }
+
     /** Someone else saved the person after the editor loaded them. */
     public static ResponseStatusException edited() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Saved by someone else since loaded");

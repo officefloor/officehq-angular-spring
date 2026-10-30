@@ -77,8 +77,8 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing its due-total: the due figures of the claims that count (OPEN and SETTLED)
-     * dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
+     * Close a period, fixing its due-total: the due figures of the claims that count (OPEN and SETTLED,
+     * but not the OPEN claims of a person on hold) dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
      * sheet, so the total fixed is the one the claims had at that moment.
      */
     @Transactional
@@ -89,12 +89,12 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodRefused("The period is already closed.");
         }
-        Map<Long, String> grades = people.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .collect(Collectors.toMap(Person::getId, Person::getGrade));
+        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, p -> p));
         RateTable table = rates.table(sheetId);
         BigDecimal total = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
-                .filter(c -> c.getStatus().counts() && period.contains(c.getDate()))
-                .map(c -> Dues.figure(c, grades.get(c.getPersonId()), table))
+                .filter(c -> Dues.counts(c, byId.get(c.getPersonId()).isHeld()) && period.contains(c.getDate()))
+                .map(c -> Dues.figure(c, byId.get(c.getPersonId()).getGrade(), table))
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);

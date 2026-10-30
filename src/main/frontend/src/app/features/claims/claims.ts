@@ -32,7 +32,7 @@ export interface PersonWithClaims {
   name: string;
   grade: string;
   claims: Claim[];
-  /** The amounts of the OPEN and SETTLED claims added up. */
+  /** The amounts of the OPEN and SETTLED claims added up; only the SETTLED ones while on hold. */
   claimed: string;
   /** Claimed at the rate for the person's grade; null when the grade has no rate. */
   dueTotal: string | null;
@@ -46,6 +46,8 @@ export interface PersonWithClaims {
   retired: boolean;
   /** The date the person is retired from; no claim dated after it can be added. Null when not retired. */
   retiredFrom: string | null;
+  /** Whether the person is on hold: their OPEN claims then count in no live total. */
+  held: boolean;
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;

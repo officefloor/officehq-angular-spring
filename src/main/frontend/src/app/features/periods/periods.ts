@@ -96,7 +96,8 @@ export class Periods {
   readonly people = input.required<PersonWithClaims[]>();
   readonly periods = model<Period[]>([]);
 
-  /** Per period id, the dues of the claims that count whose date falls in it, added up. */
+  /** Per period id, the dues of the claims that count whose date falls in it, added up; the OPEN claims
+   * of a person on hold count in none. */
   protected readonly dueTotals = computed<Record<number, string>>(() => {
     const totals: Record<number, number> = {};
     for (const p of this.periods()) totals[p.id] = 0;
@@ -104,6 +105,7 @@ export class Periods {
     for (const person of this.people()) {
       for (const c of person.claims) {
         if ((c.status !== 'OPEN' && c.status !== 'SETTLED') || c.due === null) continue;
+        if (person.held && c.status === 'OPEN') continue;
         const period = periodOf(this.periods(), c.date);
         if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
       }

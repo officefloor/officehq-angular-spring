@@ -16,7 +16,8 @@ function cents(amount: string): number {
 
 // The people on the active sheet, in the order they were added, each with their claims, and the
 // one form that adds a person or, once a person's editor is opened, edits them. Retired people are
-// left out of the list unless "show retired" is on; their claims keep counting in the totals.
+// left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
+// can be put on hold and released; while held, their OPEN claims count in no total.
 @Component({
   selector: 'app-people',
   imports: [Claims, Periods, Rates],
@@ -92,7 +93,7 @@ function cents(amount: string): number {
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -108,6 +109,7 @@ function cents(amount: string): number {
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -125,6 +127,9 @@ function cents(amount: string): number {
                 />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)">
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)">
+                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
@@ -164,6 +169,8 @@ export class People {
   private stating = false;
   /** A retirement still waiting for its answer: another press meanwhile is ignored. */
   private retiring = false;
+  /** A hold or release still waiting for its answer: another press meanwhile is ignored. */
+  private holding = false;
   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
@@ -356,6 +363,32 @@ export class People {
       this.personError.set({ id: p.id, message: 'Could not retire the person.' });
     } finally {
       this.retiring = false;
+    }
+  }
+
+  /** Put the person on hold, or release them when they are on it. */
+  protected async hold(p: Person): Promise<void> {
+    if (this.holding) return;
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.holding = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/hold`,
+          { held: !p.held },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({ id: p.id, message: p.held ? 'Could not release the person.' : 'Could not hold the person.' });
+    } finally {
+      this.holding = false;
     }
   }
 
