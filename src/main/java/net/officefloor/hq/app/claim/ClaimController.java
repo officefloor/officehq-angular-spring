@@ -45,7 +45,7 @@ public class ClaimController {
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
-        long id = claims.add(sheet, personId, new BigDecimal(form.amount()), form.date(), form.note());
+        long id = claims.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.date(), form.note());
         return view(sheet, id);
     }
 
@@ -54,7 +54,7 @@ public class ClaimController {
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
-        long id = claims.edit(sheet, claimId, new BigDecimal(form.amount()), form.date(), form.note());
+        long id = claims.edit(sheet, user.trim(), claimId, new BigDecimal(form.amount()), form.date(), form.note());
         return view(sheet, id);
     }
 
