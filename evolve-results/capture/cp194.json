@@ -1,0 +1,64 @@
+{
+  "checkpoint": 194,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp194_settle-as-of-date",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be settled as of a date: a date entry beside the settle button. With a date on or\nbefore the sheet's today, the frozen figure is the claim's due as it stood at the end of that day\n(every change made while the sheet's today was on or before that date, with that date as today, as\nthe as-of view works it out), and CLAIM_SETTLED gains on=<date> at its end; a date after today, or\na claim that did not exist then, is refused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be settled as of a date: a date entry beside the settle button. With a date on or\nbefore the sheet's today, the frozen figure is the claim's due as it stood at the end of that day\n(every change made while the sheet's today was on or before that date, with that date as today, as\nthe as-of view works it out), and CLAIM_SETTLED gains on=<date> at its end; a date after today, or\na claim that did not exist then, is refused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "db3cd546d5a1964b0bad4257f55c8de597566fcd",
+  "reset_sha": "",
+  "preagent_sha": "01e28c43a3e1059d415cbd22a41fa4e66b20ab52",
+  "prev_sha": "01e28c43a3e1059d415cbd22a41fa4e66b20ab52",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.848999,
+    "input_tokens": 36,
+    "output_tokens": 10512,
+    "cache_read_tokens": 821795,
+    "cache_creation_tokens": 59282,
+    "num_turns": 19,
+    "duration_ms": 270819,
+    "duration_api_ms": 98616,
+    "model": "claude-opus-5-5",
+    "session_id": "ce6606a8-52d3-4a1b-af55-2e32d5d110f9",
+    "stop_reason": "success",
+    "result_text": "You can now settle a claim as of a date, and all 4 Playwright tests in `bin/e2e` pass.\n\n**How it behaves:** each claim row has a \"Settle as of\" date box next to the Settle button. Leave it blank and Settle works as it did before. Give a date on or before the sheet's today and the frozen figure is the claim's due as the as-of view shows it at the end of that day. The audit line also gains `on=<date>` at its end, for example `CLAIM_SETTLED \u2026 number=FY2026-2 due=2.00 on=2026-03-01`. Two cases are refused with the error on the claim and nothing written: a date after the sheet's today, and a claim that didn't exist on that date.\n\n**What changed:**\n- **Calculation:** I reused the existing as-of machinery (`asof/SheetPasts.java`) instead of writing a separate one. A new `claim/SettleAsOfService.java` checks the date, gets the claim's due through `SheetPasts.asOf(...)` (a transaction that is always rolled back), and then settles the live claim with that figure.\n- **Settle path:** `ClaimService` gained `dueThen` and `settleAsOf`. These run through the same settle path as a normal settle, so every existing check still applies: status, permission, deferral, four-eyes, proof and clerk limit.\n- **Audit record:** `ClaimChanged` has a new `on` field as its last component, and `SheetAudit` writes it at the end of the line.\n- **Endpoint:** `ClaimController`'s settle endpoint now accepts an optional `{ on }` body.\n- **Front end:** the date box (`claim-settle-date`) is in `claims.ts`.\n\n**Behaviour to know about:** the date box clears every time Settle is pressed, even when the settle is refused. I did this so a date typed for a refused settle can't carry over into a later plain settle.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.848999,
+        "num_turns": 19,
+        "duration_ms": 270819,
+        "duration_api_ms": 98616,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp194.agent.jsonl",
+  "agent_diff_file": "cp194.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

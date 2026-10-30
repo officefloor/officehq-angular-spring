@@ -1,0 +1,253 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 8cd181b68..ddb4d9488 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -361,6 +361,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+               <option [value]="r" [selected]="voidReasons()[c.id] === r">{{ r }}</option>
+             }
+           </select>
++          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
++          <input
++            [id]="'claim-settle-date-' + c.id"
++            type="date"
++            data-testid="claim-settle-date"
++            [value]="settleDates()[c.id] ?? ''"
++            (input)="setSettleDate(c.id, value($event))"
++          />
+           @for (a of actions; track a.action) {
+             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
+               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+@@ -553,6 +561,8 @@ export class Claims implements OnInit {
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+   /** The reason typed for rejecting each claim, by claim id. */
+   protected readonly rejectReasons = signal<Record<number, string>>({});
++  /** The date typed to settle each claim as of, by claim id; blank settles it as of today. */
++  protected readonly settleDates = signal<Record<number, string>>({});
+   /** The void reason chosen for each claim, by claim id. */
+   protected readonly voidReasons = signal<Record<number, string>>({});
+   /** The date typed for deferring each claim until, by claim id. */
+@@ -606,6 +616,11 @@ export class Claims implements OnInit {
+     if (this.claimError()?.id === id) this.claimError.set(null);
+   }
+ 
++  protected setSettleDate(id: number, on: string): void {
++    this.settleDates.update((all) => ({ ...all, [id]: on }));
++    if (this.claimError()?.id === id) this.claimError.set(null);
++  }
++
+   protected setVoidReason(id: number, reason: string): void {
+     this.voidReasons.update((all) => ({ ...all, [id]: reason }));
+     if (this.claimError()?.id === id) this.claimError.set(null);
+@@ -1282,13 +1297,21 @@ export class Claims implements OnInit {
+       this.claimError.set({ id: c.id, message: 'Choose a reason to void the claim.' });
+       return;
+     }
++    const on = (this.settleDates()[c.id] ?? '').trim();
++    if (action === 'settle') this.settleDates.update((all) => ({ ...all, [c.id]: '' }));
+     const headers = { 'X-User': this.session.user() ?? '' };
+     this.busy = true;
+     try {
+       const person = await firstValueFrom(
+         this.http.post<PersonWithClaims>(
+           `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`,
+-          action === 'reject' ? { reason } : action === 'void' ? { reason: voidReason === '' ? null : voidReason } : null,
++          action === 'reject'
++            ? { reason }
++            : action === 'void'
++              ? { reason: voidReason === '' ? null : voidReason }
++              : action === 'settle' && on !== ''
++                ? { on }
++                : null,
+           { headers },
+         ),
+       );
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 9fbb448c8..bfb732762 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -174,7 +174,8 @@ public class SheetAudit {
+                 + (e.reversed() == null ? "" : " reversed=" + e.reversed())
+                 + (e.ref() == null ? "" : " ref=" + e.ref())
+                 + (e.tags() == null ? "" : " tags=" + e.tags())
+-                + (e.voidReason() == null ? "" : " reason=" + e.voidReason()));
++                + (e.voidReason() == null ? "" : " reason=" + e.voidReason())
++                + (e.on() == null ? "" : " on=" + e.on()));
+     }
+ 
+     @TransactionalEventListener
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java b/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java
+index 6f2fd2307..7a6202a07 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java
+@@ -15,10 +15,17 @@ import java.time.LocalDate;
+  * The ref is an added claim's external reference, or null when it has none or the event carries none. The
+  * tags are an added claim's tags, sorted and comma separated, or null when it has none or the event carries none.
+  * The void reason is the reason from the sheet's list a claim was voided with, or null when none was given.
++ * The on is the past day a claim was settled as of, its due frozen as it stood then, or null when it was not.
+  */
+ public record ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
+         LocalDate date, String number, String due, String reason, String reversed, String ref, String tags,
+-        String voidReason) {
++        String voidReason, LocalDate on) {
++
++    public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
++            LocalDate date, String number, String due, String reason, String reversed, String ref, String tags,
++            String voidReason) {
++        this(event, sheetId, user, person, amount, date, number, due, reason, reversed, ref, tags, voidReason, null);
++    }
+ 
+     public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
+             LocalDate date, String number, String due, String reason, String reversed, String ref, String tags) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 65d25532a..db1b2bad6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -84,6 +84,10 @@ public class ClaimController {
+     }
+ 
+     /** The reason from the sheet's list a claim is voided with; none (null or blank) while the list is empty. */
++    /** The date a claim is settled as of; null settles it as of today. */
++    public record SettleForm(LocalDate on) {
++    }
++
+     public record VoidForm(@Size(max = 1000) String reason) {
+     }
+ 
+@@ -134,10 +138,13 @@ public class ClaimController {
+     private final RateService rates;
+     private final StatementService statements;
+     private final Tags tags;
++    private final SettleAsOfService settleAsOf;
+ 
+     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
+             BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
+-            BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags) {
++            BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags,
++            SettleAsOfService settleAsOf) {
++        this.settleAsOf = settleAsOf;
+         this.bulkReassign = bulkReassign;
+         this.bulkRedate = bulkRedate;
+         this.bulkVoid = bulkVoid;
+@@ -276,10 +283,16 @@ public class ClaimController {
+         return bulkVoid.voidAll(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()), form.reason());
+     }
+ 
++    /** Settle a claim; given a date, as of that date: its due frozen as it stood at the end of that day. */
+     @PostMapping("/claims/{claimId}/settle")
+     public PersonView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+-            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+-        return move(sheetId, claimId, user, ClaimStatus.SETTLED);
++            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
++            @Valid @RequestBody(required = false) SettleForm form) {
++        if (form == null || form.on() == null) {
++            return move(sheetId, claimId, user, ClaimStatus.SETTLED);
++        }
++        String sheet = sheetId.trim();
++        return view(sheet, settleAsOf.settle(sheet, user.trim(), claimId, form.on()));
+     }
+ 
+     /** A steward approves a PENDING claim, settling it. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 6d95f7b21..7a43560a8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -346,6 +346,34 @@ public class ClaimService {
+      */
+     private long move(String sheetId, String user, long claimId, ClaimStatus next, String voidReason,
+             boolean judgeHere) {
++        return move(sheetId, user, claimId, next, voidReason, judgeHere, null);
++    }
++
++    /** A claim's due as it stood at the end of a past day of the sheet (null: n/a), to settle it at. */
++    public record DueThen(LocalDate on, BigDecimal due) {
++    }
++
++    /**
++     * The claim's due as the sheet shows it now, as of the date given; empty when the sheet has no such
++     * claim. Read within {@link net.officefloor.hq.app.asof.SheetPasts#asOf}, it is the due as it stood then.
++     */
++    java.util.Optional<DueThen> dueThen(String sheetId, long claimId, LocalDate on) {
++        return claims.findByIdAndSheetId(claimId, sheetId).map(claim -> new DueThen(on,
++                dueNow(sheetId, claim, people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null))));
++    }
++
++    /**
++     * Settle a claim as {@link #move(String, String, long, ClaimStatus, String)} does, freezing the due it had
++     * as of a past day of the sheet in place of today's.
++     */
++    @Transactional
++    public long settleAsOf(String sheetId, String user, long claimId, DueThen then) {
++        return move(sheetId, user, claimId, ClaimStatus.SETTLED, null, true, then);
++    }
++
++    /** Move a claim; a settle with a due as of a past day freezes that due in place of today's. */
++    private long move(String sheetId, String user, long claimId, ClaimStatus next, String voidReason,
++            boolean judgeHere, DueThen then) {
+         Claim claim = claim(sheetId, claimId);
+         if (!claim.getStatus().canBecome(next)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+@@ -401,7 +429,7 @@ public class ClaimService {
+         String number = claim.getShownNumber();
+         String due = null;
+         if (next == ClaimStatus.SETTLED) {
+-            BigDecimal fixed = dueNow(sheetId, claim, owner);
++            BigDecimal fixed = then == null ? dueNow(sheetId, claim, owner) : then.due();
+             if (judgeHere) {
+                 requireProof(sheetId, claim, owner, fixed);
+             }
+@@ -429,7 +457,8 @@ public class ClaimService {
+             case DRAFT, DELETED -> throw new IllegalStateException();
+         };
+         events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number,
+-                due, null, reversed, null, null, reasonGiven));
++                due, null, reversed, null, null, reasonGiven,
++                then != null && next == ClaimStatus.SETTLED ? then.on() : null));
+         if (next == ClaimStatus.SETTLED) {
+             watches.notifyWatchers(sheetId, user, owner, number);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/SettleAsOfService.java b/src/main/java/net/officefloor/hq/app/claim/SettleAsOfService.java
+new file mode 100644
+index 000000000..6fad994f8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/SettleAsOfService.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.claim;
++
++import java.time.LocalDate;
++import net.officefloor.hq.app.asof.SheetPasts;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Settle a claim as of a date on or before the sheet's today: its frozen figure is its due as it stood at the
++ * end of that day, as the as-of view of the sheet works it out (see {@link SheetPasts}). A date after the
++ * sheet's today, or a claim the sheet did not have then, is refused and nothing changes; otherwise it is
++ * settled as {@link ClaimService#move} settles it, with that due.
++ */
++@Service
++public class SettleAsOfService {
++
++    private final ClaimService claims;
++    private final SheetService sheets;
++    private final SheetPasts pasts;
++
++    public SettleAsOfService(ClaimService claims, SheetService sheets, SheetPasts pasts) {
++        this.claims = claims;
++        this.sheets = sheets;
++        this.pasts = pasts;
++    }
++
++    /** Settle the claim as of the date; returns the person it belongs to. */
++    public long settle(String sheetId, String user, long claimId, LocalDate on) {
++        if (on.isAfter(sheets.today(sheetId))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A claim cannot be settled as of " + on + ", after the sheet's today");
++        }
++        ClaimService.DueThen then = pasts.asOf(sheetId, on, () -> claims.dueThen(sheetId, claimId, on))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
++                        "The claim did not exist on " + on + ", so it cannot be settled as of then"));
++        return claims.settleAsOf(sheetId, user, claimId, then);
++    }
++}
