@@ -1,0 +1,179 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index b0ceb8d8..1161d59f 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -133,6 +133,31 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]):
+           <p role="alert" data-testid="period-form-error">{{ error() }}</p>
+         }
+       </form>
++      <form (submit)="generate($event)" aria-label="Generate monthly periods">
++        <label for="period-generate-from">From</label>
++        <input
++          id="period-generate-from"
++          type="date"
++          data-testid="period-generate-from"
++          [value]="genFrom()"
++          (input)="genFrom.set(value($event)); genError.set('')"
++        />
++        <label for="period-generate-to">To</label>
++        <input
++          id="period-generate-to"
++          type="date"
++          data-testid="period-generate-to"
++          [value]="genTo()"
++          (input)="genTo.set(value($event)); genError.set('')"
++        />
++        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
++        @if (generated() !== null) {
++          <span>Made <strong data-testid="period-generated">{{ generated() }}</strong></span>
++        }
++        @if (genError()) {
++          <p role="alert" data-testid="period-generate-error">{{ genError() }}</p>
++        }
++      </form>
+     </section>
+   `,
+ })
+@@ -148,6 +173,11 @@ export class Periods {
+   protected readonly from = signal('');
+   protected readonly to = signal('');
+   protected readonly error = signal('');
++  protected readonly genFrom = signal('');
++  protected readonly genTo = signal('');
++  /** How many periods the last generate made; null while it runs. */
++  protected readonly generated = signal<number | null>(null);
++  protected readonly genError = signal('');
+   /** The refusal of the last action on a period's row, shown on that row. */
+   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+   /** A submit still waiting for its answer: another press meanwhile is ignored. */
+@@ -162,6 +192,10 @@ export class Periods {
+       this.from.set('');
+       this.to.set('');
+       this.error.set('');
++      this.genFrom.set('');
++      this.genTo.set('');
++      this.generated.set(null);
++      this.genError.set('');
+       this.rowError.set(null);
+       if (sheet) void this.reload(sheet);
+     });
+@@ -214,6 +248,48 @@ export class Periods {
+     }
+   }
+ 
++  /**
++   * Generate one period per calendar month from the from-date's month to the to-date's, named yyyy-mm; a month
++   * whose name is taken or whose days overlap a period is left out. Shows how many were made.
++   */
++  protected async generate(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    this.generated.set(null);
++    this.genError.set('');
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const from = this.genFrom().trim() || (this.session.today() ?? '');
++    const to = this.genTo().trim();
++    if (!DATE.test(from) || !DATE.test(to)) {
++      this.genError.set('Enter a from-date and a to-date.');
++      return;
++    }
++    if (to < from) {
++      this.genError.set('The to-date is before the from-date.');
++      return;
++    }
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.busy = true;
++    try {
++      const made = await firstValueFrom(
++        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, { from, to }, { headers }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      const ids = new Set(made.map((p) => p.id));
++      this.periods.update((ps) => [...ps.filter((p) => !ids.has(p.id)), ...made].sort((a, b) => a.from.localeCompare(b.from)));
++      this.generated.set(made.length);
++    } catch (err) {
++      if (this.session.sheet() !== sheet) return;
++      const message = err instanceof HttpErrorResponse && err.status === 409
++        ? (err.error?.message ?? 'The periods could not be generated.')
++        : 'Could not generate the periods.';
++      this.genError.set(message);
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   /**
+    * Close a period, fixing its due-total, or reopen a closed one (a steward only), making it live again;
+    * a refusal is shown on its row.
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index e3f9a3e9..84cb1fe9 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -70,6 +70,16 @@ public class PeriodController {
+         return PeriodView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to()));
+     }
+ 
++    /** A from and to date: one period per calendar month from the from-date's month to the to-date's. */
++    public record GenerateForm(@NotNull LocalDate from, @NotNull LocalDate to) {
++    }
++
++    @PostMapping("/generate")
++    public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody GenerateForm form) {
++        return service.generate(sheetId.trim(), user.trim(), form.from(), form.to()).stream().map(PeriodView::of).toList();
++    }
++
+     @PostMapping("/{periodId}/close")
+     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+             @RequestHeader("X-User") @NotBlank String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index d37bff5a..57006280 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -3,6 +3,8 @@ package net.officefloor.hq.app.period;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.time.YearMonth;
++import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.List;
+@@ -85,6 +87,36 @@ public class PeriodService {
+         return period;
+     }
+ 
++    /**
++     * Generate one period per calendar month from the from-date's month to the to-date's month, each running
++     * from the first to the last day of its month and named yyyy-mm. A month whose name is already a period on
++     * the sheet, or whose days overlap one, is left out; the others are still made. Refused when the to-date is
++     * before the from-date. Returns the periods made, earliest first.
++     */
++    @Transactional
++    public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
++        sheets.load(sheetId, user);
++        sheetRows.lockById(sheetId);
++        if (to.isBefore(from)) {
++            throw new PeriodRefused("The to-date is before the from-date.");
++        }
++        List<Period> existing = new ArrayList<>(list(sheetId));
++        List<Period> made = new ArrayList<>();
++        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
++            String name = month.toString();
++            LocalDate first = month.atDay(1);
++            LocalDate last = month.atEndOfMonth();
++            if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(name) || p.overlaps(first, last))) {
++                continue;
++            }
++            Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
++            events.publishEvent(new PeriodAdded(sheetId, user, name, first, last));
++            existing.add(period);
++            made.add(period);
++        }
++        return made;
++    }
++
+     /**
+      * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims dated inside it that counted (OPEN, PENDING and SETTLED,
+      * but not an unbound OPEN claim dated within a hold of its person, nor a deferred one) at the end of its last day,
