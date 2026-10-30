@@ -10,6 +10,8 @@ interface Rate {
   /** The last date the rate applies to (yyyy-mm-dd); null when it has no end. */
   to: string | null;
   pct: string;
+  /** How many versions the rate has had; the newest is the one in force. */
+  version: number;
 }
 
 /** What a candidate rate would do: how many claims' dues would differ, and the sum of the differences. */
@@ -71,6 +73,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
               through <span data-testid="rate-to">{{ r.to }}</span>
             }
             : <span data-testid="rate-pct">{{ r.pct }}</span>%
+            (version <span data-testid="rate-version">{{ r.version }}</span>)
           </li>
         }
       </ul>

@@ -32,12 +32,15 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class RateController {
 
-    /** A grade's rate as shown: its from-date (null: from the beginning of time) and a percent with two decimals. */
-    public record RateView(String grade, LocalDate from, LocalDate to, String pct) {
+    /**
+     * A grade's rate as shown: its from-date (null: from the beginning of time), a percent with two decimals,
+     * and how many versions it has had.
+     */
+    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int version) {
 
         static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getFromDate(), rate.getToDate(),
-                    rate.getPct().setScale(2, RoundingMode.HALF_UP).toPlainString());
+                    rate.getPct().setScale(2, RoundingMode.HALF_UP).toPlainString(), rate.getVersion());
         }
     }
 

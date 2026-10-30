@@ -18,16 +18,18 @@ public class RateService {
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     private final RateRepository rates;
+    private final RateVersionRepository versions;
     private final SheetService sheets;
     private final Rollup rollup;
     private final ParentRates parents;
     private final ApplicationEventPublisher events;
 
-    public RateService(RateRepository rates, SheetService sheets, Rollup rollup, ParentRates parents,
+    public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets, Rollup rollup, ParentRates parents,
             ApplicationEventPublisher events) {
         this.parents = parents;
         this.rollup = rollup;
         this.rates = rates;
+        this.versions = versions;
         this.sheets = sheets;
         this.events = events;
     }
@@ -56,7 +58,8 @@ public class RateService {
 
     /**
      * Set a grade's rate from a from-date (null: from the beginning of time) through a to-date (null: no
-     * end), replacing the one it had from that date.
+     * end). When the grade already has a rate from that date, its value is kept as an older version and this
+     * one becomes its newest version, the one in force.
      */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
@@ -67,8 +70,8 @@ public class RateService {
         if (rate == null) {
             rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled));
         } else {
-            rate.setPct(scaled);
-            rate.setToDate(to);
+            versions.save(new RateVersion(rate));
+            rate.nextVersion(scaled, to);
             rates.flush();
         }
         events.publishEvent(new RateChanged(sheetId, user, grade, scaled, from, to));
