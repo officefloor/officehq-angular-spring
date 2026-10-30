@@ -1,0 +1,154 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 8532e5088..7014bf0fd 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -92,7 +92,7 @@ interface AccessView {
+   delegations: DelegationRow[];
+ }
+ 
+-const ROLES = ['clerk', 'steward', 'viewer'];
++const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
+ const GRADES = ['A', 'B', 'C'] as const;
+ type Grade = (typeof GRADES)[number];
+ const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
+@@ -148,7 +148,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+   template: `
+     <section aria-label="Roles">
+       <h2>Roles</h2>
+-      <p>Anyone without a role is a clerk. A viewer sees everything and can change nothing.</p>
++      <p>Anyone without a role is a clerk. A viewer sees everything and can change nothing. A restricted user is listed only the people of the crews they lead or belong to, and themselves.</p>
+       <ul aria-label="Roles set">
+         @for (r of roles(); track r.user) {
+           <li [attr.data-testid]="'role-row-' + r.user">
+@@ -165,7 +165,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+           [value]="roleUser()"
+           (input)="roleUser.set(value($event)); roleError.set('')"
+         />
+-        <label for="role-form-role">Role (clerk, steward or viewer)</label>
++        <label for="role-form-role">Role (clerk, steward, viewer or restricted)</label>
+         <input
+           id="role-form-role"
+           data-testid="role-form-role"
+@@ -789,7 +789,7 @@ export class Access {
+       return;
+     }
+     if (!ROLES.includes(role)) {
+-      this.roleError.set('Enter a role: clerk, steward or viewer.');
++      this.roleError.set('Enter a role: clerk, steward, viewer or restricted.');
+       return;
+     }
+     const headers = { 'X-User': this.session.user() ?? '' };
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6260d6ed3..06021f572 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -979,10 +979,29 @@ export class People {
+   private bulkRetiring = false;
+   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
+   protected readonly showRetired = signal(false);
+-  /** The people listed: everyone, or only those not retired unless "show retired" is on. */
+-  protected readonly shown = computed(() =>
+-    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+-  );
++  /**
++   * The people listed: everyone, or only those not retired unless "show retired" is on; for a restricted user only
++   * the person with their name and the people of the crews that person leads or belongs to.
++   */
++  protected readonly shown = computed(() => {
++    const visible = this.visible();
++    return this.people().filter((p) => (this.showRetired() || !p.retired) && (visible === null || visible.has(p.id)));
++  });
++  /**
++   * The ids of the people a restricted user may see listed: the person with their name and the leads and members of
++   * the crews that person leads or belongs to; none without such a person. Null (everyone) for any other role.
++   */
++  private readonly visible = computed(() => {
++    if (this.role() !== 'restricted') return null;
++    const me = this.me();
++    if (me === null) return new Set<number>();
++    const ids = new Set<number>([me.id]);
++    for (const c of this.crews()) {
++      const crew = [...(c.lead ? [c.lead] : []), ...c.members];
++      if (crew.some((w) => w.personId === me.id)) crew.forEach((w) => ids.add(w.personId));
++    }
++    return ids;
++  });
+   protected readonly sortKeys = SORT_KEYS;
+   /** How this user's screen orders the listed people; only the screen, never the list order itself. */
+   protected readonly sortKey = signal<SortKey>('added');
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index 15283d872..b60d8f138 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -123,8 +123,8 @@ public class AccessController {
+             @NotBlank @Pattern(regexp = DATE) String to) {
+     }
+ 
+-    /** A user name and a role: clerk, steward or viewer. */
+-    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
++    /** A user name and a role: clerk, steward, viewer or restricted. */
++    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward|viewer|restricted") String role) {
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 45290481f..7ca39243c 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.access;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.EnumSet;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
+@@ -623,6 +624,6 @@ public class AccessService {
+             return true;
+         }
+         BigDecimal limit = sheets.settings(sheetId).clerkLimitFor(grade, sheets.today(sheetId));
+-        return limit == null || due.compareTo(limit) <= 0 || roleOf(sheetId, user) != Role.CLERK;
++        return limit == null || due.compareTo(limit) <= 0 || !EnumSet.of(Role.CLERK, Role.RESTRICTED).contains(roleOf(sheetId, user));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/access/Permission.java b/src/main/java/net/officefloor/hq/app/access/Permission.java
+index 45d0df30b..85f3d2c98 100644
+--- a/src/main/java/net/officefloor/hq/app/access/Permission.java
++++ b/src/main/java/net/officefloor/hq/app/access/Permission.java
+@@ -37,6 +37,9 @@ public enum Permission {
+ 
+     /** Whether the role may take the action under the value set (null or blank: the standing rule). */
+     public boolean allows(String value, Role role) {
++        if (role == Role.RESTRICTED) {
++            role = Role.CLERK;
++        }
+         if (value == null || value.isBlank()) {
+             return standing.contains(role);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/access/Role.java b/src/main/java/net/officefloor/hq/app/access/Role.java
+index cf9f5c4ca..af592aa66 100644
+--- a/src/main/java/net/officefloor/hq/app/access/Role.java
++++ b/src/main/java/net/officefloor/hq/app/access/Role.java
+@@ -6,10 +6,11 @@ import java.util.Optional;
+ /**
+  * What a user may do on a sheet: a clerk settles only within the clerk limit (above it the claim goes
+  * PENDING), a steward settles anything and approves or rejects a PENDING claim; a viewer sees everything
+- * and can change nothing.
++ * and can change nothing; a restricted user acts as a clerk but has listed only the people of the crews
++ * they lead or belong to and that person themselves.
+  */
+ public enum Role {
+-    CLERK, STEWARD, VIEWER;
++    CLERK, STEWARD, VIEWER, RESTRICTED;
+ 
+     /** The role as it is written: lower case. */
+     public String key() {
+diff --git a/src/main/resources/db/migration/V103__restricted_role.sql b/src/main/resources/db/migration/V103__restricted_role.sql
+new file mode 100644
+index 000000000..e3672273f
+--- /dev/null
++++ b/src/main/resources/db/migration/V103__restricted_role.sql
+@@ -0,0 +1,3 @@
++-- A fourth role, restricted: lists only the people of the crews they lead or belong to, and themselves.
++ALTER TABLE sheet_role DROP CONSTRAINT sheet_role_known;
++ALTER TABLE sheet_role ADD CONSTRAINT sheet_role_known CHECK (role IN ('clerk', 'steward', 'viewer', 'restricted'));
