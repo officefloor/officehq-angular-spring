@@ -1,0 +1,77 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d04e09eab..1fb95d610 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -23,6 +23,21 @@ function cents(amount: string): number {
+   return Math.round(Number(amount) * 100);
+ }
+ 
++/** The numerator divided by the (positive) divisor, rounded half to even to a whole number. */
++function halfEven(numerator: number, divisor: number): number {
++  const q = Math.floor(numerator / divisor);
++  const r = numerator - q * divisor;
++  return 2 * r > divisor || (2 * r === divisor && q % 2 !== 0) ? q + 1 : q;
++}
++
++/** The shares, in hundredths, of that many patrons in the order they were named: 100.00 split equally, each
++ *  rounded half to even to two decimals, the remainder going to the first-named. */
++function patronShares(count: number): number[] {
++  if (count === 0) return [];
++  const each = halfEven(10000, count);
++  return Array.from({ length: count }, (_, i) => (i === 0 ? 10000 - each * (count - 1) : each));
++}
++
+ /** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */
+ /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+ function trimmedSum(figures: number[]): number {
+@@ -39,7 +54,8 @@ function csvField(value: string): string {
+ // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
+ // can be held from a date to an optional date, as many times as needed; their OPEN claims dated within a hold,
+ // unless a statement binds them, count in no total. A person can name
+-// others on the sheet as their patrons; their backing is their patrons' recent settled figures added up. Each signed-in
++// others on the sheet as their patrons; each patron carries an equal share of 100.00 and their backing is
++// their patrons' recent settled figures, each weighted by its share. Each signed-in
+ // user can watch people of their own choosing.
+ @Component({
+   selector: 'app-people',
+@@ -533,16 +549,23 @@ export class People {
+     (this.people().reduce((sum, p) => sum + cents(p.openTotal), 0) / 100).toFixed(2),
+   );
+ 
+-  /** Each person's patrons' names, sorted and comma separated, and their backing: the patrons'
+-   *  recent settled figures (see {@link Person.recentSettled}) added up. */
++  /** Each person's patrons, each as their name and share, sorted by name and comma separated, and their
++   *  backing: each patron's recent settled figure (see {@link Person.recentSettled}) times their share
++   *  divided by 100, added up and rounded half to even (see {@link patronShares}). */
+   protected readonly patronage = computed(() => {
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     return new Map(
+       this.people().map((p) => {
+         const patrons = p.patrons.map((id) => byId.get(id)).filter((q): q is Person => q !== undefined);
+-        const names = patrons.map((q) => q.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
+-        const backing = patrons.reduce((sum, q) => sum + cents(q.recentSettled), 0);
+-        return [p.id, { names, backing: (backing / 100).toFixed(2) }];
++        const shares = patronShares(patrons.length);
++        const named = patrons.map((q, i) => ({ name: q.name, share: shares[i] }));
++        const names = named
++          .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
++          .map((n) => `${n.name} ${(n.share / 100).toFixed(2)}`)
++          .join(', ');
++        // cents times hundredths of a percent: ten-thousandths of a cent.
++        const backing = patrons.reduce((sum, q, i) => sum + cents(q.recentSettled) * shares[i], 0);
++        return [p.id, { names, backing: (halfEven(backing, 10000) / 100).toFixed(2) }];
+       }),
+     );
+   });
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+index feecc343b..543b18f9e 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+@@ -41,6 +41,7 @@ public class SheetPasts {
+             new Scope("PERSON", "sheet_id = ?"),
+             new Scope("PERSON_GRADE", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
+             new Scope("PERSON_HOLD", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
++            new Scope("PERSON_ALIAS", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
+             new Scope("PERSON_PATRON", "sheet_id = ?"),
+             new Scope("PERSON_WATCH", "sheet_id = ?"),
+             new Scope("CLAIM", "sheet_id = ?"),
