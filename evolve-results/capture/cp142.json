@@ -1,0 +1,64 @@
+{
+  "checkpoint": 142,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp142_plan-preview",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each plan its next dates: the first five plan dates after the sheet's today and on or\nbefore the end, comma and space separated.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each plan its next dates: the first five plan dates after the sheet's today and on or\nbefore the end, comma and space separated.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c25a1280452adcbd6f1f29361532ce2fd39d6c7a",
+  "reset_sha": "",
+  "preagent_sha": "b00c4b7036be12dde189899616cb73fbaec00a69",
+  "prev_sha": "b00c4b7036be12dde189899616cb73fbaec00a69",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9268892,
+    "input_tokens": 52,
+    "output_tokens": 9772,
+    "cache_read_tokens": 1230686,
+    "cache_creation_tokens": 60638,
+    "num_turns": 26,
+    "duration_ms": 666967,
+    "duration_api_ms": 178035,
+    "model": "claude-opus-5-5",
+    "session_id": "522de83f-8953-425d-a91f-7d7a5749ef3e",
+    "stop_reason": "success",
+    "result_text": "Each plan row now shows its next dates, and `bin/e2e` passes all 4 tests in the spec.\n\n**The change** is in `src/main/frontend/src/app/features/plans/plans.ts`:\n- A new `nextPlanDates()` works out a plan's first five dates after the sheet's today and on or before its end. It uses the same date rules as the server's `Plan.datesUpTo`: every N days from the start, or monthly on a day, moved to the month's last day when the month is shorter (so day 31 gives 2026-04-30).\n- Each plan row shows them in `plan-next-dates`, comma and space separated, or empty when there are none.\n- The dates are worked out on the screen from the session's today, so they update as soon as today changes or the sheet is shown as of a date. Nothing new is stored and no new endpoint was needed.\n- The trade-off is that the date rules now exist twice, once in TypeScript and once in Java. A later change to them has to be made in both places.\n\n**An existing bug I fixed** (it is not part of the request): \"plan preview scenario 2\" failed every time, and it creates no plans, so my code never runs in it. The cause was in `SheetPasts.java`. That class rebuilds a sheet for the \"as of a date\" view, and its `TABLES` list was missing `CLAIM_LINE`. So on any sheet whose claims had lines, the as-of view crashed with a database error, the people list stayed empty, and the consolidated people count showed 0. I added `CLAIM_LINE`, and also `SHEET_PLAN` and `SHEET_PLAN_CLAIM`, so the as-of view shows plans as they stood on that date.\n\n`HOLIDAY` and `SHEET_CLAIM_TEMPLATE` also seem to be missing from that list. I left them alone because no test needs them and they're outside this change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9268892,
+        "num_turns": 26,
+        "duration_ms": 666967,
+        "duration_api_ms": 178035,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp142.agent.jsonl",
+  "agent_diff_file": "cp142.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
