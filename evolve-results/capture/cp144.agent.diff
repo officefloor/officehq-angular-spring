@@ -1,0 +1,163 @@
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+index 061a6ba43..fc6be7bb8 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+@@ -50,6 +50,7 @@ public class SheetPasts {
+             new Scope("CLAIM_LOG", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
+             new Scope("CLAIM_COMMENT", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
+             new Scope("CLAIM_RETIRED_NUMBER", "sheet_id = ?"),
++            new Scope("SHEET_FISCAL_NUMBER", "sheet_id = ?"),
+             new Scope("RATE", "sheet_id = ?"),
+             new Scope("SHEET_SETTING", "sheet_id = ?"),
+             new Scope("SHEET_ROLE", "sheet_id = ?"),
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 6f1711f25..bfe23c368 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -53,6 +53,10 @@ public class Claim {
+     @Column(name = "claim_number")
+     private Integer number;
+ 
++    /** The fiscal year (FY<year>) a sheet-wide number counts in, shown <FY>-<n>; null for a number given before. */
++    @Column(name = "fiscal_year")
++    private String fiscalYear;
++
+     /** The sequence a period-numbered claim counts in ('P<period id>', or 'X' for no period); null otherwise. */
+     @Column(name = "period_sequence")
+     private String periodSequence;
+@@ -388,9 +392,20 @@ public class Claim {
+         this.number = number;
+     }
+ 
++    /** Number the claim sheet-wide within the fiscal year, shown <FY>-<n>. */
++    public void setFiscalNumber(String fiscalYear, int n) {
++        this.fiscalYear = fiscalYear;
++        this.number = n;
++    }
++
++    public String getFiscalYear() {
++        return fiscalYear;
++    }
++
+     /** Take away the claim's number, sheet-wide or within a period, so it can be given a new one. */
+     public void clearNumber() {
+         this.number = null;
++        this.fiscalYear = null;
+         this.periodSequence = null;
+         this.periodSeqNumber = null;
+         this.periodNumber = null;
+@@ -413,7 +428,8 @@ public class Claim {
+ 
+     /** The number as shown: its period number, or its sheet-wide number; null while it has none. */
+     public String getShownNumber() {
+-        return periodNumber != null ? periodNumber : number == null ? null : number.toString();
++        return periodNumber != null ? periodNumber : number == null ? null
++                : fiscalYear == null ? number.toString() : fiscalYear + "-" + number;
+     }
+ 
+     public Integer getSettleBatch() {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a9b71fd7e..fcebc5680 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -890,12 +890,14 @@ public class ClaimService {
+     /**
+      * Give a claim being opened its number: while the sheet's period numbering from is set and the
+      * sheet's today is on or after it, the next in the period its due-by falls in (<period name>-<n>), or
+-     * in the sequence of claims in no period (X-<n>); otherwise the next sheet-wide number. Two users
++     * in the sequence of claims in no period (X-<n>); otherwise the next sheet-wide number within the fiscal
++     * year (by the sheet's fiscal start month) its due-by falls in (<FY>-<n>). Two users
+      * taking one at the same moment wait on each other, so no number is given twice or skipped.
+      */
+     private void giveNumber(String sheetId, Claim claim) {
+         if (!numberingOn(sheetId)) {
+-            claim.setNumber(sheets.nextClaimNumber(sheetId));
++            String fiscalYear = PeriodService.fiscalYear(claim.getDueBy(), sheets.settings(sheetId).fiscalStartMonth());
++            claim.setFiscalNumber(fiscalYear, sheets.nextClaimNumber(sheetId, fiscalYear));
+             return;
+         }
+         sheetRows.lockById(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 47679bef9..4c0ce848e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -15,6 +15,7 @@ import net.officefloor.hq.app.statement.DayEnds;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
++import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+@@ -33,10 +34,12 @@ public class SheetService {
+     private final DayEnds dayEnds;
+     private final SheetPasts pasts;
+     private final ApplicationEventPublisher events;
++    private final JdbcTemplate jdbc;
+     private final Clock clock = Clock.systemDefaultZone();
+ 
+     public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup, DayEnds dayEnds,
+-            SheetPasts pasts, ApplicationEventPublisher events) {
++            SheetPasts pasts, ApplicationEventPublisher events, JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
+         this.dayEnds = dayEnds;
+         this.pasts = pasts;
+         this.sheets = sheets;
+@@ -132,21 +135,28 @@ public class SheetService {
+     }
+ 
+     /**
+-     * The next claim number on the sheet: the sheets of a tree share one sequence, so the next after the
+-     * last number given on any sheet of the sheet's tree (1 for the first). Two users taking one at the
+-     * same moment wait on each other, so no number is given twice or skipped.
++     * The next claim number on the sheet within the fiscal year: the sheets of a tree share one sequence per
++     * fiscal year, so the next after the last number given in that year on any sheet of the sheet's tree (1 for
++     * the first). Two users taking one at the same moment wait on each other, so no number is given twice or
++     * skipped.
+      */
+     @Transactional
+-    public int nextClaimNumber(String id) {
++    public int nextClaimNumber(String id, String fiscalYear) {
+         List<String> tree = new ArrayList<>(tree(id));
+         Collections.sort(tree);
+         for (String sheetId : tree) {
+-            sheets.lockById(sheetId);
+-        }
+-        int next = sheets.lastClaimNumberOf(tree) + 1;
+-        if (sheets.setLastClaimNumber(id, next) != 1) {
+-            throw new IllegalStateException("No such sheet " + id);
++            if (sheets.lockById(sheetId) == null && sheetId.equals(id)) {
++                throw new IllegalStateException("No such sheet " + id);
++            }
+         }
++        String in = String.join(",", Collections.nCopies(tree.size(), "?"));
++        List<Object> args = new ArrayList<>(tree);
++        args.add(fiscalYear);
++        Integer last = jdbc.queryForObject("SELECT COALESCE(MAX(last_number), 0) FROM sheet_fiscal_number"
++                + " WHERE sheet_id IN (" + in + ") AND fiscal_year = ?", Integer.class, args.toArray());
++        int next = (last == null ? 0 : last) + 1;
++        jdbc.update("MERGE INTO sheet_fiscal_number (sheet_id, fiscal_year, last_number) KEY (sheet_id, fiscal_year)"
++                + " VALUES (?, ?, ?)", id, fiscalYear, next);
+         return next;
+     }
+ 
+diff --git a/src/main/resources/db/migration/V75__fiscal_year_numbering.sql b/src/main/resources/db/migration/V75__fiscal_year_numbering.sql
+new file mode 100644
+index 000000000..b2f4049b9
+--- /dev/null
++++ b/src/main/resources/db/migration/V75__fiscal_year_numbering.sql
+@@ -0,0 +1,14 @@
++-- Sheet-wide numbering restarts each fiscal year: a claim opened from now on is numbered <FY>-<n>, counting
++-- from 1 within the fiscal year of its due-by, the sequence shared across the sheet's tree. A claim keeps the
++-- fiscal year it was numbered in (null for a number given before, shown as it was).
++ALTER TABLE claim ADD COLUMN fiscal_year VARCHAR(30);
++ALTER TABLE claim DROP CONSTRAINT claim_number_unique;
++ALTER TABLE claim ADD CONSTRAINT claim_number_unique UNIQUE (sheet_id, fiscal_year, claim_number);
++-- The last number each sheet gave within a fiscal year; the next within the year is the one after the last
++-- given on any sheet of the tree.
++CREATE TABLE sheet_fiscal_number (
++    sheet_id VARCHAR(100) NOT NULL,
++    fiscal_year VARCHAR(30) NOT NULL,
++    last_number INT NOT NULL,
++    PRIMARY KEY (sheet_id, fiscal_year)
++);
