@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,8 +22,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The audit viewer: the audit lines of a sheet exactly as the audit file holds them, newest first. Given a
  * name, only the lines about that person: those carrying {@code name=} or {@code person=} that name, compared
- * as names are (case and surrounding spaces ignored); when that person was transferred here, the sheet they came
- * from's lines about them follow, newest first. It reads the file; it records nothing.
+ * as names are (case and surrounding spaces ignored); the sheet's descendants' lines about them follow (each
+ * sheet's newest first, the sheets in id order), then, when that person was transferred here, the sheet they
+ * came from's lines about them, newest first. It reads the file; it records nothing.
  */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/audit")
@@ -34,10 +36,12 @@ public class AuditController {
 
     private final Audit audit;
     private final PersonRepository people;
+    private final SheetService sheets;
 
-    public AuditController(Audit audit, PersonRepository people) {
+    public AuditController(Audit audit, PersonRepository people, SheetService sheets) {
         this.audit = audit;
         this.people = people;
+        this.sheets = sheets;
     }
 
     @GetMapping
@@ -48,6 +52,8 @@ public class AuditController {
         List<String> all = audit.lines();
         List<String> lines = about(all, sheet, who);
         if (!who.isEmpty()) {
+            sheets.descendants(sheet).stream().sorted()
+                    .forEach(descendant -> lines.addAll(about(all, descendant, who)));
             people.findBySheetIdAndNameIgnoreCase(sheet, name.strip()).map(Person::getOrigin)
                     .ifPresent(origin -> lines.addAll(about(all, origin, who)));
         }
