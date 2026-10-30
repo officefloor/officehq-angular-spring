@@ -181,6 +181,27 @@ function csvField(value: string): string {
           <span role="alert" data-testid="bulk-settle-error">{{ bulkSettleError() }}</span>
         }
       </p>
+      <p>
+        <label for="bulk-reassign-to">Move selected claims to</label>
+        <select
+          id="bulk-reassign-to"
+          data-testid="bulk-reassign-to"
+          (change)="bulkReassignTo.set(value($event)); bulkReassignError.set('')"
+        >
+          <option value="" [selected]="!bulkReassignTo()">Choose a person</option>
+          @for (p of people(); track p.id) {
+            <option [value]="p.id" [selected]="bulkReassignTo() === '' + p.id">{{ p.name }}</option>
+          }
+        </select>
+        <button type="button" data-testid="bulk-reassign" (click)="reassignSelected()">Move selected claims</button>
+        @if (bulkReassigned(); as r) {
+          <span>Moved <strong data-testid="bulk-reassigned">{{ r.reassigned }}</strong></span>
+          <span>Refused <strong data-testid="bulk-reassign-refused">{{ r.refused }}</strong></span>
+        }
+        @if (bulkReassignError()) {
+          <span role="alert" data-testid="bulk-reassign-error">{{ bulkReassignError() }}</span>
+        }
+      </p>
       <form (submit)="gradeSelected($event)" aria-label="Grade selected people">
         <label for="bulk-grade">Grade for the selected people</label>
         <select
@@ -422,6 +443,13 @@ export class People {
   protected readonly bulkSettleError = signal('');
   /** A bulk settle still waiting for its answer: another press meanwhile is ignored. */
   private bulkSettling = false;
+  /** The id of the person the selected claims are to be moved to; blank until one is chosen. */
+  protected readonly bulkReassignTo = signal('');
+  /** How many of the selected claims the last bulk move moved and refused; null while it runs. */
+  protected readonly bulkReassigned = signal<{ reassigned: number; refused: number } | null>(null);
+  protected readonly bulkReassignError = signal('');
+  /** A bulk move still waiting for its answer: another press meanwhile is ignored. */
+  private bulkReassigning = false;
   /** The ids of the people selected to be given a grade together. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   protected readonly bulkGrade = signal('A');
@@ -489,6 +517,9 @@ export class People {
       this.bulkOpenError.set('');
       this.bulkSettled.set(null);
       this.bulkSettleError.set('');
+      this.bulkReassignTo.set('');
+      this.bulkReassigned.set(null);
+      this.bulkReassignError.set('');
       this.selectedPeople.set(new Set());
       this.bulkGrade.set('A');
       this.bulkGradeFrom.set('');
@@ -639,6 +670,41 @@ export class People {
       this.bulkSettleError.set('Could not settle the selected claims.');
     } finally {
       this.bulkSettling = false;
+    }
+  }
+
+  /** Move the selected claims to the chosen person together; each that cannot be moved is refused and left as it is. */
+  protected async reassignSelected(): Promise<void> {
+    if (this.bulkReassigning) return;
+    this.bulkReassigned.set(null);
+    this.bulkReassignError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const personId = Number(this.bulkReassignTo());
+    if (!this.bulkReassignTo() || !Number.isInteger(personId)) {
+      this.bulkReassignError.set('Choose the person to move the selected claims to.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.bulkReassigning = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ reassigned: number; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-reassign`,
+          { claimIds: [...this.selectedClaims()], personId },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedClaims.set(new Set());
+      await this.reload(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.bulkReassigned.set(result);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkReassignError.set('Could not move the selected claims.');
+    } finally {
+      this.bulkReassigning = false;
     }
   }
 

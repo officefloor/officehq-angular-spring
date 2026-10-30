@@ -666,6 +666,15 @@ public class ClaimService {
      */
     @Transactional
     public long[] reassign(String sheetId, String user, long claimId, long toPersonId) {
+        return reassign(sheetId, user, claimId, toPersonId, false);
+    }
+
+    /**
+     * As {@link #reassign(String, String, long, long)}; when {@code sameAllowed}, a claim already the new
+     * person's is moved to them again (listed as their newest claim) rather than refused, as a bulk move does.
+     */
+    @Transactional
+    public long[] reassign(String sheetId, String user, long claimId, long toPersonId, boolean sameAllowed) {
         Claim claim = claim(sheetId, claimId);
         if (!access.allows(sheetId, user, Permission.REASSIGN)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Your role may not reassign a claim on this sheet");
@@ -683,7 +692,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         Person to = people.findByIdAndSheetId(toPersonId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Choose a person on the sheet"));
-        if (from.getId().equals(to.getId())) {
+        if (!sameAllowed && from.getId().equals(to.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s");
         }
         requireNotRetired(to, claim.getDate());

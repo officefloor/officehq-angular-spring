@@ -70,6 +70,10 @@ public class ClaimController {
     public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
     }
 
+    /** The claims selected to be moved together, and the person they are moved to. */
+    public record BulkReassignForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull Long personId) {
+    }
+
     /** Why a PENDING claim is rejected. */
     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
     }
@@ -106,14 +110,16 @@ public class ClaimController {
     private final PasteClaimsService paste;
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
+    private final BulkReassignService bulkReassign;
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
     private final Tags tags;
 
     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
-            BulkSettleService bulkSettle, PersonService people, RateService rates, StatementService statements,
-            Tags tags) {
+            BulkSettleService bulkSettle, BulkReassignService bulkReassign, PersonService people, RateService rates,
+            StatementService statements, Tags tags) {
+        this.bulkReassign = bulkReassign;
         this.tags = tags;
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
@@ -210,6 +216,14 @@ public class ClaimController {
     public BulkSettleService.Result settleAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkOpenForm form) {
         return bulkSettle.settle(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()));
+    }
+
+    /** Move the selected claims to a person in list order; answers how many were moved and how many refused. */
+    @PostMapping("/claims/bulk-reassign")
+    public BulkReassignService.Result reassignAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkReassignForm form) {
+        return bulkReassign.reassign(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()),
+                form.personId());
     }
 
     @PostMapping("/claims/{claimId}/settle")
