@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.access.OverClerkLimit;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
@@ -121,6 +122,12 @@ public class ClaimController {
     /** A claim dated inside a closed period: refused, nothing changed. */
     @ExceptionHandler(ClosedPeriodRefused.class)
     public ResponseEntity<Refusal> closed(ClosedPeriodRefused e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));
+    }
+
+    /** A clerk settling a claim whose due is above the clerk limit: refused, nothing changed. */
+    @ExceptionHandler(OverClerkLimit.class)
+    public ResponseEntity<Refusal> overLimit(OverClerkLimit e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));
     }
 

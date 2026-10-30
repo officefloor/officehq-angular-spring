@@ -1,0 +1,92 @@
+package net.officefloor.hq.app.access;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.List;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
+ * clerk limit, the most due a clerk may settle on a claim (none: no limit).
+ */
+@Service
+public class AccessService {
+
+    public static final String CLERK_LIMIT = "clerk-limit";
+
+    private final SheetRoleRepository roles;
+    private final SheetRepository sheetRows;
+    private final SheetService sheets;
+    private final ApplicationEventPublisher events;
+
+    public AccessService(SheetRoleRepository roles, SheetRepository sheetRows, SheetService sheets,
+            ApplicationEventPublisher events) {
+        this.roles = roles;
+        this.sheetRows = sheetRows;
+        this.sheets = sheets;
+        this.events = events;
+    }
+
+    /** The roles set on the sheet, by user name. */
+    @Transactional(readOnly = true)
+    public List<SheetRole> roles(String sheetId) {
+        return roles.findBySheetIdOrderByUserName(sheetId);
+    }
+
+    /** The user's role on the sheet: clerk unless one was set. */
+    @Transactional(readOnly = true)
+    public Role roleOf(String sheetId, String user) {
+        return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimit(String sheetId) {
+        return sheetRows.findById(sheetId).map(Sheet::getClerkLimit).orElse(null);
+    }
+
+    /** Give a user name a role on the sheet, replacing the one it had. */
+    @Transactional
+    public SheetRole setRole(String sheetId, String user, String name, Role role) {
+        sheets.load(sheetId, user);
+        SheetRole row = roles.findBySheetIdAndUserName(sheetId, name).orElse(null);
+        if (row == null) {
+            row = roles.saveAndFlush(new SheetRole(sheetId, name, role));
+        } else {
+            row.setRole(role);
+            roles.flush();
+        }
+        events.publishEvent(new RoleSet(sheetId, user, name, role.key()));
+        return row;
+    }
+
+    /** Save the sheet's clerk limit; null removes it. */
+    @Transactional
+    public BigDecimal setClerkLimit(String sheetId, String user, BigDecimal limit) {
+        Sheet sheet = sheets.load(sheetId, user);
+        BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.HALF_UP);
+        sheet.setClerkLimit(scaled);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, CLERK_LIMIT, scaled == null ? "" : scaled.toPlainString()));
+        return scaled;
+    }
+
+    /**
+     * Refuse a settle by a clerk of a claim whose due is above the clerk limit. A due of n/a (null)
+     * is within any limit; a steward settles anything.
+     */
+    @Transactional(readOnly = true)
+    public void requireCanSettle(String sheetId, String user, BigDecimal due) {
+        if (due == null) {
+            return;
+        }
+        BigDecimal limit = clerkLimit(sheetId);
+        if (limit != null && due.compareTo(limit) > 0 && roleOf(sheetId, user) == Role.CLERK) {
+            throw new OverClerkLimit(due, limit);
+        }
+    }
+}

@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -22,7 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
  * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
  * its number, which is never reused. Settling a claim fixes its due at the rate its person's grade has then on the claim's date, or at the
  * figure a statement bound it to. No claim dated inside a closed period can be added, edited or moved,
- * and no claim dated after its person's retirement date can be added or edited to that date.
+ * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
+ * cannot settle a claim whose due is above the sheet's clerk limit; a steward settles anything.
  */
 @Service
 public class ClaimService {
@@ -33,10 +35,13 @@ public class ClaimService {
     private final RateService rates;
     private final Rollup rollup;
     private final PeriodService periods;
+    private final AccessService access;
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            RateService rates, Rollup rollup, PeriodService periods, ApplicationEventPublisher events) {
+            RateService rates, Rollup rollup, PeriodService periods, AccessService access,
+            ApplicationEventPublisher events) {
+        this.access = access;
         this.rollup = rollup;
         this.periods = periods;
         this.claims = claims;
@@ -105,7 +110,7 @@ public class ClaimService {
 
     /**
      * Move a claim to a status; a move its status does not allow, settling by the user who opened
-     * the claim, or moving a claim dated inside a closed period, is refused and changes nothing.
+     * the claim, settling by a clerk a claim whose due is above the clerk limit, or moving a claim dated inside a closed period, is refused and changes nothing.
      * Returns the person it belongs to.
      */
     @Transactional
@@ -138,6 +143,7 @@ public class ClaimService {
                 BigDecimal pct = owner == null ? null : rates.table(sheetId).on(owner.getGrade(), claim.getDate());
                 fixed = RateService.due(claim.getAmount(), pct);
             }
+            access.requireCanSettle(sheetId, user, fixed);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();
         }

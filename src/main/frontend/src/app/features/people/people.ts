@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Access } from '../access/access';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Period, Periods } from '../periods/periods';
 import { Rates } from '../rates/rates';
@@ -20,9 +21,10 @@ function cents(amount: string): number {
 // can be put on hold and released; while held, their OPEN claims count in no total.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, Rates],
+  imports: [Access, Claims, Periods, Rates],
   template: `
     <app-rates (changed)="reloadSheet()" />
+    <app-access />
     <app-periods [people]="people()" [(periods)]="periods" />
     <section aria-label="People">
       <h2>People</h2>

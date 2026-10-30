@@ -1,0 +1,18 @@
+package net.officefloor.hq.app.access;
+
+import java.util.Arrays;
+import java.util.Optional;
+
+/** What a user may do on a sheet: a clerk settles only within the clerk limit, a steward settles anything. */
+public enum Role {
+    CLERK, STEWARD;
+
+    /** The role as it is written: lower case. */
+    public String key() {
+        return name().toLowerCase();
+    }
+
+    public static Optional<Role> of(String key) {
+        return Arrays.stream(values()).filter(r -> r.key().equals(key)).findFirst();
+    }
+}

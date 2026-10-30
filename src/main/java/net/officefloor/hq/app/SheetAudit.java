@@ -1,6 +1,8 @@
 package net.officefloor.hq.app;
 
 import java.math.RoundingMode;
+import net.officefloor.hq.app.access.RoleSet;
+import net.officefloor.hq.app.access.SettingChanged;
 import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
@@ -58,6 +60,16 @@ public class SheetAudit {
         audit.record("RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
                 + " grade=" + e.grade() + " rate=" + e.rate().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.from() == null ? "" : " from=" + e.from()));
+    }
+
+    @TransactionalEventListener
+    public void on(RoleSet e) {
+        audit.record("ROLE_SET sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name() + " role=" + e.role());
+    }
+
+    @TransactionalEventListener
+    public void on(SettingChanged e) {
+        audit.record("SETTING_CHANGED sheet=" + e.sheetId() + " by=" + e.user() + " key=" + e.key() + " value=" + e.value());
     }
 
     @TransactionalEventListener
