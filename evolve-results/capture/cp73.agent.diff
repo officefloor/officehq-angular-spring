@@ -1,0 +1,592 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d70f9856..d740ef3f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -223,7 +223,15 @@ function csvField(value: string): string {
+                 >
+                   {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
+-                <button type="button" data-testid="person-statement" (click)="statement(p)">
++                <label [for]="'person-statement-asof-' + p.id">Statement for {{ p.name }} as of</label>
++                <input
++                  #statementAsOf
++                  type="date"
++                  [id]="'person-statement-asof-' + p.id"
++                  data-testid="person-statement-asof"
++                  (input)="clearError(p)"
++                />
++                <button type="button" data-testid="person-statement" (click)="statement(p, statementAsOf)">
+                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
+                 </button>
+                 <button type="button" data-testid="person-unstate" (click)="unstate(p)">
+@@ -688,28 +696,42 @@ export class People {
+     }
+   }
+ 
+-  /** Take a statement for the person: their counting claims are bound to the figures they have now. */
+-  protected async statement(p: Person): Promise<void> {
++  /**
++   * Take a statement for the person as of a date on or before the sheet's today (blank: now): their claims
++   * that counted then are bound to the figures they had then. The date entry is cleared once it is taken.
++   */
++  protected async statement(p: Person, asOf: HTMLInputElement): Promise<void> {
+     if (this.stating) return;
+     this.personError.set(null);
+     this.patronError.set(null);
+     const sheet = this.session.sheet();
+     if (!sheet) return;
++    const date = asOf.value.trim();
++    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.personError.set({ id: p.id, message: 'Enter a date, or leave it blank for now.' });
++      return;
++    }
+     const headers = { 'X-User': this.session.user() ?? '' };
+     this.stating = true;
+     try {
+       const saved = await firstValueFrom(
+         this.http.post<Person>(
+           `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/statement`,
+-          null,
++          { asOf: date || null },
+           { headers },
+         ),
+       );
+       if (this.session.sheet() !== sheet) return;
++      asOf.value = '';
+       this.replace(saved);
+     } catch {
+       if (this.session.sheet() !== sheet) return;
+-      this.personError.set({ id: p.id, message: 'Could not take the statement.' });
++      this.personError.set({
++        id: p.id,
++        message: date
++          ? 'Could not take the statement as of that date: it must be on or before today, with the person on the sheet by then.'
++          : 'Could not take the statement.',
++      });
+     } finally {
+       this.stating = false;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 9fde01eb..16dc9349 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -199,7 +199,7 @@ public class SheetAudit {
+         change(e.sheetId(), e.user(), "STATEMENT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                 + " due-total=" + (e.dueTotal() == null ? "n/a"
+                         : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())
+-                + " claims=" + e.claims());
++                + " claims=" + e.claims() + (e.asOf() == null ? "" : " asof=" + e.asOf()));
+     }
+ 
+     @TransactionalEventListener
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8ddb04b5..ae083717 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -119,7 +119,8 @@ public class ClaimService {
+ 
+     /**
+      * Edit a claim's amount, date and note; only a DRAFT can be edited (an open claim is voided and
+-     * added again instead), and an edit is refused when a closed period contains its date or the new one.
++     * added again instead), and an edit is refused when a closed period contains its date or the new one, or
++     * when the date it is left with is after its person's retirement date.
+      * Returns the person it belongs to.
+      */
+     @Transactional
+@@ -134,9 +135,7 @@ public class ClaimService {
+                     "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
+         }
+         requireNotLockedByOther(claim, user);
+-        if (!on.equals(claim.getDate())) {
+-            people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
+-        }
++        people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
+         LocalDate correctsDate = requireCorrects(sheetId, claim.getPersonId(), amount, corrects);
+         Rollup.Figures before = rollup.figures(sheetId);
+         claim.setAmount(amount);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index b519c0f5..1cf1afa0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -96,6 +96,11 @@ public class Person {
+                 .map(GradeFrom::getGrade).orElse(null);
+     }
+ 
++    /** The grades the person was given, each from its date. */
++    public List<GradeFrom> getGrades() {
++        return List.copyOf(grades);
++    }
++
+     /** Record the grade from the date, keeping the others; one already recorded from that date is replaced. */
+     public void gradeFrom(String grade, LocalDate from) {
+         grades.removeIf(g -> g.getFromDate() != null && Objects.equals(g.getFromDate(), from));
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index b52f62e6..0b4bafdb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -184,12 +184,17 @@ public class PersonController {
+                 form.grade(), form.gradeFrom(), form.termsDays()));
+     }
+ 
++    /** A statement as asked for: as of a date on or before the sheet's today (none: as of now). */
++    public record StatementForm(LocalDate asOf) {
++    }
++
+     /** Take a statement for the person; answers with the person as bound by it. */
+     @PostMapping("/{personId}/statement")
+     public PersonView statement(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+-            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user) {
++            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
++            @RequestBody(required = false) StatementForm form) {
+         String sheet = sheetId.trim();
+-        statements.take(sheet, user.trim(), personId);
++        statements.take(sheet, user.trim(), personId, form == null ? null : form.asOf());
+         return view(sheet, service.get(sheet, personId));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 3f043a06..2b1a851a 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
+ import java.time.Clock;
+ import java.time.LocalDate;
+ import net.officefloor.hq.app.rollup.Rollup;
++import net.officefloor.hq.app.statement.DayEnds;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Service;
+@@ -19,11 +20,13 @@ public class SheetService {
+     private final SheetRepository sheets;
+     private final SheetSettingRepository settings;
+     private final Rollup rollup;
++    private final DayEnds dayEnds;
+     private final ApplicationEventPublisher events;
+     private final Clock clock = Clock.systemDefaultZone();
+ 
+-    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup,
++    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup, DayEnds dayEnds,
+             ApplicationEventPublisher events) {
++        this.dayEnds = dayEnds;
+         this.sheets = sheets;
+         this.settings = settings;
+         this.rollup = rollup;
+@@ -84,12 +87,16 @@ public class SheetService {
+     /**
+      * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
+      * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
+-     * days are closed) and then the figures it moves.
++     * days are closed) and then the figures it moves. The sheet as it stands is first written down as at
++     * the end of the today it leaves (see {@link DayEnds}).
+      */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = load(id, user);
+         Rollup.Figures before = rollup.figures(id);
++        if (!today.equals(sheet.getToday())) {
++            dayEnds.record(id, sheet.getToday());
++        }
+         sheet.setToday(today);
+         Sheet saved = sheets.saveAndFlush(sheet);
+         events.publishEvent(new TodayChanged(id, user, today));
+diff --git a/src/main/java/net/officefloor/hq/app/statement/DayEnd.java b/src/main/java/net/officefloor/hq/app/statement/DayEnd.java
+new file mode 100644
+index 00000000..fd2349bf
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/DayEnd.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.statement;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Lob;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** The sheet as it stood at the end of a day it had as its today, kept as JSON; see {@link DayEnds}. */
++@Entity
++@Table(name = "day_end")
++public class DayEnd {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    /** The sheet's today that was left when it was written. */
++    @Column(name = "ended_on", nullable = false)
++    private LocalDate endedOn;
++
++    @Lob
++    @Column(name = "state", nullable = false)
++    private String state;
++
++    protected DayEnd() {
++    }
++
++    public DayEnd(String sheetId, LocalDate endedOn, String state) {
++        this.sheetId = sheetId;
++        this.endedOn = endedOn;
++        this.state = state;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public LocalDate getEndedOn() {
++        return endedOn;
++    }
++
++    public String getState() {
++        return state;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/DayEndRepository.java b/src/main/java/net/officefloor/hq/app/statement/DayEndRepository.java
+new file mode 100644
+index 00000000..75f1c0ae
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/DayEndRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.statement;
++
++import java.time.LocalDate;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface DayEndRepository extends JpaRepository<DayEnd, Long> {
++
++    /** The last one written for a day on or before the date. */
++    Optional<DayEnd> findFirstBySheetIdAndEndedOnLessThanEqualOrderByIdDesc(String sheetId, LocalDate date);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/DayEnds.java b/src/main/java/net/officefloor/hq/app/statement/DayEnds.java
+new file mode 100644
+index 00000000..31eb228f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/DayEnds.java
+@@ -0,0 +1,160 @@
++package net.officefloor.hq.app.statement;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.rate.RateRepository;
++import net.officefloor.hq.app.rate.RateTable;
++import net.officefloor.hq.app.sheet.DatedSettings;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetSetting;
++import net.officefloor.hq.app.sheet.SheetSettingRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import tools.jackson.databind.json.JsonMapper;
++
++/**
++ * The sheet as it stood at the end of each day it had as its today: when its today moves on, everything
++ * its figures are made from (its claims, people, rates, dated settings and policy date) is written down
++ * as it is then. The sheet at the end of a date gone by is the last one written for a day on or before
++ * it: every change made while its today was on or before that date, and none made later.
++ */
++@Service
++public class DayEnds {
++
++    record ClaimRow(long id, long personId, BigDecimal amount, LocalDate date, ClaimStatus status,
++            LocalDate correctsDate, LocalDate dueBy, LocalDate deferredUntil, BigDecimal settledDue, boolean stated,
++            BigDecimal statedDue) {
++    }
++
++    record GradeRow(String grade, LocalDate from) {
++    }
++
++    record HoldRow(LocalDate from, LocalDate to) {
++    }
++
++    record PersonRow(long id, String name, List<GradeRow> grades, List<HoldRow> holds, LocalDate retiredFrom) {
++    }
++
++    record RateRow(String grade, LocalDate from, LocalDate to, BigDecimal pct) {
++    }
++
++    record SettingRow(String key, LocalDate from, String value) {
++    }
++
++    record State(LocalDate policyDate, List<RateRow> rates, List<SettingRow> settings, List<PersonRow> people,
++            List<ClaimRow> claims) {
++    }
++
++    /**
++     * The sheet as it stood at the end of a date: its rates and settings with that date as their today,
++     * its people by id and each person's claims by id (newest first), none of them kept in the store.
++     */
++    public record SheetThen(RateTable table, Map<Long, Person> people, Map<Long, Map<Long, Claim>> claims) {
++
++        /** The person's claims then, by id; none when they had none. */
++        public Map<Long, Claim> claimsOf(long personId) {
++            return claims.getOrDefault(personId, Map.of());
++        }
++    }
++
++    private final DayEndRepository dayEnds;
++    private final SheetRepository sheets;
++    private final ClaimRepository claims;
++    private final PersonRepository people;
++    private final RateRepository rates;
++    private final SheetSettingRepository settings;
++    private final JsonMapper json;
++
++    public DayEnds(DayEndRepository dayEnds, SheetRepository sheets, ClaimRepository claims,
++            PersonRepository people, RateRepository rates, SheetSettingRepository settings, JsonMapper json) {
++        this.dayEnds = dayEnds;
++        this.sheets = sheets;
++        this.claims = claims;
++        this.people = people;
++        this.rates = rates;
++        this.settings = settings;
++        this.json = json;
++    }
++
++    /** Write the sheet down as it stands now, as at the end of the day given (the today it is leaving). */
++    @Transactional
++    public void record(String sheetId, LocalDate day) {
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
++        State state = new State(sheet == null ? null : sheet.getPolicyDate(),
++                rates.findBySheetId(sheetId).stream()
++                        .map(r -> new RateRow(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())).toList(),
++                settings.findBySheetId(sheetId).stream()
++                        .map(s -> new SettingRow(s.getKey(), s.getFromDate(), s.getValue())).toList(),
++                people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                        .map(p -> new PersonRow(p.getId(), p.getName(),
++                                p.getGrades().stream().map(g -> new GradeRow(g.getGrade(), g.getFromDate())).toList(),
++                                p.getHolds().stream().map(h -> new HoldRow(h.getFromDate(), h.getToDate())).toList(),
++                                p.getRetiredFrom()))
++                        .toList(),
++                claims.findBySheetIdOrderByIdDesc(sheetId).stream()
++                        .map(c -> new ClaimRow(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getStatus(),
++                                c.getCorrectsDate(), c.getDueBy(), c.getDeferredUntil(), c.getSettledDue(),
++                                c.isStated(), c.getStatedDue()))
++                        .toList());
++        dayEnds.saveAndFlush(new DayEnd(sheetId, day, json.writeValueAsString(state)));
++    }
++
++    /** The sheet as it stood at the end of the date, with that date as its today; empty when none was written by then. */
++    @Transactional(readOnly = true)
++    public Optional<SheetThen> asOf(String sheetId, LocalDate date) {
++        return dayEnds.findFirstBySheetIdAndEndedOnLessThanEqualOrderByIdDesc(sheetId, date)
++                .map(d -> then(sheetId, date, json.readValue(d.getState(), State.class)));
++    }
++
++    private static SheetThen then(String sheetId, LocalDate date, State state) {
++        RateTable table = new RateTable(
++                state.rates().stream().map(r -> new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct())).toList(),
++                date,
++                new DatedSettings(state.settings().stream()
++                        .map(s -> new SheetSetting(sheetId, s.key(), s.from(), s.value())).toList()),
++                state.policyDate());
++        Map<Long, Person> byId = new LinkedHashMap<>();
++        for (PersonRow row : state.people()) {
++            byId.put(row.id(), person(sheetId, row));
++        }
++        Map<Long, Map<Long, Claim>> claimsByPerson = new LinkedHashMap<>();
++        for (ClaimRow row : state.claims()) {
++            claimsByPerson.computeIfAbsent(row.personId(), k -> new LinkedHashMap<>()).put(row.id(), claim(sheetId, row));
++        }
++        return new SheetThen(table, byId, claimsByPerson);
++    }
++
++    private static Person person(String sheetId, PersonRow row) {
++        GradeRow first = row.grades().stream().filter(g -> g.from() == null).findFirst()
++                .orElse(row.grades().isEmpty() ? new GradeRow(null, null) : row.grades().get(0));
++        Person person = new Person(sheetId, row.name(), first.grade());
++        row.grades().stream().filter(g -> g != first).forEach(g -> person.gradeFrom(g.grade(), g.from()));
++        row.holds().forEach(h -> person.hold(h.from(), h.to()));
++        person.setRetiredFrom(row.retiredFrom());
++        return person;
++    }
++
++    private static Claim claim(String sheetId, ClaimRow row) {
++        Claim claim = new Claim(sheetId, row.personId(), row.amount(), row.date(), "", null);
++        claim.setStatus(row.status());
++        claim.setCorrectsDate(row.correctsDate());
++        claim.setDueBy(row.dueBy());
++        claim.setDeferredUntil(row.deferredUntil());
++        claim.setSettledDue(row.settledDue());
++        if (row.stated()) {
++            claim.bind(row.statedDue());
++        }
++        return claim;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index be4a16d2..91b109fe 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+@@ -14,7 +16,6 @@ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.RateService;
+ import net.officefloor.hq.app.rate.RateTable;
+ import net.officefloor.hq.app.rollup.Rollup;
+-import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -24,7 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * The statements taken for the people on a sheet. Taking one records the person's due-total and
+  * binds each of their claims that counts to the figure it has then (without its late charge, which
+- * keeps following the sheet's today); a claim that does not count is released to its live figure.
++ * keeps following the sheet's today); a claim that does not count is released to its live figure. A
++ * statement can be taken as of a date gone by, from the sheet as it stood at the end of that date.
+  * A steward can cancel a person's last statement: the claims it bound are released to their live
+  * figures (a figure an earlier statement bound is not restored).
+  */
+@@ -35,21 +37,21 @@ public class StatementService {
+     private final PersonRepository people;
+     private final ClaimRepository claims;
+     private final RateService rates;
+-    private final SheetService sheets;
+     private final Rollup rollup;
+     private final AccessService access;
++    private final DayEnds dayEnds;
+     private final ApplicationEventPublisher events;
+ 
+     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
+-            RateService rates, SheetService sheets, Rollup rollup, AccessService access,
++            RateService rates, Rollup rollup, AccessService access, DayEnds dayEnds,
+             ApplicationEventPublisher events) {
++        this.dayEnds = dayEnds;
+         this.access = access;
+         this.rollup = rollup;
+         this.statements = statements;
+         this.people = people;
+         this.claims = claims;
+         this.rates = rates;
+-        this.sheets = sheets;
+         this.events = events;
+     }
+ 
+@@ -69,24 +71,57 @@ public class StatementService {
+     /** Take a statement for the person as of the sheet's today. */
+     @Transactional
+     public void take(String sheetId, String user, long personId) {
++        take(sheetId, user, personId, null);
++    }
++
++    /**
++     * Take a statement for the person as of a date on or before the sheet's today (null: as of now). Their
++     * claims that counted at the end of that date are bound to the figures they had then, with that date
++     * standing in for the sheet's today, and every other claim of theirs is released; the statement is
++     * dated that date and records their due-total then. A date gone by takes the sheet as it stood at the
++     * end of it (see {@link DayEnds}): refused when the date is after the sheet's today, or when the person
++     * was not on the sheet by then.
++     */
++    @Transactional
++    public void take(String sheetId, String user, long personId, LocalDate asOf) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+-        Rollup.Figures before = rollup.figures(sheetId);
+         RateTable table = rates.table(sheetId);
++        LocalDate on = asOf == null ? table.today() : asOf;
++        if (on.isAfter(table.today())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A statement cannot be taken as of a date after today");
++        }
+         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+-        BigDecimal dueTotal = Dues.total(person::gradeOn, theirs, table, person.leaves());
++        Person then;
++        Map<Long, Claim> claimsThen;
++        if (on.isBefore(table.today())) {
++            DayEnds.SheetThen sheetThen = dayEnds.asOf(sheetId, on)
++                    .filter(t -> t.people().containsKey(personId))
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
++                            "The person was not on the sheet by that date"));
++            then = sheetThen.people().get(personId);
++            claimsThen = sheetThen.claimsOf(personId);
++            table = sheetThen.table();
++        } else {
++            then = person;
++            claimsThen = new LinkedHashMap<>();
++            theirs.forEach(c -> claimsThen.put(c.getId(), c));
++        }
++        Rollup.Figures before = rollup.figures(sheetId);
++        BigDecimal dueTotal = Dues.total(then::gradeOn, List.copyOf(claimsThen.values()), table, then.leaves());
+         int counting = 0;
+         for (Claim claim : theirs) {
+-            if (Dues.counts(claim, person.leaves(), table.today())) {
+-                claim.bind(Dues.base(claim, person::gradeOn, table));
++            Claim stood = claimsThen.get(claim.getId());
++            if (stood != null && Dues.counts(stood, then.leaves(), table.today())) {
++                claim.bind(Dues.base(stood, then::gradeOn, table));
+                 counting++;
+             } else {
+                 claim.unbind();
+             }
+         }
+         claims.flush();
+-        statements.saveAndFlush(new Statement(sheetId, personId, sheets.today(sheetId), dueTotal, counting));
+-        events.publishEvent(new StatementTaken(sheetId, user, person.getName(), dueTotal, counting));
++        statements.saveAndFlush(new Statement(sheetId, personId, on, dueTotal, counting));
++        events.publishEvent(new StatementTaken(sheetId, user, person.getName(), dueTotal, counting, asOf));
+         rollup.changed(sheetId, user, before);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementTaken.java b/src/main/java/net/officefloor/hq/app/statement/StatementTaken.java
+index 046b2bb8..d0ef133c 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementTaken.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementTaken.java
+@@ -1,7 +1,12 @@
+ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ 
+-/** A statement was taken for a person ({@code STATEMENT}); the due-total is null when it was n/a. */
+-public record StatementTaken(String sheetId, String user, String name, BigDecimal dueTotal, int claims) {
++/**
++ * A statement was taken for a person ({@code STATEMENT}); the due-total is null when it was n/a, the as-of
++ * date null when none was given.
++ */
++public record StatementTaken(String sheetId, String user, String name, BigDecimal dueTotal, int claims,
++        LocalDate asOf) {
+ }
+diff --git a/src/main/resources/db/migration/V48__day_end.sql b/src/main/resources/db/migration/V48__day_end.sql
+new file mode 100644
+index 00000000..81398064
+--- /dev/null
++++ b/src/main/resources/db/migration/V48__day_end.sql
+@@ -0,0 +1,11 @@
++-- The sheet as it stood at the end of a day: written when the sheet's today moves on from that day,
++-- holding (as JSON) every claim, person, rate and dated setting that its figures are made from, so a
++-- statement can be taken as of a date gone by. The latest one written for a day on or before the date
++-- is the sheet as it stood at the end of that date.
++CREATE TABLE day_end (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    ended_on DATE         NOT NULL,
++    state    CLOB         NOT NULL
++);
++CREATE INDEX day_end_sheet ON day_end (sheet_id, ended_on, id);
