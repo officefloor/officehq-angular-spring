@@ -19,6 +19,25 @@ import { Tags } from '../tags/tags';
 import { VoidReasons } from '../void-reasons/void-reasons';
 
 const GRADES = ['A', 'B', 'C'];
+
+/** The columns of the people list each user may switch off on their screen. */
+const COLUMNS = [
+  { key: 'aliases', label: 'Aliases' },
+  { key: 'terms', label: 'Terms' },
+  { key: 'contact', label: 'Contact' },
+  { key: 'claimed', label: 'Claimed' },
+  { key: 'due-total', label: 'Due' },
+  { key: 'excess', label: 'Excess' },
+  { key: 'statement-count', label: 'Statements' },
+  { key: 'stated-total', label: 'Last stated total' },
+  { key: 'statement-date', label: 'Last statement' },
+  { key: 'retired', label: 'Retired' },
+  { key: 'hold', label: 'On hold' },
+  { key: 'overdue-count', label: 'Overdue' },
+  { key: 'overdue-total', label: 'Overdue total' },
+  { key: 'patrons', label: 'Patrons' },
+  { key: 'backing', label: 'Backing' },
+];
 const DAYS = /^\d{1,5}$/;
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 
@@ -404,15 +423,29 @@ function csvField(value: string): string {
           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
         }
       </form>
+      <fieldset>
+        <legend>Columns shown</legend>
+        @for (c of columns; track c.key) {
+          <label>
+            <input
+              type="checkbox"
+              [attr.data-testid]="'column-' + c.key"
+              [checked]="columnShown(c.key)"
+              (change)="setShown(c.key, checked($event))"
+            />
+            {{ c.label }}
+          </label>
+        }
+      </fieldset>
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
-            <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
-            <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
+            @if (columnShown('statement-count')) {<th scope="col">Statements</th>}@if (columnShown('stated-total')) {<th scope="col">Last stated total</th>}@if (columnShown('statement-date')) {<th scope="col">Last statement</th>}
+            @if (columnShown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columnShown('hold')) {<th scope="col">On hold</th>}
+            @if (columnShown('overdue-count')) {<th scope="col">Overdue</th>}@if (columnShown('overdue-total')) {<th scope="col">Overdue total</th>}
             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Cut total</th>
+            @if (columnShown('patrons')) {<th scope="col">Patrons</th>}@if (columnShown('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Cut total</th>
             @for (pd of periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
             }
@@ -432,31 +465,61 @@ function csvField(value: string): string {
                 />
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
+              @if (columnShown('aliases')) {
+                <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
+              }
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              @if (columnShown('terms')) {
+                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              }
+              @if (columnShown('contact')) {
+                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              }
               <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
-              <td data-testid="person-claimed">{{ p.claimed | figure }}</td>
-              <td data-testid="person-due-total">{{ (p.dueTotal ?? 'n/a') | figure }}</td>
+              @if (columnShown('claimed')) {
+                <td data-testid="person-claimed">{{ p.claimed | figure }}</td>
+              }
+              @if (columnShown('due-total')) {
+                <td data-testid="person-due-total">{{ (p.dueTotal ?? 'n/a') | figure }}</td>
+              }
               <td data-testid="person-settled-total">{{ p.settledTotal | figure }}</td>
               <td data-testid="person-open-total">{{ p.openTotal | figure }}</td>
-              <td data-testid="person-excess">{{ p.excess | figure }}</td>
-              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
-              <td data-testid="person-stated-total">{{ (p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a')) | figure }}</td>
-              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
-              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+              @if (columnShown('excess')) {
+                <td data-testid="person-excess">{{ p.excess | figure }}</td>
+              }
+              @if (columnShown('statement-count')) {
+                <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              }
+              @if (columnShown('stated-total')) {
+                <td data-testid="person-stated-total">{{ (p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a')) | figure }}</td>
+              }
+              @if (columnShown('statement-date')) {
+                <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              }
+              @if (columnShown('retired')) {
+                <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+              }
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
-              <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
-              <td data-testid="person-overdue-total">{{ p.overdueTotal | figure }}</td>
+              @if (columnShown('hold')) {
+                <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              }
+              @if (columnShown('overdue-count')) {
+                <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
+              }
+              @if (columnShown('overdue-total')) {
+                <td data-testid="person-overdue-total">{{ p.overdueTotal | figure }}</td>
+              }
               <td data-testid="person-aged-0-30">{{ p.aged0to30 | figure }}</td>
               <td data-testid="person-aged-31-60">{{ p.aged31to60 | figure }}</td>
               <td data-testid="person-aged-61">{{ p.aged61 | figure }}</td>
-              <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
-              <td data-testid="person-backing">{{ (patronage().get(p.id)?.backing) | figure }}</td>
+              @if (columnShown('patrons')) {
+                <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
+              }
+              @if (columnShown('backing')) {
+                <td data-testid="person-backing">{{ (patronage().get(p.id)?.backing) | figure }}</td>
+              }
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
               <td data-testid="person-cut-total">{{ (((personCuts().get(p.id) ?? 0) / 100).toFixed(2)) | figure }}</td>
@@ -710,6 +773,11 @@ export class People {
   private holding = false;
   /** The ids of the people the signed-in user watches on the sheet. */
   protected readonly watched = signal<ReadonlySet<number>>(new Set());
+  protected readonly columns = COLUMNS;
+  /** The columns of the people list the signed-in user has switched off; saved per user. */
+  private readonly hidden = signal<ReadonlySet<string>>(new Set());
+  /** Column choices still being saved; while any is, a reload keeps the choices on screen. */
+  private columnSaves = 0;
   /** A watch still waiting for its answer: another press meanwhile is ignored. */
   private watching = false;
   /** The ids of the claims selected to be opened or settled together. */
@@ -895,6 +963,29 @@ export class People {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  /** Whether the signed-in user's screen shows the column. */
+  protected columnShown(key: string): boolean {
+    return !this.hidden().has(key);
+  }
+
+  /** Show or switch off a column on the signed-in user's screen, and save the choice. */
+  protected setShown(key: string, shown: boolean): void {
+    this.hidden.update((h) => {
+      const next = new Set(h);
+      if (shown) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    this.columnSaves++;
+    void firstValueFrom(
+      this.http.put<string[]>(`/api/me/columns/${encodeURIComponent(key)}`, { shown }, {
+        headers: { 'X-User': this.session.user() ?? '' },
+      }),
+    )
+      .catch(() => undefined)
+      .finally(() => this.columnSaves--);
   }
 
   protected checked(e: Event): boolean {
@@ -1858,7 +1949,7 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, watched, batch, descendants, live] = await Promise.all([
+    const [people, watched, batch, descendants, live, hidden] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
       firstValueFrom(
         this.http.get<number[]>(`/api/sheets/${encodeURIComponent(sheet)}/watches`, {
@@ -1870,10 +1961,14 @@ export class People {
       ),
       this.descendantFigures(sheet),
       this.session.asOf() === null ? Promise.resolve(null) : this.liveFigures(sheet),
+      firstValueFrom(
+        this.http.get<string[]>('/api/me/hidden-columns', { headers: { 'X-User': this.session.user() ?? '' } }),
+      ),
     ]);
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.people.set(people);
       this.watched.set(new Set(watched));
+      if (this.columnSaves === 0) this.hidden.set(new Set(hidden));
       this.settleBatch.set(batch.last);
       this.descendants.set(descendants);
       this.live.set(live);
