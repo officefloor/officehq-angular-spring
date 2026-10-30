@@ -1,0 +1,243 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 7014bf0fd..cbea1de66 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -24,7 +24,7 @@ interface Settings {
+   latePct: string;
+   /** The date a claim's rounding turns on (half up before it, half to even on or after); null when blank (the sheet's today). */
+   policyDate: string | null;
+-  /** From the sheet's today on this date, a claim opened is numbered within its period; null when blank (off). */
++  /** From the sheet's today on this date, a claim settled is numbered within its period; null when blank (off). */
+   periodNumberingFrom: string | null;
+   /** The days after a period's to-date before a change of the sheet's today closes it; null when blank (off). */
+   graceDays: string | null;
+@@ -397,7 +397,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+           (input)="policyDateInput.set(value($event)); policyDateTouched = true; settingsError.set('')"
+           (keydown)="policyDateTouched = policyDateTouched || clears($event)"
+         />
+-        <label for="setting-period-numbering-from">Period numbering from: claims opened from this date are numbered within their period (blank: off)</label>
++        <label for="setting-period-numbering-from">Period numbering from: claims settled from this date are numbered within their period (blank: off)</label>
+         <input
+           id="setting-period-numbering-from"
+           type="date"
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 9eec95182..aff9a0f7c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -27,7 +27,7 @@ export interface Claim {
+   /** The amount at the rate for the person's grade, or once settled the due fixed then; null when there is no rate. */
+   due: string | null;
+   status: ClaimStatus;
+-  /** The number the claim got when opened: the next on the sheet, or within its period (P1-1, X-1); null while a draft. */
++  /** The number the claim got when settled or approved (or when opened, for a claim numbered before): the next on the sheet, or within its period (P1-1, X-1); null until then. */
+   number: string | null;
+   /** The user who opened the claim, kept once voided; null while it was never opened. */
+   openedBy: string | null;
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index c6e2c93df..db557709b 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -208,7 +208,8 @@ public class SheetAudit {
+     public void on(ClaimSplit e) {
+         change(e.sheetId(), e.user(), "CLAIM_SPLIT sheet=" + e.sheetId() + " by=" + e.user()
+                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+-                + " date=" + e.date() + " number=" + e.number() + " into=" + e.into());
++                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
++                + " into=" + (e.into() == null ? "" : e.into()));
+     }
+ 
+     @TransactionalEventListener
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 7ca39243c..746d022ba 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -30,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
+  * has them, the days past a claim's due-by before it is overdue; and its late
+  * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
+  * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
+- * the date from which a claim opened is numbered within its period (none: off); and its cap, the most a
++ * the date from which a claim settled is numbered within its period (none: off); and its cap, the most a
+  * person's due-total comes to (none: no cap); and its proof threshold, the most due a claim may have to be
+  * settled or approved while it has no proof (none: no threshold), and each grade's own (none: the sheet's). The settings that carry a figure are dated (see
+  * {@link DatedSettings}): a save records its value from a from-date, the sheet's today when none is given.
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 371befab6..e5d35d1af 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -49,7 +49,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The number the claim got when opened; null while a draft; a voided claim keeps it. */
++    /** The number the claim got when settled or approved (or, before, when opened); null until then; a voided claim keeps it. */
+     @Column(name = "claim_number")
+     private Integer number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index a347f8574..292bcf180 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -248,7 +248,7 @@ public class ClaimController {
+         return view(sheet, claims.review(sheet, user.trim(), claimId));
+     }
+ 
+-    /** Open the selected claims, numbered in list order; answers how many were opened and how many refused. */
++    /** Open the selected claims in list order; answers how many were opened and how many refused. */
+     @PostMapping("/claims/bulk-open")
+     public BulkOpenService.Result openAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkOpenForm form) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 3a6feb21a..63e11bdf6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -30,8 +30,9 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * The claims on a sheet: listed per person newest first, added, edited and moved through their
+  * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
+- * its number, which is never reused; a claim opened while period numbering is on is numbered within its
+- * period instead of sheet-wide. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
++ * its number, which is never reused. A claim is numbered when it is settled or approved (an OPEN, PENDING or
++ * REVIEW claim has no number; one numbered on opening before keeps it); a claim settled while period numbering
++ * is on is numbered within its period instead of sheet-wide. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
+  * (at least the sheet's floor then), or at the
+  * figure a statement bound it to, plus the late charge it has then. A claim belongs to the period containing its due-by
+  * (fixed when it was added, moved past the sheet's holidays then); no claim due by a date inside a closed period can be added, edited or moved,
+@@ -44,7 +45,7 @@ import org.springframework.web.server.ResponseStatusException;
+  * claim of the same person, and only a correction names one. A claim whose due is above the sheet's proof
+  * threshold in force on its date cannot be settled or approved while it has no proof. A claim whose due is above
+  * the sheet's review threshold in force on its date goes to REVIEW when opened, unnumbered, until a steward
+- * reviews it (OPEN, numbered then).
++ * reviews it (OPEN).
+  */
+ @Service
+ public class ClaimService {
+@@ -417,16 +418,12 @@ public class ClaimService {
+         if (next == ClaimStatus.OPEN && needsReview(sheetId, claim, owner)) {
+             next = ClaimStatus.REVIEW;
+         }
+-        if (next == ClaimStatus.OPEN) {
+-            giveNumber(sheetId, claim);
+-        }
+         if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) {
+             claim.setOpenedBy(user);
+         }
+         if (next == ClaimStatus.REVIEW) {
+             claim.setReviewOn(sheets.today(sheetId));
+         }
+-        String number = claim.getShownNumber();
+         String due = null;
+         if (next == ClaimStatus.SETTLED) {
+             BigDecimal fixed = then == null ? dueNow(sheetId, claim, owner) : then.due();
+@@ -436,11 +433,13 @@ public class ClaimService {
+             String grade = owner == null ? null : owner.gradeOn(sheets.today(sheetId));
+             if (access.canSettle(sheetId, user, grade, fixed)) {
+                 claim.setSettledDue(fixed);
++                numberIfNone(sheetId, claim);
+                 due = fixed == null ? "n/a" : fixed.toPlainString();
+             } else {
+                 next = ClaimStatus.PENDING;
+             }
+         }
++        String number = claim.getShownNumber();
+         claim.setStatus(next);
+         if (next == ClaimStatus.VOID) {
+             claim.setVoidReason(reasonGiven);
+@@ -477,7 +476,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * A steward reviews a REVIEW claim, opening it: it takes its number then and keeps the user who opened it.
++     * A steward reviews a REVIEW claim, opening it (still unnumbered): it keeps the user who opened it.
+      * A claim not REVIEW, one due by a date inside a closed period, or a review by anyone but a steward is
+      * refused and nothing changes. Returns the person it belongs to.
+      */
+@@ -494,7 +493,6 @@ public class ClaimService {
+         Rollup.Figures before = rollup.figures(sheetId);
+         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+         String person = owner == null ? "" : owner.getName();
+-        giveNumber(sheetId, claim);
+         claim.setStatus(ClaimStatus.OPEN);
+         log(sheetId, user, claim, owner);
+         claims.flush();
+@@ -619,7 +617,7 @@ public class ClaimService {
+     /**
+      * Split an amount (more than 0.00 and less than the claim's amount) off an OPEN claim. The claim keeps
+      * the rest and is released from any figure a statement bound it to; a new OPEN claim of the same person
+-     * takes the amount split off, with the same date and note, the next number, opened by the user and
++     * takes the amount split off, with the same date and note, unnumbered, opened by the user and
+      * due by its date plus the terms then of its person's grade on its date, naming the claim it was split
+      * from, carrying its tags, and a late entry when that claim is. It is judged by the claim split alone: a claim not OPEN, a deferred one, one due by a date inside a closed period, an amount out of range, or a
+      * split by a role the sheet's permission matrix does not allow to open a claim is refused and nothing
+@@ -684,7 +682,6 @@ public class ClaimService {
+         part.setSplitFrom(claim.getShownNumber());
+         part.setTags(claim.getTags());
+         part.setLateEntry(claim.isLateEntry());
+-        giveNumber(sheetId, part);
+         part.setOpenedBy(user);
+         part.setStatus(ClaimStatus.OPEN);
+         log(sheetId, user, part, owner);
+@@ -941,6 +938,7 @@ public class ClaimService {
+         BigDecimal fixed = dueNow(sheetId, claim, owner);
+         requireProof(sheetId, claim, owner, fixed);
+         claim.setSettledDue(fixed);
++        numberIfNone(sheetId, claim);
+         claim.setStatus(ClaimStatus.SETTLED);
+         log(sheetId, user, claim, owner);
+         claims.flush();
+@@ -1107,14 +1105,14 @@ public class ClaimService {
+                 : Dues.figure(claim, owner::gradeOn, rates.table(sheetId));
+     }
+ 
+-    /** Give a claim arriving on the sheet from another, unnumbered there, the sheet's next number as opening does. */
++    /** Give a claim arriving on the sheet from another, unnumbered there, the sheet's next number as settling does. */
+     public void numberArrived(String sheetId, Claim claim) {
+         giveNumber(sheetId, claim);
+         claims.flush();
+     }
+ 
+     /**
+-     * Give a claim being opened its number: while the sheet's period numbering from is set and the
++     * Give a claim being settled its number: while the sheet's period numbering from is set and the
+      * sheet's today is on or after it, the next in the period its due-by falls in (<period name>-<n>), or
+      * in the sequence of claims in no period (X-<n>); otherwise the next sheet-wide number within the fiscal
+      * year (by the sheet's fiscal start month) its due-by falls in (<FY>-<n>). Two users
+@@ -1133,6 +1131,13 @@ public class ClaimService {
+         claim.setPeriodNumber(sequence, n, (period == null ? "X" : period.getName()) + "-" + n);
+     }
+ 
++    /** Give a claim being settled or approved its number, unless it was numbered before (opened when claims were numbered on opening). */
++    private void numberIfNone(String sheetId, Claim claim) {
++        if (claim.getShownNumber() == null) {
++            giveNumber(sheetId, claim);
++        }
++    }
++
+     /**
+      * Give a numbered claim the next number in the sequence it would be numbered in now; the place it
+      * leaves in a period sequence is kept as taken, so it is never given again. A draft stays unnumbered.
+diff --git a/src/main/java/net/officefloor/hq/app/claim/PasteClaimsService.java b/src/main/java/net/officefloor/hq/app/claim/PasteClaimsService.java
+index 4041c1cfc..0aa24123a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/PasteClaimsService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/PasteClaimsService.java
+@@ -24,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * Paste claims: lines of {@code name,amount,date,note} (the note may hold commas and may be left out; a
+  * blank date takes the sheet's entry date while set, else its today), each a claim for the person of that name on the sheet,
+- * matched as the person form matches names, added and then opened by the user as the open button would, numbered in
++ * matched as the person form matches names, added and then opened by the user as the open button would, in
+  * paste order. A note ending in {@code " #<reference>"} gives the claim that external reference, which is not part of
+  * the note. A line whose person, date and note match one of that person's claims as they stood before the paste (void
+  * and deleted claims never match) updates that claim instead: the newest matching DRAFT is edited to the line's amount
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index b3917968c..526a5a6c2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -46,7 +46,7 @@ public class Sheet {
+     @Column(name = "policy_date")
+     private LocalDate policyDate;
+ 
+-    /** From the sheet's today on this date, a claim opened is numbered within its period; null: off. */
++    /** From the sheet's today on this date, a claim settled is numbered within its period; null: off. */
+     @Column(name = "period_numbering_from")
+     private LocalDate periodNumberingFrom;
+ 
