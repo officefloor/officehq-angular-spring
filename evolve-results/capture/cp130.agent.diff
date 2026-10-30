@@ -1,0 +1,47 @@
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 63d8ca084..4de4d5bad 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -18,7 +18,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+ }
+ 
+ // The sheet's figures summed from the list: per grade, the people on it today (retired people left
+-// out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per month any claim is dated in, the dues of
++// out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total and its change from the period before it by start date (none for the earliest); per month any claim is dated in, the dues of
+ // its claims that count; per status, how many
+ // claims have it; per reason on the sheet's void reasons, how many VOID claims were voided with it.
+ @Component({
+@@ -45,13 +45,14 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+       <table>
+         <caption>By period</caption>
+         <thead>
+-          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
++          <tr><th scope="col">Period</th><th scope="col">Due total</th><th scope="col">Change</th></tr>
+         </thead>
+         <tbody>
+           @for (p of byPeriod(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -117,7 +118,16 @@ export class Summary {
+ 
+   protected readonly byPeriod = computed(() => {
+     const totals = periodDueTotals(this.periods(), this.people());
+-    return this.periods().map((p) => ({ name: p.name, dueTotal: totals[p.id] }));
++    const previous = new Map<number, string>();
++    const byStart = [...this.periods()].sort((a, b) => a.from.localeCompare(b.from));
++    byStart.forEach((p, i) => {
++      if (i > 0) previous.set(p.id, totals[byStart[i - 1].id]);
++    });
++    return this.periods().map((p) => {
++      const before = previous.get(p.id);
++      const change = before === undefined ? '' : ((cents(totals[p.id]) - cents(before)) / 100).toFixed(2);
++      return { name: p.name, dueTotal: totals[p.id], change };
++    });
+   });
+ 
+   /** Every month (yyyy-mm) any claim is dated in, earliest first, with the dues of its claims that count added up. */
