@@ -1,0 +1,333 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 9308a68a9..0516509bb 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -116,6 +116,8 @@ export interface PersonWithClaims {
+   terms: number | null;
+   /** The person's contact, trimmed and lower-cased; null when they have none. */
+   contact: string | null;
++  /** The person's tags: trimmed, lower-cased, without repeats, sorted. */
++  tags: string[];
+   claims: Claim[];
+   /** The amounts of the OPEN, PENDING and SETTLED claims added up, but not unbound OPEN ones dated within a hold. */
+   claimed: string;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bf98748cc..2f3c86432 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -168,6 +168,13 @@ function csvField(value: string): string {
+           [value]="contact()"
+           (input)="contact.set(value($event)); error.set('')"
+         />
++        <label for="person-form-tags">Tags (comma separated)</label>
++        <input
++          id="person-form-tags"
++          data-testid="person-form-tags"
++          [value]="tags()"
++          (input)="tags.set(value($event)); error.set('')"
++        />
+         <button type="submit" data-testid="person-form-submit">
+           {{ editing() === null ? 'Add person' : 'Save person' }}
+         </button>
+@@ -345,7 +352,7 @@ function csvField(value: string): string {
+       <table>
+         <thead>
+           <tr>
+-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
++            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+@@ -376,6 +383,7 @@ function csvField(value: string): string {
+               <td data-testid="person-grade">{{ p.grade }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
+               <td data-testid="person-claimed">{{ p.claimed }}</td>
+               <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
+               <td data-testid="person-settled-total">{{ p.settledTotal }}</td>
+@@ -580,6 +588,8 @@ export class People {
+   protected readonly terms = signal('');
+   /** The person's contact; blank: none. */
+   protected readonly contact = signal('');
++  /** The person's tags, comma separated; blank: none. */
++  protected readonly tags = signal('');
+   protected readonly editing = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private version = 0;
+@@ -1077,6 +1087,7 @@ export class People {
+     this.gradeFrom.set('');
+     this.terms.set(p.terms === null ? '' : String(p.terms));
+     this.contact.set(p.contact ?? '');
++    this.tags.set(p.tags.join(', '));
+     this.error.set('');
+   }
+ 
+@@ -1087,6 +1098,7 @@ export class People {
+     this.gradeFrom.set('');
+     this.terms.set('');
+     this.contact.set('');
++    this.tags.set('');
+     this.error.set('');
+   }
+ 
+@@ -1101,6 +1113,7 @@ export class People {
+     const gradeFrom = this.gradeFrom() || null;
+     const terms = this.terms().trim();
+     const contact = this.contact().trim().toLowerCase();
++    const tags = this.tags();
+     if (!name) {
+       this.error.set('Enter a name.');
+       return;
+@@ -1122,8 +1135,8 @@ export class People {
+     try {
+       const saved = await firstValueFrom(
+         id === null
+-          ? this.http.post<Person>(base, { name, grade, terms, contact }, { headers })
+-          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, terms, contact, version: this.version }, { headers }),
++          ? this.http.post<Person>(base, { name, grade, terms, contact, tags }, { headers })
++          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, terms, contact, tags, version: this.version }, { headers }),
+       );
+       if (this.session.sheet() !== sheet) return;
+       this.replace(saved);
+@@ -1641,6 +1654,7 @@ export class People {
+         this.grade.set(current.grade);
+         this.terms.set(current.terms === null ? '' : String(current.terms));
+         this.contact.set(current.contact ?? '');
++        this.tags.set(current.tags.join(', '));
+       }
+     } catch {
+       // the error still shows; re-loading the sheet shows the current values
+diff --git a/src/main/frontend/src/app/features/tags/tags.ts b/src/main/frontend/src/app/features/tags/tags.ts
+index af4174796..f7e3ef84d 100644
+--- a/src/main/frontend/src/app/features/tags/tags.ts
++++ b/src/main/frontend/src/app/features/tags/tags.ts
+@@ -10,8 +10,8 @@ function cents(amount: string): number {
+ }
+ 
+ // Every tag ever used on the sheet, sorted, each with its due-total: the dues of the claims that count
+-// (OPEN, PENDING and SETTLED, not held, retired-out or deferred) carrying it; a claim with two tags
+-// counts in both.
++// (OPEN, PENDING and SETTLED, not held, retired-out or deferred) carrying it, or whose person carries it
++// (once, when both do); a claim with two tags counts in both.
+ @Component({
+   selector: 'app-tags',
+   template: `
+@@ -45,12 +45,14 @@ export class Tags {
+   protected readonly byTag = computed(() => {
+     const totals = new Map<string, number>(this.used().map((t) => [t, 0]));
+     for (const person of this.people()) {
++      for (const t of person.tags ?? []) if (!totals.has(t)) totals.set(t, 0);
+       for (const c of person.claims) {
+-        for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
++        const tags = new Set([...c.tags, ...(person.tags ?? [])]);
++        for (const t of tags) if (!totals.has(t)) totals.set(t, 0);
+         const counts = (c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED') && c.due !== null
+           && !c.deferred && !heldOut(c, person.holds) && !retiredOut(c, person.retiredNow);
+         if (!counts) continue;
+-        for (const t of c.tags) totals.set(t, (totals.get(t) ?? 0) + cents(c.due!));
++        for (const t of tags) totals.set(t, (totals.get(t) ?? 0) + cents(c.due!));
+       }
+     }
+     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: ((totals.get(tag) ?? 0) / 100).toFixed(2) }));
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 6106086f9..8094877ad 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -52,6 +52,9 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    @Column(name = "tags", nullable = false)
++    private String tags = "";
++
+     @Column(name = "origin")
+     private String origin;
+ 
+@@ -94,7 +97,7 @@ public class Person {
+ 
+     /**
+      * The person as they arrive on another sheet: their name, every grade they were given (each from its
+-     * date), their terms, contact and aliases, and this sheet as the one they came from; not their holds nor
++     * date), their terms, contact, tags and aliases, and this sheet as the one they came from; not their holds nor
+      * retirement.
+      */
+     public Person arriving(String sheetId) {
+@@ -105,6 +108,7 @@ public class Person {
+         arrived.aliases.addAll(aliases);
+         arrived.terms = terms;
+         arrived.contact = contact;
++        arrived.tags = tags;
+         arrived.origin = this.sheetId;
+         return arrived;
+     }
+@@ -190,6 +194,15 @@ public class Person {
+         return contact;
+     }
+ 
++    /** The person's tags, sorted and comma separated ({@code ""} when none; see {@link net.officefloor.hq.app.claim.Tags}). */
++    public String getTags() {
++        return tags;
++    }
++
++    public void setTags(String tags) {
++        this.tags = tags;
++    }
++
+     /** The sheet the person was transferred from; null when they were not transferred here. */
+     public String getOrigin() {
+         return origin;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 53ba5b311..49d0fdf60 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -113,6 +113,7 @@ public class PersonController {
+      * transferred from (null: none), and their past retirements, earliest first.
+      */
+     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
++            List<String> tags,
+             List<ClaimView> claims,
+             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
+@@ -129,7 +130,7 @@ public class PersonController {
+                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
+             return new PersonView(person.getId(), person.getVersion(), person.getName(),
+-                    grade.on(rates.today()), person.getTerms(), person.getContact(), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
++                    grade.on(rates.today()), person.getTerms(), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
+                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
+                     statements.count(),
+                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
+@@ -164,11 +165,12 @@ public class PersonController {
+      * A person as entered; an edit carries the version its editor loaded (none: no check) and the date
+      * its grade applies from (none: the sheet's today). An add's grade applies from the beginning of time.
+      * The person's own terms are a number of days, blank (or none) for none; their contact a text, blank
+-     * (or none) for none.
++     * (or none) for none; their tags comma separated text (none: none on an add, as they were on an edit).
+      */
+     public record PersonForm(@NotBlank @Size(max = 200) String name,
+             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
+-            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms, @Size(max = 200) String contact) {
++            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms, @Size(max = 200) String contact,
++            @Size(max = 1000) String tags) {
+ 
+         /** The contact trimmed and lower-cased; null when there is none. */
+         String contactKey() {
+@@ -241,7 +243,7 @@ public class PersonController {
+             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PersonForm form) {
+         String sheet = sheetId.trim();
+         return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays(),
+-                form.contactKey()), List.of(),
++                form.contactKey(), form.tags()), List.of(),
+                 rates.table(sheet), Statements.NONE, List.of(), false);
+     }
+ 
+@@ -258,7 +260,7 @@ public class PersonController {
+             @Valid @RequestBody PersonForm form) {
+         String sheet = sheetId.trim();
+         return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(),
+-                form.grade(), form.gradeFrom(), form.termsDays(), form.contactKey()));
++                form.grade(), form.gradeFrom(), form.termsDays(), form.contactKey(), form.tags()));
+     }
+ 
+     /** Give the selected people the grade from the date, in list order; answers how many were changed. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 4bca288f6..7d754f562 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -10,6 +10,7 @@ import java.util.Objects;
+ import java.util.Optional;
+ import java.util.Set;
+ import java.util.stream.Collectors;
++import net.officefloor.hq.app.claim.Tags;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -33,9 +34,11 @@ public class PersonService {
+     private final SheetRepository sheetRows;
+     private final Rollup rollup;
+     private final ApplicationEventPublisher events;
++    private final Tags tags;
+ 
+     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
+-            SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
++            SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events, Tags tags) {
++        this.tags = tags;
+         this.patrons = patrons;
+         this.sheetRows = sheetRows;
+         this.rollup = rollup;
+@@ -57,6 +60,14 @@ public class PersonService {
+ 
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
++        return add(sheetId, user, name, grade, terms, contact, null);
++    }
++
++    /** Add the person, carrying the tags in the comma separated text (see {@link Tags#normalize}; null: none). */
++    @Transactional
++    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
++            String tagText) {
++        String tagged = Tags.normalize(tagText);
+         sheets.load(sheetId, user);
+         sheetRows.lockById(sheetId);
+         String trimmed = name.trim();
+@@ -70,8 +81,10 @@ public class PersonService {
+         Person added = new Person(sheetId, trimmed, grade);
+         added.setTerms(terms);
+         added.setContact(contact);
++        added.setTags(tagged);
+         added.setPosition(people.maxPosition(sheetId) + 1);
+         Person person = people.saveAndFlush(added);
++        tags.use(sheetId, tagged);
+         events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade,
+                 terms == null ? null : terms.toString(), contact));
+         rollup.changed(sheetId, user, before);
+@@ -88,6 +101,14 @@ public class PersonService {
+     @Transactional
+     public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
+             LocalDate gradeFrom, Integer terms, String contact) {
++        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, null);
++    }
++
++    /** Edit the person as above, their tags set to those in the comma separated text (see {@link Tags#normalize}; null: as they were). */
++    @Transactional
++    public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
++            LocalDate gradeFrom, Integer terms, String contact, String tagText) {
++        String tagged = tagText == null ? null : Tags.normalize(tagText);
+         sheetRows.lockById(sheetId);
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+@@ -112,7 +133,13 @@ public class PersonService {
+         person.setTerms(terms);
+         String contactChange = Objects.equals(contact, person.getContact()) ? null : contact == null ? "" : contact;
+         person.setContact(contact);
++        if (tagged != null) {
++            person.setTags(tagged);
++        }
+         people.flush();
++        if (tagged != null) {
++            tags.use(sheetId, tagged);
++        }
+         events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, person.gradeOn(today),
+                 termsChange, contactChange));
+         rollup.changed(sheetId, user, before);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index 05a3f994a..286cbaf3c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -135,6 +135,7 @@ public class PersonTransferService {
+             Person newcomer = person.arriving(toSheet);
+             newcomer.setPosition(people.maxPosition(toSheet) + 1);
+             arrived = people.saveAndFlush(newcomer);
++            tags.use(toSheet, arrived.getTags());
+         } else {
+             // merged as a merge does: their name and aliases become the other's aliases
+             arrived = into;
+diff --git a/src/main/resources/db/migration/V72__person_tags.sql b/src/main/resources/db/migration/V72__person_tags.sql
+new file mode 100644
+index 000000000..f227bf0b8
+--- /dev/null
++++ b/src/main/resources/db/migration/V72__person_tags.sql
+@@ -0,0 +1,2 @@
++-- A person's tags: trimmed, lower-cased, without repeats, sorted and comma separated; '' when they have none.
++ALTER TABLE person ADD COLUMN tags VARCHAR(1000) NOT NULL DEFAULT '';

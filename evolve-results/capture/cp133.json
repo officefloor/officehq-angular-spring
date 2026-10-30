@@ -1,0 +1,64 @@
+{
+  "checkpoint": 133,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp133_person-tags",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may carry tags on the person form (comma separated, trimmed, lower-cased, repeats dropped;\nshown sorted, comma and space separated). The tag totals count a claim for a tag when the claim or\nits person carries it, once.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may carry tags on the person form (comma separated, trimmed, lower-cased, repeats dropped;\nshown sorted, comma and space separated). The tag totals count a claim for a tag when the claim or\nits person carries it, once.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "47e9863d14c8af4d0f6c20f9b3698bd84684c2c0",
+  "reset_sha": "",
+  "preagent_sha": "b6f239dfffb6c94927d5eb5de317c5566d5f514c",
+  "prev_sha": "b6f239dfffb6c94927d5eb5de317c5566d5f514c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7594232,
+    "input_tokens": 36,
+    "output_tokens": 8199,
+    "cache_read_tokens": 768896,
+    "cache_creation_tokens": 55190,
+    "num_turns": 19,
+    "duration_ms": 307166,
+    "duration_api_ms": 140337,
+    "model": "claude-opus-5-5",
+    "session_id": "3a7a25c1-885d-4983-b87b-6ae3442a1b4b",
+    "stop_reason": "success",
+    "result_text": "People can now carry tags, and all 4 tests in `bin/e2e` pass.\n\n**Database**\n- A new migration, `V72__person_tags.sql`, adds a `person.tags` column. Tags are stored the same way as claim tags: sorted and comma separated, and an empty string when there are none.\n\n**Server**\n- **Form and saving:** the person form takes a `tags` field. Adding or editing a person tidies the tags using the existing claim-tag code (`Tags.normalize`) and records them as tags used on the sheet. That is why `tag-x-due-total` appears even when only a person carries `x`.\n- **Other ways of editing people:** bulk grade and import don't send tags, so they leave a person's tags unchanged.\n- **Display:** the person data the screen receives now includes their tags.\n- **Transfers and clones:** a person transferred to another sheet takes their tags with them, and those tags are recorded as used there. Cloning a sheet also copies people's tags.\n- **Audit:** the add and edit records are unchanged. The test expects no tags in `PERSON_ADDED` or `PERSON_EDITED`.\n\n**Front end**\n- The person form has a Tags field (`person-form-tags`), filled in when you edit someone.\n- Each person row shows its tags, comma and space separated (`person-tags`).\n- In the tag totals, a claim now counts for a tag if the claim or its person carries it, and only once when both do.\n\nOne gap: when two people are merged, the person being merged away loses their tags; they aren't added to the person they're merged into. The tests don't cover merges.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7594232,
+        "num_turns": 19,
+        "duration_ms": 307166,
+        "duration_api_ms": 140337,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp133.agent.jsonl",
+  "agent_diff_file": "cp133.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
