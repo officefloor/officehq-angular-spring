@@ -1,0 +1,64 @@
+{
+  "checkpoint": 158,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp158_column-chooser",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c2d9a5dfa4b0c51845b803b6c8727417d79341fe",
+  "reset_sha": "",
+  "preagent_sha": "3a695ace4c2c983061b600858cf57493ca14ca18",
+  "prev_sha": "3a695ace4c2c983061b600858cf57493ca14ca18",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7596778000000001,
+    "input_tokens": 40,
+    "output_tokens": 10467,
+    "cache_read_tokens": 785929,
+    "cache_creation_tokens": 49124,
+    "num_turns": 20,
+    "duration_ms": 374099,
+    "duration_api_ms": 102679,
+    "model": "claude-opus-5-5",
+    "session_id": "12ce1593-c5c8-4dad-9e6c-5e13414cdaa4",
+    "stop_reason": "success",
+    "result_text": "Each user can now pick which people-list columns their screen shows, and all 4 tests in `bin/e2e` pass.\n\n**One column added beyond the request:** the test also switches off `excess` and expects that cell to disappear, but `excess` isn't in the request's list. So there are 15 checkboxes: the 14 you listed plus `excess`.\n\n**How it works:**\n- **Storage:** a new table, `V83__user_hidden_column.sql`, records the columns each user has switched off. A column with no row is shown, so everything is on by default. Like the existing locale setting, the choice is kept per user across all sheets. Switching a column writes no audit line.\n- **Server:** in `SessionController`, `GET /api/me/hidden-columns` returns the user's switched-off columns, and `PUT /api/me/columns/{column}` with `{shown}` changes one. Only the 15 known column keys are accepted. The new service, entity and repository are in the `session` package.\n- **Screen (`people.ts`):** a \"Columns shown\" group of `column-<key>` checkboxes sits above the people table. A column that's off has neither its header cell nor its row cells on screen. Totals, the header, the summary and the other figures don't change. The choice takes effect immediately, is saved in the background, and is re-read each time a sheet loads.\n- **Reload guard:** a reload doesn't overwrite a choice that's still being saved, which stops quick successive clicks from flickering back to an older state.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7596778000000001,
+        "num_turns": 20,
+        "duration_ms": 374099,
+        "duration_api_ms": 102679,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp158.agent.jsonl",
+  "agent_diff_file": "cp158.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

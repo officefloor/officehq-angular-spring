@@ -1,0 +1,405 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8fd126835..e9324f39e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -19,6 +19,25 @@ import { Tags } from '../tags/tags';
+ import { VoidReasons } from '../void-reasons/void-reasons';
+ 
+ const GRADES = ['A', 'B', 'C'];
++
++/** The columns of the people list each user may switch off on their screen. */
++const COLUMNS = [
++  { key: 'aliases', label: 'Aliases' },
++  { key: 'terms', label: 'Terms' },
++  { key: 'contact', label: 'Contact' },
++  { key: 'claimed', label: 'Claimed' },
++  { key: 'due-total', label: 'Due' },
++  { key: 'excess', label: 'Excess' },
++  { key: 'statement-count', label: 'Statements' },
++  { key: 'stated-total', label: 'Last stated total' },
++  { key: 'statement-date', label: 'Last statement' },
++  { key: 'retired', label: 'Retired' },
++  { key: 'hold', label: 'On hold' },
++  { key: 'overdue-count', label: 'Overdue' },
++  { key: 'overdue-total', label: 'Overdue total' },
++  { key: 'patrons', label: 'Patrons' },
++  { key: 'backing', label: 'Backing' },
++];
+ const DAYS = /^\d{1,5}$/;
+ const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+ 
+@@ -404,15 +423,29 @@ function csvField(value: string): string {
+           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
+         }
+       </form>
++      <fieldset>
++        <legend>Columns shown</legend>
++        @for (c of columns; track c.key) {
++          <label>
++            <input
++              type="checkbox"
++              [attr.data-testid]="'column-' + c.key"
++              [checked]="columnShown(c.key)"
++              (change)="setShown(c.key, checked($event))"
++            />
++            {{ c.label }}
++          </label>
++        }
++      </fieldset>
+       <table>
+         <thead>
+           <tr>
+-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
+-            <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+-            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+-            <th scope="col">Overdue</th><th scope="col">Overdue total</th>
++            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
++            @if (columnShown('statement-count')) {<th scope="col">Statements</th>}@if (columnShown('stated-total')) {<th scope="col">Last stated total</th>}@if (columnShown('statement-date')) {<th scope="col">Last statement</th>}
++            @if (columnShown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columnShown('hold')) {<th scope="col">On hold</th>}
++            @if (columnShown('overdue-count')) {<th scope="col">Overdue</th>}@if (columnShown('overdue-total')) {<th scope="col">Overdue total</th>}
+             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
+-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Cut total</th>
++            @if (columnShown('patrons')) {<th scope="col">Patrons</th>}@if (columnShown('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Cut total</th>
+             @for (pd of periods(); track pd.id) {
+               <th scope="col">Due in {{ pd.name }}</th>
+             }
+@@ -432,31 +465,61 @@ function csvField(value: string): string {
+                 />
+               </td>
+               <td data-testid="person-name">{{ p.name }}</td>
+-              <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
++              @if (columnShown('aliases')) {
++                <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
++              }
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+               <td data-testid="person-grade">{{ p.grade }}</td>
+-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              @if (columnShown('terms')) {
++                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
++              }
++              @if (columnShown('contact')) {
++                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              }
+               <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
+-              <td data-testid="person-claimed">{{ p.claimed | figure }}</td>
+-              <td data-testid="person-due-total">{{ (p.dueTotal ?? 'n/a') | figure }}</td>
++              @if (columnShown('claimed')) {
++                <td data-testid="person-claimed">{{ p.claimed | figure }}</td>
++              }
++              @if (columnShown('due-total')) {
++                <td data-testid="person-due-total">{{ (p.dueTotal ?? 'n/a') | figure }}</td>
++              }
+               <td data-testid="person-settled-total">{{ p.settledTotal | figure }}</td>
+               <td data-testid="person-open-total">{{ p.openTotal | figure }}</td>
+-              <td data-testid="person-excess">{{ p.excess | figure }}</td>
+-              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+-              <td data-testid="person-stated-total">{{ (p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a')) | figure }}</td>
+-              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+-              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
++              @if (columnShown('excess')) {
++                <td data-testid="person-excess">{{ p.excess | figure }}</td>
++              }
++              @if (columnShown('statement-count')) {
++                <td data-testid="person-statement-count">{{ p.statementCount }}</td>
++              }
++              @if (columnShown('stated-total')) {
++                <td data-testid="person-stated-total">{{ (p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a')) | figure }}</td>
++              }
++              @if (columnShown('statement-date')) {
++                <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
++              }
++              @if (columnShown('retired')) {
++                <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
++              }
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+-              <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
+-              <td data-testid="person-overdue-total">{{ p.overdueTotal | figure }}</td>
++              @if (columnShown('hold')) {
++                <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
++              }
++              @if (columnShown('overdue-count')) {
++                <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
++              }
++              @if (columnShown('overdue-total')) {
++                <td data-testid="person-overdue-total">{{ p.overdueTotal | figure }}</td>
++              }
+               <td data-testid="person-aged-0-30">{{ p.aged0to30 | figure }}</td>
+               <td data-testid="person-aged-31-60">{{ p.aged31to60 | figure }}</td>
+               <td data-testid="person-aged-61">{{ p.aged61 | figure }}</td>
+-              <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
+-              <td data-testid="person-backing">{{ (patronage().get(p.id)?.backing) | figure }}</td>
++              @if (columnShown('patrons')) {
++                <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
++              }
++              @if (columnShown('backing')) {
++                <td data-testid="person-backing">{{ (patronage().get(p.id)?.backing) | figure }}</td>
++              }
+               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+               <td data-testid="person-cut-total">{{ (((personCuts().get(p.id) ?? 0) / 100).toFixed(2)) | figure }}</td>
+@@ -710,6 +773,11 @@ export class People {
+   private holding = false;
+   /** The ids of the people the signed-in user watches on the sheet. */
+   protected readonly watched = signal<ReadonlySet<number>>(new Set());
++  protected readonly columns = COLUMNS;
++  /** The columns of the people list the signed-in user has switched off; saved per user. */
++  private readonly hidden = signal<ReadonlySet<string>>(new Set());
++  /** Column choices still being saved; while any is, a reload keeps the choices on screen. */
++  private columnSaves = 0;
+   /** A watch still waiting for its answer: another press meanwhile is ignored. */
+   private watching = false;
+   /** The ids of the claims selected to be opened or settled together. */
+@@ -897,6 +965,29 @@ export class People {
+     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+ 
++  /** Whether the signed-in user's screen shows the column. */
++  protected columnShown(key: string): boolean {
++    return !this.hidden().has(key);
++  }
++
++  /** Show or switch off a column on the signed-in user's screen, and save the choice. */
++  protected setShown(key: string, shown: boolean): void {
++    this.hidden.update((h) => {
++      const next = new Set(h);
++      if (shown) next.delete(key);
++      else next.add(key);
++      return next;
++    });
++    this.columnSaves++;
++    void firstValueFrom(
++      this.http.put<string[]>(`/api/me/columns/${encodeURIComponent(key)}`, { shown }, {
++        headers: { 'X-User': this.session.user() ?? '' },
++      }),
++    )
++      .catch(() => undefined)
++      .finally(() => this.columnSaves--);
++  }
++
+   protected checked(e: Event): boolean {
+     return (e.target as HTMLInputElement).checked;
+   }
+@@ -1858,7 +1949,7 @@ export class People {
+ 
+   private async reload(sheet: string): Promise<void> {
+     const loads = this.session.loads();
+-    const [people, watched, batch, descendants, live] = await Promise.all([
++    const [people, watched, batch, descendants, live, hidden] = await Promise.all([
+       firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
+       firstValueFrom(
+         this.http.get<number[]>(`/api/sheets/${encodeURIComponent(sheet)}/watches`, {
+@@ -1870,10 +1961,14 @@ export class People {
+       ),
+       this.descendantFigures(sheet),
+       this.session.asOf() === null ? Promise.resolve(null) : this.liveFigures(sheet),
++      firstValueFrom(
++        this.http.get<string[]>('/api/me/hidden-columns', { headers: { 'X-User': this.session.user() ?? '' } }),
++      ),
+     ]);
+     if (this.session.sheet() === sheet && this.session.loads() === loads) {
+       this.people.set(people);
+       this.watched.set(new Set(watched));
++      if (this.columnSaves === 0) this.hidden.set(new Set(hidden));
+       this.settleBatch.set(batch.last);
+       this.descendants.set(descendants);
+       this.live.set(live);
+diff --git a/src/main/java/net/officefloor/hq/app/session/HiddenColumn.java b/src/main/java/net/officefloor/hq/app/session/HiddenColumn.java
+new file mode 100644
+index 000000000..9ebe60685
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/HiddenColumn.java
+@@ -0,0 +1,49 @@
++package net.officefloor.hq.app.session;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.IdClass;
++import jakarta.persistence.Table;
++import java.io.Serializable;
++
++/** A column of the people list a user has switched off on their screen. It is kept per user, across every sheet. */
++@Entity
++@Table(name = "user_hidden_column")
++@IdClass(HiddenColumn.Key.class)
++public class HiddenColumn {
++
++    /** The columns of the people list a user may switch off. */
++    public static final String KEYS = "claimed|due-total|excess|statement-count|stated-total|statement-date"
++            + "|overdue-count|overdue-total|patrons|backing|hold|retired|terms|contact|aliases";
++
++    public record Key(String user, String column) implements Serializable {
++        public Key() {
++            this(null, null);
++        }
++    }
++
++    @Id
++    @Column(name = "user_name", nullable = false)
++    private String user;
++
++    @Id
++    @Column(name = "column_key", nullable = false)
++    private String column;
++
++    protected HiddenColumn() {
++    }
++
++    public HiddenColumn(String user, String column) {
++        this.user = user;
++        this.column = column;
++    }
++
++    public String getUser() {
++        return user;
++    }
++
++    public String getColumn() {
++        return column;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/session/HiddenColumnRepository.java b/src/main/java/net/officefloor/hq/app/session/HiddenColumnRepository.java
+new file mode 100644
+index 000000000..89647d74d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/HiddenColumnRepository.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.session;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++
++public interface HiddenColumnRepository extends JpaRepository<HiddenColumn, HiddenColumn.Key> {
++
++    List<HiddenColumn> findByUserOrderByColumnAsc(String user);
++
++    @Modifying
++    @Query(value = "MERGE INTO user_hidden_column (user_name, column_key) KEY (user_name, column_key) VALUES (:user, :column)",
++            nativeQuery = true)
++    void hide(@Param("user") String user, @Param("column") String column);
++
++    @Modifying
++    @Query("DELETE FROM HiddenColumn h WHERE h.user = :user AND h.column = :column")
++    void show(@Param("user") String user, @Param("column") String column);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/session/HiddenColumnService.java b/src/main/java/net/officefloor/hq/app/session/HiddenColumnService.java
+new file mode 100644
+index 000000000..323d02c19
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/HiddenColumnService.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app.session;
++
++import java.util.List;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Reads and saves the columns of the people list each user has switched off. Choosing writes no audit line. */
++@Service
++public class HiddenColumnService {
++
++    private final HiddenColumnRepository columns;
++
++    public HiddenColumnService(HiddenColumnRepository columns) {
++        this.columns = columns;
++    }
++
++    @Transactional(readOnly = true)
++    public List<String> hiddenOf(String user) {
++        return columns.findByUserOrderByColumnAsc(user).stream().map(HiddenColumn::getColumn).toList();
++    }
++
++    /** Show or hide the one column; answers with every column the user has switched off now. */
++    @Transactional
++    public List<String> setShown(String user, String column, boolean shown) {
++        if (shown) {
++            columns.show(user, column);
++        } else {
++            columns.hide(user, column);
++        }
++        return hiddenOf(user);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/session/SessionController.java b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+index 6ee99fae8..01a7ee5dd 100644
+--- a/src/main/java/net/officefloor/hq/app/session/SessionController.java
++++ b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+@@ -2,9 +2,13 @@ package net.officefloor.hq.app.session;
+ 
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.util.List;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+@@ -13,7 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
+ 
+ /**
+  * Sign-in by name; there is no password. The front end sends the name back as {@code X-User}. Signing in
+- * answers with the user's saved locale, which they may change.
++ * answers with the user's saved locale, which they may change. Each user also chooses which columns of the
++ * people list their screen shows.
+  */
+ @RestController
+ @Validated
+@@ -31,10 +36,16 @@ public class SessionController {
+     public record LocaleView(String locale) {
+     }
+ 
++    /** Show (true) or switch off (false) a column. */
++    public record ColumnForm(@NotNull Boolean shown) {
++    }
++
+     private final UserLocaleService locales;
++    private final HiddenColumnService columns;
+ 
+-    public SessionController(UserLocaleService locales) {
++    public SessionController(UserLocaleService locales, HiddenColumnService columns) {
+         this.locales = locales;
++        this.columns = columns;
+     }
+ 
+     @PostMapping("/api/signin")
+@@ -48,4 +59,17 @@ public class SessionController {
+             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody LocaleForm form) {
+         return new LocaleView(locales.setLocale(user.trim(), form.locale()));
+     }
++
++    /** The columns of the people list the user has switched off. */
++    @GetMapping("/api/me/hidden-columns")
++    public List<String> hiddenColumns(@RequestHeader("X-User") @NotBlank String user) {
++        return columns.hiddenOf(user.trim());
++    }
++
++    /** Show or switch off one column; answers with every column the user has switched off now. */
++    @PutMapping("/api/me/columns/{column}")
++    public List<String> setColumn(@RequestHeader("X-User") @NotBlank String user,
++            @PathVariable @Pattern(regexp = HiddenColumn.KEYS) String column, @Valid @RequestBody ColumnForm form) {
++        return columns.setShown(user.trim(), column, form.shown());
++    }
+ }
+diff --git a/src/main/resources/db/migration/V83__user_hidden_column.sql b/src/main/resources/db/migration/V83__user_hidden_column.sql
+new file mode 100644
+index 000000000..1bd79b95f
+--- /dev/null
++++ b/src/main/resources/db/migration/V83__user_hidden_column.sql
+@@ -0,0 +1,7 @@
++-- The columns of the people list each user has switched off on their screen, kept per user across every
++-- sheet. A column with no row is shown.
++CREATE TABLE user_hidden_column (
++    user_name  VARCHAR(100) NOT NULL,
++    column_key VARCHAR(40)  NOT NULL,
++    PRIMARY KEY (user_name, column_key)
++);
