@@ -20,6 +20,8 @@ export interface Period {
   personTotals: Record<number, string>;
   /** Per person id, the person's carried figure fixed when the period was closed; empty while it is open. */
   personCarried: Record<number, string>;
+  /** Per person id, the opening balances pasted for the person in the period, added up: part of their carried figure. */
+  personOpenings: Record<number, string>;
   /** The fiscal year its from-date falls in: FY and the calendar year that fiscal year's first day falls in. */
   fy: string;
   /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
@@ -77,11 +79,11 @@ export function personPeriodTotals(periods: Period[], person: PersonWithClaims):
 
 /** Per period id, the person's carried figure for it: the dues as shown now of their claims that count (the same
  * claims left out as personPeriodTotals) due by a date in a period ending before it starts and still OPEN or PENDING
- * at the end of its last day, by the status log, added up; or once closed or soft-closed the figure fixed then (0.00
+ * at the end of its last day, by the status log, added up, with the opening balances pasted for them in it; or once closed or soft-closed the figure fixed then (0.00
  * for a person added later). */
 export function personPeriodCarried(periods: Period[], person: PersonWithClaims): Record<number, string> {
   const totals: Record<number, number> = {};
-  for (const p of periods) totals[p.id] = 0;
+  for (const p of periods) totals[p.id] = cents(p.personOpenings?.[person.id] ?? '0.00');
   for (const c of person.claims) {
     if (c.due === null || heldOut(c, person.holds) || retiredOut(c, person.retiredNow) || c.deferred) continue;
     const home = periodOf(periods, c.dueBy);
@@ -241,6 +243,23 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
         />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
+      <form (submit)="importOpenings($event)" aria-label="Paste opening balances">
+        <label for="opening-import">Paste opening balances, a line each: name,period,amount</label>
+        <textarea
+          id="opening-import"
+          data-testid="opening-import"
+          rows="4"
+          [value]="openingText()"
+          (input)="openingText.set(value($event)); openingError.set('')"
+        ></textarea>
+        <button type="submit" data-testid="opening-import-submit">Paste opening balances</button>
+        @if (openingDone() !== null) {
+          <span>Added <strong data-testid="opening-import-done">{{ openingDone() }}</strong></span>
+        }
+        @if (openingError()) {
+          <p role="alert" data-testid="opening-error">{{ openingError() }}</p>
+        }
+      </form>
     </section>
   `,
 })
@@ -263,6 +282,10 @@ export class Periods {
   /** How many periods the last generate made; null while it runs. */
   protected readonly generated = signal<number | null>(null);
   protected readonly genError = signal('');
+  protected readonly openingText = signal('');
+  /** How many lines the last paste of opening balances added; null while it runs. */
+  protected readonly openingDone = signal<number | null>(null);
+  protected readonly openingError = signal('');
   /** The refusal of the last action on a period's row, shown on that row. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
@@ -283,6 +306,9 @@ export class Periods {
       this.fyYear.set('');
       this.generated.set(null);
       this.genError.set('');
+      this.openingText.set('');
+      this.openingDone.set(null);
+      this.openingError.set('');
       this.rowError.set(null);
       if (sheet) void this.reload(sheet);
     });
@@ -383,6 +409,42 @@ export class Periods {
       return;
     }
     await this.runGenerate(sheet, 'generate-fy', { year: Number(year) });
+  }
+
+  /**
+   * Paste opening balances, lines of name,period,amount: each adds its amount to the person's carried figure for
+   * the period. One refused line adds none. Shows how many lines went through.
+   */
+  protected async importOpenings(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.busy) return;
+    this.openingDone.set(null);
+    this.openingError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = this.openingText();
+    if (!text.trim()) {
+      this.openingError.set('Paste at least one line.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ added: number; periods: Period[] }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/periods/openings`, { text }, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.periods.set(result.periods);
+      this.openingText.set('');
+      this.openingDone.set(result.added);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.openingError.set(refusal ?? 'Could not paste the opening balances.');
+    } finally {
+      this.busy = false;
+    }
   }
 
   /** Post a generate and show the periods made and how many, or the refusal. */

@@ -20,6 +20,7 @@ import net.officefloor.hq.app.claim.ClaimResettled;
 import net.officefloor.hq.app.claim.TemplateSaved;
 import net.officefloor.hq.app.claim.VoidReasonAdded;
 import net.officefloor.hq.app.holiday.HolidayAdded;
+import net.officefloor.hq.app.period.OpeningSet;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
 import net.officefloor.hq.app.period.PeriodReopened;
@@ -325,6 +326,12 @@ public class SheetAudit {
         change(e.sheetId(), e.user(), (e.soft() ? "PERIOD_SOFT_CLOSED" : "PERIOD_CLOSED") + " sheet=" + e.sheetId() + " by=" + e.user()
                 + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.auto() ? " auto=yes" : ""));
+    }
+
+    @TransactionalEventListener
+    public void on(OpeningSet e) {
+        change(e.sheetId(), e.user(), "OPENING_SET sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                + " period=" + e.period() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString());
     }
 
     @TransactionalEventListener

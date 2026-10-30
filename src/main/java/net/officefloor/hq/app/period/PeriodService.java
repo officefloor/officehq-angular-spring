@@ -217,7 +217,7 @@ public class PeriodService {
      * Each person's carried figure for the period, for every person on the sheet: the due figures as they stand of
      * their claims that count on the sheet's today (neither left out by a hold or retirement nor deferred, see
      * {@link Dues#counts}) due by a date inside a period ending before it starts and still OPEN or PENDING at the end
-     * of its last day, by the status log, added up per person.
+     * of its last day, by the status log, added up per person, with the opening balances pasted for them in it.
      */
     private Map<Long, BigDecimal> carried(String sheetId, Period period, Map<Long, Person> byId, RateTable table) {
         List<Period> all = list(sheetId);
@@ -239,6 +239,11 @@ public class PeriodService {
                         carried.merge(c.getPersonId(), due, BigDecimal::add);
                     }
                 });
+        period.getPersonOpenings().forEach((id, amount) -> {
+            if (byId.containsKey(id)) {
+                carried.merge(id, amount, BigDecimal::add);
+            }
+        });
         carried.replaceAll((id, t) -> t.setScale(2, RoundingMode.HALF_UP));
         return carried;
     }
