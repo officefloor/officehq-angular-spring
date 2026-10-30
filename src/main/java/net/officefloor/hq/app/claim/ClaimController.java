@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.statement.StatementService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -38,17 +40,24 @@ public class ClaimController {
             LocalDate date, @Size(max = 500) String note) {
     }
 
+    /** A quick-add: a person's name and a claim's amount. */
+    public record QuickAddForm(@NotBlank @Size(max = 200) String name,
+            @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
+    }
+
     public record Refusal(String message) {
     }
 
     private final ClaimService claims;
+    private final QuickAddService quick;
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
 
-    public ClaimController(ClaimService claims, PersonService people, RateService rates,
+    public ClaimController(ClaimService claims, QuickAddService quick, PersonService people, RateService rates,
             StatementService statements) {
         this.claims = claims;
+        this.quick = quick;
         this.people = people;
         this.rates = rates;
         this.statements = statements;
@@ -60,6 +69,15 @@ public class ClaimController {
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
         long id = claims.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.date(), form.note());
+        return view(sheet, id);
+    }
+
+    /** Quick-add a DRAFT claim for a person by name, adding the person when the name is new. */
+    @PostMapping("/quick-add")
+    public PersonView quickAdd(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody QuickAddForm form) {
+        String sheet = sheetId.trim();
+        long id = quick.add(sheet, user.trim(), form.name(), new BigDecimal(form.amount()));
         return view(sheet, id);
     }
 
@@ -104,5 +122,11 @@ public class ClaimController {
     @ExceptionHandler(ClosedPeriodRefused.class)
     public ResponseEntity<Refusal> closed(ClosedPeriodRefused e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));
+    }
+
+    /** Another save took a quick-added person's name first: refused, nothing changed. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public void nameInUse() {
     }
 }

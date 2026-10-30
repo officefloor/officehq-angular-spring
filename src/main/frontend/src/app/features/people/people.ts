@@ -7,6 +7,7 @@ import { Period, Periods } from '../periods/periods';
 import { Rates } from '../rates/rates';
 
 const GRADES = ['A', 'B', 'C'];
+const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** Cents in an amount shown with two decimals ("12.50" is 1250). */
 function cents(amount: string): number {
@@ -52,6 +53,27 @@ function cents(amount: string): number {
         }
         @if (error()) {
           <p role="alert" data-testid="person-form-error">{{ error() }}</p>
+        }
+      </form>
+      <form (submit)="quickAdd($event)" aria-label="Quick add claim">
+        <label for="quick-name">Name</label>
+        <input
+          id="quick-name"
+          data-testid="quick-name"
+          [value]="quickName()"
+          (input)="quickName.set(value($event)); quickError.set('')"
+        />
+        <label for="quick-amount">Amount</label>
+        <input
+          id="quick-amount"
+          data-testid="quick-amount"
+          inputmode="decimal"
+          [value]="quickAmount()"
+          (input)="quickAmount.set(value($event)); quickError.set('')"
+        />
+        <button type="submit" data-testid="quick-submit">Quick add claim</button>
+        @if (quickError()) {
+          <p role="alert" data-testid="quick-error">{{ quickError() }}</p>
         }
       </form>
       <table>
@@ -106,6 +128,11 @@ export class People {
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
   protected readonly error = signal('');
+  protected readonly quickName = signal('');
+  protected readonly quickAmount = signal('');
+  protected readonly quickError = signal('');
+  /** A quick-add still waiting for its answer: another press meanwhile is ignored. */
+  private quickBusy = false;
   /** The refusal of the last action taken on a person's row, shown on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   /** A statement still waiting for its answer: another press meanwhile is ignored. */
@@ -125,6 +152,9 @@ export class People {
       this.people.set([]);
       this.personError.set(null);
       this.reset();
+      this.quickName.set('');
+      this.quickAmount.set('');
+      this.quickError.set('');
       if (sheet) void this.reload(sheet);
     });
   }
@@ -192,6 +222,42 @@ export class People {
       this.error.set(id === null ? 'Could not add the person.' : 'Could not save the person.');
     } finally {
       this.busy = false;
+    }
+  }
+
+  /** Quick-add a DRAFT claim for the named person, who is added with grade A when not on the sheet. */
+  protected async quickAdd(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.quickBusy) return;
+    this.quickError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const name = this.quickName().trim();
+    const amount = this.quickAmount().trim();
+    if (!name) {
+      this.quickError.set('Enter a name.');
+      return;
+    }
+    if (!AMOUNT.test(amount)) {
+      this.quickError.set('Enter an amount of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.quickBusy = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(`/api/sheets/${encodeURIComponent(sheet)}/quick-add`, { name, amount }, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+      this.quickName.set('');
+      this.quickAmount.set('');
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.quickError.set(refusal ?? 'Could not add the claim.');
+    } finally {
+      this.quickBusy = false;
     }
   }
 
