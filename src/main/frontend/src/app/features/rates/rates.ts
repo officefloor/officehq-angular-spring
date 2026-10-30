@@ -105,6 +105,8 @@ export class Rates {
   protected readonly pct = signal('');
   protected readonly from = signal('');
   protected readonly error = signal('');
+  /** A submit still waiting for its answer: another press meanwhile is ignored. */
+  private busy = false;
 
   constructor() {
     effect(() => {
@@ -125,6 +127,7 @@ export class Rates {
 
   protected async save(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.busy) return;
     this.error.set('');
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -144,6 +147,7 @@ export class Rates {
       return;
     }
     const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
     try {
       const saved = await firstValueFrom(
         this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { pct, from: from === '' ? null : from }, { headers }),
@@ -158,6 +162,8 @@ export class Rates {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.error.set('Could not set the rate.');
+    } finally {
+      this.busy = false;
     }
   }
 

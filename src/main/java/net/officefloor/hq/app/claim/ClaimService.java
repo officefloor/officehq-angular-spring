@@ -99,7 +99,6 @@ public class ClaimService {
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
-            claim.setOpenedBy(null);
         }
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         String due = null;

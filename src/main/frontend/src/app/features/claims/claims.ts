@@ -18,12 +18,14 @@ export interface Claim {
   status: ClaimStatus;
   /** The number the claim got when opened, the next on the sheet; null while a draft or once voided. */
   number: number | null;
-  /** The user who opened the claim; null while a draft or once voided. */
+  /** The user who opened the claim, kept once voided; null while it was never opened. */
   openedBy: string | null;
 }
 
 export interface PersonWithClaims {
   id: number;
+  /** The version the person was last saved at; an edit sends the one its editor loaded. */
+  version: number;
   name: string;
   grade: string;
   claims: Claim[];
@@ -116,6 +118,8 @@ export class Claims {
   protected readonly error = signal('');
   /** The refusal of the last action taken on a claim's row, shown on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  /** A submit or action still waiting for its answer: another press meanwhile is ignored. */
+  private busy = false;
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
@@ -148,6 +152,7 @@ export class Claims {
 
   protected async save(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.busy) return;
     this.error.set('');
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -166,6 +171,7 @@ export class Claims {
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const body = { amount, date: date === '' ? null : date, note };
     const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
     try {
       const person = await firstValueFrom(
         id === null
@@ -178,15 +184,19 @@ export class Claims {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.error.set(id === null ? 'Could not add the claim.' : 'Could not save the claim.');
+    } finally {
+      this.busy = false;
     }
   }
 
   /** Open, settle or void a claim; a change its status does not allow is refused on its row. */
   protected async move(c: Claim, action: ClaimAction): Promise<void> {
+    if (this.busy) return;
     this.claimError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
     try {
       const person = await firstValueFrom(
         this.http.post<PersonWithClaims>(
@@ -204,6 +214,8 @@ export class Claims {
         return;
       }
       this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be ${PAST[action]}.` });
+    } finally {
+      this.busy = false;
     }
   }
 }

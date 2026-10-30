@@ -8,7 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The people on a sheet: listed in the order they were added, added and edited one at a time. */
+/** The people on a sheet: listed in the order they were added, added and edited one at a time;
+ * an edit made from a version someone else has saved since is refused. */
 @Service
 public class PersonService {
 
@@ -46,9 +47,12 @@ public class PersonService {
     }
 
     @Transactional
-    public Person edit(String sheetId, String user, long personId, String name, String grade) {
+    public Person edit(String sheetId, String user, long personId, Long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (version != null && version != person.getVersion()) {
+            throw edited();
+        }
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)) {
             throw nameInUse();
@@ -58,6 +62,11 @@ public class PersonService {
         people.flush();
         events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, grade));
         return person;
+    }
+
+    /** Someone else saved the person after the editor loaded them. */
+    public static ResponseStatusException edited() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Saved by someone else since loaded");
     }
 
     private static ResponseStatusException nameInUse() {

@@ -88,6 +88,10 @@ export class People {
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   protected readonly editing = signal<number | null>(null);
+  /** The version of the person the editor loaded. */
+  private version = 0;
+  /** A submit still waiting for its answer: another press meanwhile is ignored. */
+  private busy = false;
   protected readonly error = signal('');
   protected readonly claimedTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
@@ -113,6 +117,7 @@ export class People {
 
   protected edit(p: Person): void {
     this.editing.set(p.id);
+    this.version = p.version;
     this.name.set(p.name);
     this.grade.set(p.grade);
     this.error.set('');
@@ -127,6 +132,7 @@ export class People {
 
   protected async save(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.busy) return;
     this.error.set('');
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -143,22 +149,49 @@ export class People {
     const id = this.editing();
     const base = `/api/sheets/${encodeURIComponent(sheet)}/people`;
     const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
     try {
       const saved = await firstValueFrom(
         id === null
           ? this.http.post<Person>(base, { name, grade }, { headers })
-          : this.http.put<Person>(`${base}/${id}`, { name, grade }, { headers }),
+          : this.http.put<Person>(`${base}/${id}`, { name, grade, version: this.version }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       this.replace(saved);
       this.reset();
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
+      if (id !== null && err instanceof HttpErrorResponse && err.status === 412) {
+        await this.showCurrent(sheet, id);
+        this.error.set('Someone else saved this person since you opened it; the form now shows their values.');
+        return;
+      }
       if (err instanceof HttpErrorResponse && err.status === 409) {
         this.error.set('That name is already in use on this sheet.');
         return;
       }
       this.error.set(id === null ? 'Could not add the person.' : 'Could not save the person.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** After a refused stale edit: show the person as the store holds them now, in the row and the form. */
+  private async showCurrent(sheet: string, id: number): Promise<void> {
+    const loads = this.session.loads();
+    try {
+      const people = await firstValueFrom(
+        this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`),
+      );
+      if (this.session.sheet() !== sheet || this.session.loads() !== loads) return;
+      this.people.set(people);
+      const current = people.find((p) => p.id === id);
+      if (current && this.editing() === id) {
+        this.name.set(current.name);
+        this.grade.set(current.grade);
+      }
+    } catch {
+      // the error still shows; re-loading the sheet shows the current values
     }
   }
 

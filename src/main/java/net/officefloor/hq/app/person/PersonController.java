@@ -18,6 +18,7 @@ import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,7 +40,7 @@ public class PersonController {
     /**
      * A claim as shown: its amount with two decimals, its date, its note, its due: the amount at
      * the rate for its person's grade in force on its date (null when none is) or, once settled, the due fixed
-     * then, its status, its number (null while it has none) and who opened it (null while it has no number).
+     * then, its status, its number (null while it has none) and who opened it (null while it was never opened).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             Integer number, String openedBy) {
@@ -67,8 +68,8 @@ public class PersonController {
      * grade has no rate on the sheet's today, unless a settled claim that counts keeps a figure: then it is the sum
      * of the figures there are.
      */
-    public record PersonView(long id, String name, String grade, List<ClaimView> claims, String claimed,
-            String dueTotal) {
+    public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
+            String claimed, String dueTotal) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates) {
@@ -78,7 +79,7 @@ public class PersonController {
             boolean shown = rates.current(grade) != null || counting.stream().anyMatch(c -> c.getSettledDue() != null);
             BigDecimal dueTotal = shown ? counting.stream().map(c -> figure(c, grade, rates))
                     .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add) : null;
-            return new PersonView(person.getId(), person.getName(), grade,
+            return new PersonView(person.getId(), person.getVersion(), person.getName(), grade,
                     claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
                     money(dueTotal));
         }
@@ -88,8 +89,9 @@ public class PersonController {
         return amount == null ? null : amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
+    /** A person as entered; an edit carries the version its editor loaded (none: no check). */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, Long version) {
     }
 
     private final PersonService service;
@@ -124,7 +126,7 @@ public class PersonController {
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
-        return PersonView.of(service.edit(sheet, user.trim(), personId, form.name(), form.grade()),
+        return PersonView.of(service.edit(sheet, user.trim(), personId, form.version(), form.name(), form.grade()),
                 claims.forPerson(sheet, personId), rates.table(sheet));
     }
 
@@ -132,5 +134,11 @@ public class PersonController {
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public void nameInUse() {
+    }
+
+    /** Another save of the person committed between this edit's check and its write. */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
+    public void editedMeanwhile() {
     }
 }
