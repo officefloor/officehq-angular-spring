@@ -604,6 +604,9 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-unstate" (click)="unstate(p)">
                   Cancel last statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)">
+                  Download statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 <label [for]="'person-retire-date-' + p.id">Retire {{ p.name }} from</label>
                 <input
                   #retireDate
@@ -2131,6 +2134,33 @@ export class People {
     const link = document.createElement('a');
     link.href = url;
     link.download = `claims-${sheet}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
+  }
+
+  /** Download the person's statement as the store holds it now, as a CSV file: their claims bound by their last
+   *  statement, oldest first, each with the bound figure as the claim shows it. */
+  protected async exportStatement(p: Person): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const loads = this.session.loads();
+    const people = await firstValueFrom(
+      this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`),
+    );
+    if (this.session.sheet() !== sheet || this.session.loads() !== loads) return;
+    this.people.set(people);
+    const person = people.find((q) => q.id === p.id) ?? p;
+    const lines = [
+      'number,date,amount,figure,status',
+      ...[...person.claims]
+        .reverse()
+        .filter((c) => c.stated)
+        .map((c) => [c.number ?? '', c.date, c.amount, c.due ?? 'n/a', c.status].map(csvField).join(',')),
+    ];
+    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `statement-${sheet}-${person.id}.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url));
   }
