@@ -48,14 +48,15 @@ public final class Dues {
     }
 
     /**
-     * The amount at the rate in force on the claim's date for its person's grade in force then, rounded by
+     * The amount at the rate in force on the claim's date for its person's grade in force then (a forward-only
+     * rate only once the claim was added after it was saved), rounded by
      * its date (a correction by the date its rounding goes by), see {@link RateTable#rounding}; no floor. Null when no rate is.
      */
     private static BigDecimal rateFigure(Claim claim, Grades grades, RateTable rates) {
         String grade = grades.on(claim.getDate());
-        return claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()),
+        return claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate(), claim.getId()),
                 rates.rounding(claim.getRoundsBy()))
-                : rates.figure(claim.getAmount(), grade, claim.getDate());
+                : rates.figure(claim.getAmount(), grade, claim.getDate(), claim.getId());
     }
 
     /**

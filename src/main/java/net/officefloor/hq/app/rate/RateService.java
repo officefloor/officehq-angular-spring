@@ -59,19 +59,22 @@ public class RateService {
     /**
      * Set a grade's rate from a from-date (null: from the beginning of time) through a to-date (null: no
      * end). When the grade already has a rate from that date, its value is kept as an older version and this
-     * one becomes its newest version, the one in force.
+     * one becomes its newest version, the one in force. Saved with a from-date on or after the sheet's today,
+     * it is forward-only: it applies only to claims added after it was saved.
      */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         sheets.load(sheetId, user);
         BigDecimal scaled = pct.setScale(2, RoundingMode.HALF_UP);
         Rollup.Figures before = rollup.figures(sheetId);
+        Long forwardAfter = from != null && !from.isBefore(sheets.today(sheetId)) ? rates.maxClaimId() : null;
         Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from).orElse(null);
         if (rate == null) {
-            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled));
+            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled).forwardAfter(forwardAfter));
         } else {
             versions.save(new RateVersion(rate));
             rate.nextVersion(scaled, to);
+            rate.forwardAfter(forwardAfter);
             rates.flush();
         }
         events.publishEvent(new RateChanged(sheetId, user, grade, scaled, from, to));

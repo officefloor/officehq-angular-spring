@@ -12,6 +12,8 @@ interface Rate {
   pct: string;
   /** How many versions the rate has had; the newest is the one in force. */
   version: number;
+  /** Whether it was saved with a from-date on or after the sheet's today: it applies only to claims added after. */
+  forwardOnly: boolean;
 }
 
 /** What a candidate rate would do: how many claims' dues would differ, and the sum of the differences. */
@@ -74,6 +76,9 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
             }
             : <span data-testid="rate-pct">{{ r.pct }}</span>%
             (version <span data-testid="rate-version">{{ r.version }}</span>)
+            @if (r.forwardOnly) {
+              <span data-testid="rate-forward-only">forward-only</span>
+            }
           </li>
         }
       </ul>

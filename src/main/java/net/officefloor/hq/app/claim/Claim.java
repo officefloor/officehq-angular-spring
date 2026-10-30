@@ -225,6 +225,15 @@ public class Claim {
      * The claim as copied onto a clone of its sheet for the person there: as {@link #arriving}, keeping its
      * reference too.
      */
+    /**
+     * A copy rebuilt from a written-down sheet (never saved) carries the id the claim has in the store, so the
+     * forward-only rates saved after it was added are left out of its figures as they are for the claim itself.
+     */
+    public Claim restoredAs(Long id) {
+        this.id = id;
+        return this;
+    }
+
     public Claim cloned(String sheetId, Long personId) {
         Claim copy = arriving(sheetId, personId);
         copy.ref = ref;

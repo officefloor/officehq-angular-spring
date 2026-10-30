@@ -47,7 +47,7 @@ public class DayEnds {
     record PersonRow(long id, String name, List<GradeRow> grades, List<HoldRow> holds, LocalDate retiredFrom) {
     }
 
-    record RateRow(String grade, LocalDate from, LocalDate to, BigDecimal pct) {
+    record RateRow(String grade, LocalDate from, LocalDate to, BigDecimal pct, Long forwardAfter) {
     }
 
     record SettingRow(String key, LocalDate from, String value) {
@@ -97,7 +97,8 @@ public class DayEnds {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         State state = new State(sheet == null ? null : sheet.getPolicyDate(),
                 rates.findBySheetId(sheetId).stream()
-                        .map(r -> new RateRow(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())).toList(),
+                        .map(r -> new RateRow(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct(),
+                                r.getForwardAfter())).toList(),
                 settings.findBySheetId(sheetId).stream()
                         .map(s -> new SettingRow(s.getKey(), s.getFromDate(), s.getValue())).toList(),
                 people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
@@ -126,7 +127,8 @@ public class DayEnds {
         DatedSettings settingsThen = new DatedSettings(state.settings().stream()
                 .map(s -> new SheetSetting(sheetId, s.key(), s.from(), s.value())).toList());
         RateTable table = new RateTable(
-                state.rates().stream().map(r -> new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct())).toList(),
+                state.rates().stream().map(r -> new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct())
+                        .forwardAfter(r.forwardAfter())).toList(),
                 date, settingsThen, state.policyDate(), parents.from(sheetId, settingsThen.parent()));
         Map<Long, Person> byId = new LinkedHashMap<>();
         for (PersonRow row : state.people()) {
@@ -150,7 +152,7 @@ public class DayEnds {
     }
 
     private static Claim claim(String sheetId, ClaimRow row) {
-        Claim claim = new Claim(sheetId, row.personId(), row.amount(), row.date(), "", null);
+        Claim claim = new Claim(sheetId, row.personId(), row.amount(), row.date(), "", null).restoredAs(row.id());
         claim.setStatus(row.status());
         claim.setCorrectsDate(row.correctsDate());
         claim.setDueBy(row.dueBy());

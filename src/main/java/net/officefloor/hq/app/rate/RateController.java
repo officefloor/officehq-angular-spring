@@ -34,13 +34,14 @@ public class RateController {
 
     /**
      * A grade's rate as shown: its from-date (null: from the beginning of time), a percent with two decimals,
-     * and how many versions it has had.
+     * how many versions it has had, and whether it is forward-only (applies only to claims added after it was saved).
      */
-    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int version) {
+    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int version, boolean forwardOnly) {
 
         static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getFromDate(), rate.getToDate(),
-                    rate.getPct().setScale(2, RoundingMode.HALF_UP).toPlainString(), rate.getVersion());
+                    rate.getPct().setScale(2, RoundingMode.HALF_UP).toPlainString(), rate.getVersion(),
+                    rate.getForwardAfter() != null);
         }
     }
 

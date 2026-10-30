@@ -39,6 +39,13 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    /**
+     * Set when the rate was saved with a from-date on or after the sheet's today: it is forward-only, applying
+     * only to claims whose id is above this one (those added after it was saved). Null: it applies to every claim.
+     */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     /** How many versions the rate has had, this one the newest; 1 when it was set once. */
     @Column(name = "version", nullable = false)
     private int version = 1;
@@ -83,6 +90,21 @@ public class Rate {
         this.version++;
         this.pct = pct;
         this.toDate = toDate;
+    }
+
+    public Long getForwardAfter() {
+        return forwardAfter;
+    }
+
+    /** Make the rate forward-only past the claim id given, or (null) apply it to every claim. */
+    public Rate forwardAfter(Long claimId) {
+        this.forwardAfter = claimId;
+        return this;
+    }
+
+    /** Whether the rate applies to the claim: not forward-only, or the claim was added after it was saved (or is not stored yet). */
+    public boolean appliesTo(Long claimId) {
+        return forwardAfter == null || claimId == null || claimId > forwardAfter;
     }
 
     public BigDecimal getPct() {

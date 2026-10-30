@@ -119,8 +119,13 @@ public class SheetCloneService {
                 .forEach(s -> settings.save(new SheetSetting(toSheet, s.getKey(), s.getFromDate(), s.getValue())));
         roles.findBySheetIdOrderByUserName(sheetId)
                 .forEach(r -> roles.save(new SheetRole(toSheet, r.getUserName(), r.getRole())));
-        rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).forEach(r -> rates
-                .save(new Rate(toSheet, r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())));
+        Map<Rate, Long> forwardOnly = new HashMap<>();
+        rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).forEach(r -> {
+            Rate copy = rates.save(new Rate(toSheet, r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct()));
+            if (r.getForwardAfter() != null) {
+                forwardOnly.put(copy, r.getForwardAfter());
+            }
+        });
         holidays.findBySheetIdOrderByDayAsc(sheetId).forEach(h -> holidays.save(new Holiday(toSheet, h.getDay())));
         voidReasons.findBySheetIdOrderByIdAsc(sheetId)
                 .forEach(v -> voidReasons.save(new VoidReason(toSheet, v.getReason())));
@@ -162,6 +167,7 @@ public class SheetCloneService {
         List<Claim> copies = new ArrayList<>();
         Map<Claim, String> oldNumbers = new HashMap<>();
         Map<Claim, LocalDate> openedOn = new HashMap<>();
+        Map<Claim, Long> originalIds = new HashMap<>();
         for (Person person : theirs) {
             for (Claim claim : byPerson.getOrDefault(person.getId(), List.of())) {
                 Claim copy = claim.cloned(toSheet, personIds.get(person.getId()));
@@ -170,9 +176,15 @@ public class SheetCloneService {
                     oldNumbers.put(copy, claim.getShownNumber());
                 }
                 openedOn.put(copy, openedOn(claim));
+                originalIds.put(copy, claim.getId());
             }
         }
         claims.saveAllAndFlush(copies);
+        // a forward-only rate stays one: the copies of the claims added before it was saved keep leaving it out
+        long beforeCopies = copies.stream().mapToLong(Claim::getId).min().orElse(rates.maxClaimId() + 1) - 1;
+        forwardOnly.forEach((rate, after) -> rate.forwardAfter(copies.stream()
+                .filter(c -> originalIds.get(c) <= after).mapToLong(Claim::getId).max().orElse(beforeCopies)));
+        rates.flush();
 
         Map<String, String> renumbered = new HashMap<>();
         copies.stream().filter(oldNumbers::containsKey).sorted(Comparator.comparing(openedOn::get))

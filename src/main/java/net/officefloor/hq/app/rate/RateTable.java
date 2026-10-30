@@ -37,15 +37,25 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
      * this sheet has none in force, the parent sheet's, then its parent's, up to three levels up.
      */
     public BigDecimal on(String grade, LocalDate date) {
-        BigDecimal pct = on(rates, grade, date);
+        return on(grade, date, null);
+    }
+
+    /**
+     * The percent in force for the grade on the date for the claim with the id given, as {@link #on(String, LocalDate)}
+     * but leaving out the forward-only rates saved before the claim was added (see {@link Rate#appliesTo}); a null
+     * id leaves out none.
+     */
+    public BigDecimal on(String grade, LocalDate date, Long claimId) {
+        BigDecimal pct = on(rates, grade, date, claimId);
         for (int i = 0; pct == null && i < ancestors.size() && i < ANCESTOR_LEVELS; i++) {
-            pct = on(ancestors.get(i), grade, date);
+            pct = on(ancestors.get(i), grade, date, claimId);
         }
         return pct;
     }
 
-    private static BigDecimal on(List<Rate> rates, String grade, LocalDate date) {
-        return latest(rates, grade, date).filter(r -> !ended(r, date)).map(Rate::getPct).orElse(null);
+    private static BigDecimal on(List<Rate> rates, String grade, LocalDate date, Long claimId) {
+        return latest(rates.stream().filter(r -> r.appliesTo(claimId)).toList(), grade, date)
+                .filter(r -> !ended(r, date)).map(Rate::getPct).orElse(null);
     }
 
     /**
@@ -116,7 +126,12 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
      * rounded by the date, with no floor; null when no rate is.
      */
     public BigDecimal figure(BigDecimal amount, String grade, LocalDate date) {
-        return RateService.due(amount, on(grade, date), rounding(date));
+        return figure(amount, grade, date, null);
+    }
+
+    /** The rate figure of the claim with the id given, as {@link #figure(BigDecimal, String, LocalDate)} at the rate in force for it, see {@link #on(String, LocalDate, Long)}. */
+    public BigDecimal figure(BigDecimal amount, String grade, LocalDate date, Long claimId) {
+        return RateService.due(amount, on(grade, date, claimId), rounding(date));
     }
 
     /** A live due held up to the floor in force on the date: the greater of the two; null when the due is. */
