@@ -114,8 +114,8 @@ public class Rollup {
 
     /**
      * Announce the figures the change moved since {@code before}: each person whose figures changed (one
-     * who did not exist before counting as changed), then the totals when they changed. Nothing when no
-     * figure moved.
+     * who did not exist before counting as changed), then the totals when they changed, then each person whose
+     * due-total went from at or below the alert threshold (or none) to above it. Nothing when no figure moved.
      */
     public void changed(String sheetId, String user, Figures before) {
         Figures after = figures(sheetId);
@@ -126,9 +126,24 @@ public class Rollup {
             }
         });
         Totals totals = Objects.equals(before.totals(), after.totals()) ? null : after.totals();
-        if (!moved.isEmpty() || totals != null) {
-            events.publishEvent(new RollupChanged(sheetId, user, moved, totals));
+        BigDecimal threshold = new DatedSettings(settings.findBySheetId(sheetId)).alertThreshold();
+        List<PersonFigures> alerts = new ArrayList<>();
+        if (threshold != null) {
+            after.people().forEach((id, now) -> {
+                PersonFigures was = before.people().get(id);
+                if (above(now, threshold) && (was == null || !above(was, threshold))) {
+                    alerts.add(now);
+                }
+            });
         }
+        if (!moved.isEmpty() || totals != null) {
+            events.publishEvent(new RollupChanged(sheetId, user, moved, totals, alerts));
+        }
+    }
+
+    /** Whether the person's due-total is above the threshold; never when they have none. */
+    private static boolean above(PersonFigures figures, BigDecimal threshold) {
+        return !"n/a".equals(figures.dueTotal()) && new BigDecimal(figures.dueTotal()).compareTo(threshold) > 0;
     }
 
     private static String money(BigDecimal amount) {

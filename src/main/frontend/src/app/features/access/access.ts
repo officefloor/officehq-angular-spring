@@ -31,6 +31,8 @@ interface Settings {
   entryDate: string | null;
   /** The sheet's pot, shared out over each balanced pool, with two decimals; null when there is none. Not dated. */
   pot: string | null;
+  /** A person whose due-total goes above it is alerted (two decimals); null when blank (off). Not dated. */
+  alertThreshold: string | null;
   /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; null when none. Not dated. */
   parent: string | null;
   /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
@@ -219,6 +221,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       }
       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
       <p>Pot <strong data-testid="setting-pot-current">{{ pot() ?? '' }}</strong></p>
+      <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</strong></p>
       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
@@ -382,6 +385,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="potInput.set(value($event)); potTouched = true; settingsError.set('')"
           (keydown)="potTouched = potTouched || clears($event)"
         />
+        <label for="setting-alert-threshold">Alert when a person's due-total goes above (blank: off)</label>
+        <input
+          id="setting-alert-threshold"
+          inputmode="decimal"
+          data-testid="setting-alert-threshold"
+          [value]="alertThresholdInput()"
+          (input)="alertThresholdInput.set(value($event)); alertThresholdTouched = true; settingsError.set('')"
+          (keydown)="alertThresholdTouched = alertThresholdTouched || clears($event)"
+        />
         <label for="setting-parent">Parent sheet id: its rates are used for a grade with none in force (blank: none)</label>
         <input
           id="setting-parent"
@@ -526,6 +538,8 @@ export class Access {
   protected readonly entryDateInput = signal('');
   protected readonly pot = signal<string | null>(null);
   protected readonly potInput = signal('');
+  protected readonly alertThreshold = signal<string | null>(null);
+  protected readonly alertThresholdInput = signal('');
   protected readonly parent = signal<string | null>(null);
   protected readonly parentInput = signal('');
   protected readonly fiscalStartMonth = signal('1');
@@ -559,6 +573,7 @@ export class Access {
   protected graceDaysTouched = false;
   protected entryDateTouched = false;
   protected potTouched = false;
+  protected alertThresholdTouched = false;
   protected parentTouched = false;
   protected fiscalStartMonthTouched = false;
   protected capTouched = false;
@@ -582,7 +597,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -758,6 +773,11 @@ export class Access {
       this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const alertThreshold = this.alertThresholdInput().trim();
+    if (this.alertThresholdTouched && alertThreshold !== '' && !LIMIT.test(alertThreshold)) {
+      this.settingsError.set('Enter an alert threshold of 0.00 or more, with up to two decimals, or leave it blank for off.');
+      return;
+    }
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     if (this.fiscalStartMonthTouched && fiscalStartMonth !== '' && !MONTH.test(fiscalStartMonth)) {
       this.settingsError.set('Enter a fiscal year start month from 1 to 12, or leave it blank for 1.');
@@ -818,6 +838,7 @@ export class Access {
     }
     if (this.entryDateTouched) body.entryDate = entryDate;
     if (this.potTouched) body.pot = pot;
+    if (this.alertThresholdTouched) body.alertThreshold = alertThreshold;
     if (this.parentTouched) body.parent = this.parentInput().trim();
     if (this.fiscalStartMonthTouched) body.fiscalStartMonth = fiscalStartMonth === '' ? '' : String(Number(fiscalStartMonth));
     if (this.capTouched) body.cap = cap;
@@ -896,6 +917,9 @@ export class Access {
     this.pot.set(settings.pot);
     this.potInput.set(settings.pot ?? '');
     this.potTouched = false;
+    this.alertThreshold.set(settings.alertThreshold);
+    this.alertThresholdInput.set(settings.alertThreshold ?? '');
+    this.alertThresholdTouched = false;
     this.parent.set(settings.parent);
     this.parentInput.set(settings.parent ?? '');
     this.parentTouched = false;

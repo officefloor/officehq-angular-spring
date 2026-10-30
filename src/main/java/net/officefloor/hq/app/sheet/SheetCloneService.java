@@ -37,7 +37,6 @@ import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.Rollup;
-import net.officefloor.hq.app.rollup.RollupChanged;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -194,8 +193,8 @@ public class SheetCloneService {
 
         events.publishEvent(new SheetCloned(sheetId, user, toSheet, null));
         events.publishEvent(new SheetCloned(toSheet, user, null, sheetId));
-        Rollup.Figures figures = rollup.figures(toSheet);
-        events.publishEvent(new RollupChanged(toSheet, user, List.copyOf(figures.people().values()), figures.totals()));
+        // the copy had no figures before: everyone and the totals count as moved
+        rollup.changed(toSheet, user, new Rollup.Figures(Map.of(), null));
         return sheet;
     }
 

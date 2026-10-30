@@ -76,6 +76,8 @@ public class AccessService {
 
     public static final String POT = DatedSettings.POT;
 
+    public static final String ALERT_THRESHOLD = DatedSettings.ALERT_THRESHOLD;
+
     public static final String PARENT = DatedSettings.PARENT;
 
     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
@@ -256,7 +258,8 @@ public class AccessService {
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
-            Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth) {
+            Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
+            String alertThreshold) {
         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
@@ -318,6 +321,9 @@ public class AccessService {
         if (pot != null) {
             setPot(sheetId, user, money(pot, null));
         }
+        if (alertThreshold != null) {
+            setAlertThreshold(sheetId, user, money(alertThreshold, null));
+        }
         if (parent != null) {
             setParent(sheetId, user, parent.isEmpty() ? null : parent);
         }
@@ -363,15 +369,29 @@ public class AccessService {
      */
     @Transactional
     public void setPot(String sheetId, String user, String pot) {
+        setUndated(sheetId, user, POT, pot);
+    }
+
+    /**
+     * Record the sheet's alert threshold, two decimals (null: off). Not dated: the value holds from the beginning
+     * of time, replacing the one it had.
+     */
+    @Transactional
+    public void setAlertThreshold(String sheetId, String user, String threshold) {
+        setUndated(sheetId, user, ALERT_THRESHOLD, threshold);
+    }
+
+    /** Record an undated setting as written (null: none), replacing the one it had. */
+    private void setUndated(String sheetId, String user, String key, String value) {
         sheets.load(sheetId, user);
-        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, POT, null).orElse(null);
+        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, key, null).orElse(null);
         if (row == null) {
-            settingRows.saveAndFlush(new SheetSetting(sheetId, POT, null, pot));
+            settingRows.saveAndFlush(new SheetSetting(sheetId, key, null, value));
         } else {
-            row.setValue(pot);
+            row.setValue(value);
             settingRows.flush();
         }
-        events.publishEvent(new SettingChanged(sheetId, user, POT, pot == null ? "" : pot, null));
+        events.publishEvent(new SettingChanged(sheetId, user, key, value == null ? "" : value, null));
     }
 
     /**

@@ -32,6 +32,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's pot, shared out over each balanced pool; not dated. */
     public static final String POT = "pot";
 
+    /** A person whose due-total goes above it is alerted; not dated. */
+    public static final String ALERT_THRESHOLD = "alert-threshold";
+
     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
     public static final String PARENT = "parent";
 
@@ -146,6 +149,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's pot (not dated: it holds on every date); null when there is none. */
     public BigDecimal pot() {
         return on(POT, LocalDate.MAX).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The sheet's alert threshold (not dated: it holds on every date); null when it is off. */
+    public BigDecimal alertThreshold() {
+        return on(ALERT_THRESHOLD, LocalDate.MAX).map(BigDecimal::new).orElse(null);
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in (not dated); 1 when none is set. */

@@ -359,5 +359,9 @@ public class SheetAudit {
                     + " claimed-total=" + e.totals().claimed() + " due-total=" + e.totals().dueTotal()
                     + " overdue-total=" + e.totals().overdueTotal());
         }
+        for (Rollup.PersonFigures p : e.alerts()) {
+            audit.record("ALERT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + p.name()
+                    + " due-total=" + p.dueTotal());
+        }
     }
 }
