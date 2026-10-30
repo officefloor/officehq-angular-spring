@@ -16,12 +16,13 @@ import { Crews } from '../crews/crews';
 import { AuditViewer } from '../audit-viewer/audit-viewer';
 import { TreeSearch } from '../tree-search/tree-search';
 import { Duplicates } from '../duplicates/duplicates';
+import { PolicyViewer } from '../policy-viewer/policy-viewer';
 import { PlanStore } from '../plans/plans';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [FigPipe, People, Rates, Settings, Grades, Delegation, Holidays, VoidReasons, Notes, ClaimTemplates, Pools, Crews, TreeSearch, Duplicates, AuditViewer],
+  imports: [FigPipe, People, Rates, Settings, Grades, Delegation, Holidays, VoidReasons, Notes, ClaimTemplates, Pools, Crews, TreeSearch, Duplicates, PolicyViewer, AuditViewer],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user | fig }}</strong></p>
@@ -134,6 +135,7 @@ import { PlanStore } from '../plans/plans';
         <app-crews />
         <app-tree-search />
         <app-duplicates />
+        <app-policy-viewer />
         <app-audit-viewer />
       }
     } @else {

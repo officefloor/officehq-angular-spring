@@ -308,10 +308,14 @@ public class Sheet {
                 .max(Comparator.comparing(DatedSetting::getFrom));
     }
 
+    /** The policy versions, in the order recorded: the values recorded for the policy settings. */
+    public List<SettingChange> policyChanges() {
+        return settingChanges.stream().filter(c -> POLICY_KEYS.contains(c.getKey())).toList();
+    }
+
     /** The from-dates of the policy versions, in the order recorded (a null from-date counts on every date). */
     public List<LocalDate> policyVersionFroms() {
-        return settingChanges.stream().filter(c -> POLICY_KEYS.contains(c.getKey())).map(SettingChange::getFrom)
-                .toList();
+        return policyChanges().stream().map(SettingChange::getFrom).toList();
     }
 
     /** The current policy version: how many have been recorded; 0 for none. */

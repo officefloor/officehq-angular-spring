@@ -25,6 +25,7 @@ import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.SettingChange;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.sheet.TodayChanged;
@@ -103,6 +104,29 @@ public class ClaimService {
             counts.getOrDefault(p.getId(), Map.of()).forEach((k, n) -> {
                 if (n >= 2) lines.add(p.getName() + " " + k.date() + " " + k.amount().toPlainString() + " x" + n);
             });
+        }
+        return lines;
+    }
+
+    /**
+     * The sheet's policy versions, oldest first: one line {@code <version> <from> <key>=<value> <count>} each, where
+     * the count is of the claims (DELETED ones left out) whose policy version, the one in force on their date, it is.
+     */
+    @Transactional(readOnly = true)
+    public List<String> policy(String sheetId) {
+        Sheet sheet = sheets.load(sheetId);
+        Map<Integer, Integer> counts = new HashMap<>();
+        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (c.getStatus() == ClaimStatus.DELETED) continue;
+            counts.merge(sheet.policyVersionOn(c.getDate()), 1, Integer::sum);
+        }
+        List<String> lines = new ArrayList<>();
+        List<SettingChange> changes = sheet.policyChanges();
+        for (int i = 0; i < changes.size(); i++) {
+            SettingChange ch = changes.get(i);
+            int version = i + 1;
+            lines.add(version + " " + (ch.getFrom() == null ? "start" : ch.getFrom()) + " " + ch.getKey() + "="
+                    + (ch.getValue() == null ? "" : ch.getValue()) + " " + counts.getOrDefault(version, 0));
         }
         return lines;
     }

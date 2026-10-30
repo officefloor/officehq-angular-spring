@@ -143,6 +143,13 @@ public class ClaimController {
         return service.duplicates(sheetId);
     }
 
+    /** The sheet's policy versions, oldest first, one line each with the count of claims whose version it is. */
+    @GetMapping("/claims/policy")
+    public List<String> policy(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.policy(sheetId);
+    }
+
     @GetMapping("/claims/{id}/timeline")
     public List<String> timeline(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
