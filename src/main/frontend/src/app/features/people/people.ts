@@ -173,6 +173,7 @@ function csvField(value: string): string {
       </p>
       <p>
         <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
+        <span>Last batch <strong data-testid="bulk-settle-batch">{{ settleBatch() ?? '' }}</strong></span>
         @if (bulkSettled(); as r) {
           <span>Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong></span>
           <span>Refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong></span>
@@ -441,6 +442,8 @@ export class People {
   /** How many of the selected claims the last bulk settle settled and refused; null while it runs. */
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal('');
+  /** The number of the sheet's last settle batch; null when there has been none. */
+  protected readonly settleBatch = signal<number | null>(null);
   /** A bulk settle still waiting for its answer: another press meanwhile is ignored. */
   private bulkSettling = false;
   /** The id of the person the selected claims are to be moved to; blank until one is chosen. */
@@ -517,6 +520,7 @@ export class People {
       this.bulkOpenError.set('');
       this.bulkSettled.set(null);
       this.bulkSettleError.set('');
+      this.settleBatch.set(null);
       this.bulkReassignTo.set('');
       this.bulkReassigned.set(null);
       this.bulkReassignError.set('');
@@ -1112,17 +1116,21 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, watched] = await Promise.all([
+    const [people, watched, batch] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
       firstValueFrom(
         this.http.get<number[]>(`/api/sheets/${encodeURIComponent(sheet)}/watches`, {
           headers: { 'X-User': this.session.user() ?? '' },
         }),
       ),
+      firstValueFrom(
+        this.http.get<{ last: number | null }>(`/api/sheets/${encodeURIComponent(sheet)}/claims/settle-batch`),
+      ),
     ]);
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.people.set(people);
       this.watched.set(new Set(watched));
+      this.settleBatch.set(batch.last);
     }
   }
 }

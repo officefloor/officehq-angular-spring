@@ -56,13 +56,13 @@ public class PersonController {
      * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
      * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}),
      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
-     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, and whether it counts in the live totals (see {@link Dues#counts}).
+     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}) and the bulk settle batch that settled it (null when none).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
-            String voidReason, List<CommentView> comments, boolean counts) {
+            String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates, Holds held) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
@@ -74,7 +74,7 @@ public class PersonController {
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     Tags.list(claim.getTags()), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(),
-                    Dues.counts(claim, held, rates.today()));
+                    Dues.counts(claim, held, rates.today()), claim.getSettleBatch());
         }
     }
 

@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.claim;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
@@ -10,7 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
  * Settles a selection of claims together, in list order: the people in the order they were added,
  * each person's newest claim first. Each claim is settled on its own by the rules of settling one, so
  * one that cannot be settled is refused and left as it is while the rest go through; one left PENDING
- * (a clerk over the clerk limit) counts as settled.
+ * (a clerk over the clerk limit) counts as settled. A bulk settle that settles at least one claim is the
+ * sheet's next settle batch, numbered 1, 2, ..., and each claim it settled shows that number.
  */
 @Service
 public class BulkSettleService {
@@ -32,15 +35,18 @@ public class BulkSettleService {
         if (access.isArchived(sheetId) || access.isViewer(sheetId, user)) {
             return new Result(0, claimIds.size()); // an archived sheet, or a viewer, changes nothing: every one refused
         }
-        int settled = 0;
+        List<Long> settled = new ArrayList<>();
         for (Claim c : selected.inListOrder(sheetId, claimIds)) {
             try {
                 claims.move(sheetId, user, c.getId(), ClaimStatus.SETTLED);
-                settled++;
+                settled.add(c.getId());
             } catch (ResponseStatusException | ClosedPeriodRefused refused) {
                 // refused: left as it is
             }
         }
-        return new Result(settled, claimIds.size() - settled);
+        if (!settled.isEmpty()) {
+            claims.settleBatch(sheetId, settled);
+        }
+        return new Result(settled.size(), claimIds.size() - settled.size());
     }
 }

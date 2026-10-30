@@ -69,6 +69,10 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** The bulk settle batch that settled the claim (to SETTLED or PENDING); null when settled one at a time or never. */
+    @Column(name = "settle_batch")
+    private Integer settleBatch;
+
     /** The user who last edited the claim; null while never edited. */
     @Column(name = "edited_by")
     private String editedBy;
@@ -343,6 +347,14 @@ public class Claim {
     /** The number as shown: its period number, or its sheet-wide number; null while it has none. */
     public String getShownNumber() {
         return periodNumber != null ? periodNumber : number == null ? null : number.toString();
+    }
+
+    public Integer getSettleBatch() {
+        return settleBatch;
+    }
+
+    public void setSettleBatch(Integer settleBatch) {
+        this.settleBatch = settleBatch;
     }
 
     public String getSplitFrom() {

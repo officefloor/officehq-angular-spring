@@ -38,6 +38,10 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
+    /** The number of the last bulk settle that settled a claim on the sheet; 0 before any. */
+    @Column(name = "last_settle_batch", nullable = false)
+    private int lastSettleBatch;
+
     /** The date a claim's rounding turns on: half up before it, half to even on or after it; null: the sheet's today. */
     @Column(name = "policy_date")
     private LocalDate policyDate;
@@ -113,6 +117,10 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public int getLastSettleBatch() {
+        return lastSettleBatch;
     }
 
     public boolean isArchived() {

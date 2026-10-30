@@ -107,6 +107,24 @@ public class SheetService {
     }
 
     /**
+     * Take the sheet's next settle batch number (1, 2, ...); two bulk settles at the same moment wait on each
+     * other, so no number is given twice or skipped.
+     */
+    @Transactional
+    public int nextSettleBatch(String id) {
+        if (sheets.bumpSettleBatch(id) != 1) {
+            throw new IllegalStateException("No such sheet " + id);
+        }
+        return sheets.lastSettleBatch(id);
+    }
+
+    /** The number of the sheet's last settle batch; 0 when there has been none (or no such sheet). */
+    public int lastSettleBatch(String id) {
+        Integer last = sheets.lastSettleBatch(id);
+        return last == null ? 0 : last;
+    }
+
+    /**
      * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
      * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
      * days are closed) and then the figures it moves. The sheet as it stands is first written down as at
@@ -118,7 +136,7 @@ public class SheetService {
         Sheet sheet = load(id, user);
         Rollup.Figures before = rollup.figures(id);
         if (!today.equals(sheet.getToday())) {
-            events.publishEvent(new DaySnapshot(id, user, List.copyOf(before.people().values())));
+            events.publishEvent(new DaySnapshot(id, user, sheet.getToday(), List.copyOf(before.people().values())));
             dayEnds.record(id, sheet.getToday());
             pasts.record(id, sheet.getToday());
         }

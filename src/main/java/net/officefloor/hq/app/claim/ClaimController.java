@@ -102,6 +102,10 @@ public class ClaimController {
     public record CommentForm(@NotBlank @Size(max = 1000) String text) {
     }
 
+    /** The number of the sheet's last settle batch; null when there has been none. */
+    public record SettleBatchView(Integer last) {
+    }
+
     public record Refusal(String message) {
     }
 
@@ -216,6 +220,13 @@ public class ClaimController {
     public BulkSettleService.Result settleAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkOpenForm form) {
         return bulkSettle.settle(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()));
+    }
+
+    /** The number of the sheet's last settle batch (null when none). */
+    @GetMapping("/claims/settle-batch")
+    public SettleBatchView settleBatch(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        int last = claims.lastSettleBatch(sheetId.trim());
+        return new SettleBatchView(last == 0 ? null : last);
     }
 
     /** Move the selected claims to a person in list order; answers how many were moved and how many refused. */

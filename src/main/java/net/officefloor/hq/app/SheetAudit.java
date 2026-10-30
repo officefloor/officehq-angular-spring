@@ -250,9 +250,12 @@ public class SheetAudit {
 
     @TransactionalEventListener
     public void on(DaySnapshot e) {
+        // the day being left decides whether the user acted in a delegated role, not the today it moves to
+        String delegator = access.delegator(e.sheetId(), e.user(), e.day());
         for (Rollup.PersonFigures p : e.people()) {
-            audit.record("SNAPSHOT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + p.name()
-                    + " due-total=" + p.dueTotal());
+            String line = "SNAPSHOT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + p.name()
+                    + " due-total=" + p.dueTotal();
+            audit.record(delegator == null ? line : line + " for=" + delegator);
         }
     }
 

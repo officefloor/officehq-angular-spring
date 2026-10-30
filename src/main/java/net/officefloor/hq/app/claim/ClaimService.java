@@ -285,6 +285,25 @@ public class ClaimService {
     }
 
     /**
+     * Number a bulk settle that settled the claims (to SETTLED or PENDING) as the sheet's next settle batch,
+     * each claim showing it. Returns the batch number.
+     */
+    @Transactional
+    public int settleBatch(String sheetId, List<Long> claimIds) {
+        int batch = sheets.nextSettleBatch(sheetId);
+        for (long id : claimIds) {
+            claim(sheetId, id).setSettleBatch(batch);
+        }
+        claims.flush();
+        return batch;
+    }
+
+    /** The number of the sheet's last settle batch; 0 when there has been none. */
+    public int lastSettleBatch(String sheetId) {
+        return sheets.lastSettleBatch(sheetId);
+    }
+
+    /**
      * Move a claim to a status as {@link #move(String, String, long, ClaimStatus)}; a claim is voided with the
      * given reason, which while the sheet's list of void reasons is not empty must be on it, else the void is
      * refused (see {@link VoidReasons#require}).

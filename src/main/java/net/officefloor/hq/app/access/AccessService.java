@@ -131,8 +131,13 @@ public class AccessService {
         if (made.isEmpty()) {
             return null;
         }
-        LocalDate today = sheets.today(sheetId);
-        return made.stream().filter(d -> d.covers(today)).map(Delegation::getDelegatedBy).findFirst().orElse(null);
+        return delegator(sheetId, user, sheets.today(sheetId));
+    }
+
+    /** The steward whose role the user acts in on the given day by a delegation covering it; null when none. */
+    public String delegator(String sheetId, String user, LocalDate on) {
+        return delegations.findBySheetIdAndUserNameOrderByIdDesc(sheetId, user).stream().filter(d -> d.covers(on))
+                .map(Delegation::getDelegatedBy).findFirst().orElse(null);
     }
 
     /**

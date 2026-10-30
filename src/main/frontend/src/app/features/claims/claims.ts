@@ -46,6 +46,8 @@ export interface Claim {
   proofs: number;
   /** For a claim split off another, the number of the claim it was split from, as shown; null otherwise. */
   splitFrom: string | null;
+  /** The number of the bulk settle batch that settled the claim (to SETTLED or PENDING); null when settled one at a time or never. */
+  settleBatch: number | null;
   /** The user whose open editor locks the claim for everyone else; null when no editor holds it. */
   lockedBy: string | null;
   /** Whether the claim was added while its period was soft-closed. */
@@ -189,6 +191,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+          <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <button type="button" data-testid="claim-remind" (click)="remind(c)">
