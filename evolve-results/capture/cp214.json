@@ -1,0 +1,64 @@
+{
+  "checkpoint": 214,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp214_max-open-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e5b472b0370fd80179ee38cbd6a72dfcf0d92ac1",
+  "reset_sha": "",
+  "preagent_sha": "dd8ff19740a2caf487e57e52f1593f3782e3b135",
+  "prev_sha": "dd8ff19740a2caf487e57e52f1593f3782e3b135",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8512266000000002,
+    "input_tokens": 40,
+    "output_tokens": 7947,
+    "cache_read_tokens": 977273,
+    "cache_creation_tokens": 62084,
+    "num_turns": 21,
+    "duration_ms": 279558,
+    "duration_api_ms": 74165,
+    "model": "claude-opus-5-5",
+    "session_id": "ad976807-f0d1-44e2-9dce-3c2b4fc3a23f",
+    "stop_reason": "success",
+    "result_text": "I added a sheet setting for the maximum number of open claims per person (`max-open`). All 4 Playwright tests in `bin/e2e` pass.\n\n**How it behaves**\n- **Setting:** it's a whole number in the settings form, and blank means no limit. It isn't dated: one value applies on every date. Saving it writes `SETTING_CHANGED \u2026 key=max-open value=<n>`, or `value=` when it's cleared. No schema change was needed, because it uses the existing settings table.\n- **The rule:** opening a draft claim is refused when its person already has that many OPEN or PENDING claims. The claim being opened isn't counted.\n- **All three ways of opening:** the single open button, bulk open and paste all go through the same server-side open step, so the limit applies to each.\n  - A single open that's refused shows the claim's error and changes nothing.\n  - Bulk open refuses just the claims over the limit and opens the rest, as it already did for other refusals.\n  - A paste is all-or-nothing as before: if any line goes over the limit, nothing in the paste is added.\n\n**Changes**\n- `DatedSettings.java`: the `max-open` key and a `maxOpen()` getter.\n- `AccessService.java` and `AccessController.java`: the setting is saved, returned and validated (form field `maxOpen`).\n- `ClaimService.java`: a new `requireUnderMaxOpen` check, which runs next to the existing period cap check whenever a claim is opened.\n- `features/access/access.ts`: the `setting-max-open` input and the `setting-max-open-current` display, with checks in the form.\n\n**Two behaviours you might not expect**\n- A claim above the review threshold goes to REVIEW instead of OPEN when it's opened. The limit is still checked first, so a person at the limit can't send a claim to review either.\n- The limit only blocks opening new claims. If a person already has more open claims than a newly saved maximum, nothing changes for those claims.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8512266000000002,
+        "num_turns": 21,
+        "duration_ms": 279558,
+        "duration_api_ms": 74165,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp214.agent.jsonl",
+  "agent_diff_file": "cp214.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

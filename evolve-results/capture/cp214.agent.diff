@@ -1,0 +1,245 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index aaeffb3b8..7aff28260 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -43,6 +43,8 @@ interface Settings {
+   scoreHigh: string | null;
+   /** While on, changing the sheet's today writes everyone's score on the day being left; null when off. Not dated. */
+   scoreLog: string | null;
++  /** A person may have at most this many OPEN or PENDING claims; null when there is no maximum. A whole number, not dated. */
++  maxOpen: string | null;
+   /** The kinds of proof (receipt, photo), comma separated, a claim above the proof threshold needs one of each of; null when none. Not dated. */
+   proofKinds: string | null;
+   /** The grade quick-add and an import line with a blank grade give a new person; null when blank (A). Not dated. */
+@@ -260,6 +262,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+       <p>Score mid threshold <strong data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</strong></p>
+       <p>Score high threshold <strong data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</strong></p>
+       <p>Score log <strong data-testid="setting-score-log-current">{{ scoreLog() ?? '' }}</strong></p>
++      <p>Max open claims per person <strong data-testid="setting-max-open-current">{{ maxOpen() ?? '' }}</strong></p>
+       <p>Proof kinds <strong data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</strong></p>
+       <p>Default grade <strong data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</strong></p>
+       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
+@@ -514,6 +517,15 @@ const ROUNDING = /^(half-up|half-even)$/;
+           (input)="scoreLogInput.set(value($event)); scoreLogTouched = true; settingsError.set('')"
+           (keydown)="scoreLogTouched = scoreLogTouched || clears($event)"
+         />
++        <label for="setting-max-open">Max open claims: opening a claim is refused while its person has this many OPEN or PENDING (a whole number; blank: none)</label>
++        <input
++          id="setting-max-open"
++          inputmode="numeric"
++          data-testid="setting-max-open"
++          [value]="maxOpenInput()"
++          (input)="maxOpenInput.set(value($event)); maxOpenTouched = true; settingsError.set('')"
++          (keydown)="maxOpenTouched = maxOpenTouched || clears($event)"
++        />
+         <label for="setting-proof-kinds">Proof kinds: a claim above the proof threshold needs a proof of each (comma separated, receipt or photo; blank: none)</label>
+         <input
+           id="setting-proof-kinds"
+@@ -707,6 +719,8 @@ export class Access {
+   protected readonly scoreHighInput = signal('');
+   protected readonly scoreLog = signal<string | null>(null);
+   protected readonly scoreLogInput = signal('');
++  protected readonly maxOpen = signal<string | null>(null);
++  protected readonly maxOpenInput = signal('');
+   protected readonly proofKinds = signal<string | null>(null);
+   protected readonly proofKindsInput = signal('');
+   protected readonly defaultGrade = signal<string | null>(null);
+@@ -755,6 +769,7 @@ export class Access {
+   protected scoreMidTouched = false;
+   protected scoreHighTouched = false;
+   protected scoreLogTouched = false;
++  protected maxOpenTouched = false;
+   protected proofKindsTouched = false;
+   protected defaultGradeTouched = false;
+   protected parentTouched = false;
+@@ -781,7 +796,7 @@ export class Access {
+       this.delegateFrom.set('');
+       this.delegateTo.set('');
+       this.delegateError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -1004,6 +1019,11 @@ export class Access {
+       this.settingsError.set('Enter on for the score log, or leave it blank for off.');
+       return;
+     }
++    const maxOpen = this.maxOpenInput().trim();
++    if (this.maxOpenTouched && maxOpen !== '' && !DAYS.test(maxOpen)) {
++      this.settingsError.set('Enter the max open claims as a whole number, or leave it blank for none.');
++      return;
++    }
+     const proofKinds = this.proofKindsInput().trim();
+     if (this.proofKindsTouched && proofKinds !== '' && !PROOF_KINDS.test(proofKinds)) {
+       this.settingsError.set('Enter the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
+@@ -1089,6 +1109,7 @@ export class Access {
+     if (this.scoreMidTouched) body.scoreMid = scoreMid;
+     if (this.scoreHighTouched) body.scoreHigh = scoreHigh;
+     if (this.scoreLogTouched) body.scoreLog = scoreLog;
++    if (this.maxOpenTouched) body.maxOpen = maxOpen;
+     if (this.proofKindsTouched) body.proofKinds = proofKinds;
+     if (this.defaultGradeTouched) body.defaultGrade = defaultGrade;
+     if (this.parentTouched) body.parent = this.parentInput().trim();
+@@ -1194,6 +1215,9 @@ export class Access {
+     this.scoreLog.set(settings.scoreLog);
+     this.scoreLogInput.set(settings.scoreLog ?? '');
+     this.scoreLogTouched = false;
++    this.maxOpen.set(settings.maxOpen);
++    this.maxOpenInput.set(settings.maxOpen ?? '');
++    this.maxOpenTouched = false;
+     this.proofKinds.set(settings.proofKinds);
+     this.proofKindsInput.set(settings.proofKinds ?? '');
+     this.proofKindsTouched = false;
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index c775e9745..671ac182b 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -62,6 +62,7 @@ public class AccessController {
+      * The default grade is A, B or C, null for none (grade A); it is not dated.
+      * The score thresholds (mid, high) are whole numbers, null when blank; they are not dated.
+      * The score log is on, null when off; it is not dated.
++     * The maximum of open claims per person is a whole number, null for none; it is not dated.
+      */
+     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
+             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
+@@ -70,7 +71,7 @@ public class AccessController {
+             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
+             String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
+             String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC, String scoreMid,
+-            String scoreHigh, String scoreLog) {
++            String scoreHigh, String scoreLog, String maxOpen) {
+ 
+         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
+                 Integer graceDays, LocalDate entryDate) {
+@@ -93,7 +94,8 @@ public class AccessController {
+                     text(dated.escalateAfter()), text(dated.reviewSla()), dated.proofKindsText(),
+                     dated.defaultGradeText(), text(dated.gradeClerkLimit("A", today)),
+                     text(dated.gradeClerkLimit("B", today)), text(dated.gradeClerkLimit("C", today)),
+-                    text(dated.scoreMid()), text(dated.scoreHigh()), dated.scoreLog() ? "on" : null);
++                    text(dated.scoreMid()), text(dated.scoreHigh()), dated.scoreLog() ? "on" : null,
++                    text(dated.maxOpen()));
+         }
+ 
+         /** The grade's grace days in force on the date as written; null when it has none then. */
+@@ -153,6 +155,7 @@ public class AccessController {
+      * The review SLA is a whole number of days, blank meaning none; not dated.
+      * The proof kinds are a comma separated list of kinds (receipt, photo), blank meaning none; not dated.
+      * The default grade is A, B or C, blank meaning A; not dated.
++     * The maximum of open claims per person is a whole number, blank meaning none; not dated.
+      * A grade's clerk limit is 0.00 or more with up to two decimals, blank meaning none (the sheet's); dated.
+      */
+     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
+@@ -217,7 +220,8 @@ public class AccessController {
+             @Pattern(regexp = DATE) String clerkLimitCFrom,
+             @Pattern(regexp = "(-?\\d{1,6})?") String scoreMid,
+             @Pattern(regexp = "(-?\\d{1,6})?") String scoreHigh,
+-            @Pattern(regexp = "\\s*(on)?\\s*") String scoreLog) {
++            @Pattern(regexp = "\\s*(on)?\\s*") String scoreLog,
++            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String maxOpen) {
+     }
+ 
+     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
+@@ -307,7 +311,8 @@ public class AccessController {
+                 dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter(),
+                 form.reviewSla(), form.proofKinds(), form.defaultGrade(), gradeClerkLimit,
+                 form.scoreMid() == null ? null : form.scoreMid().trim(), form.scoreHigh() == null ? null : form.scoreHigh().trim(),
+-                form.scoreLog() == null ? null : form.scoreLog().trim());
++                form.scoreLog() == null ? null : form.scoreLog().trim(),
++                form.maxOpen() == null ? null : form.maxOpen().trim());
+         return settings(sheet);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index b753a55da..ee769f084 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -99,6 +99,8 @@ public class AccessService {
+ 
+     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
+ 
++    public static final String MAX_OPEN = DatedSettings.MAX_OPEN;
++
+     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
+     public record Dated(String value, LocalDate from) {
+     }
+@@ -278,7 +280,7 @@ public class AccessService {
+             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
+             String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
+             String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh,
+-            String scoreLog) {
++            String scoreLog, String maxOpen) {
+         if (scoreLog != null && !scoreLog.isEmpty() && !scoreLog.equals("on")) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The score log is on or blank");
+         }
+@@ -381,6 +383,9 @@ public class AccessService {
+         if (scoreHigh != null) {
+             setUndated(sheetId, user, SCORE_HIGH, whole(scoreHigh));
+         }
++        if (maxOpen != null) {
++            setUndated(sheetId, user, MAX_OPEN, whole(maxOpen));
++        }
+         if (defaultGrade != null) {
+             setUndated(sheetId, user, DEFAULT_GRADE, defaultGrade.isEmpty() ? null : defaultGrade);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 63e11bdf6..259b6713f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -412,6 +412,7 @@ public class ClaimService {
+             requireUnflagged(sheetId, user, claim);
+             requireNote(sheetId, claim);
+             requireUnderCap(sheetId, claim);
++            requireUnderMaxOpen(sheetId, claim);
+         }
+         Rollup.Figures before = rollup.figures(sheetId);
+         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+@@ -1178,6 +1179,22 @@ public class ClaimService {
+         }
+     }
+ 
++    /** Refuse opening a claim of a person who already has the sheet's maximum of OPEN or PENDING claims. */
++    private void requireUnderMaxOpen(String sheetId, Claim claim) {
++        sheetRows.lockById(sheetId);
++        Integer max = sheets.settings(sheetId).maxOpen();
++        if (max == null) {
++            return;
++        }
++        long open = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()).stream()
++                .filter(c -> !c.getId().equals(claim.getId()) && c.getStatus().unpaid())
++                .count();
++        if (open >= max) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "The person already has " + max + " open claims, the most the sheet allows");
++        }
++    }
++
+     /** The period whose dates contain the date, or null when none does. */
+     private Period periodOf(String sheetId, LocalDate date) {
+         return periods.list(sheetId).stream().filter(p -> p.contains(date)).findFirst().orElse(null);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+index 5757fd745..b6f19e5d7 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+@@ -57,6 +57,9 @@ public record DatedSettings(List<SheetSetting> values) {
+     /** While on, changing the sheet's today writes everyone's score on the day being left; on or blank (off); not dated. */
+     public static final String SCORE_LOG = "score-log";
+ 
++    /** A person may have at most this many OPEN or PENDING claims: opening one more is refused; not dated. */
++    public static final String MAX_OPEN = "max-open";
++
+     /** The sheet's proof kinds, comma separated (receipt, photo): each a claim above its proof threshold needs a proof of; not dated. */
+     public static final String PROOF_KINDS = "proof-kinds";
+ 
+@@ -245,6 +248,11 @@ public record DatedSettings(List<SheetSetting> values) {
+         return on(SCORE_MID, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+     }
+ 
++    /** The sheet's maximum of open claims per person (not dated); null when there is none. */
++    public Integer maxOpen() {
++        return on(MAX_OPEN, LocalDate.MAX).map(Integer::valueOf).orElse(null);
++    }
++
+     /** Whether the sheet's score log is on (not dated). */
+     public boolean scoreLog() {
+         return on(SCORE_LOG, LocalDate.MAX).map("on"::equals).orElse(false);
