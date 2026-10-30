@@ -41,6 +41,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -253,6 +254,13 @@ public class PersonController {
                         stated.getOrDefault(p.getId(), Statements.NONE),
                         patrons.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()),
                         snapshots.getOrDefault(p.getId(), List.of()))).toList();
+    }
+
+    /** The people of the sheet's tree whose name or an alias contains the text (see {@link PersonService#search}). */
+    @GetMapping("/search")
+    public List<PersonService.Found> search(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestParam(defaultValue = "") @Size(max = 200) String text) {
+        return service.search(sheetId.trim(), text);
     }
 
     @PostMapping

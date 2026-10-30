@@ -7,6 +7,7 @@ import { Access } from '../access/access';
 import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Audit } from '../audit/audit';
+import { Search } from '../search/search';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, periodOf, personPeriodTotals } from '../periods/periods';
 import { PersonPlans, PlanList } from '../plans/plans';
@@ -115,7 +116,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Summary, Tags, VoidReasons],
+  imports: [Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -142,6 +143,7 @@ function csvField(value: string): string {
     <app-pools [people]="people()" [(pools)]="pools" />
     <app-summary [people]="people()" [periods]="periods()" />
     <app-tags [people]="people()" />
+    <app-search />
     <app-audit />
     <section aria-label="People">
       <h2>People</h2>

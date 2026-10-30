@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -277,6 +279,36 @@ public class PersonService {
         people.flush();
         events.publishEvent(new PersonAliasAdded(sheetId, user, person.getName(), trimmed));
         return person;
+    }
+
+    /** A person found by {@link #search}: their sheet, name and due-total as shown ({@code n/a} when none). */
+    public record Found(String sheetId, String name, String dueTotal) {
+    }
+
+    /**
+     * Every person on a sheet of the sheet's tree (see {@link SheetService#tree}) whose name or an alias
+     * contains the text, compared without regard to case (blank: everyone): the sheet's own people first in
+     * list order, then the other sheets' by sheet id, each in its list order.
+     */
+    @Transactional(readOnly = true)
+    public List<Found> search(String sheetId, String text) {
+        String key = key(text == null ? "" : text.trim());
+        List<String> others = new ArrayList<>(sheets.tree(sheetId));
+        others.remove(sheetId);
+        Collections.sort(others);
+        List<String> order = new ArrayList<>(List.of(sheetId));
+        order.addAll(others);
+        List<Found> found = new ArrayList<>();
+        for (String sheet : order) {
+            Map<Long, Rollup.PersonFigures> figures = rollup.figures(sheet).people();
+            for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheet)) {
+                if (names(p).stream().anyMatch(n -> n.contains(key))) {
+                    Rollup.PersonFigures f = figures.get(p.getId());
+                    found.add(new Found(sheet, p.getName(), f == null ? "n/a" : f.dueTotal()));
+                }
+            }
+        }
+        return found;
     }
 
     /**
