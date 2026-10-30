@@ -19,7 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The claims on a sheet: listed per person newest first, added, edited and moved through their
- * statuses one at a time. Settling a claim fixes its due at the rate its person's grade has then on the claim's date, or at the
+ * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
+ * its number, which is never reused. Settling a claim fixes its due at the rate its person's grade has then on the claim's date, or at the
  * figure a statement bound it to. No claim dated inside a closed period can be added, edited or moved.
  */
 @Service
@@ -71,7 +72,8 @@ public class ClaimService {
     }
 
     /**
-     * Edit a claim's amount, date and note; refused when a closed period contains its date or the new one.
+     * Edit a claim's amount, date and note; only a DRAFT can be edited (an open claim is voided and
+     * added again instead), and an edit is refused when a closed period contains its date or the new one.
      * Returns the person it belongs to.
      */
     @Transactional
@@ -80,6 +82,10 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         periods.requireOpen(sheetId, claim.getDate(), on);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
+        }
         Rollup.Figures before = rollup.figures(sheetId);
         claim.setAmount(amount);
         claim.setDate(on);
@@ -116,8 +122,6 @@ public class ClaimService {
             number = sheets.nextClaimNumber(sheetId);
             claim.setNumber(number);
             claim.setOpenedBy(user);
-        } else if (next == ClaimStatus.VOID) {
-            claim.setNumber(null);
         }
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         String due = null;

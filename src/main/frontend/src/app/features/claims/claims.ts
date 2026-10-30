@@ -151,7 +151,13 @@ export class Claims {
     return (e.target as HTMLInputElement).value;
   }
 
+  /** Open a claim's editor; only a DRAFT can be edited, so any other is refused on its row. */
   protected edit(c: Claim): void {
+    this.claimError.set(null);
+    if (c.status !== 'DRAFT') {
+      this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be edited; void it and add a new one.` });
+      return;
+    }
     this.editing.set(c.id);
     this.amount.set(c.amount);
     this.date.set(c.date);
