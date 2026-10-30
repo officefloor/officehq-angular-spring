@@ -243,9 +243,9 @@ function csvField(value: string): string {
           [value]="pasteText()"
           (input)="pasteText.set(value($event)); pasteError.set('')"
         ></textarea>
-        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        <button type="submit" data-testid="paste-submit">Add and open pasted claims</button>
         @if (pasteAdded() !== null) {
-          <span>Added <strong data-testid="paste-added">{{ pasteAdded() }}</strong></span>
+          <span>Lines through <strong data-testid="paste-added">{{ pasteAdded() }}</strong></span>
         }
         @if (pasteError()) {
           <p role="alert" data-testid="paste-error">{{ pasteError() }}</p>
@@ -675,7 +675,7 @@ export class People {
   /** A quick-add still waiting for its answer: another press meanwhile is ignored. */
   private quickBusy = false;
   protected readonly pasteText = signal('');
-  /** How many claims the last paste added; null while it runs. */
+  /** How many lines the last paste put through; null while it runs. */
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteError = signal('');
   /** A paste still waiting for its answer: another press meanwhile is ignored. */
@@ -1322,7 +1322,7 @@ export class People {
     }
   }
 
-  /** Add a DRAFT claim per pasted line, in order; one refused line adds none. */
+  /** Add (or update a matching DRAFT) and open a claim per pasted line, in order; one refused line changes nothing. */
   protected async pasteClaims(e: Event): Promise<void> {
     e.preventDefault();
     if (this.pasting) return;

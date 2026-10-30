@@ -4,14 +4,18 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +23,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Paste claims: lines of {@code name,amount,date,note} (the note may hold commas and may be left out; a
- * blank date takes the sheet's entry date while set, else its today), each a DRAFT claim for the person of that name on the sheet,
- * matched as the person form matches names. A note ending in {@code " #<reference>"} gives the claim that external
- * reference, which is not part of the note. Every line is held to the claim form's rules, a reference also to
- * being unused on the sheet and in the paste, and the whole paste is one change: a refused line adds nothing.
+ * blank date takes the sheet's entry date while set, else its today), each a claim for the person of that name on the sheet,
+ * matched as the person form matches names, added and then opened by the user as the open button would, numbered in
+ * paste order. A note ending in {@code " #<reference>"} gives the claim that external reference, which is not part of
+ * the note. A line whose person, date and note match one of that person's claims as they stood before the paste (void
+ * and deleted claims never match) updates that claim instead: the newest matching DRAFT is edited to the line's amount
+ * (when it differs) and opened; a line whose matches include no DRAFT is refused. Every line is held to the claim
+ * form's and the open button's rules, a reference also to being unused on the sheet and in the paste, and the whole
+ * paste is one change: a refused line adds, edits and opens nothing.
  */
 @Service
 public class PasteClaimsService {
@@ -37,20 +45,37 @@ public class PasteClaimsService {
 
     private final PersonRepository people;
     private final ClaimService claims;
+    private final SheetService sheets;
 
-    public PasteClaimsService(PersonRepository people, ClaimService claims) {
+    public PasteClaimsService(PersonRepository people, ClaimService claims, SheetService sheets) {
         this.people = people;
         this.claims = claims;
+        this.sheets = sheets;
     }
 
-    /** Add a claim per line, in order; returns how many were added. */
+    /** Add or update, then open, a claim per line, in order; returns how many lines went through. */
     @Transactional
     public int paste(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
         Set<String> refs = new HashSet<>();
+        LocalDate claimDate = sheets.claimDate(sheetId);
+        Map<Long, List<Claim>> before = new HashMap<>();
+        Map<Line, Long> drafts = new IdentityHashMap<>();
         for (String raw : text.split("\\R")) {
             if (raw.isBlank()) continue;
             Line line = parse(sheetId, raw);
+            LocalDate on = line.date() != null ? line.date() : claimDate;
+            List<Claim> matches = before
+                    .computeIfAbsent(line.person().getId(), id -> claims.forPerson(sheetId, id)).stream()
+                    .filter(c -> c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
+                    .filter(c -> on.equals(c.getDate()) && line.note().equals(c.getNote()))
+                    .toList();
+            if (!matches.isEmpty()) {
+                Claim draft = matches.stream().filter(c -> c.getStatus() == ClaimStatus.DRAFT).findFirst()
+                        .orElseThrow(() -> refused(raw, "it matches a claim of " + line.person().getName()
+                                + " that is no longer a DRAFT"));
+                drafts.put(line, draft.getId());
+            }
             if (line.ref() != null) {
                 try {
                     claims.requireFreeRef(sheetId, line.ref(), null);
@@ -67,8 +92,14 @@ public class PasteClaimsService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Paste at least one line");
         }
         for (Line line : lines) {
-            claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(),
-                    null, line.ref());
+            Long id = drafts.get(line);
+            if (id == null) {
+                id = claims.addClaim(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(),
+                        null, line.ref(), null).getId();
+            } else if (claims.claim(sheetId, id).getAmount().compareTo(line.amount()) != 0) {
+                claims.editAmount(sheetId, user, id, line.amount());
+            }
+            claims.move(sheetId, user, id, ClaimStatus.OPEN);
         }
         return lines.size();
     }

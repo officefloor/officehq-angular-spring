@@ -63,7 +63,7 @@ public class ClaimController {
     public record PasteForm(@NotNull @Size(max = 100_000) String text) {
     }
 
-    /** How many claims a paste added. */
+    /** How many pasted lines went through. */
     public record PasteResult(int added) {
     }
 
@@ -171,7 +171,7 @@ public class ClaimController {
         return view(sheet, id);
     }
 
-    /** Paste DRAFT claims, a line each, for people on the sheet; one refused line adds none. */
+    /** Paste claims, a line each, for people on the sheet, each added (or a matching DRAFT updated) and opened; one refused line changes nothing. */
     @PostMapping("/claims/paste")
     public PasteResult paste(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PasteForm form) {

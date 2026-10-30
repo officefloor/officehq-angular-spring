@@ -126,6 +126,13 @@ public class ClaimService {
     @Transactional
     public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, String tagText) {
+        return addClaim(sheetId, user, personId, amount, date, note, corrects, ref, tagText).getPersonId();
+    }
+
+    /** Add a claim as {@link #add(String, String, long, BigDecimal, LocalDate, String, String, String, String)} does; returns the claim. */
+    @Transactional
+    Claim addClaim(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref, String tagText) {
         String tagged = Tags.normalize(tagText);
         String reference = requireFreeRef(sheetId, ref, null);
         Person person = people.findByIdAndSheetId(personId, sheetId)
@@ -154,7 +161,7 @@ public class ClaimService {
             events.publishEvent(new ClaimChanged("LATE_ENTRY", sheetId, user, person.getName(), amount, on, null, null));
         }
         rollup.changed(sheetId, user, before);
-        return personId;
+        return claim;
     }
 
     /**
@@ -862,7 +869,7 @@ public class ClaimService {
         }
     }
 
-    private Claim claim(String sheetId, long claimId) {
+    Claim claim(String sheetId, long claimId) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         periods.requireOpen(sheetId, claim.getDueBy());
