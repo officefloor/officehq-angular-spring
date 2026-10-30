@@ -19,6 +19,8 @@ interface Settings {
   latePct: string;
   /** The date a claim's rounding turns on (half up before it, half to even on or after); null when blank (the sheet's today). */
   policyDate: string | null;
+  /** From the sheet's today on this date, a claim opened is numbered within its period; null when blank (off). */
+  periodNumberingFrom: string | null;
 }
 
 interface AccessView {
@@ -37,7 +39,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // the least live due a claim has (blank: 1.00), and the terms, the days a claim has to be paid by
 // from its date (blank: 14), and the late percent, what an overdue claim's due gains of its figure for
 // every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
-// (blank: the sheet's today). Each input shows the value saved; a save sends only the
+// (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
+// numbered within its period (blank: off). Each input shows the value saved; a save sends only the
 // settings whose input was changed (a Delete or Backspace in a blank input asks to save it blank).
 @Component({
   selector: 'app-access',
@@ -87,6 +90,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
       <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
+      <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
       <form (submit)="saveSettings($event)" aria-label="Save settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
@@ -133,6 +137,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="policyDateInput.set(value($event)); policyDateTouched = true; settingsError.set('')"
           (keydown)="policyDateTouched = policyDateTouched || clears($event)"
         />
+        <label for="setting-period-numbering-from">Period numbering from: claims opened from this date are numbered within their period (blank: off)</label>
+        <input
+          id="setting-period-numbering-from"
+          type="date"
+          data-testid="setting-period-numbering-from"
+          [value]="numberingFromInput()"
+          (input)="numberingFromInput.set(value($event)); numberingFromTouched = true; settingsError.set('')"
+          (keydown)="numberingFromTouched = numberingFromTouched || clears($event)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -160,12 +173,15 @@ export class Access {
   protected readonly latePctInput = signal('');
   protected readonly policyDate = signal<string | null>(null);
   protected readonly policyDateInput = signal('');
+  protected readonly periodNumberingFrom = signal<string | null>(null);
+  protected readonly numberingFromInput = signal('');
   /** Whether each settings input was changed since the settings were last shown. */
   protected limitTouched = false;
   protected floorTouched = false;
   protected termsTouched = false;
   protected latePctTouched = false;
   protected policyDateTouched = false;
+  protected numberingFromTouched = false;
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
@@ -178,7 +194,7 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', latePct: '', policyDate: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', latePct: '', policyDate: null, periodNumberingFrom: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -258,12 +274,18 @@ export class Access {
       this.settingsError.set('Enter a policy date, or leave it blank for the sheet\'s today.');
       return;
     }
+    const numberingFrom = this.numberingFromInput().trim();
+    if (this.numberingFromTouched && numberingFrom !== '' && !DATE.test(numberingFrom)) {
+      this.settingsError.set('Enter a period numbering from date, or leave it blank for off.');
+      return;
+    }
     const body: Partial<Settings> = {};
     if (this.limitTouched) body.clerkLimit = clerkLimit;
     if (this.floorTouched) body.floor = floor;
     if (this.termsTouched) body.terms = terms;
     if (this.latePctTouched) body.latePct = latePct;
     if (this.policyDateTouched) body.policyDate = policyDate;
+    if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
@@ -306,5 +328,8 @@ export class Access {
     this.policyDateInput.set(settings.policyDate ?? '');
     this.latePctTouched = false;
     this.policyDateTouched = false;
+    this.periodNumberingFrom.set(settings.periodNumberingFrom);
+    this.numberingFromInput.set(settings.periodNumberingFrom ?? '');
+    this.numberingFromTouched = false;
   }
 }

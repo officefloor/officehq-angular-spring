@@ -54,6 +54,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getPolicyDate).orElse(null);
     }
 
+    /** The sheet's period numbering from as set; null when blank (off). */
+    public LocalDate periodNumberingFrom(String id) {
+        return sheets.findById(id).map(Sheet::getPeriodNumberingFrom).orElse(null);
+    }
+
     /** The sheet's today: the date to use for every decision and default date on the sheet. */
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));

@@ -37,16 +37,18 @@ public class AccessController {
 
     /**
      * The sheet's settings as shown; a limit is a figure with two decimals, null for none; so is the floor;
-     * the terms are a number of days; the late percent is a figure with two decimals; the policy date is
-     * a date (yyyy-mm-dd), null when blank.
+     * the terms are a number of days; the late percent is a figure with two decimals; the policy date and
+     * the period numbering from are dates (yyyy-mm-dd), null when blank.
      */
-    public record SettingsView(String clerkLimit, String floor, String terms, String latePct, String policyDate) {
+    public record SettingsView(String clerkLimit, String floor, String terms, String latePct, String policyDate,
+            String periodNumberingFrom) {
 
         static SettingsView of(BigDecimal limit, BigDecimal floor, int terms, BigDecimal latePct,
-                LocalDate policyDate) {
+                LocalDate policyDate, LocalDate periodNumberingFrom) {
             return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
                     Integer.toString(terms), latePct.toPlainString(),
-                    policyDate == null ? null : policyDate.toString());
+                    policyDate == null ? null : policyDate.toString(),
+                    periodNumberingFrom == null ? null : periodNumberingFrom.toString());
         }
     }
 
@@ -62,13 +64,14 @@ public class AccessController {
      * to two decimals, blank meaning no limit; so is a floor, blank putting back 1.00. The terms are a
      * whole number of days, blank putting back 14. The late percent is 0.00 or more with up to two
      * decimals, blank putting back 0.00. The policy date is a date (yyyy-mm-dd), blank meaning the
-     * sheet's today.
+     * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
             @Pattern(regexp = "(\\d{1,5})?") String terms,
             @Pattern(regexp = "(\\d{1,10}(\\.\\d{1,2})?)?") String latePct,
-            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String policyDate) {
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String policyDate,
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String periodNumberingFrom) {
     }
 
     private final AccessService service;
@@ -82,7 +85,7 @@ public class AccessController {
         String sheet = sheetId.trim();
         return new AccessView(service.roles(sheet).stream().map(RoleView::of).toList(),
                 SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet),
-                service.latePct(sheet), service.policyDate(sheet)));
+                service.latePct(sheet), service.policyDate(sheet), service.periodNumberingFrom(sheet)));
     }
 
     @PutMapping("/roles")
@@ -97,12 +100,12 @@ public class AccessController {
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody SettingsForm form) {
         String sheet = sheetId.trim();
         service.setSettings(sheet, user.trim(), form.clerkLimit(), form.floor(), form.terms(),
-                form.latePct(), form.policyDate());
+                form.latePct(), form.policyDate(), form.periodNumberingFrom());
         return SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet),
-                service.latePct(sheet), service.policyDate(sheet));
+                service.latePct(sheet), service.policyDate(sheet), service.periodNumberingFrom(sheet));
     }
 
-    /** A policy date that is no date on the calendar: the save is refused and changes nothing. */
+    /** A policy date or period numbering from that is no date on the calendar: the save is refused and changes nothing. */
     @ExceptionHandler(DateTimeParseException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void noSuchDate() {

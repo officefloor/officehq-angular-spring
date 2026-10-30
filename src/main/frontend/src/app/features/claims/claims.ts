@@ -17,8 +17,8 @@ export interface Claim {
   /** The amount at the rate for the person's grade, or once settled the due fixed then; null when there is no rate. */
   due: string | null;
   status: ClaimStatus;
-  /** The number the claim got when opened, the next on the sheet; null while a draft or once voided. */
-  number: number | null;
+  /** The number the claim got when opened: the next on the sheet, or within its period (P1-1, X-1); null while a draft. */
+  number: string | null;
   /** The user who opened the claim, kept once voided; null while it was never opened. */
   openedBy: string | null;
   /** Whether the person's last statement binds the claim to the figure it had then. */
@@ -27,8 +27,8 @@ export interface Claim {
   dueBy: string;
   /** Whether the claim is OPEN and its due-by is before the sheet's today. */
   overdue: boolean;
-  /** For a correction (a negative amount), the number of the settled claim it corrects; null otherwise. */
-  corrects: number | null;
+  /** For a correction (a negative amount), the number of the settled claim it corrects, as shown (3, P1-1); null otherwise. */
+  corrects: string | null;
 }
 
 export interface PersonWithClaims {
@@ -63,7 +63,7 @@ export interface PersonWithClaims {
 }
 
 const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
-const NUMBER = /^[1-9]\d{0,8}$/;
+const NUMBER = /^([1-9]\d{0,8}|.{1,100}-[1-9]\d{0,8})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
@@ -209,7 +209,7 @@ export class Claims {
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
-    this.corrects.set(c.corrects === null ? '' : String(c.corrects));
+    this.corrects.set(c.corrects ?? '');
     this.error.set('');
   }
 
@@ -246,7 +246,7 @@ export class Claims {
     }
     const id = this.editing();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const body = { amount, date: date === '' ? null : date, note, corrects: corrects === '' ? null : Number(corrects) };
+    const body = { amount, date: date === '' ? null : date, note, corrects: corrects === '' ? null : corrects };
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {

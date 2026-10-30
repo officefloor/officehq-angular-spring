@@ -10,5 +10,5 @@ import java.time.LocalDate;
  * ({@code n/a} when there was no rate), or null when the event carries none.
  */
 public record ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
-        LocalDate date, Integer number, String due) {
+        LocalDate date, String number, String due) {
 }

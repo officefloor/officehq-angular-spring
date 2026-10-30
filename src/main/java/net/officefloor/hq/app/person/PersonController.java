@@ -49,11 +49,11 @@ public class PersonController {
      * correction, the number of the claim it corrects (null otherwise).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
-            Integer number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, Integer corrects) {
+            String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
-                    money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getNumber(),
+                    money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getShownNumber(),
                     claim.getOpenedBy(), claim.isStated(), rates.dueBy(claim.getDate()), Dues.overdue(claim, rates),
                     claim.getCorrects());
         }

@@ -46,6 +46,18 @@ public class Claim {
     @Column(name = "claim_number")
     private Integer number;
 
+    /** The sequence a period-numbered claim counts in ('P<period id>', or 'X' for no period); null otherwise. */
+    @Column(name = "period_sequence")
+    private String periodSequence;
+
+    /** The claim's place in its period sequence; null for a sheet-wide number. */
+    @Column(name = "period_seq_number")
+    private Integer periodSeqNumber;
+
+    /** The number as shown for a period-numbered claim (<period name>-<n>, or X-<n>); null otherwise. */
+    @Column(name = "period_number")
+    private String periodNumber;
+
     /** The user who opened the claim; null while a draft and once voided. */
     @Column(name = "opened_by")
     private String openedBy;
@@ -64,7 +76,7 @@ public class Claim {
 
     /** The number of the claim a correction corrects; null for any other claim. */
     @Column(name = "corrects")
-    private Integer corrects;
+    private String corrects;
 
     /** The date of the claim a correction corrects, which its rounding goes by; null for any other claim. */
     @Column(name = "corrects_date")
@@ -73,7 +85,7 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
         this.corrects = corrects;
         this.sheetId = sheetId;
         this.personId = personId;
@@ -118,11 +130,11 @@ public class Claim {
         this.note = note;
     }
 
-    public Integer getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Integer corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 
@@ -158,6 +170,18 @@ public class Claim {
 
     public void setNumber(Integer number) {
         this.number = number;
+    }
+
+    /** Number the claim within a period sequence, shown as {@code label}. */
+    public void setPeriodNumber(String sequence, int n, String label) {
+        this.periodSequence = sequence;
+        this.periodSeqNumber = n;
+        this.periodNumber = label;
+    }
+
+    /** The number as shown: its period number, or its sheet-wide number; null while it has none. */
+    public String getShownNumber() {
+        return periodNumber != null ? periodNumber : number == null ? null : number.toString();
     }
 
     public String getOpenedBy() {

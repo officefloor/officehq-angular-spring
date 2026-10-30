@@ -17,7 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
  * clerk limit, the most due a clerk may settle on a claim (none: no limit); and the sheet's floor, the
  * least live due a claim has; its terms, the days a claim has to be paid by from its date; and its late
  * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
- * date, the date a claim's rounding turns on (none: the sheet's today).
+ * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
+ * the date from which a claim opened is numbered within its period (none: off).
  */
 @Service
 public class AccessService {
@@ -31,6 +32,8 @@ public class AccessService {
     public static final String LATE_PCT = "late-pct";
 
     public static final String POLICY_DATE = "policy-date";
+
+    public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRows;
@@ -85,6 +88,12 @@ public class AccessService {
         return sheets.policyDate(sheetId);
     }
 
+    /** The sheet's period numbering from as set; null when blank (off). */
+    @Transactional(readOnly = true)
+    public LocalDate periodNumberingFrom(String sheetId) {
+        return sheets.periodNumberingFrom(sheetId);
+    }
+
     /** Give a user name a role on the sheet, replacing the one it had. */
     @Transactional
     public SheetRole setRole(String sheetId, String user, String name, Role role) {
@@ -106,7 +115,7 @@ public class AccessService {
      */
     @Transactional
     public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms,
-            String latePct, String policyDate) {
+            String latePct, String policyDate, String periodNumberingFrom) {
         if (clerkLimit != null) {
             setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
         }
@@ -121,6 +130,10 @@ public class AccessService {
         }
         if (policyDate != null) {
             setPolicyDate(sheetId, user, policyDate.isEmpty() ? null : LocalDate.parse(policyDate));
+        }
+        if (periodNumberingFrom != null) {
+            setPeriodNumberingFrom(sheetId, user,
+                    periodNumberingFrom.isEmpty() ? null : LocalDate.parse(periodNumberingFrom));
         }
     }
 
@@ -169,6 +182,19 @@ public class AccessService {
         events.publishEvent(new SettingChanged(sheetId, user, POLICY_DATE, policyDate == null ? "" : policyDate.toString()));
         rollup.changed(sheetId, user, before);
         return policyDate;
+    }
+
+    /**
+     * Save the sheet's period numbering from; null turns period numbering off. Claims already opened
+     * keep the numbers they have.
+     */
+    @Transactional
+    public LocalDate setPeriodNumberingFrom(String sheetId, String user, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheet.setPeriodNumberingFrom(from);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, PERIOD_NUMBERING_FROM, from == null ? "" : from.toString()));
+        return from;
     }
 
     /** Save the sheet's clerk limit; null removes it. */

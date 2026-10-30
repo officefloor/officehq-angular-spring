@@ -6,8 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.RateService;
@@ -21,7 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The claims on a sheet: listed per person newest first, added, edited and moved through their
  * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
- * its number, which is never reused. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
+ * its number, which is never reused; a claim opened while period numbering is on is numbered within its
+ * period instead of sheet-wide. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
  * (at least the sheet's floor then), or at the
  * figure a statement bound it to, plus the late charge it has then. No claim dated inside a closed period can be added, edited or moved,
  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
@@ -35,6 +38,7 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final SheetRepository sheetRows;
     private final RateService rates;
     private final Rollup rollup;
     private final PeriodService periods;
@@ -42,7 +46,7 @@ public class ClaimService {
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            RateService rates, Rollup rollup, PeriodService periods, AccessService access,
+            SheetRepository sheetRows, RateService rates, Rollup rollup, PeriodService periods, AccessService access,
             ApplicationEventPublisher events) {
         this.access = access;
         this.rollup = rollup;
@@ -50,6 +54,7 @@ public class ClaimService {
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
+        this.sheetRows = sheetRows;
         this.rates = rates;
         this.events = events;
     }
@@ -78,7 +83,7 @@ public class ClaimService {
      */
     @Transactional
     public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
@@ -101,7 +106,7 @@ public class ClaimService {
      */
     @Transactional
     public long edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
@@ -123,7 +128,7 @@ public class ClaimService {
         claims.flush();
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
         events.publishEvent(new ClaimChanged("CLAIM_EDITED", sheetId, user, person, claim.getAmount(),
-                claim.getDate(), claim.getNumber(), null));
+                claim.getDate(), claim.getShownNumber(), null));
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }
@@ -147,12 +152,11 @@ public class ClaimService {
                     "The user who opened a claim cannot settle it");
         }
         Rollup.Figures before = rollup.figures(sheetId);
-        Integer number = claim.getNumber();
         if (next == ClaimStatus.OPEN) {
-            number = sheets.nextClaimNumber(sheetId);
-            claim.setNumber(number);
+            giveNumber(sheetId, claim);
             claim.setOpenedBy(user);
         }
+        String number = claim.getShownNumber();
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         String due = null;
         if (next == ClaimStatus.SETTLED) {
@@ -178,11 +182,31 @@ public class ClaimService {
     }
 
     /**
+     * Give a claim being opened its number: while the sheet's period numbering from is set and the
+     * sheet's today is on or after it, the next in the period its date falls in (<period name>-<n>), or
+     * in the sequence of claims in no period (X-<n>); otherwise the next sheet-wide number. Two users
+     * taking one at the same moment wait on each other, so no number is given twice or skipped.
+     */
+    private void giveNumber(String sheetId, Claim claim) {
+        LocalDate from = sheets.periodNumberingFrom(sheetId);
+        if (from == null || sheets.today(sheetId).isBefore(from)) {
+            claim.setNumber(sheets.nextClaimNumber(sheetId));
+            return;
+        }
+        sheetRows.lockById(sheetId);
+        Period period = periods.list(sheetId).stream().filter(p -> p.contains(claim.getDate()))
+                .findFirst().orElse(null);
+        String sequence = period == null ? "X" : "P" + period.getId();
+        int n = claims.lastInSequence(sheetId, sequence) + 1;
+        claim.setPeriodNumber(sequence, n, (period == null ? "X" : period.getName()) + "-" + n);
+    }
+
+    /**
      * Refuse a correction (a negative amount) that does not name the number of a SETTLED claim of the
      * same person, and a claim that is not a correction but names one. Returns the date of the claim a
      * correction corrects (its rounding goes by it); null for any other claim.
      */
-    private LocalDate requireCorrects(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private LocalDate requireCorrects(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -195,7 +219,7 @@ public class ClaimService {
                     "A negative amount is a correction; name the number of the settled claim it corrects");
         }
         return claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
-                .filter(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED)
+                .filter(c -> corrects.equals(c.getShownNumber()) && c.getStatus() == ClaimStatus.SETTLED)
                 .map(Claim::getDate).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "Claim " + corrects + " is not a settled claim of this person"));
