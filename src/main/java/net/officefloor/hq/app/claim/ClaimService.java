@@ -831,7 +831,7 @@ public class ClaimService {
     }
 
     /**
-     * Reject a PENDING claim with a reason, putting it back to OPEN (bound again by the last statement if
+     * Reject a PENDING claim with a reason, putting it back to OPEN (still bound by the last statement if
      * that statement counted it). Only a steward rejects; a claim not PENDING or due by a date inside a closed
      * period is refused and nothing changes. Returns the person it belongs to.
      */

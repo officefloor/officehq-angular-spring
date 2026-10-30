@@ -36,8 +36,7 @@ public final class Dues {
     }
 
     /**
-     * A claim's figure before any late charge or floor: while bound by a statement (and not PENDING, which is
-     * never bound), the figure bound then; otherwise its {@link #rateFigure rate figure}. Null when there is
+     * A claim's figure before any late charge or floor: while bound by a statement, the figure bound then; otherwise its {@link #rateFigure rate figure}. Null when there is
      * none. A statement binds this figure, never the late charge or the floor.
      */
     public static BigDecimal base(Claim claim, Grades grades, RateTable rates) {
@@ -77,9 +76,9 @@ public final class Dues {
         return rates.floored(due, claim.getDate());
     }
 
-    /** Whether a statement binds the claim's figure: it is stated and not PENDING. */
+    /** Whether a statement binds the claim's figure: it is stated (whatever its status, PENDING included). */
     public static boolean bound(Claim claim) {
-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+        return claim.isStated();
     }
 
     /**

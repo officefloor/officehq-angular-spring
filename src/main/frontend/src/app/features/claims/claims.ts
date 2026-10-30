@@ -125,10 +125,10 @@ export function heldOut(c: Claim, holds: Hold[]): boolean {
   return c.status === 'OPEN' && !c.stated && holds.some((h) => c.date >= h.from && (h.to === null || c.date <= h.to));
 }
 
-/** Whether the claim is OPEN or PENDING, not bound by a statement (a PENDING one never is), and its person's retirement date is reached
+/** Whether the claim is OPEN or PENDING, not bound by a statement, and its person's retirement date is reached
  * on the sheet's today: it then counts in no live total. */
 export function retiredOut(c: Claim, retiredNow: boolean): boolean {
-  return retiredNow && ((c.status === 'OPEN' && !c.stated) || c.status === 'PENDING');
+  return retiredNow && !c.stated && (c.status === 'OPEN' || c.status === 'PENDING');
 }
 
 export interface PersonWithClaims {
