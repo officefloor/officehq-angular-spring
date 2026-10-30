@@ -1,0 +1,90 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 51adf749..67ca64ee 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -69,6 +69,10 @@ public class Claim {
+     @Column(name = "opened_by")
+     private String openedBy;
+ 
++    /** The user who last edited the claim; null while never edited. */
++    @Column(name = "edited_by")
++    private String editedBy;
++
+     /** The due fixed when the claim was settled; null while not settled or when there was no rate. */
+     @Column(name = "settled_due", precision = 14, scale = 2)
+     private BigDecimal settledDue;
+@@ -376,6 +380,14 @@ public class Claim {
+         this.openedBy = openedBy;
+     }
+ 
++    public String getEditedBy() {
++        return editedBy;
++    }
++
++    public void setEditedBy(String editedBy) {
++        this.editedBy = editedBy;
++    }
++
+     public BigDecimal getSettledDue() {
+         return settledDue;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ade9ae39..b93cdb89 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -37,7 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
+  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
+  * settling a claim whose due is above the sheet's clerk limit leaves it PENDING instead; a steward settles
+  * anything, and approves a PENDING claim (settling it, its due fixed then) or rejects it with a reason
+- * (back to OPEN); the user who opened a claim cannot approve it. A steward re-settles a SETTLED claim,
++ * (back to OPEN); neither the user who opened a claim nor the one who last edited it can settle or approve it. A steward re-settles a SETTLED claim,
+  * fixing its due again at the figure it would have today as an OPEN claim bound by no statement. A claim
+  * with a negative amount is a correction: it is added or edited only when it names, by number, a SETTLED
+  * claim of the same person, and only a correction names one. A claim whose due is above the sheet's proof
+@@ -190,6 +190,7 @@ public class ClaimService {
+         claim.setRef(reference);
+         claim.setTags(tagged);
+         claim.setLockedBy(null);
++        claim.setEditedBy(user);
+         claims.flush();
+         tags.use(sheetId, tagged);
+         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+@@ -318,6 +319,10 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                     "The user who opened a claim cannot settle it");
+         }
++        if (next == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who last edited a claim cannot settle it");
++        }
+         if (next == ClaimStatus.OPEN) {
+             requireNote(sheetId, claim);
+         }
+@@ -573,7 +578,7 @@ public class ClaimService {
+ 
+     /**
+      * Approve a PENDING claim, settling it with its due fixed now (its live figure, late charge frozen in).
+-     * Only a steward approves, never the user who opened the claim; a claim not PENDING or due by a date inside a
++     * Only a steward approves, never the user who opened the claim or last edited it; a claim not PENDING or due by a date inside a
+      * closed period is refused and nothing changes. Returns the person it belongs to.
+      */
+     @Transactional
+@@ -582,6 +587,10 @@ public class ClaimService {
+         if (user.equals(claim.getOpenedBy())) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot approve it");
+         }
++        if (user.equals(claim.getEditedBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who last edited a claim cannot approve it");
++        }
+         Rollup.Figures before = rollup.figures(sheetId);
+         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+         BigDecimal fixed = dueNow(sheetId, claim, owner);
+diff --git a/src/main/resources/db/migration/V58__claim_edited_by.sql b/src/main/resources/db/migration/V58__claim_edited_by.sql
+new file mode 100644
+index 00000000..fcf4534f
+--- /dev/null
++++ b/src/main/resources/db/migration/V58__claim_edited_by.sql
+@@ -0,0 +1,2 @@
++-- The user who last edited the claim (through its form or its amount entry); null while never edited.
++ALTER TABLE claim ADD COLUMN edited_by VARCHAR(100);
