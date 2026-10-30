@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { heldOut, type Claim, type ClaimStatus, type PersonWithClaims } from '../claims/claims';
+import { heldOut, retiredOut, type Claim, type ClaimStatus, type PersonWithClaims } from '../claims/claims';
 
 export interface Period {
   id: number;
@@ -46,13 +46,14 @@ export function statusAsOf(c: Claim, day: string): ClaimStatus | undefined {
 
 /** Per period id, the person's due-total for it: the dues as shown now of their claims dated in it that counted
  * (OPEN, PENDING or SETTLED) at the end of its last day, added up, or once closed or soft-closed the figure fixed then (0.00
- * for a person added later); an unbound OPEN claim dated within a hold of its person counts in none, nor does
+ * for a person added later); an unbound OPEN claim dated within a hold of its person counts in none, nor does an
+ * unbound OPEN or PENDING claim of a person whose retirement date the sheet's today has reached, nor does
  * a deferred claim. */
 export function personPeriodTotals(periods: Period[], person: PersonWithClaims): Record<number, string> {
   const totals: Record<number, number> = {};
   for (const p of periods) totals[p.id] = 0;
   for (const c of person.claims) {
-    if (c.due === null || heldOut(c, person.holds) || c.deferred) continue;
+    if (c.due === null || heldOut(c, person.holds) || retiredOut(c, person.retiredNow) || c.deferred) continue;
     const period = periodOf(periods, c.date);
     if (!period || isFixed(period)) continue;
     const status = statusAsOf(c, period.to);

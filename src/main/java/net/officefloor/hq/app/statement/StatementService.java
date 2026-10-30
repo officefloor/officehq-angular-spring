@@ -74,10 +74,10 @@ public class StatementService {
         Rollup.Figures before = rollup.figures(sheetId);
         RateTable table = rates.table(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
-        BigDecimal dueTotal = Dues.total(person::gradeOn, theirs, table, person::heldOn);
+        BigDecimal dueTotal = Dues.total(person::gradeOn, theirs, table, person.leaves());
         int counting = 0;
         for (Claim claim : theirs) {
-            if (Dues.counts(claim, person::heldOn, table.today())) {
+            if (Dues.counts(claim, person.leaves(), table.today())) {
                 claim.bind(Dues.base(claim, person::gradeOn, table));
                 counting++;
             } else {

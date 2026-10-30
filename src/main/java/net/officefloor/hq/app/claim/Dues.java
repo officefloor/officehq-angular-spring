@@ -111,12 +111,21 @@ public final class Dues {
 
     /**
      * Whether the claim counts in the live totals on the sheet's today: OPEN, PENDING and SETTLED claims do,
-     * except that an OPEN claim dated within one of its person's holds counts in none, unless a statement
-     * binds it, and a claim {@link #deferred deferred} on that today counts in none.
+     * except that an OPEN claim dated within one of its person's holds, and an OPEN or PENDING claim of a
+     * person whose retirement date that today has reached, counts in none, unless a statement binds it, and a claim {@link #deferred deferred} on that today counts in none.
      */
     public static boolean counts(Claim claim, Holds holds, LocalDate today) {
-        return claim.getStatus().counts() && !deferred(claim, today) && !(claim.getStatus() == ClaimStatus.OPEN
-                && !bound(claim) && holds.on(claim.getDate()));
+        return claim.getStatus().counts() && !deferred(claim, today) && !leftOut(claim, holds, today);
+    }
+
+    /**
+     * Whether the person's holds or retirement leave the claim out of the live totals: unless a statement
+     * binds it, an OPEN claim dated within a hold, and an OPEN or PENDING claim once the sheet's today has
+     * reached the person's retirement date.
+     */
+    private static boolean leftOut(Claim claim, Holds holds, LocalDate today) {
+        return !bound(claim) && ((claim.getStatus() == ClaimStatus.OPEN && holds.on(claim.getDate()))
+                || (claim.getStatus().unpaid() && holds.retiredOn(today)));
     }
 
     /**
@@ -157,12 +166,11 @@ public final class Dues {
     /**
      * Whether the claim counts in a period ending on {@code end}: its status at the end of that day (see
      * {@link #statusAsOf}) is OPEN, PENDING or SETTLED, and it is neither left out by a hold nor deferred on the
-     * sheet's today, as in {@link #counts}.
+     * sheet's today, as in {@link #counts}; so too by a retirement reached on that today.
      */
     public static boolean countsAsOf(Claim claim, Holds holds, LocalDate today, LocalDate end) {
         ClaimStatus then = statusAsOf(claim, end);
-        return then != null && then.counts() && !deferred(claim, today) && !(claim.getStatus() == ClaimStatus.OPEN
-                && !bound(claim) && holds.on(claim.getDate()));
+        return then != null && then.counts() && !deferred(claim, today) && !leftOut(claim, holds, today);
     }
 
     /**

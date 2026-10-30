@@ -190,7 +190,7 @@ public class PeriodService {
         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
         claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> period.contains(c.getDate())
-                        && Dues.countsAsOf(c, byId.get(c.getPersonId())::heldOn, table.today(), period.getToDate()))
+                        && Dues.countsAsOf(c, byId.get(c.getPersonId()).leaves(), table.today(), period.getToDate()))
                 .forEach(c -> {
                     BigDecimal due = Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table);
                     if (due != null) {

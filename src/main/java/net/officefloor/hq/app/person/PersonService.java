@@ -99,7 +99,9 @@ public class PersonService {
     }
 
     /**
-     * Retire the person from a date; a date left out takes the sheet's today. The sheet stays locked
+     * Retire the person from a date; a date left out takes the sheet's today. Once the sheet's today reaches
+     * it, their OPEN and PENDING claims not bound by a statement leave the live totals, so the figures it
+     * moves are announced. The sheet stays locked
      * until the change commits, so a claim added meanwhile is checked against the new date.
      */
     @Transactional
@@ -108,9 +110,11 @@ public class PersonService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = from != null ? from : sheets.today(sheetId);
+        Rollup.Figures before = rollup.figures(sheetId);
         person.setRetiredFrom(on);
         people.flush();
         events.publishEvent(new PersonRetired(sheetId, user, person.getName(), on));
+        rollup.changed(sheetId, user, before);
         return person;
     }
 

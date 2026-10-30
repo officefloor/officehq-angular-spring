@@ -70,6 +70,12 @@ export function heldOut(c: Claim, holds: Hold[]): boolean {
   return c.status === 'OPEN' && !c.stated && holds.some((h) => c.date >= h.from && (h.to === null || c.date <= h.to));
 }
 
+/** Whether the claim is OPEN or PENDING, not bound by a statement (a PENDING one never is), and its person's retirement date is reached
+ * on the sheet's today: it then counts in no live total. */
+export function retiredOut(c: Claim, retiredNow: boolean): boolean {
+  return retiredNow && ((c.status === 'OPEN' && !c.stated) || c.status === 'PENDING');
+}
+
 export interface PersonWithClaims {
   id: number;
   /** The version the person was last saved at; an edit sends the one its editor loaded. */
@@ -110,6 +116,9 @@ export interface PersonWithClaims {
   active: boolean;
   /** The settled figures of their SETTLED claims dated within the 90 days up to and including the sheet's today, added up. */
   recentSettled: string;
+  /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
+   * statement, then count in no live total. */
+  retiredNow: boolean;
 }
 
 const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;

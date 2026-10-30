@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import net.officefloor.hq.app.claim.Holds;
 
 /**
  * A person on a sheet, with a name, their own terms (null: none) and their grades (A, B or C), each from a date (see {@link #gradeOn}), the date they are retired from (null while
@@ -136,6 +137,26 @@ public class Person {
     /** Add a hold from a date to an optional date, keeping the others. */
     public void hold(LocalDate from, LocalDate to) {
         holds.add(new HoldSpan(from, to));
+    }
+
+    /** Whether the retirement date is reached on the sheet's today: on or after it. */
+    public boolean retiredOn(LocalDate today) {
+        return retiredFrom != null && !today.isBefore(retiredFrom);
+    }
+
+    /** The person's holds and retirement, as they leave claims out of the live totals. */
+    public Holds leaves() {
+        return new Holds() {
+            @Override
+            public boolean on(LocalDate date) {
+                return heldOn(date);
+            }
+
+            @Override
+            public boolean retiredOn(LocalDate today) {
+                return Person.this.retiredOn(today);
+            }
+        };
     }
 
     /** Whether a retirement date is set: retired at once, whatever the date. */
