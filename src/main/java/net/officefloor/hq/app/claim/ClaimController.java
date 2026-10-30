@@ -219,6 +219,14 @@ public class ClaimController {
         return move(sheetId, claimId, user, ClaimStatus.OPEN);
     }
 
+    /** A steward reviews a REVIEW claim, opening it. */
+    @PostMapping("/claims/{claimId}/review")
+    public PersonView review(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.review(sheet, user.trim(), claimId));
+    }
+
     /** Open the selected claims, numbered in list order; answers how many were opened and how many refused. */
     @PostMapping("/claims/bulk-open")
     public BulkOpenService.Result openAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,

@@ -41,7 +41,9 @@ import org.springframework.web.server.ResponseStatusException;
  * fixing its due again at the figure it would have today as an OPEN claim bound by no statement. A claim
  * with a negative amount is a correction: it is added or edited only when it names, by number, a SETTLED
  * claim of the same person, and only a correction names one. A claim whose due is above the sheet's proof
- * threshold in force on its date cannot be settled or approved while it has no proof.
+ * threshold in force on its date cannot be settled or approved while it has no proof. A claim whose due is above
+ * the sheet's review threshold in force on its date goes to REVIEW when opened, unnumbered, until a steward
+ * reviews it (OPEN, numbered then).
  */
 @Service
 public class ClaimService {
@@ -367,12 +369,17 @@ public class ClaimService {
             requireUnderCap(sheetId, claim);
         }
         Rollup.Figures before = rollup.figures(sheetId);
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        if (next == ClaimStatus.OPEN && needsReview(sheetId, claim, owner)) {
+            next = ClaimStatus.REVIEW;
+        }
         if (next == ClaimStatus.OPEN) {
             giveNumber(sheetId, claim);
+        }
+        if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
         }
         String number = claim.getShownNumber();
-        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         String due = null;
         if (next == ClaimStatus.SETTLED) {
             BigDecimal fixed = dueNow(sheetId, claim, owner);
@@ -393,6 +400,7 @@ public class ClaimService {
         String person = owner == null ? "" : owner.getName();
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
+            case REVIEW -> "CLAIM_REVIEW";
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
@@ -403,6 +411,46 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, owner, number);
         }
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
+    }
+
+    /** Whether a claim being opened goes to REVIEW: its due (null: n/a) is above the review threshold in force on its date. */
+    private boolean needsReview(String sheetId, Claim claim, Person owner) {
+        BigDecimal threshold = sheets.settings(sheetId).reviewThreshold(claim.getDate());
+        if (threshold == null) {
+            return false;
+        }
+        BigDecimal due = dueNow(sheetId, claim, owner);
+        return due != null && due.compareTo(threshold) > 0;
+    }
+
+    /**
+     * A steward reviews a REVIEW claim, opening it: it takes its number then and keeps the user who opened it.
+     * A claim not REVIEW, one due by a date inside a closed period, or a review by anyone but a steward is
+     * refused and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long review(String sheetId, String user, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reviewed; only a REVIEW one can");
+        }
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can review a claim");
+        }
+        Rollup.Figures before = rollup.figures(sheetId);
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        String person = owner == null ? "" : owner.getName();
+        giveNumber(sheetId, claim);
+        claim.setStatus(ClaimStatus.OPEN);
+        log(sheetId, user, claim, owner);
+        claims.flush();
+        events.publishEvent(new ClaimChanged("CLAIM_REVIEWED", sheetId, user, person, claim.getAmount(),
+                claim.getDate(), null, null));
+        events.publishEvent(new ClaimChanged("CLAIM_OPENED", sheetId, user, person, claim.getAmount(),
+                claim.getDate(), claim.getShownNumber(), null));
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }

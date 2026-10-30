@@ -76,6 +76,8 @@ public class AccessService {
 
     public static final String NOTE_THRESHOLD = DatedSettings.NOTE_THRESHOLD;
 
+    public static final String REVIEW_THRESHOLD = DatedSettings.REVIEW_THRESHOLD;
+
     public static final String POT = DatedSettings.POT;
 
     public static final String ALERT_THRESHOLD = DatedSettings.ALERT_THRESHOLD;
@@ -261,7 +263,7 @@ public class AccessService {
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
-            String alertThreshold, Dated rounding) {
+            String alertThreshold, Dated rounding, Dated reviewThreshold) {
         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
@@ -317,6 +319,9 @@ public class AccessService {
         });
         if (noteThreshold != null) {
             setDated(sheetId, user, NOTE_THRESHOLD, money(noteThreshold.value(), null), noteThreshold.from(), false);
+        }
+        if (reviewThreshold != null) {
+            setDated(sheetId, user, REVIEW_THRESHOLD, money(reviewThreshold.value(), null), reviewThreshold.from(), false);
         }
         permissions.forEach((permission, roles) -> {
             if (roles != null) {

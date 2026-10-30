@@ -11,7 +11,7 @@ import java.util.Optional;
  * A sheet's dated settings: the value of each in force on a date is the one with the latest from-date on
  * or before it (a value with no from-date applying from the beginning of time); before every from-date,
  * and where that value was saved blank, the sheet's starting value (1.00 for the floor, 0.00 for the late
- * percent, 14 days for the terms; none for the rounding mode, a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's proof threshold and the note threshold; the sheet's terms for a grade's own
+ * percent, 14 days for the terms; none for the rounding mode, a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's proof threshold, the note threshold and the review threshold; the sheet's terms for a grade's own
  * terms).
  */
 public record DatedSettings(List<SheetSetting> values) {
@@ -32,6 +32,9 @@ public record DatedSettings(List<SheetSetting> values) {
     public static final String PROOF_THRESHOLD = "proof-threshold";
 
     public static final String NOTE_THRESHOLD = "note-threshold";
+
+    /** A claim whose due is above it goes to REVIEW when opened; none when blank. */
+    public static final String REVIEW_THRESHOLD = "review-threshold";
 
     /** The sheet's pot, shared out over each balanced pool; not dated. */
     public static final String POT = "pot";
@@ -157,6 +160,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The most due a claim dated on the date may have to be opened with an empty note; null when there is none. */
     public BigDecimal noteThreshold(LocalDate date) {
         return on(NOTE_THRESHOLD, date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The most due a claim dated on the date may have to be opened straight to OPEN; null when there is none. */
+    public BigDecimal reviewThreshold(LocalDate date) {
+        return on(REVIEW_THRESHOLD, date).map(BigDecimal::new).orElse(null);
     }
 
     /** The most a person's due-total comes to on the date; null when there is no cap. */

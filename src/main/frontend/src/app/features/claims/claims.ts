@@ -11,11 +11,12 @@ import { ClaimTemplateList } from '../claim-templates/claim-templates';
  * until a steward approves it (SETTLED) or rejects it (OPEN again). A steward can re-settle a SETTLED claim,
  * fixing its due again at today's figure. A DRAFT, OPEN or PENDING claim can be VOID,
  * as can a SETTLED one by a steward within 7 days of settling. A DRAFT can be DELETED (counting nowhere) and
- * restored to a DRAFT on the sheet's today it was deleted.
+ * restored to a DRAFT on the sheet's today it was deleted. A claim whose due is above the review threshold
+ * goes to REVIEW when opened, counting in no total, until a steward reviews it (OPEN).
  */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'resettle' | 'void' | 'delete' | 'restore';
+export type ClaimAction = 'open' | 'review' | 'settle' | 'approve' | 'reject' | 'resettle' | 'void' | 'delete' | 'restore';
 
 export interface Claim {
   id: number;
@@ -509,6 +510,7 @@ export class Claims implements OnInit {
   private busy = false;
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
+    { action: 'review', label: 'Review' },
     { action: 'settle', label: 'Settle' },
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
@@ -1057,7 +1059,7 @@ export class Claims implements OnInit {
   }
 
   /**
-   * Open, settle, approve, reject, re-settle, void, delete or restore a claim; a change its status does not allow is refused on its
+   * Open, review, settle, approve, reject, re-settle, void, delete or restore a claim; a change its status does not allow is refused on its
    * row, as is a reject without a reason.
    */
   protected async move(c: Claim, action: ClaimAction): Promise<void> {
@@ -1105,6 +1107,7 @@ export class Claims implements OnInit {
 
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
+  review: 'reviewed',
   settle: 'settled',
   approve: 'approved',
   reject: 'rejected',

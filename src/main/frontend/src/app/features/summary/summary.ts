@@ -4,7 +4,7 @@ import { Period, classicPeriodDueTotals, periodDueTotals } from '../periods/peri
 import { VoidReasonList } from '../void-reasons/void-reasons';
 
 const GRADES = ['A', 'B', 'C'];
-const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'];
 
 /** Cents in an amount shown with two decimals ("12.50" is 1250). */
 function cents(amount: string): number {
