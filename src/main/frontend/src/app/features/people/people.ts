@@ -30,6 +30,8 @@ function cents(amount: string): number {
       <h2>People</h2>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
         <label for="person-form-name">Name</label>
         <input
@@ -96,6 +98,7 @@ function cents(amount: string): number {
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+            <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -112,6 +115,8 @@ function cents(amount: string): number {
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
+              <td data-testid="person-overdue-total">{{ p.overdueTotal }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -185,6 +190,13 @@ export class People {
   /** Everyone's due-total added up; a person showing n/a is skipped. */
   protected readonly dueTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0) / 100).toFixed(2),
+  );
+
+  /** Everyone's overdue claims counted up. */
+  protected readonly overdueCount = computed(() => this.people().reduce((sum, p) => sum + p.overdueCount, 0));
+  /** Everyone's overdue-total added up. */
+  protected readonly overdueTotal = computed(() =>
+    (this.people().reduce((sum, p) => sum + cents(p.overdueTotal), 0) / 100).toFixed(2),
   );
 
   constructor() {

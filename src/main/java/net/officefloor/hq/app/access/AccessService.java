@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
  * clerk limit, the most due a clerk may settle on a claim (none: no limit); and the sheet's floor, the
- * least live due a claim has.
+ * least live due a claim has; and its terms, the days a claim has to be paid by from its date.
  */
 @Service
 public class AccessService {
@@ -22,6 +22,8 @@ public class AccessService {
     public static final String CLERK_LIMIT = "clerk-limit";
 
     public static final String FLOOR = "floor";
+
+    public static final String TERMS = "terms";
 
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRows;
@@ -60,6 +62,11 @@ public class AccessService {
         return sheets.floor(sheetId);
     }
 
+    @Transactional(readOnly = true)
+    public int terms(String sheetId) {
+        return sheets.terms(sheetId);
+    }
+
     /** Give a user name a role on the sheet, replacing the one it had. */
     @Transactional
     public SheetRole setRole(String sheetId, String user, String name, Role role) {
@@ -80,13 +87,30 @@ public class AccessService {
      * out (null) is kept as it is.
      */
     @Transactional
-    public void setSettings(String sheetId, String user, String clerkLimit, String floor) {
+    public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms) {
         if (clerkLimit != null) {
             setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
         }
         if (floor != null) {
             setFloor(sheetId, user, floor.isEmpty() ? null : new BigDecimal(floor));
         }
+        if (terms != null) {
+            setTerms(sheetId, user, terms.isEmpty() ? null : Integer.valueOf(terms));
+        }
+    }
+
+    /**
+     * Save the sheet's terms in days; null puts back the ones a sheet starts with. Every claim's due-by
+     * moves with them; no due figure does.
+     */
+    @Transactional
+    public int setTerms(String sheetId, String user, Integer terms) {
+        Sheet sheet = sheets.load(sheetId, user);
+        int days = terms == null ? Sheet.DEFAULT_TERMS : terms;
+        sheet.setTerms(days);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, TERMS, Integer.toString(days)));
+        return days;
     }
 
     /** Save the sheet's clerk limit; null removes it. */

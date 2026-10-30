@@ -6,10 +6,10 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Every rate on a sheet, the sheet's today and its floor: which rate is in force for a grade on a date,
- * and the live due it makes of an amount.
+ * Every rate on a sheet, the sheet's today, its floor and its terms: which rate is in force for a grade
+ * on a date, the live due it makes of an amount, and the date a claim is due by.
  */
-public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor) {
+public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, int terms) {
 
     /**
      * The percent in force for the grade on the date: the rate whose from-date is the latest one on
@@ -35,5 +35,10 @@ public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor) {
     public BigDecimal due(BigDecimal amount, String grade, LocalDate date) {
         BigDecimal due = RateService.due(amount, on(grade, date));
         return due == null || floor == null || due.compareTo(floor) >= 0 ? due : floor;
+    }
+
+    /** The date a claim dated on the date is due by: the date plus the terms. */
+    public LocalDate dueBy(LocalDate date) {
+        return date.plusDays(terms);
     }
 }

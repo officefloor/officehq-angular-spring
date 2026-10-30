@@ -39,6 +39,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
     }
 
+    /** The sheet's terms: the days a claim has to be paid by, from its date. */
+    public int terms(String id) {
+        return sheets.findById(id).map(Sheet::getTerms).orElse(Sheet.DEFAULT_TERMS);
+    }
+
     /** The sheet's today: the date to use for every decision and default date on the sheet. */
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));

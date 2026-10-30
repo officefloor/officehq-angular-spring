@@ -24,6 +24,22 @@ public final class Dues {
                 : rates.due(claim.getAmount(), grade, claim.getDate());
     }
 
+    /** Whether the claim is overdue: OPEN, and due by a date before the sheet's today. */
+    public static boolean overdue(Claim claim, RateTable rates) {
+        return claim.getStatus() == ClaimStatus.OPEN && rates.dueBy(claim.getDate()).isBefore(rates.today());
+    }
+
+    /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */
+    public static List<Claim> overdue(List<Claim> claims, RateTable rates, boolean held) {
+        return claims.stream().filter(c -> counts(c, held) && overdue(c, rates)).toList();
+    }
+
+    /** The sum of the due figures of the claims given (0.00 with none); a claim with none is skipped. */
+    public static BigDecimal sum(String grade, List<Claim> claims, RateTable rates) {
+        return claims.stream().map(c -> figure(c, grade, rates)).filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     /** Whether the claim's figure is kept whatever the rates: fixed by settling or bound by a statement. */
     private static boolean kept(Claim claim) {
         return claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null);

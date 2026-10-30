@@ -13,6 +13,8 @@ interface Settings {
   clerkLimit: string | null;
   /** The least live due a claim has, with two decimals. */
   floor: string;
+  /** The days a claim has to be paid by, from its date. */
+  terms: string;
 }
 
 interface AccessView {
@@ -22,10 +24,12 @@ interface AccessView {
 
 const ROLES = ['clerk', 'steward'];
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+const DAYS = /^\d{1,5}$/;
 
 // The sheet's roles (any name without one is a clerk) with the form that sets one, and the
 // sheet's settings: the clerk limit, the most due a clerk may settle (blank: no limit), and the floor,
-// the least live due a claim has (blank: 1.00). Each input shows the value saved; a save sends only the
+// the least live due a claim has (blank: 1.00), and the terms, the days a claim has to be paid by
+// from its date (blank: 14). Each input shows the value saved; a save sends only the
 // settings whose input was changed.
 @Component({
   selector: 'app-access',
@@ -72,6 +76,7 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
       <h2>Settings</h2>
       <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
       <p>Floor <strong data-testid="setting-floor-current">{{ floor() }}</strong></p>
+      <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
       <form (submit)="saveSettings($event)" aria-label="Save settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
@@ -88,6 +93,14 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
           data-testid="setting-floor"
           [value]="floorInput()"
           (input)="floorInput.set(value($event)); floorTouched = true; settingsError.set('')"
+        />
+        <label for="setting-terms">Terms in days (blank: 14)</label>
+        <input
+          id="setting-terms"
+          inputmode="numeric"
+          data-testid="setting-terms"
+          [value]="termsInput()"
+          (input)="termsInput.set(value($event)); termsTouched = true; settingsError.set('')"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
@@ -110,9 +123,12 @@ export class Access {
   protected readonly limitInput = signal('');
   protected readonly floor = signal('');
   protected readonly floorInput = signal('');
+  protected readonly terms = signal('');
+  protected readonly termsInput = signal('');
   /** Whether each settings input was changed since the settings were last shown. */
   protected limitTouched = false;
   protected floorTouched = false;
+  protected termsTouched = false;
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
@@ -125,7 +141,7 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.showSettings({ clerkLimit: null, floor: '' });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '' });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -185,9 +201,15 @@ export class Access {
       this.settingsError.set('Enter a floor of 0.00 or more, with up to two decimals, or leave it blank for 1.00.');
       return;
     }
+    const terms = this.termsInput().trim();
+    if (this.termsTouched && terms !== '' && !DAYS.test(terms)) {
+      this.settingsError.set('Enter terms of 0 or more whole days, or leave them blank for 14.');
+      return;
+    }
     const body: Partial<Settings> = {};
     if (this.limitTouched) body.clerkLimit = clerkLimit;
     if (this.floorTouched) body.floor = floor;
+    if (this.termsTouched) body.terms = terms;
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
@@ -219,7 +241,10 @@ export class Access {
     this.floor.set(settings.floor);
     this.limitInput.set(settings.clerkLimit ?? '');
     this.floorInput.set(settings.floor);
+    this.terms.set(settings.terms);
+    this.termsInput.set(settings.terms);
     this.limitTouched = false;
     this.floorTouched = false;
+    this.termsTouched = false;
   }
 }

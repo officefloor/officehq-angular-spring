@@ -23,6 +23,10 @@ export interface Claim {
   openedBy: string | null;
   /** Whether the person's last statement binds the claim to the figure it had then. */
   stated: boolean;
+  /** The claim's date plus the sheet's terms. */
+  dueBy: string;
+  /** Whether the claim is OPEN and its due-by is before the sheet's today. */
+  overdue: boolean;
 }
 
 export interface PersonWithClaims {
@@ -48,6 +52,10 @@ export interface PersonWithClaims {
   retiredFrom: string | null;
   /** Whether the person is on hold: their OPEN claims then count in no live total. */
   held: boolean;
+  /** How many of the claims that count are overdue. */
+  overdueCount: number;
+  /** The due figures of the overdue claims that count, added up. */
+  overdueTotal: string;
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -71,6 +79,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
+          <span>Overdue <span data-testid="claim-overdue">{{ c.overdue ? 'yes' : 'no' }}</span></span>
           @for (a of actions; track a.action) {
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>

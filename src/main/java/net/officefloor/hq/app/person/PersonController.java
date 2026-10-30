@@ -43,15 +43,16 @@ public class PersonController {
      * A claim as shown: its amount with two decimals, its date, its note, its due: the amount at
      * the rate for its person's grade in force on its date (null when none is) or, once settled, the due fixed
      * then, or while bound by a statement, the figure bound then, its status, its number (null while it has
-     * none), who opened it (null while it was never opened) and whether a statement binds it.
+     * none), who opened it (null while it was never opened), whether a statement binds it, the date it is
+     * due by (its date plus the sheet's terms) and whether it is overdue (see {@link Dues#overdue}).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
-            Integer number, String openedBy, boolean stated) {
+            Integer number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue) {
 
         static ClaimView of(Claim claim, String grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getNumber(),
-                    claim.getOpenedBy(), claim.isStated());
+                    claim.getOpenedBy(), claim.isStated(), rates.dueBy(claim.getDate()), Dues.overdue(claim, rates));
         }
     }
 
@@ -60,11 +61,12 @@ public class PersonController {
      * count (OPEN and SETTLED, but only SETTLED while on hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
-     * the date they are retired from (null when not), and whether they are on hold.
+     * the date they are retired from (null when not), whether they are on hold, and how many of the claims
+     * that count are overdue and the sum of their due figures.
      */
     public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
             String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate,
-            boolean retired, LocalDate retiredFrom, boolean held) {
+            boolean retired, LocalDate retiredFrom, boolean held, int overdueCount, String overdueTotal) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements) {
@@ -72,11 +74,12 @@ public class PersonController {
             boolean held = person.isHeld();
             BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+            List<Claim> overdue = Dues.overdue(claims, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(), grade,
                     claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
-                    person.getRetiredFrom(), held);
+                    person.getRetiredFrom(), held, overdue.size(), money(Dues.sum(grade, overdue, rates)));
         }
     }
 
