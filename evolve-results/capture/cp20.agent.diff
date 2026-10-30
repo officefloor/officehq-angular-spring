@@ -1,0 +1,75 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index efd8c5ca..a86aa756 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -151,7 +151,13 @@ export class Claims {
+     return (e.target as HTMLInputElement).value;
+   }
+ 
++  /** Open a claim's editor; only a DRAFT can be edited, so any other is refused on its row. */
+   protected edit(c: Claim): void {
++    this.claimError.set(null);
++    if (c.status !== 'DRAFT') {
++      this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be edited; void it and add a new one.` });
++      return;
++    }
+     this.editing.set(c.id);
+     this.amount.set(c.amount);
+     this.date.set(c.date);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 8a68eb68..7d5a7f34 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,7 +39,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The number the claim got when opened; null while a draft and once voided. */
++    /** The number the claim got when opened; null while a draft; a voided claim keeps it. */
+     @Column(name = "claim_number")
+     private Integer number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 7cea6ae6..eb14f75e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -19,7 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * The claims on a sheet: listed per person newest first, added, edited and moved through their
+- * statuses one at a time. Settling a claim fixes its due at the rate its person's grade has then on the claim's date, or at the
++ * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
++ * its number, which is never reused. Settling a claim fixes its due at the rate its person's grade has then on the claim's date, or at the
+  * figure a statement bound it to. No claim dated inside a closed period can be added, edited or moved.
+  */
+ @Service
+@@ -71,7 +72,8 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Edit a claim's amount, date and note; refused when a closed period contains its date or the new one.
++     * Edit a claim's amount, date and note; only a DRAFT can be edited (an open claim is voided and
++     * added again instead), and an edit is refused when a closed period contains its date or the new one.
+      * Returns the person it belongs to.
+      */
+     @Transactional
+@@ -80,6 +82,10 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+         periods.requireOpen(sheetId, claim.getDate(), on);
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
++        }
+         Rollup.Figures before = rollup.figures(sheetId);
+         claim.setAmount(amount);
+         claim.setDate(on);
+@@ -116,8 +122,6 @@ public class ClaimService {
+             number = sheets.nextClaimNumber(sheetId);
+             claim.setNumber(number);
+             claim.setOpenedBy(user);
+-        } else if (next == ClaimStatus.VOID) {
+-            claim.setNumber(null);
+         }
+         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+         String due = null;
