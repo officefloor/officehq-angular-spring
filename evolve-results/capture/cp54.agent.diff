@@ -1,0 +1,264 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index ed311cdf..3e17e5f1 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -43,7 +43,7 @@ interface AccessView {
+   settings: Settings;
+ }
+ 
+-const ROLES = ['clerk', 'steward'];
++const ROLES = ['clerk', 'steward', 'viewer'];
+ const GRADES = ['A', 'B', 'C'] as const;
+ type Grade = (typeof GRADES)[number];
+ const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
+@@ -87,7 +87,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+   template: `
+     <section aria-label="Roles">
+       <h2>Roles</h2>
+-      <p>Anyone without a role is a clerk.</p>
++      <p>Anyone without a role is a clerk. A viewer sees everything and can change nothing.</p>
+       <ul aria-label="Roles set">
+         @for (r of roles(); track r.user) {
+           <li [attr.data-testid]="'role-row-' + r.user">
+@@ -104,7 +104,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           [value]="roleUser()"
+           (input)="roleUser.set(value($event)); roleError.set('')"
+         />
+-        <label for="role-form-role">Role (clerk or steward)</label>
++        <label for="role-form-role">Role (clerk, steward or viewer)</label>
+         <input
+           id="role-form-role"
+           data-testid="role-form-role"
+@@ -394,7 +394,7 @@ export class Access {
+       return;
+     }
+     if (!ROLES.includes(role)) {
+-      this.roleError.set('Enter a role: clerk or steward.');
++      this.roleError.set('Enter a role: clerk, steward or viewer.');
+       return;
+     }
+     const headers = { 'X-User': this.session.user() ?? '' };
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 08b1fd51..5bca0302 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -494,7 +494,7 @@ export class Claims {
+     } catch (err) {
+       if (this.session.sheet() !== sheet) return;
+       if (err instanceof HttpErrorResponse && err.status === 403) {
+-        this.claimError.set({ id: c.id, message: `You opened this claim, so another user must ${action} it.` });
++        this.claimError.set({ id: c.id, message: err.error?.message || `You opened this claim, so another user must ${action} it.` });
+         return;
+       }
+       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index 90ee9f8f..544a2123 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -79,8 +79,8 @@ public class AccessController {
+     public record AccessView(List<RoleView> roles, SettingsView settings) {
+     }
+ 
+-    /** A user name and a role: clerk or steward. */
+-    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward") String role) {
++    /** A user name and a role: clerk, steward or viewer. */
++    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 5dc3f2f1..b0dacb4e 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -85,6 +85,12 @@ public class AccessService {
+         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
+     }
+ 
++    /** Whether the user is a viewer on the sheet: one who sees everything and can change nothing. */
++    @Transactional(readOnly = true)
++    public boolean isViewer(String sheetId, String user) {
++        return roleOf(sheetId, user) == Role.VIEWER;
++    }
++
+     /** The sheet's dated settings, with the sheet's today to read the values in force now. */
+     @Transactional(readOnly = true)
+     public DatedSettings settings(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/access/Role.java b/src/main/java/net/officefloor/hq/app/access/Role.java
+index 7c347734..cf9f5c4c 100644
+--- a/src/main/java/net/officefloor/hq/app/access/Role.java
++++ b/src/main/java/net/officefloor/hq/app/access/Role.java
+@@ -5,10 +5,11 @@ import java.util.Optional;
+ 
+ /**
+  * What a user may do on a sheet: a clerk settles only within the clerk limit (above it the claim goes
+- * PENDING), a steward settles anything and approves or rejects a PENDING claim.
++ * PENDING), a steward settles anything and approves or rejects a PENDING claim; a viewer sees everything
++ * and can change nothing.
+  */
+ public enum Role {
+-    CLERK, STEWARD;
++    CLERK, STEWARD, VIEWER;
+ 
+     /** The role as it is written: lower case. */
+     public String key() {
+diff --git a/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java
+new file mode 100644
+index 00000000..0b9a2667
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.access;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.util.Map;
++import org.springframework.http.HttpMethod;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.MediaType;
++import org.springframework.stereotype.Component;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.HandlerMapping;
++
++/**
++ * Refuses every change a viewer asks for on a sheet (403, writing nothing). Reading, and loading a sheet,
++ * go through; so do the bulk actions, which answer with nothing done and every selected item refused.
++ */
++@Component
++public class ViewerGuard implements HandlerInterceptor {
++
++    private static final String REFUSAL = "{\"message\":\"A viewer can change nothing.\"}";
++
++    private final AccessService access;
++
++    public ViewerGuard(AccessService access) {
++        this.access = access;
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
++            throws Exception {
++        if (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod())) {
++            return true;
++        }
++        String path = request.getRequestURI();
++        if (path.endsWith("/load") || path.contains("/bulk-")) {
++            return true;
++        }
++        Object vars = request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
++        String user = request.getHeader("X-User");
++        if (!(vars instanceof Map<?, ?> v) || user == null) {
++            return true;
++        }
++        Object sheet = v.containsKey("sheetId") ? v.get("sheetId") : v.get("id");
++        if (!(sheet instanceof String id)) {
++            return true;
++        }
++        if (!access.isViewer(id.trim(), user.trim())) {
++            return true;
++        }
++        response.setStatus(HttpStatus.FORBIDDEN.value());
++        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
++        response.getWriter().write(REFUSAL);
++        return false;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/access/ViewerGuardConfig.java b/src/main/java/net/officefloor/hq/app/access/ViewerGuardConfig.java
+new file mode 100644
+index 00000000..a72af4cf
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/access/ViewerGuardConfig.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.access;
++
++import org.springframework.context.annotation.Configuration;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/** Puts the {@link ViewerGuard} in front of every sheet endpoint. */
++@Configuration
++public class ViewerGuardConfig implements WebMvcConfigurer {
++
++    private final ViewerGuard guard;
++
++    public ViewerGuardConfig(ViewerGuard guard) {
++        this.guard = guard;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(guard).addPathPatterns("/api/sheets/**");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+index 1a4e7fa3..38701e4a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.claim;
+ 
+ import java.util.Set;
++import net.officefloor.hq.app.access.AccessService;
+ import net.officefloor.hq.app.period.ClosedPeriodRefused;
+ import org.springframework.stereotype.Service;
+ import org.springframework.web.server.ResponseStatusException;
+@@ -18,13 +19,18 @@ public class BulkOpenService {
+ 
+     private final ClaimService claims;
+     private final SelectedClaims selected;
++    private final AccessService access;
+ 
+-    public BulkOpenService(ClaimService claims, SelectedClaims selected) {
++    public BulkOpenService(ClaimService claims, SelectedClaims selected, AccessService access) {
++        this.access = access;
+         this.claims = claims;
+         this.selected = selected;
+     }
+ 
+     public Result open(String sheetId, String user, Set<Long> claimIds) {
++        if (access.isViewer(sheetId, user)) {
++            return new Result(0, claimIds.size()); // a viewer changes nothing: every one refused
++        }
+         int opened = 0;
+         for (Claim c : selected.inListOrder(sheetId, claimIds)) {
+             try {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+index 83b0dd01..7d81ae11 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.claim;
+ 
+ import java.util.Set;
++import net.officefloor.hq.app.access.AccessService;
+ import net.officefloor.hq.app.period.ClosedPeriodRefused;
+ import org.springframework.stereotype.Service;
+ import org.springframework.web.server.ResponseStatusException;
+@@ -19,13 +20,18 @@ public class BulkSettleService {
+ 
+     private final ClaimService claims;
+     private final SelectedClaims selected;
++    private final AccessService access;
+ 
+-    public BulkSettleService(ClaimService claims, SelectedClaims selected) {
++    public BulkSettleService(ClaimService claims, SelectedClaims selected, AccessService access) {
++        this.access = access;
+         this.claims = claims;
+         this.selected = selected;
+     }
+ 
+     public Result settle(String sheetId, String user, Set<Long> claimIds) {
++        if (access.isViewer(sheetId, user)) {
++            return new Result(0, claimIds.size()); // a viewer changes nothing: every one refused
++        }
+         int settled = 0;
+         for (Claim c : selected.inListOrder(sheetId, claimIds)) {
+             try {
+diff --git a/src/main/resources/db/migration/V38__viewer_role.sql b/src/main/resources/db/migration/V38__viewer_role.sql
+new file mode 100644
+index 00000000..9e5bfff9
+--- /dev/null
++++ b/src/main/resources/db/migration/V38__viewer_role.sql
+@@ -0,0 +1,3 @@
++-- A third role, viewer: sees everything and can change nothing.
++ALTER TABLE sheet_role DROP CONSTRAINT sheet_role_known;
++ALTER TABLE sheet_role ADD CONSTRAINT sheet_role_known CHECK (role IN ('clerk', 'steward', 'viewer'));
