@@ -109,6 +109,20 @@ public class Person {
         return arrived;
     }
 
+    /**
+     * The person as copied onto a clone of their sheet: everything they have here (grades, terms, contact,
+     * aliases, origin, place in the list, holds, retirement and past retirements).
+     */
+    public Person cloned(String sheetId) {
+        Person copy = arriving(sheetId);
+        copy.origin = origin;
+        copy.position = position;
+        copy.retiredFrom = retiredFrom;
+        holds.forEach(h -> copy.holds.add(new HoldSpan(h.getFromDate(), h.getToDate())));
+        retirements.forEach(r -> copy.retirements.add(new RetirementSpan(r.getFromDate(), r.getToDate())));
+        return copy;
+    }
+
     /** The person's place in the sheet's list: the list is by position, lowest first. */
     public int getPosition() {
         return position;

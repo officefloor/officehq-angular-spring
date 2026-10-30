@@ -39,6 +39,7 @@ import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
 import net.officefloor.hq.app.sheet.DaySnapshot;
 import net.officefloor.hq.app.sheet.SheetArchived;
+import net.officefloor.hq.app.sheet.SheetCloned;
 import net.officefloor.hq.app.statement.StatementCancelled;
 import net.officefloor.hq.app.statement.StatementTaken;
 import org.springframework.stereotype.Component;
@@ -227,6 +228,12 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(SheetArchived e) {
         change(e.sheetId(), e.user(), "SHEET_ARCHIVED sheet=" + e.sheetId() + " by=" + e.user());
+    }
+
+    @TransactionalEventListener
+    public void on(SheetCloned e) {
+        change(e.sheetId(), e.user(), (e.to() != null ? "SHEET_CLONE_MADE" : "SHEET_CLONED") + " sheet=" + e.sheetId()
+                + " by=" + e.user() + (e.to() == null ? "" : " to=" + e.to()) + (e.from() == null ? "" : " from=" + e.from()));
     }
 
     @TransactionalEventListener

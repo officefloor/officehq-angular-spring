@@ -30,6 +30,8 @@ export class Session {
   readonly archived = signal(false);
   /** The id of the active sheet's parent sheet, as it stands; null when it has none. */
   readonly parent = signal<string | null>(null);
+  /** The id of the last clone of the active sheet made from this screen; null before any. */
+  readonly clonedTo = signal<string | null>(null);
   /** Bumped on every sheet load, so what is shown for the sheet is re-read even for the same id. */
   readonly loads = signal(0);
 
@@ -40,6 +42,7 @@ export class Session {
     this.asOf.set(null);
     this.archived.set(false);
     this.parent.set(null);
+    this.clonedTo.set(null);
     this.loads.update((n) => n + 1);
     this.user.set(res.name);
   }
@@ -54,6 +57,7 @@ export class Session {
     this.sheetToday.set(res.today);
     this.archived.set(res.archived);
     this.parent.set(res.parent);
+    this.clonedTo.set(null);
     if (this.asOf() !== null) await this.readShown(res.id);
     this.loads.update((n) => n + 1);
   }
@@ -92,5 +96,17 @@ export class Session {
       }),
     );
     if (this.sheet() === res.id) this.archived.set(res.archived);
+  }
+
+  /** Clone the active sheet to another id, which must never have been used. */
+  async cloneTo(to: string): Promise<void> {
+    const id = this.sheet();
+    if (!id) return;
+    await firstValueFrom(
+      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/clone`, { to }, {
+        headers: { 'X-User': this.user() ?? '' },
+      }),
+    );
+    if (this.sheet() === id) this.clonedTo.set(to);
   }
 }

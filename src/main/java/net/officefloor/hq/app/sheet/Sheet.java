@@ -71,6 +71,19 @@ public class Sheet {
         this.today = today;
     }
 
+    /**
+     * The sheet as copied to a clone under another id: its creator, today, policy date, period numbering from,
+     * entry date and grace days; no claim number or settle batch taken yet, and not archived.
+     */
+    public Sheet cloned(String id) {
+        Sheet copy = new Sheet(id, createdBy, today);
+        copy.policyDate = policyDate;
+        copy.periodNumberingFrom = periodNumberingFrom;
+        copy.entryDate = entryDate;
+        copy.graceDays = graceDays;
+        return copy;
+    }
+
     public String getId() {
         return id;
     }

@@ -55,6 +55,17 @@ import { People } from '../people/people';
             Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
             <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
           </p>
+          <form (submit)="cloneTo($event)" aria-label="Clone sheet">
+            <label for="sheet-clone-to">Clone to sheet id</label>
+            <input
+              id="sheet-clone-to"
+              data-testid="sheet-clone-to"
+              [value]="cloneInput()"
+              (input)="cloneInput.set(value($event)); sheetError.set('')"
+            />
+            <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+            <p>Last clone made <strong data-testid="sheet-cloned-to">{{ session.clonedTo() ?? '' }}</strong></p>
+          </form>
           <app-people />
         }
       </section>
@@ -83,7 +94,8 @@ export class Home {
   protected readonly sheetError = signal('');
   protected readonly todayInput = signal('');
   protected readonly asOfInput = signal('');
-  /** A today change or archive still waiting for its answer: another press meanwhile is ignored. */
+  protected readonly cloneInput = signal('');
+  /** A today change, archive or clone still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
 
   protected value(e: Event): string {
@@ -128,6 +140,25 @@ export class Home {
       await this.session.archive();
     } catch {
       this.sheetError.set('Could not archive the sheet.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected async cloneTo(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.busy) return;
+    this.sheetError.set('');
+    const to = this.cloneInput().trim();
+    if (!to) {
+      this.sheetError.set('Enter a sheet id to clone to.');
+      return;
+    }
+    this.busy = true;
+    try {
+      await this.session.cloneTo(to);
+    } catch {
+      this.sheetError.set('Could not clone the sheet.');
     } finally {
       this.busy = false;
     }

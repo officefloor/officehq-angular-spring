@@ -210,6 +210,16 @@ public class Claim {
         return arrived;
     }
 
+    /**
+     * The claim as copied onto a clone of its sheet for the person there: as {@link #arriving}, keeping its
+     * reference too.
+     */
+    public Claim cloned(String sheetId, Long personId) {
+        Claim copy = arriving(sheetId, personId);
+        copy.ref = ref;
+        return copy;
+    }
+
     public Long getListed() {
         return listed;
     }
