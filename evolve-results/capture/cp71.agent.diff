@@ -1,0 +1,208 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e40d02d1..d70f9856 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -226,6 +226,9 @@ function csvField(value: string): string {
+                 <button type="button" data-testid="person-statement" (click)="statement(p)">
+                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="person-unstate" (click)="unstate(p)">
++                  Cancel last statement<span class="visually-hidden"> for {{ p.name }}</span>
++                </button>
+                 <label [for]="'person-retire-date-' + p.id">Retire {{ p.name }} from</label>
+                 <input
+                   #retireDate
+@@ -712,6 +715,34 @@ export class People {
+     }
+   }
+ 
++  /** Cancel the person's last statement (a steward only): the claims it bound are live again. */
++  protected async unstate(p: Person): Promise<void> {
++    if (this.stating) return;
++    this.personError.set(null);
++    this.patronError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.stating = true;
++    try {
++      const saved = await firstValueFrom(
++        this.http.delete<Person>(`/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/statement`, {
++          headers,
++        }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.replace(saved);
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.personError.set({
++        id: p.id,
++        message: 'Could not cancel the statement: only a steward can, and only a statement that was taken.',
++      });
++    } finally {
++      this.stating = false;
++    }
++  }
++
+   /** Retire the person from a date; a date left blank takes the sheet's today. */
+   protected async retire(p: Person, from: string): Promise<void> {
+     if (this.retiring) return;
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index cdd6de51..9fde01eb 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -25,6 +25,7 @@ import net.officefloor.hq.app.rate.RateChanged;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.rollup.RollupChanged;
+ import net.officefloor.hq.app.sheet.SheetArchived;
++import net.officefloor.hq.app.statement.StatementCancelled;
+ import net.officefloor.hq.app.statement.StatementTaken;
+ import org.springframework.stereotype.Component;
+ import org.springframework.transaction.event.TransactionalEventListener;
+@@ -201,6 +202,13 @@ public class SheetAudit {
+                 + " claims=" + e.claims());
+     }
+ 
++    @TransactionalEventListener
++    public void on(StatementCancelled e) {
++        change(e.sheetId(), e.user(), "STATEMENT_CANCELLED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
++                + " due-total=" + (e.dueTotal() == null ? "n/a"
++                        : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString()));
++    }
++
+     @TransactionalEventListener
+     public void on(Delegated e) {
+         change(e.sheetId(), e.user(), "DELEGATED sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name()
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 4789a989..cf72fdcc 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -164,8 +164,8 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * When the sheet's today is changed and it has grace days, close every open period whose to-date plus
+-     * the grace days is before the new today, in order of their to-dates, each as a close by hand would.
++     * When the sheet's today is changed and it has grace days, close every open period (neither closed nor
++     * soft-closed) whose to-date plus the grace days is before the new today, in order of their to-dates, each as a close by hand would.
+      */
+     @EventListener
+     @Transactional
+@@ -176,7 +176,7 @@ public class PeriodService {
+         }
+         sheetRows.lockById(e.sheetId());
+         list(e.sheetId()).stream()
+-                .filter(p -> !p.isClosed() && p.getToDate().plusDays(grace).isBefore(e.today()))
++                .filter(p -> !p.isFixed() && p.getToDate().plusDays(grace).isBefore(e.today()))
+                 .sorted(Comparator.comparing(Period::getToDate))
+                 .forEach(p -> fix(e.sheetId(), e.user(), p, true, false));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index d7897e7a..2373f818 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -25,6 +25,7 @@ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.orm.ObjectOptimisticLockingFailureException;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -191,6 +192,15 @@ public class PersonController {
+         return view(sheet, service.get(sheet, personId));
+     }
+ 
++    /** Cancel the person's last statement; answers with the person as they are without it. */
++    @DeleteMapping("/{personId}/statement")
++    public PersonView unstate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user) {
++        String sheet = sheetId.trim();
++        statements.cancel(sheet, user.trim(), personId);
++        return view(sheet, service.get(sheet, personId));
++    }
++
+     /** Retire the person from a date; answers with the person as retired. */
+     @PostMapping("/{personId}/retire")
+     public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementCancelled.java b/src/main/java/net/officefloor/hq/app/statement/StatementCancelled.java
+new file mode 100644
+index 00000000..f30f3534
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementCancelled.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.statement;
++
++import java.math.BigDecimal;
++
++/** A person's last statement was cancelled ({@code STATEMENT_CANCELLED}); the due-total is null when it was n/a. */
++public record StatementCancelled(String sheetId, String user, String name, BigDecimal dueTotal) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 7a5f69a1..e55f5d70 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -4,6 +4,8 @@ import java.math.BigDecimal;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
++import net.officefloor.hq.app.access.AccessService;
++import net.officefloor.hq.app.access.Role;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.Dues;
+@@ -23,6 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * The statements taken for the people on a sheet. Taking one records the person's due-total and
+  * binds each of their claims that counts to the figure it has then (without its late charge, which
+  * keeps following the sheet's today); a claim that does not count is released to its live figure.
++ * A steward can cancel a person's last statement: the claims it bound are released to their live
++ * figures (a figure an earlier statement bound is not restored).
+  */
+ @Service
+ public class StatementService {
+@@ -33,10 +37,13 @@ public class StatementService {
+     private final RateService rates;
+     private final SheetService sheets;
+     private final Rollup rollup;
++    private final AccessService access;
+     private final ApplicationEventPublisher events;
+ 
+     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
+-            RateService rates, SheetService sheets, Rollup rollup, ApplicationEventPublisher events) {
++            RateService rates, SheetService sheets, Rollup rollup, AccessService access,
++            ApplicationEventPublisher events) {
++        this.access = access;
+         this.rollup = rollup;
+         this.statements = statements;
+         this.people = people;
+@@ -82,4 +89,30 @@ public class StatementService {
+         events.publishEvent(new StatementTaken(sheetId, user, person.getName(), dueTotal, counting));
+         rollup.changed(sheetId, user, before);
+     }
++
++    /** Cancel the person's last statement; only a steward may, and only while the person has one. */
++    @Transactional
++    public void cancel(String sheetId, String user, long personId) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        if (access.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can cancel a statement");
++        }
++        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
++        if (taken.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The person has no statement to cancel");
++        }
++        Rollup.Figures before = rollup.figures(sheetId);
++        Statement last = taken.get(taken.size() - 1);
++        for (Claim claim : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
++            if (claim.isStated()) {
++                claim.unbind();
++            }
++        }
++        claims.flush();
++        statements.delete(last);
++        statements.flush();
++        events.publishEvent(new StatementCancelled(sheetId, user, person.getName(), last.getDueTotal()));
++        rollup.changed(sheetId, user, before);
++    }
+ }

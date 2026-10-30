@@ -1,0 +1,64 @@
+{
+  "checkpoint": 71,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp71_cancel-statement",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can cancel a person's last statement (a button on the row; STATEMENT_CANCELLED\nname=<name> due-total=<the cancelled statement's due-total>; anyone else, or a person with no\nstatement, is refused with an error on the row). The claims that statement bound become live\nagain; a figure bound by a statement before it is not restored. The statement count goes down by\none, and the row shows the statement before it (or nothing).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can cancel a person's last statement (a button on the row; STATEMENT_CANCELLED\nname=<name> due-total=<the cancelled statement's due-total>; anyone else, or a person with no\nstatement, is refused with an error on the row). The claims that statement bound become live\nagain; a figure bound by a statement before it is not restored. The statement count goes down by\none, and the row shows the statement before it (or nothing).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "24659c2c3d6ddda294ddd5a6528399597c80d566",
+  "reset_sha": "",
+  "preagent_sha": "beadb88ffafa63a89b095b7388e3b6e04885bb24",
+  "prev_sha": "beadb88ffafa63a89b095b7388e3b6e04885bb24",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.011546,
+    "input_tokens": 50,
+    "output_tokens": 9965,
+    "cache_read_tokens": 1320590,
+    "cache_creation_tokens": 68491,
+    "num_turns": 26,
+    "duration_ms": 405098,
+    "duration_api_ms": 103808,
+    "model": "claude-opus-5-5",
+    "session_id": "03f1a526-faba-494f-9fd4-1f719434014e",
+    "stop_reason": "success",
+    "result_text": "Stewards can now cancel a person's last statement, and all 4 tests in `bin/e2e` pass. The only change after that run was rewrapping a code comment.\n\n**How it works:**\n- **Button:** each person's row has a \"Cancel last statement\" button (`person-unstate`).\n- **Who can use it:** only a steward. A non-steward, or a person with no statement, gets an error on the row (`person-error`). Nothing is stored and nothing is written to the audit file.\n- **What it does:** it deletes the person's last statement and releases every claim that statement bound, so those claims show their current figures again. A figure from an earlier statement is not brought back. The statement count drops by one, and the row then shows the previous statement's total and date, or nothing if there isn't one.\n- **Audit:** it writes `STATEMENT_CANCELLED sheet=\u2026 by=\u2026 name=\u2026 due-total=\u2026` (or `n/a` if the statement had no due-total). After that come the usual ROLLUP/TOTALS lines when the figures changed.\n\nThe server side is in `StatementService.cancel` (new event class `StatementCancelled`), served at `DELETE /api/sheets/{sheet}/people/{id}/statement` in `PersonController`. The audit line is added in `SheetAudit`, and the front end is in `people.ts`.\n\n**One fix outside the feature:** scenario 3 failed because of an existing bug. When the sheet's today moved past a period's end plus its grace days, the app automatically closed the period again even if it was already soft-closed. That recalculated its totals with the late charge, so P1 showed 10.50 instead of 10.00, and the expected audit has no auto-close line there. I changed `PeriodService` so this automatic close skips soft-closed periods as well as closed ones.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.011546,
+        "num_turns": 26,
+        "duration_ms": 405098,
+        "duration_api_ms": 103808,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp71.agent.jsonl",
+  "agent_diff_file": "cp71.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
