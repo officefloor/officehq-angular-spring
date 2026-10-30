@@ -96,6 +96,7 @@ public class ClaimService {
         Rollup.Figures before = rollup.figures(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, on, note == null ? "" : note, corrects);
         claim.setCorrectsDate(correctsDate);
+        claim.setDueBy(on.plusDays(sheets.load(sheetId, user).termsFor(person.gradeOn(on))));
         claims.saveAndFlush(claim);
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
         rollup.changed(sheetId, user, before);

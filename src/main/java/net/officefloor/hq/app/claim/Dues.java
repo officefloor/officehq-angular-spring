@@ -26,7 +26,7 @@ public final class Dues {
         if (base == null || claim.isCorrection() || !overdue(claim, rates)) {
             return base;
         }
-        return base.add(rates.lateCharge(base, rates.dueBy(claim.getDate()), claim.getRoundsBy()));
+        return base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()));
     }
 
     /**
@@ -52,9 +52,9 @@ public final class Dues {
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
     }
 
-    /** Whether the claim is overdue: OPEN or PENDING, and due by a date before the sheet's today. */
+    /** Whether the claim is overdue: OPEN or PENDING, and due by a date before the sheet's today (its due-by, fixed when it was added). */
     public static boolean overdue(Claim claim, RateTable rates) {
-        return claim.getStatus().unpaid() && rates.dueBy(claim.getDate()).isBefore(rates.today());
+        return claim.getStatus().unpaid() && claim.getDueBy().isBefore(rates.today());
     }
 
     /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */

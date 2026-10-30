@@ -38,11 +38,11 @@ public class RateService {
                 .toList();
     }
 
-    /** The sheet's rates with its today, floor, terms, late percent and policy date, to find the rate in force and the live due on any date. */
+    /** The sheet's rates with its today, floor, late percent and policy date, to find the rate in force and the live due on any date. */
     @Transactional(readOnly = true)
     public RateTable table(String sheetId) {
         return new RateTable(list(sheetId), sheets.today(sheetId), sheets.floor(sheetId),
-                sheets.terms(sheetId), sheets.latePct(sheetId), sheets.policyDate(sheetId));
+                sheets.latePct(sheetId), sheets.policyDate(sheetId));
     }
 
     /** Set a grade's rate from a from-date (null: from the beginning of time), replacing the one it had. */

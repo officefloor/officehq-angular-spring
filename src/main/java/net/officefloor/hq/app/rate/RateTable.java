@@ -8,12 +8,11 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Every rate on a sheet, the sheet's today, its floor, its terms, its late percent and its policy date
- * (null: the sheet's today): which rate is in force for a grade on a date, the live due it makes of an
- * amount, the date a claim is due by, the late charge an overdue figure gains, and how a claim's figures
- * round.
+ * Every rate on a sheet, the sheet's today, its floor, its late percent and its policy date (null: the
+ * sheet's today): which rate is in force for a grade on a date, the live due it makes of an amount, the
+ * late charge an overdue figure gains, and how a claim's figures round.
  */
-public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, int terms, BigDecimal latePct,
+public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, BigDecimal latePct,
         LocalDate policyDate) {
 
     /** The days in each period overdue that adds the late percent once more. */
@@ -52,11 +51,6 @@ public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, int
     public BigDecimal due(BigDecimal amount, String grade, LocalDate date) {
         BigDecimal due = RateService.due(amount, on(grade, date), rounding(date));
         return due == null || floor == null || due.compareTo(floor) >= 0 ? due : floor;
-    }
-
-    /** The date a claim dated on the date is due by: the date plus the terms. */
-    public LocalDate dueBy(LocalDate date) {
-        return date.plusDays(terms);
     }
 
     /**

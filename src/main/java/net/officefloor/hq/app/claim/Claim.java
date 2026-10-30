@@ -82,6 +82,10 @@ public class Claim {
     @Column(name = "corrects_date")
     private LocalDate correctsDate;
 
+    /** The date the claim is due by, fixed when it was added from the terms then of its person's grade on its date. */
+    @Column(name = "due_by", nullable = false)
+    private LocalDate dueBy;
+
     /** The claim's place in its person's list, newest first; the store takes it on adding and reassigning. */
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
@@ -132,6 +136,14 @@ public class Claim {
 
     public void setDate(LocalDate date) {
         this.date = date;
+    }
+
+    public LocalDate getDueBy() {
+        return dueBy;
+    }
+
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
     }
 
     public String getNote() {

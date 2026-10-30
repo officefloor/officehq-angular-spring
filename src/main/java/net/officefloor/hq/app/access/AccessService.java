@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -15,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
  * clerk limit, the most due a clerk may settle on a claim (none: no limit); and the sheet's floor, the
- * least live due a claim has; its terms, the days a claim has to be paid by from its date; and its late
+ * least live due a claim has; its terms, the days a claim has to be paid by from its date, and the terms
+ * of each grade that has its own (a grade without uses the sheet's); and its late
  * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
  * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
  * the date from which a claim opened is numbered within its period (none: off).
@@ -28,6 +30,11 @@ public class AccessService {
     public static final String FLOOR = "floor";
 
     public static final String TERMS = "terms";
+
+    /** The key of a grade's own terms: terms-A, terms-B or terms-C. */
+    public static String gradeTermsKey(String grade) {
+        return TERMS + "-" + grade;
+    }
 
     public static final String LATE_PCT = "late-pct";
 
@@ -77,6 +84,12 @@ public class AccessService {
         return sheets.terms(sheetId);
     }
 
+    /** The grade's own terms; null when it has none (it uses the sheet's). */
+    @Transactional(readOnly = true)
+    public Integer gradeTerms(String sheetId, String grade) {
+        return sheetRows.findById(sheetId).map(s -> s.getGradeTerms(grade)).orElse(null);
+    }
+
     @Transactional(readOnly = true)
     public BigDecimal latePct(String sheetId) {
         return sheets.latePct(sheetId);
@@ -115,7 +128,7 @@ public class AccessService {
      */
     @Transactional
     public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms,
-            String latePct, String policyDate, String periodNumberingFrom) {
+            Map<String, String> gradeTerms, String latePct, String policyDate, String periodNumberingFrom) {
         if (clerkLimit != null) {
             setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
         }
@@ -125,6 +138,11 @@ public class AccessService {
         if (terms != null) {
             setTerms(sheetId, user, terms.isEmpty() ? null : Integer.valueOf(terms));
         }
+        gradeTerms.forEach((grade, days) -> {
+            if (days != null) {
+                setGradeTerms(sheetId, user, grade, days.isEmpty() ? null : Integer.valueOf(days));
+            }
+        });
         if (latePct != null) {
             setLatePct(sheetId, user, latePct.isEmpty() ? null : new BigDecimal(latePct));
         }
@@ -138,18 +156,31 @@ public class AccessService {
     }
 
     /**
-     * Save the sheet's terms in days; null puts back the ones a sheet starts with. Every claim's due-by
-     * moves with them, and with it every late charge not yet settled.
+     * Save the sheet's terms in days; null puts back the ones a sheet starts with. A claim added from
+     * then on whose grade has no terms of its own is due by its date plus them; a claim already added
+     * keeps the due-by it has.
      */
     @Transactional
     public int setTerms(String sheetId, String user, Integer terms) {
         Sheet sheet = sheets.load(sheetId, user);
         int days = terms == null ? Sheet.DEFAULT_TERMS : terms;
-        Rollup.Figures before = rollup.figures(sheetId);
         sheet.setTerms(days);
         sheetRows.saveAndFlush(sheet);
         events.publishEvent(new SettingChanged(sheetId, user, TERMS, Integer.toString(days)));
-        rollup.changed(sheetId, user, before);
+        return days;
+    }
+
+    /**
+     * Save a grade's own terms in days; null removes them, the grade then using the sheet's terms. A
+     * claim added from then on whose person has the grade on its date is due by its date plus them; a
+     * claim already added keeps the due-by it has.
+     */
+    @Transactional
+    public Integer setGradeTerms(String sheetId, String user, String grade, Integer days) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheet.setGradeTerms(grade, days);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, gradeTermsKey(grade), days == null ? "" : days.toString()));
         return days;
     }
 

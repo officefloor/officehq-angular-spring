@@ -15,6 +15,10 @@ interface Settings {
   floor: string;
   /** The days a claim has to be paid by, from its date. */
   terms: string;
+  /** The days a claim of grade A, B or C has to be paid by, from its date; null when the grade uses the sheet's terms. */
+  termsA: string | null;
+  termsB: string | null;
+  termsC: string | null;
   /** The percent of its figure an overdue claim's due gains for every full 30 days overdue, with two decimals. */
   latePct: string;
   /** The date a claim's rounding turns on (half up before it, half to even on or after); null when blank (the sheet's today). */
@@ -29,6 +33,9 @@ interface AccessView {
 }
 
 const ROLES = ['clerk', 'steward'];
+const GRADES = ['A', 'B', 'C'] as const;
+type Grade = (typeof GRADES)[number];
+const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -37,7 +44,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // The sheet's roles (any name without one is a clerk) with the form that sets one, and the
 // sheet's settings: the clerk limit, the most due a clerk may settle (blank: no limit), and the floor,
 // the least live due a claim has (blank: 1.00), and the terms, the days a claim has to be paid by
-// from its date (blank: 14), and the late percent, what an overdue claim's due gains of its figure for
+// from its date (blank: 14), and each grade's own terms (blank: the sheet's terms), and the late percent, what an overdue claim's due gains of its figure for
 // every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
 // (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
 // numbered within its period (blank: off). Each input shows the value saved; a save sends only the
@@ -88,6 +95,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
       <p>Floor <strong data-testid="setting-floor-current">{{ floor() }}</strong></p>
       <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
+      @for (g of grades; track g) {
+        <p>Terms for grade {{ g }} (days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</strong></p>
+      }
       <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
@@ -119,6 +129,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="termsInput.set(value($event)); termsTouched = true; settingsError.set('')"
           (keydown)="termsTouched = termsTouched || clears($event)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} in days (blank: the sheet's terms)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            inputmode="numeric"
+            [attr.data-testid]="'setting-terms-' + g"
+            [value]="gradeTermsInput()[g]"
+            (input)="setGradeTermsInput(g, value($event)); gradeTermsTouched[g] = true; settingsError.set('')"
+            (keydown)="gradeTermsTouched[g] = gradeTermsTouched[g] || clears($event)"
+          />
+        }
         <label for="setting-late-pct">Late percent per full 30 days overdue (blank: 0.00)</label>
         <input
           id="setting-late-pct"
@@ -159,6 +180,7 @@ export class Access {
   private readonly session = inject(Session);
 
   protected readonly roleNames = ROLES;
+  protected readonly grades = GRADES;
   protected readonly roles = signal<RoleRow[]>([]);
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly roleUser = signal('');
@@ -169,6 +191,8 @@ export class Access {
   protected readonly floorInput = signal('');
   protected readonly terms = signal('');
   protected readonly termsInput = signal('');
+  protected readonly gradeTerms = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
+  protected readonly gradeTermsInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly latePct = signal('');
   protected readonly latePctInput = signal('');
   protected readonly policyDate = signal<string | null>(null);
@@ -179,6 +203,7 @@ export class Access {
   protected limitTouched = false;
   protected floorTouched = false;
   protected termsTouched = false;
+  protected gradeTermsTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
   protected latePctTouched = false;
   protected policyDateTouched = false;
   protected numberingFromTouched = false;
@@ -194,7 +219,7 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', latePct: '', policyDate: null, periodNumberingFrom: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -203,6 +228,10 @@ export class Access {
   /** Whether a key asks to clear the input: Delete or Backspace, even on an input already blank. */
   protected clears(e: KeyboardEvent): boolean {
     return e.key === 'Delete' || e.key === 'Backspace';
+  }
+
+  protected setGradeTermsInput(grade: Grade, v: string): void {
+    this.gradeTermsInput.update((t) => ({ ...t, [grade]: v }));
   }
 
   protected value(e: Event): string {
@@ -264,6 +293,14 @@ export class Access {
       this.settingsError.set('Enter terms of 0 or more whole days, or leave them blank for 14.');
       return;
     }
+    const gradeTerms = this.gradeTermsInput();
+    for (const g of GRADES) {
+      const days = gradeTerms[g].trim();
+      if (this.gradeTermsTouched[g] && days !== '' && !DAYS.test(days)) {
+        this.settingsError.set(`Enter terms for grade ${g} of 0 or more whole days, or leave them blank for the sheet's terms.`);
+        return;
+      }
+    }
     const latePct = this.latePctInput().trim();
     if (this.latePctTouched && latePct !== '' && !PERCENT.test(latePct)) {
       this.settingsError.set('Enter a late percent of 0.00 or more, with up to two decimals, or leave it blank for 0.00.');
@@ -283,6 +320,9 @@ export class Access {
     if (this.limitTouched) body.clerkLimit = clerkLimit;
     if (this.floorTouched) body.floor = floor;
     if (this.termsTouched) body.terms = terms;
+    for (const g of GRADES) {
+      if (this.gradeTermsTouched[g]) body[GRADE_TERMS[g]] = gradeTerms[g].trim();
+    }
     if (this.latePctTouched) body.latePct = latePct;
     if (this.policyDateTouched) body.policyDate = policyDate;
     if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
@@ -324,6 +364,9 @@ export class Access {
     this.limitTouched = false;
     this.floorTouched = false;
     this.termsTouched = false;
+    this.gradeTerms.set({ A: settings.termsA, B: settings.termsB, C: settings.termsC });
+    this.gradeTermsInput.set({ A: settings.termsA ?? '', B: settings.termsB ?? '', C: settings.termsC ?? '' });
+    this.gradeTermsTouched = { A: false, B: false, C: false };
     this.policyDate.set(settings.policyDate);
     this.policyDateInput.set(settings.policyDate ?? '');
     this.latePctTouched = false;
