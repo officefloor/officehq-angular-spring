@@ -62,6 +62,32 @@ function nameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+
+function compareKeys(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** The people in the order the key puts them (stable): by name as names are compared, by grade, or by
+ *  due-total with n/a last; 'added' keeps the list order. */
+function sortPeople(people: Person[], key: SortKey): Person[] {
+  switch (key) {
+    case 'name':
+      return [...people].sort((a, b) => compareKeys(nameKey(a.name), nameKey(b.name)));
+    case 'grade':
+      return [...people].sort((a, b) => compareKeys(a.grade, b.grade));
+    case 'due-total':
+      return [...people].sort((a, b) =>
+        a.dueTotal === null || b.dueTotal === null
+          ? Number(a.dueTotal === null) - Number(b.dueTotal === null)
+          : cents(a.dueTotal) - cents(b.dueTotal),
+      );
+    default:
+      return people;
+  }
+}
+
 /** A sheet's figures that are consolidated over it and its descendants. */
 interface SheetFigures {
   people: number;
@@ -108,7 +134,7 @@ function csvField(value: string): string {
       <p>Overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdue }}</strong></p>
     </section>
     <app-rates (changed)="reloadSheet()" />
-    <app-access />
+    <app-access [settingsSaved]="reloadAfterSettings" />
     <app-periods [people]="people()" [(periods)]="periods" />
     <app-holidays />
     <app-void-reasons />
@@ -252,6 +278,14 @@ function csvField(value: string): string {
         <label for="show-retired">Show retired</label>
       </p>
       <p>
+        <label for="sort-by">Sort by</label>
+        <select id="sort-by" data-testid="sort-by" [value]="sortKey()" (change)="sortKey.set(sortKeyOf(value($event)))">
+          @for (k of sortKeys; track k) {
+            <option [value]="k">{{ k }}</option>
+          }
+        </select>
+      </p>
+      <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
       </p>
@@ -365,7 +399,7 @@ function csvField(value: string): string {
           </tr>
         </thead>
         <tbody>
-          @for (p of shown(); track p.id) {
+          @for (p of sorted(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td>
                 <input
@@ -687,6 +721,11 @@ export class People {
   protected readonly shown = computed(() =>
     this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
   );
+  protected readonly sortKeys = SORT_KEYS;
+  /** How this user's screen orders the listed people; only the screen, never the list order itself. */
+  protected readonly sortKey = signal<SortKey>('added');
+  /** The listed people as the screen orders them; people with equal keys keep their list order. */
+  protected readonly sorted = computed(() => sortPeople(this.shown(), this.sortKey()));
   protected readonly statusCounts = computed(() => statusCounts(this.people()));
   protected readonly claimedTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
@@ -797,6 +836,10 @@ export class People {
       this.importError.set('');
       if (sheet) void this.reload(sheet);
     });
+  }
+
+  protected sortKeyOf(key: string): SortKey {
+    return SORT_KEYS.find((k) => k === key) ?? 'added';
   }
 
   protected value(e: Event): string {
@@ -1673,6 +1716,12 @@ export class People {
     const sheet = this.session.sheet();
     if (sheet) void this.reload(sheet);
   }
+
+  /** Show the people again as the store holds them, once a setting changed what they are due. */
+  protected readonly reloadAfterSettings = async (): Promise<void> => {
+    const sheet = this.session.sheet();
+    if (sheet) await this.reload(sheet).catch(() => undefined);
+  };
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();

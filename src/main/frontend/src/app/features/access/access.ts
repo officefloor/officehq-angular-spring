@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, effect, inject, input, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -475,6 +475,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   `,
 })
 export class Access {
+  /** Re-reads what a saved setting changes elsewhere on the screen (the people's dues); awaited before the saved values show. */
+  readonly settingsSaved = input<() => Promise<void>>(() => Promise.resolve());
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
@@ -814,6 +816,8 @@ export class Access {
       const saved = await firstValueFrom(
         this.http.put<Settings>(`/api/sheets/${encodeURIComponent(sheet)}/settings`, body, { headers }),
       );
+      if (this.session.sheet() !== sheet) return;
+      await this.settingsSaved()();
       if (this.session.sheet() !== sheet) return;
       this.showSettings(saved);
       if (this.session.asOf() === null) this.session.parent.set(saved.parent);
