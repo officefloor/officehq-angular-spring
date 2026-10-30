@@ -1,0 +1,64 @@
+{
+  "checkpoint": 93,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp93_bulk-reassign",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be moved to another person together: a select of the person and a button\nbeside the bulk buttons. Each selected claim is moved in list order by exactly the rules of moving\none claim (who may, which statuses, closed periods, retirement, with the same CLAIM_REASSIGNED and\nrollup lines); each that cannot is left as it is. Show how many were moved and how many were\nrefused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be moved to another person together: a select of the person and a button\nbeside the bulk buttons. Each selected claim is moved in list order by exactly the rules of moving\none claim (who may, which statuses, closed periods, retirement, with the same CLAIM_REASSIGNED and\nrollup lines); each that cannot is left as it is. Show how many were moved and how many were\nrefused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "911f65e0b59ae1b5bf06722da4c6280be71eb0ea",
+  "reset_sha": "",
+  "preagent_sha": "e50f503133d858e4249a73d813443c91c27a25c2",
+  "prev_sha": "e50f503133d858e4249a73d813443c91c27a25c2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6479323999999999,
+    "input_tokens": 30,
+    "output_tokens": 8189,
+    "cache_read_tokens": 593882,
+    "cache_creation_tokens": 45657,
+    "num_turns": 16,
+    "duration_ms": 266104,
+    "duration_api_ms": 118021,
+    "model": "claude-opus-5-5",
+    "session_id": "74ae146d-124f-47fc-85dc-11f6e946b65a",
+    "stop_reason": "success",
+    "result_text": "Bulk reassign is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works**\n- **Screen** (`people/people.ts`): next to the open and settle buttons there is now a person picker (`bulk-reassign-to`) listing everyone on the sheet, and a \"Move selected claims\" button (`bulk-reassign`). After a move it shows how many were moved and how many refused (`bulk-reassigned` / `bulk-reassign-refused`). If no person is chosen, or the request fails, it shows `bulk-reassign-error`. The counts clear when the button is pressed again or the sheet is loaded again.\n- **Server**: a new `BulkReassignService` sits behind `POST /claims/bulk-reassign`, built the same way as bulk settle. It puts the selected claims in list order and runs each one through the existing single-claim reassign. That covers who may move claims, which statuses, corrections, retirement and closed periods, and writes the same `CLAIM_REASSIGNED` and rollup lines. A claim that is refused is left as it is and counted as refused. On an archived sheet, or for a viewer, every claim is refused.\n\n**One difference from moving a single claim:** moving one claim to the person who already has it is refused. The test expects the bulk move to treat it as moved instead: it writes a `CLAIM_REASSIGNED \u2026 from=Ben to=Ben` line, and the claim moves to the top of that person's list. So I added a `sameAllowed` flag to `ClaimService.reassign`, which only the bulk move switches on. Single-claim moves behave exactly as before.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6479323999999999,
+        "num_turns": 16,
+        "duration_ms": 266104,
+        "duration_api_ms": 118021,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp93.agent.jsonl",
+  "agent_diff_file": "cp93.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
