@@ -6,6 +6,7 @@ import { Access } from '../access/access';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Period, Periods } from '../periods/periods';
 import { Rates } from '../rates/rates';
+import { Summary } from '../summary/summary';
 
 const GRADES = ['A', 'B', 'C'];
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -22,11 +23,12 @@ function cents(amount: string): number {
 // others on the sheet as their patrons; their backing is their patrons' due-totals added up.
 @Component({
   selector: 'app-people',
-  imports: [Access, Claims, Periods, Rates],
+  imports: [Access, Claims, Periods, Rates, Summary],
   template: `
     <app-rates (changed)="reloadSheet()" />
     <app-access />
     <app-periods [people]="people()" [(periods)]="periods" />
+    <app-summary [people]="people()" [periods]="periods()" />
     <section aria-label="People">
       <h2>People</h2>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>

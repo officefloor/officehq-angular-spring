@@ -27,6 +27,25 @@ function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
+/** Per period id, the dues of the claims that count whose date falls in it, added up, or once closed the
+ * due-total fixed then; the OPEN claims of a person on hold count in none. */
+export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
+  const totals: Record<number, number> = {};
+  for (const p of periods) totals[p.id] = 0;
+  const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
+  for (const person of people) {
+    for (const c of person.claims) {
+      if ((c.status !== 'OPEN' && c.status !== 'SETTLED') || c.due === null) continue;
+      if (person.held && c.status === 'OPEN') continue;
+      const period = periodOf(periods, c.date);
+      if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
+    }
+  }
+  const shown: Record<number, string> = {};
+  for (const id of Object.keys(totals)) shown[+id] = closed.get(+id) ?? (totals[+id] / 100).toFixed(2);
+  return shown;
+}
+
 // The sheet's periods, earliest first, each with its due-total: the dues of the claims that count
 // (OPEN and SETTLED) whose date falls in it, or once closed the due-total fixed then; and the form that
 // adds one. No two periods share a name or a date.
@@ -97,24 +116,7 @@ export class Periods {
   readonly people = input.required<PersonWithClaims[]>();
   readonly periods = model<Period[]>([]);
 
-  /** Per period id, the dues of the claims that count whose date falls in it, added up; the OPEN claims
-   * of a person on hold count in none. */
-  protected readonly dueTotals = computed<Record<number, string>>(() => {
-    const totals: Record<number, number> = {};
-    for (const p of this.periods()) totals[p.id] = 0;
-    const closed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
-    for (const person of this.people()) {
-      for (const c of person.claims) {
-        if ((c.status !== 'OPEN' && c.status !== 'SETTLED') || c.due === null) continue;
-        if (person.held && c.status === 'OPEN') continue;
-        const period = periodOf(this.periods(), c.date);
-        if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
-      }
-    }
-    const shown: Record<number, string> = {};
-    for (const id of Object.keys(totals)) shown[+id] = closed.get(+id) ?? (totals[+id] / 100).toFixed(2);
-    return shown;
-  });
+  protected readonly dueTotals = computed(() => periodDueTotals(this.periods(), this.people()));
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
