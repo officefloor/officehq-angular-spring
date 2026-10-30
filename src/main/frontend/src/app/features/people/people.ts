@@ -111,6 +111,16 @@ function csvField(value: string): string {
       <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
       </p>
+      <p>
+        <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
+        @if (bulkOpened(); as r) {
+          <span>Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong></span>
+          <span>Refused <strong data-testid="bulk-refused">{{ r.refused }}</strong></span>
+        }
+        @if (bulkOpenError()) {
+          <span role="alert" data-testid="bulk-open-error">{{ bulkOpenError() }}</span>
+        }
+      </p>
       <table>
         <thead>
           <tr>
@@ -182,7 +192,13 @@ function csvField(value: string): string {
                   <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                 }
               </td>
-              <td><app-claims [person]="p" [periods]="periods()" (saved)="replace($event)" /></td>
+              <td><app-claims
+                  [person]="p"
+                  [periods]="periods()"
+                  [selected]="selectedClaims()"
+                  (selectToggled)="selectClaim($event)"
+                  (saved)="replace($event)"
+                /></td>
             </tr>
           }
         </tbody>
@@ -224,6 +240,13 @@ export class People {
   private retiring = false;
   /** A hold or release still waiting for its answer: another press meanwhile is ignored. */
   private holding = false;
+  /** The ids of the claims selected to be opened together. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** How many of the selected claims the last bulk open opened and refused; null while it runs. */
+  protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkOpenError = signal('');
+  /** A bulk open still waiting for its answer: another press meanwhile is ignored. */
+  private bulkOpening = false;
   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
@@ -266,6 +289,9 @@ export class People {
       this.people.set([]);
       this.personError.set(null);
       this.patronError.set(null);
+      this.selectedClaims.set(new Set());
+      this.bulkOpened.set(null);
+      this.bulkOpenError.set('');
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -288,6 +314,43 @@ export class People {
 
   protected clearPatronError(p: Person): void {
     if (this.patronError()?.id === p.id) this.patronError.set(null);
+  }
+
+  protected selectClaim(e: { id: number; checked: boolean }): void {
+    const next = new Set(this.selectedClaims());
+    if (e.checked) next.add(e.id);
+    else next.delete(e.id);
+    this.selectedClaims.set(next);
+  }
+
+  /** Open the selected claims together; each that cannot be opened is refused and left as it is. */
+  protected async openSelected(): Promise<void> {
+    if (this.bulkOpening) return;
+    this.bulkOpened.set(null);
+    this.bulkOpenError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.bulkOpening = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ opened: number; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-open`,
+          { claimIds: [...this.selectedClaims()] },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedClaims.set(new Set());
+      await this.reload(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.bulkOpened.set(result);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkOpenError.set('Could not open the selected claims.');
+    } finally {
+      this.bulkOpening = false;
+    }
   }
 
   /** The people the person may still name as a patron: everyone else on the sheet not named yet. */

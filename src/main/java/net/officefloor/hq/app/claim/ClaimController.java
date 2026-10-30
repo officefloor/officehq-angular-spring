@@ -8,6 +8,8 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
+import java.util.List;
 import net.officefloor.hq.app.access.OverClerkLimit;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
 import net.officefloor.hq.app.person.PersonController.PersonView;
@@ -30,7 +32,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * A person's claims. Adding or editing a claim answers with the person it belongs to, carrying
- * their claims and claimed; so does opening, settling or voiding one. The signed-in user's name comes in the {@code X-User} header.
+ * their claims and claimed; so does opening, settling or voiding one. Opening a selection of claims
+ * together answers how many were opened and how many refused. The signed-in user's name comes in the {@code X-User} header.
  */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -50,17 +53,23 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
     }
 
+    /** The claims selected to be opened together. */
+    public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
+    }
+
     public record Refusal(String message) {
     }
 
     private final ClaimService claims;
     private final QuickAddService quick;
+    private final BulkOpenService bulkOpen;
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
 
-    public ClaimController(ClaimService claims, QuickAddService quick, PersonService people, RateService rates,
-            StatementService statements) {
+    public ClaimController(ClaimService claims, QuickAddService quick, BulkOpenService bulkOpen, PersonService people,
+            RateService rates, StatementService statements) {
+        this.bulkOpen = bulkOpen;
         this.claims = claims;
         this.quick = quick;
         this.people = people;
@@ -101,6 +110,13 @@ public class ClaimController {
     public PersonView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
         return move(sheetId, claimId, user, ClaimStatus.OPEN);
+    }
+
+    /** Open the selected claims, numbered in list order; answers how many were opened and how many refused. */
+    @PostMapping("/claims/bulk-open")
+    public BulkOpenService.Result openAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkOpenForm form) {
+        return bulkOpen.open(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()));
     }
 
     @PostMapping("/claims/{claimId}/settle")

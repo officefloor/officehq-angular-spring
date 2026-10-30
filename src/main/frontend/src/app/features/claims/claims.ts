@@ -68,13 +68,22 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
 // opened, edits it. Each claim can be opened, settled or voided. A saved or moved claim answers with
-// the person, which is handed up as `saved`.
+// the person, which is handed up as `saved`. Each claim can be selected, to be opened together with
+// the others selected.
 @Component({
   selector: 'app-claims',
   template: `
     <ul aria-label="Claims">
       @for (c of person().claims; track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input
+            type="checkbox"
+            [id]="'claim-select-' + c.id"
+            data-testid="claim-select"
+            [checked]="selected().has(c.id)"
+            (change)="selectToggled.emit({ id: c.id, checked: checked($event) })"
+          />
+          <label [for]="'claim-select-' + c.id" class="visually-hidden">Select claim {{ c.amount }} {{ c.date }}</label>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
@@ -152,6 +161,9 @@ export class Claims {
   readonly person = input.required<PersonWithClaims>();
   readonly periods = input<Period[]>([]);
   readonly saved = output<PersonWithClaims>();
+  /** The ids of the claims selected to be opened together. */
+  readonly selected = input<ReadonlySet<number>>(new Set());
+  readonly selectToggled = output<{ id: number; checked: boolean }>();
 
   protected readonly amount = signal('');
   protected readonly date = signal('');
@@ -180,6 +192,10 @@ export class Claims {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  protected checked(e: Event): boolean {
+    return (e.target as HTMLInputElement).checked;
   }
 
   /** Open a claim's editor; only a DRAFT can be edited, so any other is refused on its row. */
