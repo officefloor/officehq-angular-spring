@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOf } from '../periods/periods';
 import { VoidReasonList } from '../void-reasons/void-reasons';
+import { ClaimTemplateList } from '../claim-templates/claim-templates';
 
 /**
  * DRAFT when added, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
@@ -376,12 +377,27 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <p role="alert" data-testid="claim-form-error">{{ error() }}</p>
       }
     </form>
+    <label [for]="fid('template')">Template</label>
+    <select
+      [id]="fid('template')"
+      data-testid="claim-template-select"
+      (change)="template.set(value($event)); error.set('')"
+    >
+      <option value="" [selected]="template() === ''">Choose a template</option>
+      @for (t of templateList.templates(); track t.name) {
+        <option [value]="t.name" [selected]="t.name === template()">{{ t.name }}</option>
+      }
+    </select>
+    <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">
+      Add claim from template<span class="visually-hidden"> for {{ person().name }}</span>
+    </button>
   `,
 })
 export class Claims implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   protected readonly voidReasonList = inject(VoidReasonList);
+  protected readonly templateList = inject(ClaimTemplateList);
 
   readonly person = input.required<PersonWithClaims>();
   readonly periods = input<Period[]>([]);
@@ -399,6 +415,8 @@ export class Claims implements OnInit {
   protected readonly ref = signal('');
   protected readonly tags = signal('');
   protected readonly editing = signal<number | null>(null);
+  /** The name of the template chosen to add a claim from; '' while none is. */
+  protected readonly template = signal('');
   protected readonly error = signal('');
   /** An edit button waiting for its claim's lock: the form is held until the answer comes. */
   protected readonly locking = signal(false);
@@ -845,6 +863,38 @@ export class Claims implements OnInit {
     this.ref.set('');
     this.tags.set('');
     this.error.set('');
+  }
+
+  /** Add a DRAFT claim with the chosen template's amount and note now, as a claim with no date; a refusal shows on the form. */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.busy) return;
+    this.error.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const name = this.template();
+    if (name === '') {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${this.person().id}/claims/from-template`,
+          { name },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const answer = err instanceof HttpErrorResponse ? err : null;
+      this.error.set(answer?.error?.message ?? 'Could not add the claim from the template.');
+    } finally {
+      this.busy = false;
+    }
   }
 
   protected async save(e: Event): Promise<void> {

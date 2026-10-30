@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Access } from '../access/access';
+import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Audit } from '../audit/audit';
 import { Holidays } from '../holidays/holidays';
@@ -41,7 +42,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [Access, Audit, Claims, Holidays, Periods, Rates, Summary, Tags, VoidReasons],
+  imports: [Access, Audit, ClaimTemplates, Claims, Holidays, Periods, Rates, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -56,6 +57,7 @@ function csvField(value: string): string {
     <app-periods [people]="people()" [(periods)]="periods" />
     <app-holidays />
     <app-void-reasons />
+    <app-claim-templates />
     <app-summary [people]="people()" [periods]="periods()" />
     <app-tags [people]="people()" />
     <app-audit />

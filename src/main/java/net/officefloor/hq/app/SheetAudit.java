@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.ClaimRedated;
 import net.officefloor.hq.app.claim.ClaimReminded;
 import net.officefloor.hq.app.claim.ClaimSplit;
 import net.officefloor.hq.app.claim.ClaimResettled;
+import net.officefloor.hq.app.claim.TemplateSaved;
 import net.officefloor.hq.app.claim.VoidReasonAdded;
 import net.officefloor.hq.app.holiday.HolidayAdded;
 import net.officefloor.hq.app.period.PeriodAdded;
@@ -217,6 +218,12 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(VoidReasonAdded e) {
         change(e.sheetId(), e.user(), "VOID_REASON_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " reason=" + e.reason());
+    }
+
+    @TransactionalEventListener
+    public void on(TemplateSaved e) {
+        change(e.sheetId(), e.user(), "TEMPLATE_SAVED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString() + " note=" + e.note());
     }
 
     @TransactionalEventListener
