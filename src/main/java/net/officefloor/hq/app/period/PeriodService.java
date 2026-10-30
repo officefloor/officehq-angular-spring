@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.access.Permission;
+import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
@@ -287,9 +288,34 @@ public class PeriodService {
         if (!period.isFixed()) {
             throw new PeriodRefused("The period is not closed.");
         }
+        if (period.isLocked()) {
+            throw new PeriodRefused("The period is locked.");
+        }
         period.reopen();
         periods.flush();
         events.publishEvent(new PeriodReopened(sheetId, user, period.getName()));
+        return period;
+    }
+
+    /**
+     * Lock a period, so it cannot be reopened, or unlock it. Refused unless the user is a steward, and when it is
+     * already locked (or, to unlock, not locked).
+     */
+    @Transactional
+    public Period lock(String sheetId, String user, long periodId, boolean lock) {
+        sheetRows.lockById(sheetId);
+        Period period = periods.findByIdAndSheetId(periodId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period"));
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodRefused("Only a steward may " + (lock ? "lock" : "unlock") + " a period.");
+        }
+        if (period.isLocked() == lock) {
+            throw new PeriodRefused(lock ? "The period is already locked." : "The period is not locked.");
+        }
+        period.setLocked(lock);
+        periods.flush();
+        events.publishEvent(lock ? new PeriodLocked(sheetId, user, period.getName())
+                : new PeriodUnlocked(sheetId, user, period.getName()));
         return period;
     }
 

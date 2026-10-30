@@ -47,6 +47,10 @@ public class Period {
     @Column(name = "soft_closed", nullable = false)
     private boolean softClosed;
 
+    /** Whether a steward has locked the period: a locked period cannot be reopened. */
+    @Column(name = "locked", nullable = false)
+    private boolean locked;
+
     /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
     @Column(name = "claim_cap")
     private Integer cap;
@@ -122,6 +126,15 @@ public class Period {
 
     public boolean isSoftClosed() {
         return softClosed;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    /** Lock or unlock the period. */
+    public void setLocked(boolean locked) {
+        this.locked = locked;
     }
 
     /** Whether the period's figures are fixed: it is closed or soft-closed. */

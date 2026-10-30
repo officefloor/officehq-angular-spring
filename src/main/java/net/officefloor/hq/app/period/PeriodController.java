@@ -39,7 +39,7 @@ public class PeriodController {
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
             String closedTotal, Map<Long, String> personTotals, String fy, Integer cap,
-            Map<Long, String> personCarried, Map<Long, String> personOpenings) {
+            Map<Long, String> personCarried, Map<Long, String> personOpenings, boolean locked) {
 
         static PeriodView of(Period period, int fiscalStartMonth) {
             Map<Long, String> personTotals = new TreeMap<>();
@@ -52,7 +52,7 @@ public class PeriodController {
                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null
                             : period.getClosedTotal().setScale(2, RoundingMode.HALF_UP).toPlainString(),
                     personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth), period.getCap(),
-                    personCarried, personOpenings);
+                    personCarried, personOpenings, period.isLocked());
         }
     }
 
@@ -152,6 +152,20 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank String user) {
         String sheet = sheetId.trim();
         return view(sheet, service.reopen(sheet, user.trim(), periodId));
+    }
+
+    @PostMapping("/{periodId}/lock")
+    public PeriodView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.lock(sheet, user.trim(), periodId, true));
+    }
+
+    @PostMapping("/{periodId}/unlock")
+    public PeriodView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.lock(sheet, user.trim(), periodId, false));
     }
 
     @ExceptionHandler(PeriodRefused.class)

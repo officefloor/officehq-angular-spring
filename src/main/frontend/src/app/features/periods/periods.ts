@@ -26,11 +26,22 @@ export interface Period {
   fy: string;
   /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
   cap: number | null;
+  /** Whether a steward has locked the period: a locked period cannot be reopened. */
+  locked: boolean;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const YEAR = /^\d{4}$/;
 const WHOLE = /^\d+$/;
+
+/** The refusal shown on a period's row when the server gives no reason. */
+const REFUSED = {
+  close: 'The period is already closed.',
+  'soft-close': 'The period is already closed.',
+  reopen: 'The period cannot be reopened.',
+  lock: 'The period cannot be locked.',
+  unlock: 'The period cannot be unlocked.',
+} as const;
 
 /** The period whose dates contain the date, or undefined when none does. */
 export function periodOf(periods: Period[], date: string): Period | undefined {
@@ -146,7 +157,7 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
       <h2>Periods</h2>
       <table>
         <thead>
-          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -158,10 +169,13 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td data-testid="period-due-total">{{ dueTotals()[p.id] | figure }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" [attr.aria-label]="'Close period ' + p.name" (click)="act(p, 'close')">Close</button>
                 <button type="button" data-testid="period-soft-close" [attr.aria-label]="'Soft-close period ' + p.name" (click)="act(p, 'soft-close')">Soft-close</button>
                 <button type="button" data-testid="period-reopen" [attr.aria-label]="'Reopen period ' + p.name" (click)="act(p, 'reopen')">Reopen</button>
+                <button type="button" data-testid="period-lock" [attr.aria-label]="'Lock period ' + p.name" (click)="act(p, 'lock')">Lock</button>
+                <button type="button" data-testid="period-unlock" [attr.aria-label]="'Unlock period ' + p.name" (click)="act(p, 'unlock')">Unlock</button>
                 @if (rowError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ rowError()?.message }}</p>
                 }
@@ -472,10 +486,10 @@ export class Periods {
 
   /**
    * Close a period, fixing its due-total, soft-close it, fixing its figures while its claims can still change,
-   * or reopen a closed or soft-closed one (a steward only), making it live again;
-   * a refusal is shown on its row.
+   * reopen a closed or soft-closed one (a steward only, and not while locked), making it live again, or lock or
+   * unlock it (a steward only); a refusal is shown on its row.
    */
-  protected async act(p: Period, action: 'close' | 'soft-close' | 'reopen'): Promise<void> {
+  protected async act(p: Period, action: 'close' | 'soft-close' | 'reopen' | 'lock' | 'unlock'): Promise<void> {
     if (this.busy) return;
     this.rowError.set(null);
     const sheet = this.session.sheet();
@@ -491,7 +505,7 @@ export class Periods {
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
       const message = err instanceof HttpErrorResponse && err.status === 409
-        ? (err.error?.message ?? (action === 'reopen' ? 'The period cannot be reopened.' : 'The period is already closed.'))
+        ? (err.error?.message ?? REFUSED[action])
         : `Could not ${action} the period.`;
       this.rowError.set({ id: p.id, message });
     } finally {

@@ -27,7 +27,9 @@ import net.officefloor.hq.app.holiday.HolidayAdded;
 import net.officefloor.hq.app.period.OpeningSet;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
+import net.officefloor.hq.app.period.PeriodLocked;
 import net.officefloor.hq.app.period.PeriodReopened;
+import net.officefloor.hq.app.period.PeriodUnlocked;
 import net.officefloor.hq.app.person.PatronAdded;
 import net.officefloor.hq.app.plan.PlanAdded;
 import net.officefloor.hq.app.person.PersonAliasAdded;
@@ -376,6 +378,16 @@ public class SheetAudit {
     public void on(OpeningSet e) {
         change(e.sheetId(), e.user(), "OPENING_SET sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " period=" + e.period() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString());
+    }
+
+    @TransactionalEventListener
+    public void on(PeriodLocked e) {
+        change(e.sheetId(), e.user(), "PERIOD_LOCKED sheet=" + e.sheetId() + " by=" + e.user() + " period=" + e.name());
+    }
+
+    @TransactionalEventListener
+    public void on(PeriodUnlocked e) {
+        change(e.sheetId(), e.user(), "PERIOD_UNLOCKED sheet=" + e.sheetId() + " by=" + e.user() + " period=" + e.name());
     }
 
     @TransactionalEventListener
