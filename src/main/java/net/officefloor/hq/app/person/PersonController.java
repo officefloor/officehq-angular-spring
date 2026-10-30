@@ -108,7 +108,7 @@ public class PersonController {
 
     /**
      * A person with the grade in force on the sheet's today, their own terms (null: none), their claims, newest first, claimed: the sum of the amounts of the claims that
-     * count (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
+     * count, leaving out corrections (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
@@ -137,8 +137,7 @@ public class PersonController {
                 List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots) {
             Grades grade = person::gradeOn;
             Holds held = person.leaves();
-            BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held, rates.today())).map(Claim::getAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal claimed = Dues.claimed(claims, held, rates.today());
             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
                     grade.on(rates.today()), person.getTerms(), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),

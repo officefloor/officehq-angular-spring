@@ -130,6 +130,15 @@ public final class Dues {
     }
 
     /**
+     * A person's claimed: the sum of the amounts of the claims that {@link #counts count}, leaving out the
+     * claims that correct another.
+     */
+    public static BigDecimal claimed(List<Claim> claims, Holds holds, LocalDate today) {
+        return claims.stream().filter(c -> c.getCorrects() == null && counts(c, holds, today)).map(Claim::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
      * Whether the person's holds or retirement leave the claim out of the live totals: unless a statement
      * binds it, an OPEN claim dated within a hold, and an OPEN or PENDING claim once the sheet's today has
      * reached the person's retirement date.
