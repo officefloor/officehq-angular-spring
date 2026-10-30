@@ -38,10 +38,10 @@ public class BulkOpenService {
         for (int i = 0; i < listed.size(); i++) {
             personOrder.put(listed.get(i).getId(), i);
         }
-        List<Claim> selected = claimRows.findBySheetIdOrderByIdDesc(sheetId).stream()
+        List<Claim> selected = claimRows.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> claimIds.contains(c.getId()))
                 .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
-                        .thenComparing(Claim::getId, Comparator.reverseOrder()))
+                        .thenComparing(Claim::getListed, Comparator.reverseOrder()))
                 .toList();
         int opened = 0;
         for (Claim c : selected) {

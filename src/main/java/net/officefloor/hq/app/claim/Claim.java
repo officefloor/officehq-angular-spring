@@ -82,6 +82,10 @@ public class Claim {
     @Column(name = "corrects_date")
     private LocalDate correctsDate;
 
+    /** The claim's place in its person's list, newest first; the store takes it on adding and reassigning. */
+    @Column(name = "listed", insertable = false, updatable = false)
+    private Long listed;
+
     protected Claim() {
     }
 
@@ -102,8 +106,16 @@ public class Claim {
         return sheetId;
     }
 
+    public Long getListed() {
+        return listed;
+    }
+
     public Long getPersonId() {
         return personId;
+    }
+
+    public void setPersonId(Long personId) {
+        this.personId = personId;
     }
 
     public BigDecimal getAmount() {

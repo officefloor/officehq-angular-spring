@@ -195,6 +195,7 @@ function csvField(value: string): string {
               <td><app-claims
                   [person]="p"
                   [periods]="periods()"
+                  [people]="people()"
                   [selected]="selectedClaims()"
                   (selectToggled)="selectClaim($event)"
                   (saved)="replace($event)"

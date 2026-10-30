@@ -65,13 +65,13 @@ public class ClaimService {
     /** Every claim on the sheet by the person who made it, each person's newest first. */
     @Transactional(readOnly = true)
     public Map<Long, List<Claim>> bySheet(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        return claims.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));
     }
 
     @Transactional(readOnly = true)
     public List<Claim> forPerson(String sheetId, long personId) {
-        return claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        return claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
     }
 
     /** Add a claim; a date left out takes the sheet's today. Returns the person it belongs to. */
@@ -224,6 +224,47 @@ public class ClaimService {
                 claim.getDate(), claim.getShownNumber(), null, reason));
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
+    }
+
+    /**
+     * A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. The claim keeps its
+     * number and date, is released from any figure a statement bound it to (live again until its new
+     * person's next statement), and lists as its new person's newest claim. A settled or voided claim, a
+     * correction, a claim dated inside a closed period or after the new person's retirement date, or a move
+     * by anyone but a steward is refused and nothing changes. Returns the people it moved from and to.
+     */
+    @Transactional
+    public long[] reassign(String sheetId, String user, long claimId, long toPersonId) {
+        Claim claim = claim(sheetId, claimId);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can reassign a claim");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && claim.getStatus() != ClaimStatus.OPEN
+                && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reassigned");
+        }
+        if (claim.isCorrection()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A correction belongs with the claim it corrects and cannot be reassigned");
+        }
+        Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Person to = people.findByIdAndSheetId(toPersonId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Choose a person on the sheet"));
+        if (from.getId().equals(to.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s");
+        }
+        requireNotRetired(to, claim.getDate());
+        Rollup.Figures before = rollup.figures(sheetId);
+        claim.setPersonId(to.getId());
+        claim.unbind();
+        claims.flush();
+        claims.relist(claim.getId());
+        events.publishEvent(new ClaimReassigned(sheetId, user, to.getName(), claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), from.getName(), to.getName()));
+        rollup.changed(sheetId, user, before);
+        return new long[] { from.getId(), to.getId() };
     }
 
     /** The PENDING claim a steward is to approve or reject; refused for anyone else or any other claim. */

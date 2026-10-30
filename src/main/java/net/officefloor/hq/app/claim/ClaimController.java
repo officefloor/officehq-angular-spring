@@ -59,6 +59,10 @@ public class ClaimController {
     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
     }
 
+    /** The person a claim is reassigned to. */
+    public record ReassignForm(@NotNull Long personId) {
+    }
+
     public record Refusal(String message) {
     }
 
@@ -142,6 +146,16 @@ public class ClaimController {
             @Valid @RequestBody RejectForm form) {
         String sheet = sheetId.trim();
         return view(sheet, claims.reject(sheet, user.trim(), claimId, form.reason().trim()));
+    }
+
+    /** A steward moves a claim to another person; answers with the person it left and the one it joined. */
+    @PostMapping("/claims/{claimId}/reassign")
+    public List<PersonView> reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody ReassignForm form) {
+        String sheet = sheetId.trim();
+        long[] moved = claims.reassign(sheet, user.trim(), claimId, form.personId());
+        return List.of(view(sheet, moved[0]), view(sheet, moved[1]));
     }
 
     @PostMapping("/claims/{claimId}/void")

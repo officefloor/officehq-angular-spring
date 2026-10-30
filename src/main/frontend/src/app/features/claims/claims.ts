@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOf } from '../periods/periods';
@@ -111,6 +111,20 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
             </button>
           }
+          <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
+          <select
+            [id]="'claim-reassign-to-' + c.id"
+            data-testid="claim-reassign-to"
+            (change)="setReassignTo(c.id, value($event))"
+          >
+            <option value="" [selected]="!reassignTo()[c.id]">Choose a person</option>
+            @for (o of others(); track o.id) {
+              <option [value]="o.id" [selected]="reassignTo()[c.id] === '' + o.id">{{ o.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" (click)="reassign(c)">
+            Reassign<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           @if (claimError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
@@ -171,6 +185,8 @@ export class Claims {
   readonly person = input.required<PersonWithClaims>();
   readonly periods = input<Period[]>([]);
   readonly saved = output<PersonWithClaims>();
+  /** The people on the sheet a claim can be reassigned to. */
+  readonly people = input<readonly { id: number; name: string }[]>([]);
   /** The ids of the claims selected to be opened together. */
   readonly selected = input<ReadonlySet<number>>(new Set());
   readonly selectToggled = output<{ id: number; checked: boolean }>();
@@ -185,6 +201,10 @@ export class Claims {
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   /** The reason typed for rejecting each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The id of the person chosen to reassign each claim to, by claim id. */
+  protected readonly reassignTo = signal<Record<number, string>>({});
+  /** The other people on the sheet, whom this person's claims can be reassigned to. */
+  protected readonly others = computed(() => this.people().filter((p) => p.id !== this.person().id));
   /** A submit or action still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
   protected readonly actions: { action: ClaimAction; label: string }[] = [
@@ -203,6 +223,44 @@ export class Claims {
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((all) => ({ ...all, [id]: reason }));
     if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  protected setReassignTo(id: number, personId: string): void {
+    this.reassignTo.update((all) => ({ ...all, [id]: personId }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** A steward moves a claim to the chosen person; a refusal shows on the claim's row. */
+  protected async reassign(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const to = this.reassignTo()[c.id] ?? '';
+    if (to === '') {
+      this.claimError.set({ id: c.id, message: 'Choose the person to reassign the claim to.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const moved = await firstValueFrom(
+        this.http.post<PersonWithClaims[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/reassign`,
+          { personId: Number(to) },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.reassignTo.update((all) => ({ ...all, [c.id]: '' }));
+      for (const person of moved) this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? `A ${c.status} claim cannot be reassigned.` });
+    } finally {
+      this.busy = false;
+    }
   }
 
   protected fid(field: string): string {

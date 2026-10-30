@@ -4,6 +4,7 @@ import java.math.RoundingMode;
 import net.officefloor.hq.app.access.RoleSet;
 import net.officefloor.hq.app.access.SettingChanged;
 import net.officefloor.hq.app.claim.ClaimChanged;
+import net.officefloor.hq.app.claim.ClaimReassigned;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
 import net.officefloor.hq.app.period.PeriodReopened;
@@ -62,6 +63,14 @@ public class SheetAudit {
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + (e.due() == null ? "" : " due=" + e.due())
                 + (e.reason() == null ? "" : " reason=" + e.reason()));
+    }
+
+    @TransactionalEventListener
+    public void on(ClaimReassigned e) {
+        audit.record("CLAIM_REASSIGNED sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + " from=" + e.from() + " to=" + e.to());
     }
 
     @TransactionalEventListener
