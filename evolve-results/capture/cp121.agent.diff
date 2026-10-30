@@ -1,0 +1,175 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 13011689c..fafbb6c8c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -154,6 +154,8 @@ export interface PersonWithClaims {
+   aliases: string[];
+   /** Whether their name or an alias is another's on a sheet of the sheet's tree; every edit is refused until it is not. */
+   clashing: boolean;
++  /** The sheet the person was transferred from; null when they were not transferred here. */
++  origin: string | null;
+   /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
+    * statement, then count in no live total. */
+   retiredNow: boolean;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c3884e771..ba27b39df 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -312,7 +312,7 @@ function csvField(value: string): string {
+       <table>
+         <thead>
+           <tr>
+-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
++            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+@@ -339,6 +339,7 @@ function csvField(value: string): string {
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
++              <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+               <td data-testid="person-grade">{{ p.grade }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index 1a6a22665..ab4d18436 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -9,6 +9,8 @@ import java.util.Locale;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -19,7 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
+ /**
+  * The audit viewer: the audit lines of a sheet exactly as the audit file holds them, newest first. Given a
+  * name, only the lines about that person: those carrying {@code name=} or {@code person=} that name, compared
+- * as names are (case and surrounding spaces ignored). It reads the file; it records nothing.
++ * as names are (case and surrounding spaces ignored); when that person was transferred here, the sheet they came
++ * from's lines about them follow, newest first. It reads the file; it records nothing.
+  */
+ @RestController
+ @RequestMapping("/api/sheets/{sheetId}/audit")
+@@ -30,9 +33,11 @@ public class AuditController {
+     private static final Pattern FIELD = Pattern.compile("(?:^|\\s)([A-Za-z][\\w-]*)=(.*?)(?=\\s[A-Za-z][\\w-]*=|$)");
+ 
+     private final Audit audit;
++    private final PersonRepository people;
+ 
+-    public AuditController(Audit audit) {
++    public AuditController(Audit audit, PersonRepository people) {
+         this.audit = audit;
++        this.people = people;
+     }
+ 
+     @GetMapping
+@@ -40,7 +45,18 @@ public class AuditController {
+             @RequestParam(required = false) String name) {
+         String sheet = sheetId.trim();
+         String who = name == null ? "" : name.strip().toLowerCase(Locale.ROOT);
+-        List<String> lines = new ArrayList<>(audit.lines().stream()
++        List<String> all = audit.lines();
++        List<String> lines = about(all, sheet, who);
++        if (!who.isEmpty()) {
++            people.findBySheetIdAndNameIgnoreCase(sheet, name.strip()).map(Person::getOrigin)
++                    .ifPresent(origin -> lines.addAll(about(all, origin, who)));
++        }
++        return lines;
++    }
++
++    /** The sheet's lines, newest first; given a name (lower-cased), only those about that person. */
++    private static List<String> about(List<String> all, String sheet, String who) {
++        List<String> lines = new ArrayList<>(all.stream()
+                 .filter(l -> carries(l, "sheet", sheet, false))
+                 .filter(l -> who.isEmpty() || carries(l, "name", who, true) || carries(l, "person", who, true))
+                 .toList());
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 91471dfe1..dbec3741f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -52,6 +52,9 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    @Column(name = "origin")
++    private String origin;
++
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+ 
+@@ -86,7 +89,8 @@ public class Person {
+ 
+     /**
+      * The person as they arrive on another sheet: their name, every grade they were given (each from its
+-     * date), their terms, contact and aliases; not their holds nor retirement.
++     * date), their terms, contact and aliases, and this sheet as the one they came from; not their holds nor
++     * retirement.
+      */
+     public Person arriving(String sheetId) {
+         Person arrived = new Person();
+@@ -96,6 +100,7 @@ public class Person {
+         arrived.aliases.addAll(aliases);
+         arrived.terms = terms;
+         arrived.contact = contact;
++        arrived.origin = this.sheetId;
+         return arrived;
+     }
+ 
+@@ -166,6 +171,11 @@ public class Person {
+         return contact;
+     }
+ 
++    /** The sheet the person was transferred from; null when they were not transferred here. */
++    public String getOrigin() {
++        return origin;
++    }
++
+     public void setContact(String contact) {
+         this.contact = contact;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 2d4c17b5a..5a904d51f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -109,7 +109,8 @@ public class PersonController {
+      * sheet's today (see {@link Dues#aged}), and settledTotal and openTotal: the parts of their uncapped due-total
+      * from their SETTLED claims and from their OPEN and PENDING claims (see {@link Dues#settledTotal} and
+      * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
+-     * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}).
++     * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
++     * transferred from (null: none).
+      */
+     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
+             List<ClaimView> claims,
+@@ -117,7 +118,7 @@ public class PersonController {
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
+             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
+             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
+-            List<String> aliases, boolean clashing) {
++            List<String> aliases, boolean clashing, String origin) {
+ 
+         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
+         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
+@@ -141,7 +142,8 @@ public class PersonController {
+                     money(Dues.aged(grade, claims, rates, held, 31, 60)),
+                     money(Dues.aged(grade, claims, rates, held, 61, Long.MAX_VALUE)),
+                     money(Dues.settledTotal(grade, claims, rates, held)),
+-                    money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing);
++                    money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing,
++                    person.getOrigin());
+         }
+     }
+ 
+diff --git a/src/main/resources/db/migration/V68__person_origin.sql b/src/main/resources/db/migration/V68__person_origin.sql
+new file mode 100644
+index 000000000..973332032
+--- /dev/null
++++ b/src/main/resources/db/migration/V68__person_origin.sql
+@@ -0,0 +1,2 @@
++-- The sheet a person was transferred from; null for a person who was not transferred.
++ALTER TABLE person ADD COLUMN origin VARCHAR(100);
