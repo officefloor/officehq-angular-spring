@@ -5,6 +5,7 @@ import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.access.Delegated;
 import net.officefloor.hq.app.access.RoleSet;
 import net.officefloor.hq.app.access.SettingChanged;
+import net.officefloor.hq.app.claim.BatchSettled;
 import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.claim.ClaimCommented;
 import net.officefloor.hq.app.claim.ClaimDeferred;
@@ -241,6 +242,12 @@ public class SheetAudit {
         change(e.sheetId(), e.user(), "STATEMENT_CANCELLED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " due-total=" + (e.dueTotal() == null ? "n/a"
                         : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString()));
+    }
+
+    @TransactionalEventListener
+    public void on(BatchSettled e) {
+        change(e.sheetId(), e.user(), "BATCH_SETTLED sheet=" + e.sheetId() + " by=" + e.user() + " batch=" + e.batch()
+                + " count=" + e.count() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString());
     }
 
     @TransactionalEventListener

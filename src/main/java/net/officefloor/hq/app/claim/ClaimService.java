@@ -286,15 +286,22 @@ public class ClaimService {
 
     /**
      * Number a bulk settle that settled the claims (to SETTLED or PENDING) as the sheet's next settle batch,
-     * each claim showing it. Returns the batch number.
+     * each claim showing it, and record it with the frozen figures of those SETTLED added up. Returns the
+     * batch number.
      */
     @Transactional
-    public int settleBatch(String sheetId, List<Long> claimIds) {
+    public int settleBatch(String sheetId, String user, List<Long> claimIds) {
         int batch = sheets.nextSettleBatch(sheetId);
+        BigDecimal total = BigDecimal.ZERO;
         for (long id : claimIds) {
-            claim(sheetId, id).setSettleBatch(batch);
+            Claim claim = claim(sheetId, id);
+            claim.setSettleBatch(batch);
+            if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
+                total = total.add(claim.getSettledDue());
+            }
         }
         claims.flush();
+        events.publishEvent(new BatchSettled(sheetId, user, batch, claimIds.size(), total));
         return batch;
     }
 
