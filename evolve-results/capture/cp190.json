@@ -1,0 +1,64 @@
+{
+  "checkpoint": 190,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp190_bulk-void",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "aafe16e20546a8256183418dd69fea014a48fdaa",
+  "reset_sha": "",
+  "preagent_sha": "d6c60418b371657eed62f009fcc4885bf4febdb1",
+  "prev_sha": "d6c60418b371657eed62f009fcc4885bf4febdb1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8342026000000001,
+    "input_tokens": 4,
+    "output_tokens": 67,
+    "cache_read_tokens": 67880,
+    "cache_creation_tokens": 1151,
+    "num_turns": 1,
+    "duration_ms": 1711,
+    "duration_api_ms": 80242,
+    "model": "claude-opus-5-5",
+    "session_id": "4c0f4570-75e1-4ca2-911b-8b38511a15df",
+    "stop_reason": "success",
+    "result_text": "That notification was only the background watcher I'd started finishing; it reports nothing new. The bulk void change is unchanged and all 4 tests still pass.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8342026000000001,
+        "num_turns": 1,
+        "duration_ms": 1711,
+        "duration_api_ms": 80242,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp190.agent.jsonl",
+  "agent_diff_file": "cp190.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

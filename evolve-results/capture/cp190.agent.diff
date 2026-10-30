@@ -1,0 +1,207 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f05f5ec31..c08f2fe76 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -17,7 +17,7 @@ import { Pool, Pools } from '../pools/pools';
+ import { Rates } from '../rates/rates';
+ import { Summary, statusCounts } from '../summary/summary';
+ import { Tags } from '../tags/tags';
+-import { VoidReasons } from '../void-reasons/void-reasons';
++import { VoidReasonList, VoidReasons } from '../void-reasons/void-reasons';
+ 
+ const GRADES = ['A', 'B', 'C'];
+ 
+@@ -396,6 +396,29 @@ function csvField(value: string): string {
+           <span role="alert" data-testid="bulk-redate-error">{{ bulkRedateError() }}</span>
+         }
+       </p>
++      <p>
++        @if (voidReasonList.reasons().length > 0) {
++          <label for="bulk-void-reason">Void reason</label>
++          <select
++            id="bulk-void-reason"
++            data-testid="bulk-void-reason"
++            (change)="bulkVoidReason.set(value($event)); bulkVoidError.set('')"
++          >
++            <option value="" [selected]="!bulkVoidReason()">Choose a reason</option>
++            @for (r of voidReasonList.reasons(); track r) {
++              <option [value]="r" [selected]="bulkVoidReason() === r">{{ r }}</option>
++            }
++          </select>
++        }
++        <button type="button" data-testid="bulk-void" (click)="voidSelected()">Void selected claims</button>
++        @if (bulkVoided(); as r) {
++          <span>Voided <strong data-testid="bulk-voided">{{ r.voided }}</strong></span>
++          <span>Refused <strong data-testid="bulk-void-refused">{{ r.refused }}</strong></span>
++        }
++        @if (bulkVoidError()) {
++          <span role="alert" data-testid="bulk-void-error">{{ bulkVoidError() }}</span>
++        }
++      </p>
+       <form (submit)="gradeSelected($event)" aria-label="Grade selected people">
+         <label for="bulk-grade">Grade for the selected people</label>
+         <select
+@@ -869,6 +892,14 @@ export class People {
+   protected readonly bulkRedateError = signal('');
+   /** A bulk re-date still waiting for its answer: another press meanwhile is ignored. */
+   private bulkRedating = false;
++  protected readonly voidReasonList = inject(VoidReasonList);
++  /** The reason from the sheet's list the selected claims are to be voided with; blank until one is chosen. */
++  protected readonly bulkVoidReason = signal('');
++  /** How many of the selected claims the last bulk void voided and refused; null while it runs. */
++  protected readonly bulkVoided = signal<{ voided: number; refused: number } | null>(null);
++  protected readonly bulkVoidError = signal('');
++  /** A bulk void still waiting for its answer: another press meanwhile is ignored. */
++  private bulkVoiding = false;
+   /** The ids of the people selected to be given a grade together. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   protected readonly bulkGrade = signal('A');
+@@ -1018,6 +1049,9 @@ export class People {
+       this.bulkRedateDate.set('');
+       this.bulkRedated.set(null);
+       this.bulkRedateError.set('');
++      this.bulkVoidReason.set('');
++      this.bulkVoided.set(null);
++      this.bulkVoidError.set('');
+       this.selectedPeople.set(new Set());
+       this.bulkGrade.set('A');
+       this.bulkGradeFrom.set('');
+@@ -1342,6 +1376,38 @@ export class People {
+     }
+   }
+ 
++  /** Void the selected claims together with the chosen reason; each that cannot be voided is refused and left as it is. */
++  protected async voidSelected(): Promise<void> {
++    if (this.bulkVoiding) return;
++    this.bulkVoided.set(null);
++    this.bulkVoidError.set('');
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const reason = this.bulkVoidReason();
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.bulkVoiding = true;
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ voided: number; refused: number }>(
++          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-void`,
++          { claimIds: [...this.selectedClaims()], reason: reason === '' ? null : reason },
++          { headers },
++        ),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.selectedClaims.set(new Set());
++      this.bulkVoidReason.set('');
++      await this.reload(sheet);
++      if (this.session.sheet() !== sheet) return;
++      this.bulkVoided.set(result);
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.bulkVoidError.set('Could not void the selected claims.');
++    } finally {
++      this.bulkVoiding = false;
++    }
++  }
++
+   /** The people the person may still name as a patron: everyone else on the sheet not named yet. */
+   protected patronChoices(p: Person): Person[] {
+     return this.people().filter((q) => q.id !== p.id && !p.patrons.includes(q.id));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkVoidService.java b/src/main/java/net/officefloor/hq/app/claim/BulkVoidService.java
+new file mode 100644
+index 000000000..e6f4b5289
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkVoidService.java
+@@ -0,0 +1,45 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.Set;
++import net.officefloor.hq.app.access.AccessService;
++import net.officefloor.hq.app.period.ClosedPeriodRefused;
++import org.springframework.stereotype.Service;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Voids a selection of claims together, in list order: the people in the order they were added, each
++ * person's newest claim first. Each claim is voided on its own by the rules of voiding one (with the given
++ * reason), so one that cannot be voided is refused and left as it is while the rest go through.
++ */
++@Service
++public class BulkVoidService {
++
++    public record Result(int voided, int refused) {
++    }
++
++    private final ClaimService claims;
++    private final SelectedClaims selected;
++    private final AccessService access;
++
++    public BulkVoidService(ClaimService claims, SelectedClaims selected, AccessService access) {
++        this.access = access;
++        this.claims = claims;
++        this.selected = selected;
++    }
++
++    public Result voidAll(String sheetId, String user, Set<Long> claimIds, String reason) {
++        if (access.isArchived(sheetId) || access.isViewer(sheetId, user)) {
++            return new Result(0, claimIds.size()); // an archived sheet, or a viewer, changes nothing: every one refused
++        }
++        int voided = 0;
++        for (Claim c : selected.inListOrder(sheetId, claimIds)) {
++            try {
++                claims.move(sheetId, user, c.getId(), ClaimStatus.VOID, reason);
++                voided++;
++            } catch (ResponseStatusException | ClosedPeriodRefused refused) {
++                // refused: left as it is
++            }
++        }
++        return new Result(voided, claimIds.size() - voided);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 05577844d..65d25532a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -75,6 +75,10 @@ public class ClaimController {
+     public record BulkReassignForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull Long personId) {
+     }
+ 
++    /** The claims selected to be voided together, and the reason from the sheet's list (none while it is empty). */
++    public record BulkVoidForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @Size(max = 1000) String reason) {
++    }
++
+     /** Why a PENDING claim is rejected. */
+     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
+     }
+@@ -125,6 +129,7 @@ public class ClaimController {
+     private final BulkSettleService bulkSettle;
+     private final BulkReassignService bulkReassign;
+     private final BulkRedateService bulkRedate;
++    private final BulkVoidService bulkVoid;
+     private final PersonService people;
+     private final RateService rates;
+     private final StatementService statements;
+@@ -132,9 +137,10 @@ public class ClaimController {
+ 
+     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
+             BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
+-            PersonService people, RateService rates, StatementService statements, Tags tags) {
++            BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags) {
+         this.bulkReassign = bulkReassign;
+         this.bulkRedate = bulkRedate;
++        this.bulkVoid = bulkVoid;
+         this.tags = tags;
+         this.bulkOpen = bulkOpen;
+         this.bulkSettle = bulkSettle;
+@@ -263,6 +269,13 @@ public class ClaimController {
+         return bulkRedate.redate(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()), form.date());
+     }
+ 
++    /** Void the selected claims in list order; answers how many were voided and how many refused. */
++    @PostMapping("/claims/bulk-void")
++    public BulkVoidService.Result voidAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkVoidForm form) {
++        return bulkVoid.voidAll(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()), form.reason());
++    }
++
+     @PostMapping("/claims/{claimId}/settle")
+     public PersonView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
