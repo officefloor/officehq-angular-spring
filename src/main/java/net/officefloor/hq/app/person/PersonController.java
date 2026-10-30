@@ -45,15 +45,17 @@ public class PersonController {
      * the rate in force on its date for its person's grade in force then (null when none is) or, once settled, the due fixed
      * then, or while bound by a statement, the figure bound then, its status, its number (null while it has
      * none), who opened it (null while it was never opened), whether a statement binds it, the date it is
-     * due by (its date plus the sheet's terms) and whether it is overdue (see {@link Dues#overdue}).
+     * due by (its date plus the sheet's terms), whether it is overdue (see {@link Dues#overdue}) and, for a
+     * correction, the number of the claim it corrects (null otherwise).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
-            Integer number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue) {
+            Integer number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, Integer corrects) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getNumber(),
-                    claim.getOpenedBy(), claim.isStated(), rates.dueBy(claim.getDate()), Dues.overdue(claim, rates));
+                    claim.getOpenedBy(), claim.isStated(), rates.dueBy(claim.getDate()), Dues.overdue(claim, rates),
+                    claim.getCorrects());
         }
     }
 

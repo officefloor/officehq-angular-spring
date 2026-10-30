@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.rate.Grades;
+import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
 
 /** The due figures of claims and the due-total of a person's claims. */
@@ -22,7 +23,7 @@ public final class Dues {
             return claim.getSettledDue();
         }
         BigDecimal base = base(claim, grades, rates);
-        if (base == null || !overdue(claim, rates)) {
+        if (base == null || claim.isCorrection() || !overdue(claim, rates)) {
             return base;
         }
         return base.add(rates.lateCharge(base, rates.dueBy(claim.getDate())));
@@ -31,11 +32,16 @@ public final class Dues {
     /**
      * A claim's figure before any late charge: while bound by a statement, the figure bound then;
      * otherwise the amount at the rate in force on its date for its person's grade in force then, but at
-     * least the sheet's floor. Null when there is none. A statement binds this figure, never the late charge.
+     * least the sheet's floor; a correction has no floor and no late charge. Null when there is none. A
+     * statement binds this figure, never the late charge.
      */
     public static BigDecimal base(Claim claim, Grades grades, RateTable rates) {
-        return claim.isStated() ? claim.getStatedDue()
-                : rates.due(claim.getAmount(), grades.on(claim.getDate()), claim.getDate());
+        if (claim.isStated()) {
+            return claim.getStatedDue();
+        }
+        String grade = grades.on(claim.getDate());
+        return claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()))
+                : rates.due(claim.getAmount(), grade, claim.getDate());
     }
 
     /** Whether the claim is overdue: OPEN, and due by a date before the sheet's today. */

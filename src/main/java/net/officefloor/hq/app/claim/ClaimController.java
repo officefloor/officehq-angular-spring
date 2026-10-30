@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,9 +37,12 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class ClaimController {
 
-    /** An amount is 0.00 or more with up to two decimals; a blank date takes the sheet's today. */
-    public record ClaimForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
-            LocalDate date, @Size(max = 500) String note) {
+    /**
+     * An amount with up to two decimals, negative for a correction, which names the number of the claim
+     * it corrects; a blank date takes the sheet's today.
+     */
+    public record ClaimForm(@NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount,
+            LocalDate date, @Size(max = 500) String note, @Positive Integer corrects) {
     }
 
     /** A quick-add: a person's name and a claim's amount. */
@@ -69,7 +73,8 @@ public class ClaimController {
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
-        long id = claims.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.date(), form.note());
+        long id = claims.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.date(), form.note(),
+                form.corrects());
         return view(sheet, id);
     }
 
@@ -87,7 +92,8 @@ public class ClaimController {
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
-        long id = claims.edit(sheet, user.trim(), claimId, new BigDecimal(form.amount()), form.date(), form.note());
+        long id = claims.edit(sheet, user.trim(), claimId, new BigDecimal(form.amount()), form.date(), form.note(),
+                form.corrects());
         return view(sheet, id);
     }
 

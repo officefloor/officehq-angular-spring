@@ -27,6 +27,8 @@ export interface Claim {
   dueBy: string;
   /** Whether the claim is OPEN and its due-by is before the sheet's today. */
   overdue: boolean;
+  /** For a correction (a negative amount), the number of the settled claim it corrects; null otherwise. */
+  corrects: number | null;
 }
 
 export interface PersonWithClaims {
@@ -60,7 +62,8 @@ export interface PersonWithClaims {
   patrons: number[];
 }
 
-const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
+const NUMBER = /^[1-9]\d{0,8}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
@@ -83,6 +86,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ c.overdue ? 'yes' : 'no' }}</span></span>
+          <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           @for (a of actions; track a.action) {
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
@@ -124,6 +128,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         [value]="note()"
         (input)="note.set(value($event)); error.set('')"
       />
+      <label [for]="fid('corrects')">Corrects claim no.</label>
+      <input
+        [id]="fid('corrects')"
+        inputmode="numeric"
+        data-testid="claim-form-corrects"
+        [value]="corrects()"
+        (input)="corrects.set(value($event)); error.set('')"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -144,6 +156,7 @@ export class Claims {
   protected readonly amount = signal('');
   protected readonly date = signal('');
   protected readonly note = signal('');
+  protected readonly corrects = signal('');
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
   /** The refusal of the last action taken on a claim's row, shown on that row. */
@@ -180,6 +193,7 @@ export class Claims {
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
+    this.corrects.set(c.corrects === null ? '' : String(c.corrects));
     this.error.set('');
   }
 
@@ -188,6 +202,7 @@ export class Claims {
     this.amount.set('');
     this.date.set('');
     this.note.set('');
+    this.corrects.set('');
     this.error.set('');
   }
 
@@ -200,8 +215,13 @@ export class Claims {
     const amount = this.amount().trim();
     const date = this.date().trim();
     const note = this.note();
+    const corrects = this.corrects().trim();
     if (!AMOUNT.test(amount)) {
-      this.error.set('Enter an amount of 0.00 or more, with up to two decimals.');
+      this.error.set('Enter an amount with up to two decimals; a negative amount is a correction.');
+      return;
+    }
+    if (corrects !== '' && !NUMBER.test(corrects)) {
+      this.error.set('Enter the number of the claim this corrects, or leave it blank.');
       return;
     }
     if (date !== '' && !DATE.test(date)) {
@@ -210,7 +230,7 @@ export class Claims {
     }
     const id = this.editing();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const body = { amount, date: date === '' ? null : date, note };
+    const body = { amount, date: date === '' ? null : date, note, corrects: corrects === '' ? null : Number(corrects) };
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
