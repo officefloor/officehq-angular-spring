@@ -1,0 +1,64 @@
+{
+  "checkpoint": 2,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp02_sheet-today",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each sheet has a \"today\" date, shown on the screen and changeable there. It starts as the real\ndate. Every decision in the app that depends on the date, and every default date, uses the\nsheet's today and never the real clock.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach sheet has a \"today\" date, shown on the screen and changeable there. It starts as the real\ndate. Every decision in the app that depends on the date, and every default date, uses the\nsheet's today and never the real clock.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cf66b54276480127a9f1d8893c224198d01aff73",
+  "reset_sha": "",
+  "preagent_sha": "670f90ea4b4f3b210d4cd5d2d4b97ceba69e0c0d",
+  "prev_sha": "670f90ea4b4f3b210d4cd5d2d4b97ceba69e0c0d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.40194779999999997,
+    "input_tokens": 16,
+    "output_tokens": 5387,
+    "cache_read_tokens": 208799,
+    "cache_creation_tokens": 31548,
+    "num_turns": 8,
+    "duration_ms": 102625,
+    "duration_api_ms": 45162,
+    "model": "claude-opus-5-5",
+    "session_id": "2f3a8fa3-92d0-4539-9aaf-6ec2eabf5200",
+    "stop_reason": "success",
+    "result_text": "Each sheet now has its own \"today\" date, shown on screen and changeable there. The acceptance test passes under `bin/e2e`.\n\n- **Stored data:** a new migration, `V2__sheet_today.sql`, adds a required `today` date to each sheet. A new sheet starts at the real date on the day it is first loaded.\n- **Server:**\n  - Loading a sheet now returns its id and its today.\n  - Changing it is a new call, `PUT /api/sheets/{id}/today`, which requires a date.\n  - `SheetService.today(id)` returns a sheet's today. The real clock is now read only when a new sheet is created.\n- **Front end:**\n  - Under the sheet id, the screen shows today (`sheet-today`), with a date field (`sheet-today-input`) and a button (`sheet-today-save`).\n  - If no date is entered or the server refuses the change, the error shows in `sheet-error`. Typing in the field clears that error.\n  - Loading the sheet again shows the stored today, so a change made by another user appears after a re-load.\n\n- **Nothing else uses the date yet:** the app is still only sign-in and loading a sheet, so there was nothing else to switch over. Future date checks and default dates should get the date from `SheetService.today(id)` on the server, or `Session.today()` on the screen, rather than the real clock.\n- **Today stays fixed:** a sheet's today does not move forward with the real calendar on its own. It stays at the date it was created with until someone changes it.\n- **No audit record:** changing today does not write to the audit file, because neither the request nor the test asks for one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.40194779999999997,
+        "num_turns": 8,
+        "duration_ms": 102625,
+        "duration_api_ms": 45162,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp02.agent.jsonl",
+  "agent_diff_file": "cp02.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
