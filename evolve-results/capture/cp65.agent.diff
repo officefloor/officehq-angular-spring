@@ -1,0 +1,125 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index a98441c7..f253504d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -7,7 +7,8 @@ import { Period, periodOf } from '../periods/periods';
+ /**
+  * DRAFT when added, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
+  * until a steward approves it (SETTLED) or rejects it (OPEN again). A steward can re-settle a SETTLED claim,
+- * fixing its due again at today's figure. A DRAFT, OPEN or PENDING claim can be VOID.
++ * fixing its due again at today's figure. A DRAFT, OPEN or PENDING claim can be VOID,
++ * as can a SETTLED one by a steward within 7 days of settling.
+  */
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 7afdfeb4..6b814e5a 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -95,7 +95,8 @@ public class SheetAudit {
+                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                 + (e.due() == null ? "" : " due=" + e.due())
+-                + (e.reason() == null ? "" : " reason=" + e.reason()));
++                + (e.reason() == null ? "" : " reason=" + e.reason())
++                + (e.reversed() == null ? "" : " reversed=" + e.reversed()));
+     }
+ 
+     @TransactionalEventListener
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java b/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java
+index 1a122a98..7b11d71b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java
+@@ -9,10 +9,16 @@ import java.time.LocalDate;
+  * ({@code CLAIM_APPROVED}), rejected ({@code CLAIM_REJECTED}) or voided ({@code CLAIM_VOIDED}) on a sheet.
+  * The number is the claim's number, or null when it has none. The due is the due fixed by settling or
+  * approving ({@code n/a} when there was no rate), or null when the event carries none. The reason is a
+- * rejection's reason, or null when the event carries none.
++ * rejection's reason, or null when the event carries none. The reversed is the frozen figure a voided
++ * SETTLED claim takes out of the totals ({@code n/a} when it had none), or null when the event carries none.
+  */
+ public record ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
+-        LocalDate date, String number, String due, String reason) {
++        LocalDate date, String number, String due, String reason, String reversed) {
++
++    public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
++            LocalDate date, String number, String due, String reason) {
++        this(event, sheetId, user, person, amount, date, number, due, reason, null);
++    }
+ 
+     public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
+             LocalDate date, String number, String due) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b5086330..e531b00c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -169,6 +169,11 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                     "Your role may not " + permission.action() + " a claim on this sheet");
+         }
++        String reversed = null;
++        if (next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
++            requireVoidableSettled(sheetId, user, claim);
++            reversed = claim.getSettledDue() == null ? "n/a" : claim.getSettledDue().toPlainString();
++        }
+         if (next == ClaimStatus.SETTLED && Dues.deferred(claim, sheets.today(sheetId))) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be settled before then");
+@@ -206,7 +211,8 @@ public class ClaimService {
+             case VOID -> "CLAIM_VOIDED";
+             case DRAFT -> throw new IllegalStateException();
+         };
+-        events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number, due));
++        events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number,
++                due, null, reversed));
+         if (next == ClaimStatus.SETTLED) {
+             watches.notifyWatchers(sheetId, user, owner, number);
+         }
+@@ -457,6 +463,24 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /**
++     * A SETTLED claim may be voided only by a steward, and only while the sheet's today is no more than
++     * 7 days after the date its status log records it SETTLED.
++     */
++    private void requireVoidableSettled(String sheetId, String user, Claim claim) {
++        if (access.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may void a SETTLED claim");
++        }
++        LocalDate settledOn = claim.getLog().stream().filter(l -> l.getStatus() == ClaimStatus.SETTLED)
++                .map(ClaimLogLine::getOn).reduce((a, b) -> b).orElse(null);
++        LocalDate today = sheets.today(sheetId);
++        if (settledOn == null || today.isAfter(settledOn.plusDays(7))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A SETTLED claim can only be voided within 7 days of its settlement"
++                            + (settledOn == null ? "" : " (" + settledOn + ")"));
++        }
++    }
++
+     private Claim claim(String sheetId, long claimId) {
+         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index 1f2fb9aa..cc412224 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -3,7 +3,8 @@ package net.officefloor.hq.app.claim;
+ /**
+  * A claim's status: it starts as DRAFT, is opened (OPEN) and then settled (SETTLED); a clerk settling
+  * one above the clerk limit leaves it PENDING until a steward approves it (SETTLED) or rejects it (back to
+- * OPEN). A DRAFT, OPEN or PENDING claim can be voided (VOID). Only OPEN, PENDING and SETTLED claims count
++ * OPEN). A DRAFT, OPEN or PENDING claim can be voided (VOID), and a
++ * steward may void a SETTLED one within 7 days of its settlement. Only OPEN, PENDING and SETTLED claims count
+  * toward what is claimed.
+  */
+ public enum ClaimStatus {
+@@ -27,7 +28,7 @@ public enum ClaimStatus {
+         return switch (next) {
+             case OPEN -> this == DRAFT;
+             case PENDING, SETTLED -> this == OPEN;
+-            case VOID -> this == DRAFT || this == OPEN || this == PENDING;
++            case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == SETTLED;
+             case DRAFT -> false;
+         };
+     }

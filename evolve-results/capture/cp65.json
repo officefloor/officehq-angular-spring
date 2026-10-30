@@ -1,0 +1,64 @@
+{
+  "checkpoint": 65,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp65_void-settled",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward may void a SETTLED claim within 7 days of its settlement by the sheet's today (the\nstatus log's SETTLED date). The frozen figure leaves every total, the claim keeps its number, and\nCLAIM_VOIDED ends with reversed=<the frozen figure>. Anyone else, a later day, or a claim in a\nclosed period is refused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward may void a SETTLED claim within 7 days of its settlement by the sheet's today (the\nstatus log's SETTLED date). The frozen figure leaves every total, the claim keeps its number, and\nCLAIM_VOIDED ends with reversed=<the frozen figure>. Anyone else, a later day, or a claim in a\nclosed period is refused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0a469ca81d0fb8d6c4ff31bbb049ab5e08489e48",
+  "reset_sha": "",
+  "preagent_sha": "facd190df93a9a12fcff2f9b7e46f01e8cd32ca9",
+  "prev_sha": "facd190df93a9a12fcff2f9b7e46f01e8cd32ca9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7172639999999999,
+    "input_tokens": 32,
+    "output_tokens": 6331,
+    "cache_read_tokens": 686820,
+    "cache_creation_tokens": 56644,
+    "num_turns": 16,
+    "duration_ms": 266440,
+    "duration_api_ms": 69077,
+    "model": "claude-opus-5-5",
+    "session_id": "26760178-8b0d-48af-91a9-73de0028ec50",
+    "stop_reason": "success",
+    "result_text": "A steward can now void a SETTLED claim within 7 days of settling it, and `bin/e2e` passes all 4 tests in the spec. The only change since that run is a re-wrapped comment.\n\n**How it works:**\n- **Status rules** (`claim/ClaimStatus.java`): SETTLED can now become VOID. A VOID claim already counted toward no totals, so the frozen figure drops out of every total and the claim keeps its number.\n- **Checks** (`claim/ClaimService.java`, in `move` plus a new `requireVoidableSettled`): voiding a SETTLED claim is refused, with the error shown on the claim, in three cases:\n  - **Not a steward:** the user's role isn't steward. Someone acting as steward through a delegation counts as one.\n  - **Too late:** the sheet's today is more than 7 days after the claim's last SETTLED date in its status log. Day 7 itself is still allowed.\n  - **Closed period:** the claim is dated in a closed period. The existing period check already refuses this.\n\n  A refusal writes nothing to the store or the audit file.\n- **Audit** (`claim/ClaimChanged.java`, `SheetAudit.java`): the record has a new optional `reversed` field. A `CLAIM_VOIDED` line for a settled claim ends with `reversed=<frozen figure>`. If the claim had no frozen figure it shows `reversed=n/a`, the same convention `due=` uses. Voids of DRAFT, OPEN or PENDING claims are written exactly as before.\n- **Front end:** no behaviour change was needed, since the Void button was already on every claim and the server makes the decision. I only updated the doc comment in `claims.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7172639999999999,
+        "num_turns": 16,
+        "duration_ms": 266440,
+        "duration_api_ms": 69077,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp65.agent.jsonl",
+  "agent_diff_file": "cp65.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
