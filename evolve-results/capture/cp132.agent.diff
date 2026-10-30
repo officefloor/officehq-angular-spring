@@ -1,0 +1,86 @@
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 6267306e9..d3bee4492 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -143,4 +143,5 @@ public class Sheet {
+     public void setArchived(boolean archived) {
+         this.archived = archived;
+     }
++
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index ab73618e7..b19d15fa1 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,5 +1,7 @@
+ package net.officefloor.hq.app.sheet;
+ 
++import java.util.Collection;
++
+ import jakarta.persistence.LockModeType;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Lock;
+@@ -9,14 +11,18 @@ import org.springframework.data.repository.query.Param;
+ 
+ public interface SheetRepository extends JpaRepository<Sheet, String> {
+ 
+-    /** Take the sheet's next claim number; the row stays locked until the transaction ends. */
+-    @Modifying(flushAutomatically = true)
+-    @Query("update Sheet s set s.lastClaimNumber = s.lastClaimNumber + 1 where s.id = :id")
+-    int bumpClaimNumber(@Param("id") String id);
+-
+     @Query("select s.lastClaimNumber from Sheet s where s.id = :id")
+     int lastClaimNumber(@Param("id") String id);
+ 
++    /** The last claim number given on any of the sheets. */
++    @Query("select coalesce(max(s.lastClaimNumber), 0) from Sheet s where s.id in :ids")
++    int lastClaimNumberOf(@Param("ids") Collection<String> ids);
++
++    /** Record the sheet's last claim number given; the row stays locked until the transaction ends. */
++    @Modifying(flushAutomatically = true)
++    @Query("update Sheet s set s.lastClaimNumber = :n where s.id = :id")
++    int setLastClaimNumber(@Param("id") String id, @Param("n") int n);
++
+     /** Take the sheet's next settle batch number; the row stays locked until the transaction ends. */
+     @Modifying(flushAutomatically = true)
+     @Query("update Sheet s set s.lastSettleBatch = s.lastSettleBatch + 1 where s.id = :id")
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index b9be586e6..47679bef9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -3,6 +3,8 @@ package net.officefloor.hq.app.sheet;
+ import java.time.Clock;
+ import java.time.LocalDate;
+ import java.util.ArrayDeque;
++import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.Deque;
+ import java.util.LinkedHashSet;
+ import java.util.List;
+@@ -130,15 +132,22 @@ public class SheetService {
+     }
+ 
+     /**
+-     * The next claim number on the sheet: 1 for the first, then 2, and so on. Two users taking one
+-     * at the same moment wait on each other, so no number is given twice or skipped.
++     * The next claim number on the sheet: the sheets of a tree share one sequence, so the next after the
++     * last number given on any sheet of the sheet's tree (1 for the first). Two users taking one at the
++     * same moment wait on each other, so no number is given twice or skipped.
+      */
+     @Transactional
+     public int nextClaimNumber(String id) {
+-        if (sheets.bumpClaimNumber(id) != 1) {
++        List<String> tree = new ArrayList<>(tree(id));
++        Collections.sort(tree);
++        for (String sheetId : tree) {
++            sheets.lockById(sheetId);
++        }
++        int next = sheets.lastClaimNumberOf(tree) + 1;
++        if (sheets.setLastClaimNumber(id, next) != 1) {
+             throw new IllegalStateException("No such sheet " + id);
+         }
+-        return sheets.lastClaimNumber(id);
++        return next;
+     }
+ 
+     /**

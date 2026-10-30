@@ -1,0 +1,74 @@
+{
+  "checkpoint": 132,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp132_tree-numbering",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    112,
+    123,
+    128,
+    130
+  ],
+  "replaced_tests": [
+    "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1",
+    "cp123_bulk-retire.spec.ts::bulk retire scenario 1",
+    "cp128_transfer-merges.spec.ts::transfer merges scenario 2",
+    "cp130_period-comparison.spec.ts::period comparison scenario 2"
+  ],
+  "request": {
+    "spec": "The sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f01574d131e7e99ab43575763bd5b957f1e10f9d",
+  "reset_sha": "",
+  "preagent_sha": "3765c72d656653d3774b06f556b326750855244b",
+  "prev_sha": "3765c72d656653d3774b06f556b326750855244b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5657724000000001,
+    "input_tokens": 32,
+    "output_tokens": 7034,
+    "cache_read_tokens": 559902,
+    "cache_creation_tokens": 39123,
+    "num_turns": 16,
+    "duration_ms": 267963,
+    "duration_api_ms": 70050,
+    "model": "claude-opus-5-5",
+    "session_id": "d8bfffc8-1693-4fe3-8967-79af3d9cff4f",
+    "stop_reason": "success",
+    "result_text": "All the sheets in a tree now share one claim number sequence, and `bin/e2e` passes all 4 tests in the spec.\n\n**What changed** (server only; no database migration or front-end change was needed):\n- `SheetService.nextClaimNumber` (`src/main/java/net/officefloor/hq/app/sheet/SheetService.java:140`) finds the sheet's whole tree: the sheet itself, its parents going up, and its children going down. It locks every sheet in the tree, in a fixed order so two users can't block each other. It then gives the next number after the highest last-number held by any of those sheets, and records it as this sheet's last number.\n- `SheetRepository` has two new queries: one for the highest last-number across a set of sheets, and one to set a sheet's last number. The old \"add one to this sheet's counter\" query is gone because nothing uses it any more.\n\n**How it behaves:**\n- **Every way a claim gets a number is covered.** Opening, splitting, a claim arriving from another sheet and renumbering all go through this one method.\n- **Numbers already given stay as they are.** Each sheet still keeps its own record of its last number, and the shared sequence picks up from the highest of those.\n- **Per-period numbering (e.g. `P1-1`) still counts per sheet**, as the request asked.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5657724000000001,
+        "num_turns": 16,
+        "duration_ms": 267963,
+        "duration_api_ms": 70050,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp132.agent.jsonl",
+  "agent_diff_file": "cp132.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
