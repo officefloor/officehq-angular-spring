@@ -80,12 +80,13 @@ public class PersonController {
      * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
-     * that count are overdue and the sum of their due figures, and the ids of their patrons.
+     * that count are overdue and the sum of their due figures, the ids of their patrons, and whether they are
+     * active (see {@link Dues#active}).
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, List<ClaimView> claims,
             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
-            String overdueTotal, List<Long> patrons) {
+            String overdueTotal, List<Long> patrons, boolean active) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -103,7 +104,7 @@ public class PersonController {
                     person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     overdue.size(), money(Dues.sum(grade, overdue, rates)),
-                    patrons);
+                    patrons, Dues.active(claims, held, rates.today()));
         }
     }
 

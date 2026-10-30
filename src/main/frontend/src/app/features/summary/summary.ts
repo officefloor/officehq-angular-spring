@@ -17,7 +17,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
 }
 
 // The sheet's figures summed from the list: per grade, the people on it today (retired people left
-// out) and their due-totals added up (n/a skipped); per period, its due-total; per status, how many
+// out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how many
 // claims have it.
 @Component({
   selector: 'app-summary',
@@ -27,7 +27,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
       <table>
         <caption>By grade</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th><th scope="col">Active</th></tr>
         </thead>
         <tbody>
           @for (g of byGrade(); track g.grade) {
@@ -35,6 +35,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
@@ -78,7 +79,7 @@ export class Summary {
     GRADES.map((grade) => {
       const on = this.people().filter((p) => !p.retired && p.grade === grade);
       const due = on.reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0);
-      return { grade, count: on.length, dueTotal: (due / 100).toFixed(2) };
+      return { grade, count: on.length, dueTotal: (due / 100).toFixed(2), active: on.filter((p) => p.active).length };
     }),
   );
 

@@ -120,6 +120,16 @@ public final class Dues {
     }
 
     /**
+     * Whether the person is active on the sheet's today: they have an OPEN or PENDING claim that counts (see
+     * {@link #counts}) dated within the 30 days up to and including that today.
+     */
+    public static boolean active(List<Claim> claims, Holds holds, LocalDate today) {
+        LocalDate from = today.minusDays(29);
+        return claims.stream().anyMatch(c -> (c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                && counts(c, holds, today) && !c.getDate().isBefore(from) && !c.getDate().isAfter(today));
+    }
+
+    /**
      * The status the claim had at the end of the given day, as its status log records it (each line on the
      * sheet's today then); null when it was added after that day.
      */

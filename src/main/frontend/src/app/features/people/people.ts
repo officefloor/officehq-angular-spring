@@ -180,7 +180,7 @@ function csvField(value: string): string {
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Active</th>
             @for (pd of periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
             }
@@ -207,6 +207,7 @@ function csvField(value: string): string {
               <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
               <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+              <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodTotals().get(p.id)?.[pd.id] }}</td>
               }

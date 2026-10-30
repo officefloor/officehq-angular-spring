@@ -102,6 +102,8 @@ export interface PersonWithClaims {
   overdueTotal: string;
   /** The ids of the people on the sheet the person named as their patrons. */
   patrons: number[];
+  /** Whether they have an OPEN or PENDING claim that counts dated within the 30 days up to and including the sheet's today. */
+  active: boolean;
 }
 
 const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
