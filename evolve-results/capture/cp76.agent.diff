@@ -1,0 +1,73 @@
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 16dc9349..a241097c 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -24,6 +24,7 @@ import net.officefloor.hq.app.person.WatcherNotified;
+ import net.officefloor.hq.app.rate.RateChanged;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.rollup.RollupChanged;
++import net.officefloor.hq.app.sheet.DaySnapshot;
+ import net.officefloor.hq.app.sheet.SheetArchived;
+ import net.officefloor.hq.app.statement.StatementCancelled;
+ import net.officefloor.hq.app.statement.StatementTaken;
+@@ -215,6 +216,14 @@ public class SheetAudit {
+                 + " from=" + e.from() + " to=" + e.to());
+     }
+ 
++    @TransactionalEventListener
++    public void on(DaySnapshot e) {
++        for (Rollup.PersonFigures p : e.people()) {
++            audit.record("SNAPSHOT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + p.name()
++                    + " due-total=" + p.dueTotal());
++        }
++    }
++
+     @TransactionalEventListener
+     public void on(RollupChanged e) {
+         for (Rollup.PersonFigures p : e.people()) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DaySnapshot.java b/src/main/java/net/officefloor/hq/app/sheet/DaySnapshot.java
+new file mode 100644
+index 00000000..febd67b5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/DaySnapshot.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.sheet;
++
++import java.util.List;
++import net.officefloor.hq.app.rollup.Rollup;
++
++/**
++ * The sheet's today is about to change: everyone's figures as they stood on the day being left, in the
++ * order they were added ({@code SNAPSHOT}, one line per person). Published before {@link TodayChanged}.
++ */
++public record DaySnapshot(String sheetId, String user, List<Rollup.PersonFigures> people) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index a7d4206c..0cd683b0 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
+ 
+ import java.time.Clock;
+ import java.time.LocalDate;
++import java.util.List;
+ import net.officefloor.hq.app.asof.SheetPasts;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.statement.DayEnds;
+@@ -98,13 +99,15 @@ public class SheetService {
+      * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
+      * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
+      * days are closed) and then the figures it moves. The sheet as it stands is first written down as at
+-     * the end of the today it leaves (see {@link DayEnds} and {@link SheetPasts}).
++     * the end of the today it leaves (see {@link DayEnds} and {@link SheetPasts}), and everyone's due-total
++     * on it is announced first ({@link DaySnapshot}).
+      */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = load(id, user);
+         Rollup.Figures before = rollup.figures(id);
+         if (!today.equals(sheet.getToday())) {
++            events.publishEvent(new DaySnapshot(id, user, List.copyOf(before.people().values())));
+             dayEnds.record(id, sheet.getToday());
+             pasts.record(id, sheet.getToday());
+         }
