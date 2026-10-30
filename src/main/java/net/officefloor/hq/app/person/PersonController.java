@@ -108,7 +108,7 @@ public class PersonController {
     }
 
     /**
-     * A person with the grade in force on the sheet's today, their own terms (null: none), their claims, newest first, claimed: the sum of the amounts of the claims that
+     * A person with the grade in force on the sheet's today, their own terms in force on it (null: none), their claims, newest first, claimed: the sum of the amounts of the claims that
      * count, leaving out corrections (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
@@ -142,7 +142,7 @@ public class PersonController {
             BigDecimal claimed = Dues.claimed(claims, held, rates.today());
             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
-                    grade.on(rates.today()), person.getTerms(), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
+                    grade.on(rates.today()), person.termsOn(rates.today()), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
                     statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
@@ -188,13 +188,14 @@ public class PersonController {
     /**
      * A person as entered; an edit carries the version its editor loaded (none: no check) and the date
      * its grade applies from (none: the sheet's today). An add's grade applies from the beginning of time.
-     * The person's own terms are a number of days, blank (or none) for none; their contact a text, blank
+     * The person's own terms are a number of days, blank (or none) for none, from a date (none: from the
+     * beginning of time); their contact a text, blank
      * (or none) for none; their tags comma separated text (none: none on an add, as they were on an edit).
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
-            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms, @Size(max = 200) String contact,
-            @Size(max = 1000) String tags) {
+            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms, LocalDate termsFrom,
+            @Size(max = 200) String contact, @Size(max = 1000) String tags) {
 
         /** The contact trimmed and lower-cased; null when there is none. */
         String contactKey() {
@@ -276,7 +277,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays(),
-                form.contactKey(), form.tags()), List.of(),
+                form.termsFrom(), form.contactKey(), form.tags()), List.of(),
                 rates.table(sheet), Statements.NONE, List.of(), false, List.of());
     }
 
@@ -293,7 +294,7 @@ public class PersonController {
             @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(),
-                form.grade(), form.gradeFrom(), form.termsDays(), form.contactKey(), form.tags()));
+                form.grade(), form.gradeFrom(), form.termsDays(), form.termsFrom(), form.contactKey(), form.tags()));
     }
 
     /** Give the selected people the grade from the date, in list order; answers how many were changed. */

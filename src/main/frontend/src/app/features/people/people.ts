@@ -211,6 +211,14 @@ function csvField(value: string): string {
           [value]="terms()"
           (input)="terms.set(value($event)); error.set('')"
         />
+        <label for="person-form-terms-from">Terms from (blank: from the beginning)</label>
+        <input
+          id="person-form-terms-from"
+          data-testid="person-form-terms-from"
+          type="date"
+          [value]="termsFrom()"
+          (input)="termsFrom.set(value($event)); error.set('')"
+        />
         <label for="person-form-contact">Contact (blank: none)</label>
         <input
           id="person-form-contact"
@@ -735,6 +743,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in days; blank: none. */
   protected readonly terms = signal('');
+  /** The date the person's own terms apply from; blank: from the beginning of time. */
+  protected readonly termsFrom = signal('');
   /** The person's contact; blank: none. */
   protected readonly contact = signal('');
   /** The person's tags, comma separated; blank: none. */
@@ -1333,6 +1343,7 @@ export class People {
     this.grade.set(p.grade);
     this.gradeFrom.set('');
     this.terms.set(p.terms === null ? '' : String(p.terms));
+    this.termsFrom.set('');
     this.contact.set(p.contact ?? '');
     this.tags.set(p.tags.join(', '));
     this.error.set('');
@@ -1344,6 +1355,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.termsFrom.set('');
     this.contact.set('');
     this.tags.set('');
     this.error.set('');
@@ -1359,6 +1371,7 @@ export class People {
     const grade = this.grade();
     const gradeFrom = this.gradeFrom() || null;
     const terms = this.terms().trim();
+    const termsFrom = this.termsFrom() || null;
     const contact = this.contact().trim().toLowerCase();
     const tags = this.tags();
     if (!name) {
@@ -1382,8 +1395,8 @@ export class People {
     try {
       const saved = await firstValueFrom(
         id === null
-          ? this.http.post<Person>(base, { name, grade, terms, contact, tags }, { headers })
-          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, terms, contact, tags, version: this.version }, { headers }),
+          ? this.http.post<Person>(base, { name, grade, terms, termsFrom, contact, tags }, { headers })
+          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, terms, termsFrom, contact, tags, version: this.version }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       this.replace(saved);

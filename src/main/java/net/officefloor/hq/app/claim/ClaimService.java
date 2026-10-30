@@ -141,7 +141,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.claimDate(sheetId);
         sheets.load(sheetId, user);
-        int terms = sheets.settings(sheetId).termsFor(person.getTerms(), person.gradeOn(on), on);
+        int terms = sheets.settings(sheetId).termsFor(person.termsOn(on), person.gradeOn(on), on);
         LocalDate dueBy = holidays.dueBy(sheetId, on, terms);
         periods.requireOpen(sheetId, dueBy);
         requireNotRetired(person, on);
@@ -599,7 +599,7 @@ public class ClaimService {
         claim.unbind();
         Claim part = new Claim(sheetId, owner.getId(), amount, claim.getDate(), claim.getNote(), null);
         sheets.load(sheetId, user);
-        int terms = sheets.settings(sheetId).termsFor(owner.getTerms(), owner.gradeOn(claim.getDate()), claim.getDate());
+        int terms = sheets.settings(sheetId).termsFor(owner.termsOn(claim.getDate()), owner.gradeOn(claim.getDate()), claim.getDate());
         part.setDueBy(holidays.dueBy(sheetId, claim.getDate(), terms));
         part.setTerms(terms);
         part.setSplitFrom(claim.getShownNumber());

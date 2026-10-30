@@ -17,10 +17,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import net.officefloor.hq.app.claim.Holds;
 
 /**
- * A person on a sheet, with a name, their own terms (null: none) and their grades (A, B or C), each from a date (see {@link #gradeOn}), the date they are retired from (null while
+ * A person on a sheet, with a name, their own terms (null: none), each from a date (see {@link #termsOn}), and their grades (A, B or C), each from a date (see {@link #gradeOn}), the date they are retired from (null while
  * not retired), their past retirements (see {@link #getRetirements}), their holds (see {@link #heldOn}) and the version it was last saved at.
  */
 @Entity
@@ -48,6 +49,10 @@ public class Person {
 
     @Column(name = "terms")
     private Integer terms;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_terms", joinColumns = @JoinColumn(name = "person_id"))
+    private List<TermsFrom> datedTerms = new ArrayList<>();
 
     @Column(name = "contact")
     private String contact;
@@ -107,6 +112,7 @@ public class Person {
         grades.forEach(g -> arrived.grades.add(new GradeFrom(g.getGrade(), g.getFromDate())));
         arrived.aliases.addAll(aliases);
         arrived.terms = terms;
+        datedTerms.forEach(t -> arrived.datedTerms.add(new TermsFrom(t.getTerms(), t.getFromDate())));
         arrived.contact = contact;
         arrived.tags = tags;
         arrived.origin = this.sheetId;
@@ -180,13 +186,44 @@ public class Person {
         aliases.add(alias);
     }
 
-    /** The person's own terms in days, in force on every date; null when they have none. */
+    /** The person's own terms in days from the beginning of time (before any dated terms); null when they have none. */
     public Integer getTerms() {
         return terms;
     }
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /**
+     * The person's own terms in force on the date: those whose from-date is the latest on or before it,
+     * else those from the beginning of time; null when none are in force.
+     */
+    public Integer termsOn(LocalDate date) {
+        Optional<TermsFrom> dated = datedTerms.stream()
+                .filter(t -> !t.getFromDate().isAfter(date))
+                .max(Comparator.comparing(TermsFrom::getFromDate));
+        return dated.isPresent() ? dated.get().getTerms() : terms;
+    }
+
+    /** The person's own terms recorded from a date, each from its date. */
+    public List<TermsFrom> getDatedTerms() {
+        return List.copyOf(datedTerms);
+    }
+
+    /**
+     * Record the terms (null: none) from the date, keeping the others; those already recorded from that date
+     * are replaced. Whether anything changed.
+     */
+    public boolean termsFrom(Integer terms, LocalDate from) {
+        boolean same = datedTerms.stream()
+                .anyMatch(t -> t.getFromDate().equals(from) && Objects.equals(t.getTerms(), terms));
+        if (same) {
+            return false;
+        }
+        datedTerms.removeIf(t -> t.getFromDate().equals(from));
+        datedTerms.add(new TermsFrom(terms, from));
+        return true;
     }
 
     /** The person's contact, trimmed and lower-cased; null when they have none. */

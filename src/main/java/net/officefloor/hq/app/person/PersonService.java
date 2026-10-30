@@ -72,6 +72,13 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             String tagText) {
+        return add(sheetId, user, name, grade, terms, null, contact, tagText);
+    }
+
+    /** Add the person as above, their own terms from the date (null: from the beginning of time). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, LocalDate termsFrom,
+            String contact, String tagText) {
         String tagged = Tags.normalize(tagText);
         sheets.load(sheetId, user);
         sheetRows.lockById(sheetId);
@@ -84,14 +91,21 @@ public class PersonService {
         }
         Rollup.Figures before = rollup.figures(sheetId);
         Person added = new Person(sheetId, trimmed, grade);
-        added.setTerms(terms);
+        if (termsFrom != null) {
+            if (terms != null) {
+                added.termsFrom(terms, termsFrom);
+            }
+        } else {
+            added.setTerms(terms);
+        }
         added.setContact(contact);
         added.setTags(tagged);
         added.setPosition(people.maxPosition(sheetId) + 1);
         Person person = people.saveAndFlush(added);
         tags.use(sheetId, tagged);
+        Integer termsNow = person.termsOn(sheets.today(sheetId));
         events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade,
-                terms == null ? null : terms.toString(), contact));
+                termsNow == null ? null : termsNow.toString(), contact));
         rollup.changed(sheetId, user, before);
         return person;
     }
@@ -113,6 +127,19 @@ public class PersonService {
     @Transactional
     public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, String tagText) {
+        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, null, contact, tagText);
+    }
+
+    /**
+     * Edit the person as above, their own terms recorded from a date: with a from-date, the terms (null: none)
+     * are recorded from it, keeping those already recorded (one from the same date is replaced); with none, the
+     * terms are those from the beginning of time, unless they are the terms in force on the sheet's today (as the
+     * row showed them), which records nothing. When the terms recorded changed, the edit names the terms in force
+     * on the sheet's today after it.
+     */
+    @Transactional
+    public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tagText) {
         String tagged = tagText == null ? null : Tags.normalize(tagText);
         sheetRows.lockById(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
@@ -134,8 +161,17 @@ public class PersonService {
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
         }
-        String termsChange = Objects.equals(terms, person.getTerms()) ? null : terms == null ? "" : terms.toString();
-        person.setTerms(terms);
+        boolean termsChanged;
+        if (termsFrom != null) {
+            termsChanged = person.termsFrom(terms, termsFrom);
+        } else {
+            termsChanged = !Objects.equals(terms, person.termsOn(today)) && !Objects.equals(terms, person.getTerms());
+            if (termsChanged) {
+                person.setTerms(terms);
+            }
+        }
+        Integer termsNow = person.termsOn(today);
+        String termsChange = !termsChanged ? null : termsNow == null ? "" : termsNow.toString();
         String contactChange = Objects.equals(contact, person.getContact()) ? null : contact == null ? "" : contact;
         person.setContact(contact);
         if (tagged != null) {

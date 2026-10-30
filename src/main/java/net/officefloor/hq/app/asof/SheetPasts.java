@@ -40,6 +40,7 @@ public class SheetPasts {
     private static final List<Scope> TABLES = List.of(
             new Scope("PERSON", "sheet_id = ?"),
             new Scope("PERSON_GRADE", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
+            new Scope("PERSON_TERMS", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
             new Scope("PERSON_HOLD", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
             new Scope("PERSON_RETIREMENT", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
             new Scope("PERSON_ALIAS", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
