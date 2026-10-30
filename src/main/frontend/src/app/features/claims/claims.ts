@@ -406,7 +406,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
       <caption class="visually-hidden">Claims of {{ personName() }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Shared with</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Held</th><th scope="col">Status</th><th scope="col">Review assigned to</th><th scope="col">Review late</th><th scope="col">Pending late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
+          <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Shared with</th><th scope="col">Due</th><th scope="col">Policy version</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Reminded</th><th scope="col">Waived</th><th scope="col">Held</th><th scope="col">Status</th><th scope="col">Review assigned to</th><th scope="col">Review late</th><th scope="col">Pending late</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Late entry</th><th scope="col">Corrects</th><th scope="col">Proofs</th><th scope="col">Receipts</th><th scope="col">Photos</th><th scope="col">Split from</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Timeline</th>
           <th scope="col"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
@@ -430,6 +430,7 @@ export function claimedTotal(claims: readonly Claim[]): string {
             <td data-testid="claim-tags">{{ (c.tags.join(', ')) | fig }}</td>
             <td data-testid="claim-shares">{{ sharesText(c) | fig }}</td>
             <td data-testid="claim-due">{{ (dueOf(c, ratesOf(c), settings.floor(), settings.lateness(), graceOn(c)) ?? 'n/a') | fig }}</td>
+            <td data-testid="claim-policy">{{ settings.policyVersionOn()(c.date) | fig }}</td>
             <td data-testid="claim-due-by">{{ c.dueBy | fig }}</td>
             <td data-testid="claim-overdue">{{ (overdue(c, session.sheetToday(), graceOn(c)) ? 'yes' : 'no') | fig }}</td>
             <td data-testid="claim-deferred">{{ (deferredUntilAfter(c, session.sheetToday()) ? 'yes' : 'no') | fig }}</td>

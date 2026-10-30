@@ -686,8 +686,8 @@ public class SettingsService implements Audit.OnBehalf {
      * sheet's). A steward settles anything, and an n/a due is within any limit.
      */
     @Transactional(readOnly = true)
-    public boolean aboveClerkLimit(String sheetId, String user, String grade, BigDecimal due) {
-        BigDecimal limit = sheets.load(sheetId).clerkLimitFor(grade);
+    public boolean aboveClerkLimit(String sheetId, String user, String grade, LocalDate on, BigDecimal due) {
+        BigDecimal limit = sheets.load(sheetId).clerkLimitFor(grade, on);
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }

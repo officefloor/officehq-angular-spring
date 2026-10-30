@@ -1267,20 +1267,30 @@ export class People {
   // Each person's due-total held to the sheet's cap less their cut total (not below 0.00); everything that adds up
   // due-totals uses it. n/a is not capped.
   protected readonly dueBy = computed(() => {
-    const cap = this.settings.cap();
+    const cap = this.capBy();
     const cuts = this.poolStore.cutTotals();
     const by = new Map<number, string | null>();
-    for (const [id, due] of this.uncappedDueBy()) by.set(id, atMost(due, capLess(cap, cuts.get(id) ?? '0.00')));
+    for (const [id, due] of this.uncappedDueBy()) by.set(id, atMost(due, capLess(cap(id), cuts.get(id) ?? '0.00')));
     return by;
   });
   // Each person's excess: what their due-total is above the sheet's cap less their cut total (what the cap holds
   // back), else 0.00.
   protected readonly excessBy = computed(() => {
-    const cap = this.settings.cap();
+    const cap = this.capBy();
     const cuts = this.poolStore.cutTotals();
     const by = new Map<number, string>();
-    for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, capLess(cap, cuts.get(id) ?? '0.00')));
+    for (const [id, due] of this.uncappedDueBy()) by.set(id, excessOver(due, capLess(cap(id), cuts.get(id) ?? '0.00')));
     return by;
+  });
+  // Each person's cap: the one in force on the date of their latest claim that counts (the sheet's today with none).
+  private readonly capBy = computed(() => {
+    const capOn = this.settings.capOn();
+    const live = this.liveBy();
+    const today = this.session.sheetToday();
+    return (id: number): string | null => {
+      const dates = (live.get(id) ?? []).map((c) => c.date);
+      return capOn(dates.length === 0 ? today : dates.reduce((a, b) => (b > a ? b : a)));
+    };
   });
   // Every claim the live rules do not leave out: its person, its due-by, the figure it totals and its log, for the
   // periods' due-totals, which count it by its status at each period's end.

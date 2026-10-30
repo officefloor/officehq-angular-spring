@@ -383,7 +383,7 @@ public class ClaimService {
             if (!part) {
                 refuseWithoutProof(sheetId, claim, fixed);
             }
-            if (settings.aboveClerkLimit(sheetId, by, person.gradeOn(sheets.load(sheetId).getToday()), fixed)) {
+            if (settings.aboveClerkLimit(sheetId, by, person.gradeOn(sheets.load(sheetId).getToday()), claim.getDate(), fixed)) {
                 next = ClaimStatus.PENDING;
                 event = "CLAIM_PENDING";
             } else {

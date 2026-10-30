@@ -6,6 +6,7 @@ import java.util.ArrayDeque;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -305,9 +306,10 @@ public class RollupService {
                     .allMatch(g -> Rate.inForce(byGrade.getOrDefault(g, List.of()), today) == null))) {
                 due = null;
             }
-            // the due-total is at most the sheet's cap less the person's cut total
-            if (sheet != null && sheet.getCap() != null) {
-                due = sheet.capped(due, cutTotals.get(p.getId()));
+            // the due-total is at most the cap in force on the date of their latest counted claim less their cut total
+            if (sheet != null) {
+                LocalDate latest = counted.stream().map(Claim::getDate).max(Comparator.naturalOrder()).orElse(null);
+                due = sheet.capped(due, cutTotals.get(p.getId()), latest);
             }
             BigDecimal cut = cutTotals.getOrDefault(p.getId(), ZERO).setScale(2);
             figures.put(p.getId(), new Figures(p.getName(), claimed, due, overdue, settled, overdueCount, held,

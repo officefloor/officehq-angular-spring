@@ -38,6 +38,12 @@ public class Sheet {
     public static final String ROUNDING = "rounding";
     public static final String HALF_UP = "half-up";
     public static final String HALF_EVEN = "half-even";
+    /**
+     * The policy settings, versioned together: every value recorded for one of them is a new policy version, numbered
+     * from 1 in the order recorded.
+     */
+    public static final java.util.Set<String> POLICY_KEYS = java.util.Set.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT,
+            CLERK_LIMIT);
     /** The key prefix of a grade's grace days: grace-<grade>. */
     public static final String GRACE = "grace";
 
@@ -278,6 +284,7 @@ public class Sheet {
         then.clonedFrom = clonedFrom;
         then.archived = archived;
         then.lastSettleBatch = lastSettleBatch;
+        settingChanges.stream().filter(c -> c.madeBy(day)).forEach(then.settingChanges::add);
         // a value recorded before changes were kept stands as it is
         for (DatedSetting s : settings) {
             if (settingChanges.stream()
@@ -301,23 +308,44 @@ public class Sheet {
                 .max(Comparator.comparing(DatedSetting::getFrom));
     }
 
+    /** The from-dates of the policy versions, in the order recorded (a null from-date counts on every date). */
+    public List<LocalDate> policyVersionFroms() {
+        return settingChanges.stream().filter(c -> POLICY_KEYS.contains(c.getKey())).map(SettingChange::getFrom)
+                .toList();
+    }
+
+    /** The current policy version: how many have been recorded; 0 for none. */
+    public int policyVersion() {
+        return policyVersionFroms().size();
+    }
+
+    /** The policy version in force on the date: the number of versions whose from-date is on or before it. */
+    public int policyVersionOn(LocalDate on) {
+        return (int) policyVersionFroms().stream().filter(f -> f == null || (on != null && !f.isAfter(on))).count();
+    }
+
     /** The most a clerk may settle a claim for, in force on the sheet's today; null means no limit. */
     public BigDecimal getClerkLimit() {
-        return inForce(CLERK_LIMIT, getToday()).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+        return clerkLimitOn(getToday());
+    }
+
+    /** The most a clerk may settle a claim dated on the date for, in force on that date; null means no limit. */
+    public BigDecimal clerkLimitOn(LocalDate on) {
+        return inForce(CLERK_LIMIT, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
     }
 
     /**
-     * The clerk limit a claim has when its person has the grade: the grade's own in force on the sheet's today when
-     * one is set (not blank), else the sheet's; null means no limit.
+     * The clerk limit a claim dated on the date has when its person has the grade: the grade's own in force on that
+     * date when one is set (not blank), else the sheet's; null means no limit.
      */
-    public BigDecimal clerkLimitFor(String grade) {
+    public BigDecimal clerkLimitFor(String grade, LocalDate on) {
         if (grade != null) {
-            String own = inForce(CLERK_LIMIT + "-" + grade, getToday()).map(DatedSetting::getValue).orElse(null);
+            String own = inForce(CLERK_LIMIT + "-" + grade, on).map(DatedSetting::getValue).orElse(null);
             if (own != null) {
                 return new BigDecimal(own);
             }
         }
-        return getClerkLimit();
+        return clerkLimitOn(on);
     }
 
     /** The least a claim's live due can be, in force on the date; the starting 1.00 before any is recorded. */
@@ -361,7 +389,12 @@ public class Sheet {
 
     /** The most a person's due-total can be, in force on the sheet's today; null means no cap. */
     public BigDecimal getCap() {
-        return inForce(CAP, getToday()).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
+        return capOn(getToday());
+    }
+
+    /** The most a person's due-total can be, in force on the date; null means no cap. */
+    public BigDecimal capOn(LocalDate on) {
+        return inForce(CAP, on).map(DatedSetting::getValue).map(BigDecimal::new).orElse(null);
     }
 
     /**
@@ -631,17 +664,21 @@ public class Sheet {
         this.archived = true;
     }
 
-    /** The due-total (null for n/a, which is not capped) held to the cap when it is above it. */
-    public BigDecimal capped(BigDecimal dueTotal) {
-        return capped(dueTotal, null);
+    /**
+     * The due-total (null for n/a, which is not capped) held to the cap in force on the date (the date of the
+     * person's latest claim that counts; null for the sheet's today) when it is above it.
+     */
+    public BigDecimal capped(BigDecimal dueTotal, LocalDate on) {
+        return capped(dueTotal, null, on);
     }
 
     /**
-     * The due-total (null for n/a, which is not capped) held to the cap less the person's cut total (null for none),
-     * not below 0.00, when it is above that.
+     * The due-total (null for n/a, which is not capped) held to the cap in force on the date (the date of the
+     * person's latest claim that counts; null for the sheet's today) less the person's cut total (null for none), not
+     * below 0.00, when it is above that.
      */
-    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
-        BigDecimal cap = getCap();
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal, LocalDate on) {
+        BigDecimal cap = capOn(on != null ? on : getToday());
         if (cap == null || dueTotal == null) {
             return dueTotal;
         }

@@ -57,6 +57,9 @@ interface SettingsView {
   fiscalStartMonth: number;
   // Every value recorded for the dated settings, each from its from-date.
   dated: DatedSetting[];
+  // The from-dates of the policy versions (the rounding mode, the floor, the cap, the terms, the late percent and the
+  // clerk limit, versioned together), in the order recorded; null counts on every date.
+  policyVersions: (string | null)[] | null;
   // The permission matrix as set, by action: the roles that may take it, comma separated; an action not listed keeps
   // the standing rule.
   permissions: Record<string, string>;
@@ -163,6 +166,20 @@ export class SettingsStore {
   readonly clerkLimit = computed(() => valueOn(this.dated(), 'clerk-limit', this.session.sheetToday()) ?? null);
   /** The cap in force on the sheet's today; null for none. */
   readonly cap = computed(() => valueOn(this.dated(), 'cap', this.session.sheetToday()) ?? null);
+  /** The cap in force on a date; null for none. */
+  readonly capOn = computed(() => {
+    const dated = this.dated();
+    return (date: string | null): string | null => valueOn(dated, 'cap', date) ?? null;
+  });
+  /** The from-dates of the policy versions, in the order recorded. */
+  readonly policyVersions = signal<readonly (string | null)[]>([]);
+  /** The current policy version: how many have been recorded; 0 for none. */
+  readonly policyVersion = computed(() => this.policyVersions().length);
+  /** The policy version in force on a date: the number of versions whose from-date is on or before it. */
+  readonly policyVersionOn = computed(() => {
+    const froms = this.policyVersions();
+    return (date: string): number => froms.filter((f) => f === null || f <= date).length;
+  });
   /** The proof threshold in force on the sheet's today; null for none. */
   readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.session.sheetToday()) ?? null);
   /** The note threshold in force on the sheet's today; null for none. */
@@ -238,6 +255,7 @@ export class SettingsStore {
   async load(sheet: string): Promise<void> {
     this.roles.set([]);
     this.dated.set([]);
+    this.policyVersions.set([]);
     this.policyDate.set(null);
     this.periodNumberingFrom.set(null);
     this.entryDate.set(null);
@@ -274,6 +292,7 @@ export class SettingsStore {
 
   private show(s: SettingsView): void {
     this.dated.set(s.dated);
+    this.policyVersions.set(s.policyVersions ?? []);
     this.policyDate.set(s.policyDate);
     this.periodNumberingFrom.set(s.periodNumberingFrom);
     this.entryDate.set(s.entryDate);
@@ -953,6 +972,7 @@ export class SettingsStore {
           <p role="alert" data-testid="settings-error">{{ err | fig }}</p>
         }
       </form>
+      <p>Policy version: <strong data-testid="policy-version">{{ store.policyVersion() | fig }}</strong></p>
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ (store.clerkLimit() ?? '') | fig }}</strong></p>
       @for (g of grades(); track g) {
         <p>

@@ -105,6 +105,8 @@ public class StatementService {
         Set<String> grades = new HashSet<>();
         grades.add(person.gradeOn(today));
         int count = 0;
+        // the cap held to is the one in force on the date of the latest claim that counts
+        LocalDate latest = null;
         for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
             if (!person.countsLive(c, today)) {
                 c.unbind();
@@ -112,6 +114,7 @@ public class StatementService {
             }
             // a settled or already bound claim keeps its figure even with no rate in force today
             grades.add(person.gradeOn(c.getDate()));
+            latest = latest == null || c.getDate().isAfter(latest) ? c.getDate() : latest;
             kept |= c.getSettledDue() != null || (c.isBound() && c.getStatedDue() != null);
             // the statement binds the due as shown, late charge and floor included; a bound one stays as it is
             BigDecimal due = claimService.due(sheetId, person, c);
@@ -133,7 +136,7 @@ public class StatementService {
         // is n/a
         boolean current = grades.stream().anyMatch(g -> rates.findInForce(sheetId, g, today).isPresent());
         // held to the sheet's cap, as on screen
-        BigDecimal dueTotal = current || kept ? sheet.capped(total) : null;
+        BigDecimal dueTotal = current || kept ? sheet.capped(total, latest) : null;
         Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, count, today, null));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + by + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count);
@@ -174,6 +177,8 @@ public class StatementService {
         Set<String> grades = new HashSet<>();
         grades.add(person.gradeOn(asOf));
         int count = 0;
+        // the cap held to is the one in force on the date of the latest claim that counts
+        LocalDate latest = null;
         for (Claim c : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)) {
             ClaimStatus status = c.statusAtEndOf(asOf);
             boolean bound = bindingCounts && c.isStated();
@@ -184,6 +189,7 @@ public class StatementService {
                 continue;
             }
             grades.add(person.gradeOn(c.getDate()));
+            latest = latest == null || c.getDate().isAfter(latest) ? c.getDate() : latest;
             BigDecimal figure;
             BigDecimal due;
             if (status == ClaimStatus.SETTLED) {
@@ -212,7 +218,7 @@ public class StatementService {
         }
         claims.flush();
         boolean inForce = grades.stream().anyMatch(g -> inForce(ratesThen, g, asOf) != null);
-        BigDecimal dueTotal = inForce || kept ? then.capped(total) : null;
+        BigDecimal dueTotal = inForce || kept ? then.capped(total, latest) : null;
         Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, count, today, asOf));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + by + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + count
