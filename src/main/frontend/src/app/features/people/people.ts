@@ -528,6 +528,20 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)">
                   Add alias<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <label [for]="'person-inline-grade-' + p.id">Grade for {{ p.name }}</label>
+                <select
+                  #inlineGrade
+                  [id]="'person-inline-grade-' + p.id"
+                  data-testid="person-inline-grade"
+                  (change)="clearError(p)"
+                >
+                  @for (g of grades; track g) {
+                    <option [value]="g" [selected]="g === p.grade">{{ g }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-inline-grade-save" (click)="saveGrade(p, inlineGrade.value)">
+                  Save grade<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -665,6 +679,7 @@ export class People {
   private stating = false;
   /** A retirement still waiting for its answer: another press meanwhile is ignored. */
   private retiring = false;
+  private grading = false;
   /** A hold still waiting for its answer: another press meanwhile is ignored. */
   private holding = false;
   /** The ids of the people the signed-in user watches on the sheet. */
@@ -1374,6 +1389,46 @@ export class People {
       });
     } finally {
       this.stating = false;
+    }
+  }
+
+  /** Record the grade from the sheet's today, the rest of the person as they are, as their editor would. */
+  protected async saveGrade(p: Person, grade: string): Promise<void> {
+    if (this.grading) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    if (!GRADES.includes(grade)) {
+      this.personError.set({ id: p.id, message: 'Choose a grade.' });
+      return;
+    }
+    const body = {
+      name: p.name,
+      grade,
+      gradeFrom: null,
+      terms: p.terms === null ? '' : String(p.terms),
+      contact: p.contact ?? '',
+      tags: p.tags.join(', '),
+      version: p.version,
+    };
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.grading = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.put<Person>(`/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}`, body, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const message =
+        err instanceof HttpErrorResponse && err.status === 412
+          ? 'Someone else saved this person since the sheet was loaded; re-load it to see their values.'
+          : 'Could not save the grade.';
+      this.personError.set({ id: p.id, message });
+    } finally {
+      this.grading = false;
     }
   }
 
