@@ -45,20 +45,24 @@ public class RateService {
                 sheets.latePct(sheetId), sheets.policyDate(sheetId));
     }
 
-    /** Set a grade's rate from a from-date (null: from the beginning of time), replacing the one it had. */
+    /**
+     * Set a grade's rate from a from-date (null: from the beginning of time) through a to-date (null: no
+     * end), replacing the one it had from that date.
+     */
     @Transactional
-    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         sheets.load(sheetId, user);
         BigDecimal scaled = pct.setScale(2, RoundingMode.HALF_UP);
         Rollup.Figures before = rollup.figures(sheetId);
         Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from).orElse(null);
         if (rate == null) {
-            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, scaled));
+            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled));
         } else {
             rate.setPct(scaled);
+            rate.setToDate(to);
             rates.flush();
         }
-        events.publishEvent(new RateChanged(sheetId, user, grade, scaled, from));
+        events.publishEvent(new RateChanged(sheetId, user, grade, scaled, from, to));
         rollup.changed(sheetId, user, before);
         return rate;
     }

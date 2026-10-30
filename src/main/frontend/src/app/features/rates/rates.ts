@@ -7,6 +7,8 @@ interface Rate {
   grade: string;
   /** The first date the rate applies to (yyyy-mm-dd); null when it applies from the beginning of time. */
   from: string | null;
+  /** The last date the rate applies to (yyyy-mm-dd); null when it has no end. */
+  to: string | null;
   pct: string;
 }
 
@@ -20,7 +22,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
 }
 
 // The sheet's rates for each grade, a percent with two decimals from a from-date (or from the
-// beginning of time), the rate in force on the sheet's today per grade, and the form that sets one. A
+// beginning of time) through an optional to-date, the rate in force on the sheet's today per grade, and the form that sets one. A
 // rate that was set is handed up as `changed`, so the dues it makes can be shown again.
 @Component({
   selector: 'app-rates',
@@ -43,8 +45,11 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
       <ul aria-label="Rates set">
         @for (r of rates(); track r.grade + (r.from ?? '')) {
           <li [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
-            Grade {{ r.grade }} from <span data-testid="rate-from">{{ r.from ?? 'start' }}</span>:
-            <span data-testid="rate-pct">{{ r.pct }}</span>%
+            Grade {{ r.grade }} from <span data-testid="rate-from">{{ r.from ?? 'start' }}</span>
+            @if (r.to) {
+              through <span data-testid="rate-to">{{ r.to }}</span>
+            }
+            : <span data-testid="rate-pct">{{ r.pct }}</span>%
           </li>
         }
       </ul>
@@ -76,6 +81,14 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           [value]="from()"
           (input)="from.set(value($event)); error.set('')"
         />
+        <label for="rate-form-to">To (blank: no end)</label>
+        <input
+          id="rate-form-to"
+          type="date"
+          data-testid="rate-form-to"
+          [value]="to()"
+          (input)="to.set(value($event)); error.set('')"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
@@ -92,18 +105,26 @@ export class Rates {
 
   protected readonly grades = GRADES;
   protected readonly rates = signal<Rate[]>([]);
-  /** Per grade, the rate in force on the sheet's today: the one with the latest from-date on or before it. */
+  /**
+   * Per grade, the rate in force on the sheet's today: the one with the latest from-date on or before it,
+   * unless its to-date is before today (it has ended).
+   */
   protected readonly current = computed<Record<string, string>>(() => {
     const today = this.session.today() ?? '';
-    const inForce: Record<string, string> = {};
+    const latest: Record<string, Rate> = {};
     for (const r of this.rates()) {
-      if (r.from === null || r.from <= today) inForce[r.grade] = r.pct;
+      if (r.from === null || r.from <= today) latest[r.grade] = r;
+    }
+    const inForce: Record<string, string> = {};
+    for (const [g, r] of Object.entries(latest)) {
+      if (r.to === null || r.to >= today) inForce[g] = r.pct;
     }
     return inForce;
   });
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');
+  protected readonly to = signal('');
   protected readonly error = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
@@ -116,6 +137,7 @@ export class Rates {
       this.grade.set('A');
       this.pct.set('');
       this.from.set('');
+      this.to.set('');
       this.error.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -134,6 +156,7 @@ export class Rates {
     const grade = this.grade();
     const pct = this.pct().trim();
     const from = this.from().trim();
+    const to = this.to().trim();
     if (!GRADES.includes(grade)) {
       this.error.set('Choose a grade.');
       return;
@@ -146,11 +169,19 @@ export class Rates {
       this.error.set('Enter a from-date, or leave it blank for from the start.');
       return;
     }
+    if (to !== '' && !DATE.test(to)) {
+      this.error.set('Enter a to-date, or leave it blank for no end.');
+      return;
+    }
+    if (from !== '' && to !== '' && to < from) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
       const saved = await firstValueFrom(
-        this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { pct, from: from === '' ? null : from }, { headers }),
+        this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { pct, from: from === '' ? null : from, to: to === '' ? null : to }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       this.rates.update((rs) =>
@@ -158,6 +189,7 @@ export class Rates {
       );
       this.pct.set('');
       this.from.set('');
+      this.to.set('');
       this.changed.emit();
     } catch {
       if (this.session.sheet() !== sheet) return;

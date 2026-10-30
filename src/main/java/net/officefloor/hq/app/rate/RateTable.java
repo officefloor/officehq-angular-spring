@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Every rate on a sheet, the sheet's today, its floor, its late percent and its policy date (null: the
@@ -20,14 +21,28 @@ public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, Big
 
     /**
      * The percent in force for the grade on the date: the rate whose from-date is the latest one on
-     * or before it, a rate with no from-date applying from the beginning of time; null when none does.
+     * or before it, a rate with no from-date applying from the beginning of time; null when none does,
+     * or when that rate's to-date is before the date (it has ended, and no later rate is in force).
      */
     public BigDecimal on(String grade, LocalDate date) {
+        return latest(grade, date).filter(r -> !ended(r, date)).map(Rate::getPct).orElse(null);
+    }
+
+    /** Whether the grade has no rate on the date only because the rate that would apply has ended by then. */
+    public boolean ended(String grade, LocalDate date) {
+        return latest(grade, date).filter(r -> ended(r, date)).isPresent();
+    }
+
+    /** The grade's rate with the latest from-date on or before the date, ended or not. */
+    private Optional<Rate> latest(String grade, LocalDate date) {
         return rates.stream()
                 .filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
-                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
-                .map(Rate::getPct).orElse(null);
+                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())));
+    }
+
+    private static boolean ended(Rate rate, LocalDate date) {
+        return rate.getToDate() != null && rate.getToDate().isBefore(date);
     }
 
     /** The percent in force for the grade on the sheet's today; null when none is. */

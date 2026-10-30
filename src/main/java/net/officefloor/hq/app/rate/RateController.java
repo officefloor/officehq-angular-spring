@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rate;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -29,16 +30,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** A grade's rate as shown: its from-date (null: from the beginning of time) and a percent with two decimals. */
-    public record RateView(String grade, LocalDate from, String pct) {
+    public record RateView(String grade, LocalDate from, LocalDate to, String pct) {
 
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getFromDate(),
+            return new RateView(rate.getGrade(), rate.getFromDate(), rate.getToDate(),
                     rate.getPct().setScale(2, RoundingMode.HALF_UP).toPlainString());
         }
     }
 
-    /** A percent is 0.00 or more with up to two decimals; a blank from-date applies from the beginning of time. */
-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from) {
+    /**
+     * A percent is 0.00 or more with up to two decimals; a blank from-date applies from the beginning of
+     * time, a blank to-date has no end, and a to-date is not before the from-date.
+     */
+    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from,
+            LocalDate to) {
+
+        @AssertTrue
+        public boolean isEndAfterStart() {
+            return from == null || to == null || !to.isBefore(from);
+        }
     }
 
     private final RateService service;
@@ -56,7 +66,7 @@ public class RateController {
     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody RateForm form) {
-        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, form.from(), new BigDecimal(form.pct())));
+        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, form.from(), form.to(), new BigDecimal(form.pct())));
     }
 
     /** Another user set the same grade's rate for the same from-date at the same moment: this one is refused. */

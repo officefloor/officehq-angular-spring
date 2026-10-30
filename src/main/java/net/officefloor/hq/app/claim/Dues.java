@@ -93,13 +93,15 @@ public final class Dues {
      * The sum of the due figures of the claims that count (0.00 with none), see {@link #counts}. Null (n/a)
      * when the grade in force on the sheet's today has no rate on it, unless a claim that counts has a
      * figure not made by that grade (kept, or at the rate for another grade in force on its date): then it
-     * is the sum of the figures there are.
+     * is the sum of the figures there are; so too when that grade's rate has ended by the sheet's today and
+     * a claim that counts has a figure.
      */
     public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
         List<Claim> counting = claims.stream().filter(c -> counts(c, holds)).toList();
         String current = grades.on(rates.today());
+        boolean ended = rates.ended(current, rates.today());
         boolean shown = rates.current(current) != null || counting.stream().anyMatch(c -> kept(c)
-                || (!current.equals(grades.on(c.getDate())) && figure(c, grades, rates) != null));
+                || ((ended || !current.equals(grades.on(c.getDate()))) && figure(c, grades, rates) != null));
         return shown ? counting.stream().map(c -> figure(c, grades, rates))
                 .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add) : null;
     }

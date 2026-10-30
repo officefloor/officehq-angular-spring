@@ -78,7 +78,8 @@ public class SheetAudit {
     public void on(RateChanged e) {
         audit.record("RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
                 + " grade=" + e.grade() + " rate=" + e.rate().setScale(2, RoundingMode.HALF_UP).toPlainString()
-                + (e.from() == null ? "" : " from=" + e.from()));
+                + (e.from() == null ? "" : " from=" + e.from())
+                + (e.to() == null ? "" : " to=" + e.to()));
     }
 
     @TransactionalEventListener
