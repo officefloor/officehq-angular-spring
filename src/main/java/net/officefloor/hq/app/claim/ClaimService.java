@@ -9,6 +9,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,10 +28,12 @@ public class ClaimService {
     private final PersonRepository people;
     private final SheetService sheets;
     private final RateService rates;
+    private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            RateService rates, ApplicationEventPublisher events) {
+            RateService rates, Rollup rollup, ApplicationEventPublisher events) {
+        this.rollup = rollup;
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
@@ -56,8 +59,10 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
+        Rollup.Figures before = rollup.figures(sheetId);
         claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note == null ? "" : note));
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
+        rollup.changed(sheetId, user, before);
         return personId;
     }
 
@@ -66,6 +71,7 @@ public class ClaimService {
     public long edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        Rollup.Figures before = rollup.figures(sheetId);
         claim.setAmount(amount);
         claim.setDate(date != null ? date : sheets.today(sheetId));
         claim.setNote(note == null ? "" : note);
@@ -73,6 +79,7 @@ public class ClaimService {
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
         events.publishEvent(new ClaimChanged("CLAIM_EDITED", sheetId, user, person, claim.getAmount(),
                 claim.getDate(), claim.getNumber(), null));
+        rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }
 
@@ -93,6 +100,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
         }
+        Rollup.Figures before = rollup.figures(sheetId);
         Integer number = claim.getNumber();
         if (next == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
@@ -124,6 +132,7 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number, due));
+        rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }
 }

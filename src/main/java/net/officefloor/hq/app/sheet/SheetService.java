@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,10 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final Rollup rollup;
     private final Clock clock = Clock.systemDefaultZone();
 
-    public SheetService(SheetRepository sheets) {
+    public SheetService(SheetRepository sheets, Rollup rollup) {
         this.sheets = sheets;
+        this.rollup = rollup;
     }
 
     public Sheet load(String id, String user) {
@@ -47,12 +50,18 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
-    /** Change the sheet's today, starting the sheet if it was never loaded. */
+    /**
+     * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
+     * line of its own, only the figures it moves.
+     */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
+        Rollup.Figures before = rollup.figures(id);
         sheet.setToday(today);
-        return sheets.save(sheet);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        rollup.changed(id, user, before);
+        return saved;
     }
 
     private Sheet loadOrCreate(String id, String user) {

@@ -11,6 +11,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -31,10 +32,12 @@ public class StatementService {
     private final ClaimRepository claims;
     private final RateService rates;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            RateService rates, SheetService sheets, ApplicationEventPublisher events) {
+            RateService rates, SheetService sheets, Rollup rollup, ApplicationEventPublisher events) {
+        this.rollup = rollup;
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -61,6 +64,7 @@ public class StatementService {
     public void take(String sheetId, String user, long personId) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Rollup.Figures before = rollup.figures(sheetId);
         RateTable table = rates.table(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         BigDecimal dueTotal = Dues.total(person.getGrade(), theirs, table);
@@ -76,5 +80,6 @@ public class StatementService {
         claims.flush();
         statements.saveAndFlush(new Statement(sheetId, personId, sheets.today(sheetId), dueTotal, counting));
         events.publishEvent(new StatementTaken(sheetId, user, person.getName(), dueTotal, counting));
+        rollup.changed(sheetId, user, before);
     }
 }

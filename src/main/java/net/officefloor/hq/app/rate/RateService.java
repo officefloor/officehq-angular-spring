@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -18,9 +19,11 @@ public class RateService {
 
     private final RateRepository rates;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
-    public RateService(RateRepository rates, SheetService sheets, ApplicationEventPublisher events) {
+    public RateService(RateRepository rates, SheetService sheets, Rollup rollup, ApplicationEventPublisher events) {
+        this.rollup = rollup;
         this.rates = rates;
         this.sheets = sheets;
         this.events = events;
@@ -46,6 +49,7 @@ public class RateService {
     public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
         sheets.load(sheetId, user);
         BigDecimal scaled = pct.setScale(2, RoundingMode.HALF_UP);
+        Rollup.Figures before = rollup.figures(sheetId);
         Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from).orElse(null);
         if (rate == null) {
             rate = rates.saveAndFlush(new Rate(sheetId, grade, from, scaled));
@@ -54,6 +58,7 @@ public class RateService {
             rates.flush();
         }
         events.publishEvent(new RateChanged(sheetId, user, grade, scaled, from));
+        rollup.changed(sheetId, user, before);
         return rate;
     }
 

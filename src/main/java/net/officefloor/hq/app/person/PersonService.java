@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -15,9 +16,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
-    public PersonService(PersonRepository people, SheetService sheets, ApplicationEventPublisher events) {
+    public PersonService(PersonRepository people, SheetService sheets, Rollup rollup,
+            ApplicationEventPublisher events) {
+        this.rollup = rollup;
         this.people = people;
         this.sheets = sheets;
         this.events = events;
@@ -41,8 +45,10 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
+        Rollup.Figures before = rollup.figures(sheetId);
         Person person = people.saveAndFlush(new Person(sheetId, trimmed, grade));
         events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade));
+        rollup.changed(sheetId, user, before);
         return person;
     }
 
@@ -57,10 +63,12 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)) {
             throw nameInUse();
         }
+        Rollup.Figures before = rollup.figures(sheetId);
         person.setName(trimmed);
         person.setGrade(grade);
         people.flush();
         events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, grade));
+        rollup.changed(sheetId, user, before);
         return person;
     }
 

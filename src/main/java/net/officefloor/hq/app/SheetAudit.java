@@ -4,6 +4,8 @@ import java.math.RoundingMode;
 import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.rate.RateChanged;
+import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.rollup.RollupChanged;
 import net.officefloor.hq.app.statement.StatementTaken;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -49,5 +51,17 @@ public class SheetAudit {
                 + " due-total=" + (e.dueTotal() == null ? "n/a"
                         : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())
                 + " claims=" + e.claims());
+    }
+
+    @TransactionalEventListener
+    public void on(RollupChanged e) {
+        for (Rollup.PersonFigures p : e.people()) {
+            audit.record("ROLLUP sheet=" + e.sheetId() + " by=" + e.user() + " person=" + p.name()
+                    + " claimed=" + p.claimed() + " due-total=" + p.dueTotal());
+        }
+        if (e.totals() != null) {
+            audit.record("TOTALS sheet=" + e.sheetId() + " by=" + e.user()
+                    + " claimed-total=" + e.totals().claimed() + " due-total=" + e.totals().dueTotal());
+        }
     }
 }
