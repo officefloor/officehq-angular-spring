@@ -33,11 +33,11 @@ public class AccessController {
         }
     }
 
-    /** The sheet's settings as shown; a limit is a figure with two decimals, null for none. */
-    public record SettingsView(String clerkLimit) {
+    /** The sheet's settings as shown; a limit is a figure with two decimals, null for none; so is the floor. */
+    public record SettingsView(String clerkLimit, String floor) {
 
-        static SettingsView of(BigDecimal limit) {
-            return new SettingsView(limit == null ? null : limit.toPlainString());
+        static SettingsView of(BigDecimal limit, BigDecimal floor) {
+            return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString());
         }
     }
 
@@ -48,8 +48,12 @@ public class AccessController {
     public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward") String role) {
     }
 
-    /** A clerk limit is 0.00 or more with up to two decimals; blank means no limit. */
-    public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit) {
+    /**
+     * The settings to save; one left out (null) is kept as it is. A clerk limit is 0.00 or more with up
+     * to two decimals, blank meaning no limit; so is a floor, blank putting back 1.00.
+     */
+    public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor) {
     }
 
     private final AccessService service;
@@ -62,7 +66,7 @@ public class AccessController {
     public AccessView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String sheet = sheetId.trim();
         return new AccessView(service.roles(sheet).stream().map(RoleView::of).toList(),
-                SettingsView.of(service.clerkLimit(sheet)));
+                SettingsView.of(service.clerkLimit(sheet), service.floor(sheet)));
     }
 
     @PutMapping("/roles")
@@ -75,9 +79,9 @@ public class AccessController {
     @PutMapping("/settings")
     public SettingsView setSettings(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody SettingsForm form) {
-        String limit = form.clerkLimit() == null ? "" : form.clerkLimit();
-        return SettingsView.of(service.setClerkLimit(sheetId.trim(), user.trim(),
-                limit.isEmpty() ? null : new BigDecimal(limit)));
+        String sheet = sheetId.trim();
+        service.setSettings(sheet, user.trim(), form.clerkLimit(), form.floor());
+        return SettingsView.of(service.clerkLimit(sheet), service.floor(sheet));
     }
 
     /** Another user set a role for the same name at the same moment: this one is refused. */

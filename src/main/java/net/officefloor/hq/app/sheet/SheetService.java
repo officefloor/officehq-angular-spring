@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.Clock;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,6 +32,11 @@ public class SheetService {
             // Another user started the same sheet at the same moment: theirs is the one.
             return sheets.findById(id).orElseThrow(() -> e);
         }
+    }
+
+    /** The sheet's floor: the least live due a claim has. */
+    public BigDecimal floor(String id) {
+        return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
     }
 
     /** The sheet's today: the date to use for every decision and default date on the sheet. */

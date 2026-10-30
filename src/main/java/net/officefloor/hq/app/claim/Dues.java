@@ -3,7 +3,6 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
-import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
 
 /** The due figures of claims and the due-total of a person's claims. */
@@ -14,15 +13,15 @@ public final class Dues {
 
     /**
      * A claim's due figure: once settled, the due fixed then; while bound by a statement, the figure
-     * bound then; otherwise the amount at the rate for its person's grade in force on its date. Null
-     * when there is none.
+     * bound then; otherwise the amount at the rate for its person's grade in force on its date, but at
+     * least the sheet's floor. Null when there is none.
      */
     public static BigDecimal figure(Claim claim, String grade, RateTable rates) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
         return claim.isStated() ? claim.getStatedDue()
-                : RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()));
+                : rates.due(claim.getAmount(), grade, claim.getDate());
     }
 
     /** Whether the claim's figure is kept whatever the rates: fixed by settling or bound by a statement. */

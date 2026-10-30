@@ -11,6 +11,8 @@ interface RoleRow {
 interface Settings {
   /** The most due a clerk may settle, with two decimals; null when there is no limit. */
   clerkLimit: string | null;
+  /** The least live due a claim has, with two decimals. */
+  floor: string;
 }
 
 interface AccessView {
@@ -22,7 +24,9 @@ const ROLES = ['clerk', 'steward'];
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 
 // The sheet's roles (any name without one is a clerk) with the form that sets one, and the
-// sheet's settings: the clerk limit, the most due a clerk may settle (blank: no limit).
+// sheet's settings: the clerk limit, the most due a clerk may settle (blank: no limit), and the floor,
+// the least live due a claim has (blank: 1.00). Each input shows the value saved; a save sends only the
+// settings whose input was changed.
 @Component({
   selector: 'app-access',
   template: `
@@ -67,6 +71,7 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
     <section aria-label="Settings">
       <h2>Settings</h2>
       <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
+      <p>Floor <strong data-testid="setting-floor-current">{{ floor() }}</strong></p>
       <form (submit)="saveSettings($event)" aria-label="Save settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
@@ -74,7 +79,15 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
           inputmode="decimal"
           data-testid="setting-clerk-limit"
           [value]="limitInput()"
-          (input)="limitInput.set(value($event)); settingsError.set('')"
+          (input)="limitInput.set(value($event)); limitTouched = true; settingsError.set('')"
+        />
+        <label for="setting-floor">Floor (blank: 1.00)</label>
+        <input
+          id="setting-floor"
+          inputmode="decimal"
+          data-testid="setting-floor"
+          [value]="floorInput()"
+          (input)="floorInput.set(value($event)); floorTouched = true; settingsError.set('')"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
@@ -95,6 +108,11 @@ export class Access {
   protected readonly role = signal('');
   protected readonly roleError = signal('');
   protected readonly limitInput = signal('');
+  protected readonly floor = signal('');
+  protected readonly floorInput = signal('');
+  /** Whether each settings input was changed since the settings were last shown. */
+  protected limitTouched = false;
+  protected floorTouched = false;
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
@@ -104,11 +122,10 @@ export class Access {
       const sheet = this.session.sheet();
       this.session.loads();
       this.roles.set([]);
-      this.clerkLimit.set(null);
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.limitInput.set('');
+      this.showSettings({ clerkLimit: null, floor: '' });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -159,19 +176,26 @@ export class Access {
     const sheet = this.session.sheet();
     if (!sheet) return;
     const clerkLimit = this.limitInput().trim();
-    if (clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
+    if (this.limitTouched && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank for no limit.');
       return;
     }
+    const floor = this.floorInput().trim();
+    if (this.floorTouched && floor !== '' && !LIMIT.test(floor)) {
+      this.settingsError.set('Enter a floor of 0.00 or more, with up to two decimals, or leave it blank for 1.00.');
+      return;
+    }
+    const body: Partial<Settings> = {};
+    if (this.limitTouched) body.clerkLimit = clerkLimit;
+    if (this.floorTouched) body.floor = floor;
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
       const saved = await firstValueFrom(
-        this.http.put<Settings>(`/api/sheets/${encodeURIComponent(sheet)}/settings`, { clerkLimit }, { headers }),
+        this.http.put<Settings>(`/api/sheets/${encodeURIComponent(sheet)}/settings`, body, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
-      this.clerkLimit.set(saved.clerkLimit);
-      this.limitInput.set('');
+      this.showSettings(saved);
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.settingsError.set('Could not save the settings.');
@@ -185,7 +209,17 @@ export class Access {
     const view = await firstValueFrom(this.http.get<AccessView>(`/api/sheets/${encodeURIComponent(sheet)}/access`));
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.roles.set(view.roles);
-      this.clerkLimit.set(view.settings.clerkLimit);
+      this.showSettings(view.settings);
     }
+  }
+
+  /** Show the settings saved, each input holding its value, none of them changed yet. */
+  private showSettings(settings: Settings): void {
+    this.clerkLimit.set(settings.clerkLimit);
+    this.floor.set(settings.floor);
+    this.limitInput.set(settings.clerkLimit ?? '');
+    this.floorInput.set(settings.floor);
+    this.limitTouched = false;
+    this.floorTouched = false;
   }
 }

@@ -62,8 +62,10 @@ public class Rollup {
 
     /** The sheet's figures now. */
     public Figures figures(String sheetId) {
-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElseGet(LocalDate::now);
-        RateTable table = new RateTable(rates.findBySheetId(sheetId), today);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? LocalDate.now() : sheet.getToday();
+        RateTable table = new RateTable(rates.findBySheetId(sheetId), today,
+                sheet == null ? Sheet.DEFAULT_FLOOR : sheet.getFloor());
         Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, PersonFigures> figures = new LinkedHashMap<>();

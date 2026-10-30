@@ -3,6 +3,7 @@ package net.officefloor.hq.app.access;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -12,20 +13,25 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
- * clerk limit, the most due a clerk may settle on a claim (none: no limit).
+ * clerk limit, the most due a clerk may settle on a claim (none: no limit); and the sheet's floor, the
+ * least live due a claim has.
  */
 @Service
 public class AccessService {
 
     public static final String CLERK_LIMIT = "clerk-limit";
 
+    public static final String FLOOR = "floor";
+
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRows;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
     public AccessService(SheetRoleRepository roles, SheetRepository sheetRows, SheetService sheets,
-            ApplicationEventPublisher events) {
+            Rollup rollup, ApplicationEventPublisher events) {
+        this.rollup = rollup;
         this.roles = roles;
         this.sheetRows = sheetRows;
         this.sheets = sheets;
@@ -49,6 +55,11 @@ public class AccessService {
         return sheetRows.findById(sheetId).map(Sheet::getClerkLimit).orElse(null);
     }
 
+    @Transactional(readOnly = true)
+    public BigDecimal floor(String sheetId) {
+        return sheets.floor(sheetId);
+    }
+
     /** Give a user name a role on the sheet, replacing the one it had. */
     @Transactional
     public SheetRole setRole(String sheetId, String user, String name, Role role) {
@@ -64,6 +75,20 @@ public class AccessService {
         return row;
     }
 
+    /**
+     * Save the settings given, as written (blank: none, or the default), in one change; a setting left
+     * out (null) is kept as it is.
+     */
+    @Transactional
+    public void setSettings(String sheetId, String user, String clerkLimit, String floor) {
+        if (clerkLimit != null) {
+            setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
+        }
+        if (floor != null) {
+            setFloor(sheetId, user, floor.isEmpty() ? null : new BigDecimal(floor));
+        }
+    }
+
     /** Save the sheet's clerk limit; null removes it. */
     @Transactional
     public BigDecimal setClerkLimit(String sheetId, String user, BigDecimal limit) {
@@ -72,6 +97,22 @@ public class AccessService {
         sheet.setClerkLimit(scaled);
         sheetRows.saveAndFlush(sheet);
         events.publishEvent(new SettingChanged(sheetId, user, CLERK_LIMIT, scaled == null ? "" : scaled.toPlainString()));
+        return scaled;
+    }
+
+    /**
+     * Save the sheet's floor; null puts back the one a sheet starts with. Every live due moves with it;
+     * a settled, stated or closed figure keeps the one it had.
+     */
+    @Transactional
+    public BigDecimal setFloor(String sheetId, String user, BigDecimal floor) {
+        Sheet sheet = sheets.load(sheetId, user);
+        BigDecimal scaled = floor == null ? Sheet.DEFAULT_FLOOR : floor.setScale(2, RoundingMode.HALF_UP);
+        Rollup.Figures before = rollup.figures(sheetId);
+        sheet.setFloor(scaled);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, FLOOR, scaled.toPlainString()));
+        rollup.changed(sheetId, user, before);
         return scaled;
     }
 

@@ -12,6 +12,9 @@ import java.time.LocalDate;
 @Table(name = "sheet")
 public class Sheet {
 
+    /** The floor a sheet starts with. */
+    public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
+
     @Id
     private String id;
 
@@ -29,6 +32,10 @@ public class Sheet {
     /** The most due a clerk may settle on a claim; null when there is no limit. */
     @Column(name = "clerk_limit", precision = 14, scale = 2)
     private BigDecimal clerkLimit;
+
+    /** The least live due a claim has; 1.00 until set. */
+    @Column(name = "due_floor", nullable = false, precision = 14, scale = 2)
+    private BigDecimal floor = DEFAULT_FLOOR;
 
     protected Sheet() {
     }
@@ -61,5 +68,13 @@ public class Sheet {
 
     public void setClerkLimit(BigDecimal clerkLimit) {
         this.clerkLimit = clerkLimit;
+    }
+
+    public BigDecimal getFloor() {
+        return floor;
+    }
+
+    public void setFloor(BigDecimal floor) {
+        this.floor = floor;
     }
 }

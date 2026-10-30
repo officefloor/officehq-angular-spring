@@ -21,7 +21,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The claims on a sheet: listed per person newest first, added, edited and moved through their
  * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
- * its number, which is never reused. Settling a claim fixes its due at the rate its person's grade has then on the claim's date, or at the
+ * its number, which is never reused. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
+ * (at least the sheet's floor then), or at the
  * figure a statement bound it to. No claim dated inside a closed period can be added, edited or moved,
  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
  * cannot settle a claim whose due is above the sheet's clerk limit; a steward settles anything.
@@ -140,8 +141,8 @@ public class ClaimService {
             if (claim.isStated()) {
                 fixed = claim.getStatedDue();
             } else {
-                BigDecimal pct = owner == null ? null : rates.table(sheetId).on(owner.getGrade(), claim.getDate());
-                fixed = RateService.due(claim.getAmount(), pct);
+                fixed = owner == null ? null
+                        : rates.table(sheetId).due(claim.getAmount(), owner.getGrade(), claim.getDate());
             }
             access.requireCanSettle(sheetId, user, fixed);
             claim.setSettledDue(fixed);
