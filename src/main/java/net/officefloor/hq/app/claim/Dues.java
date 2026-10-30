@@ -130,6 +130,17 @@ public final class Dues {
     }
 
     /**
+     * The sum of the settled figures of the SETTLED claims dated within the 90 days up to and including the
+     * sheet's today, each at the figure frozen when it was settled (0.00 with none); one with none is skipped.
+     */
+    public static BigDecimal recentSettled(List<Claim> claims, LocalDate today) {
+        LocalDate from = today.minusDays(89);
+        return claims.stream().filter(c -> c.getStatus() == ClaimStatus.SETTLED && c.getSettledDue() != null
+                && !c.getDate().isBefore(from) && !c.getDate().isAfter(today)).map(Claim::getSettledDue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
      * The status the claim had at the end of the given day, as its status log records it (each line on the
      * sheet's today then); null when it was added after that day.
      */

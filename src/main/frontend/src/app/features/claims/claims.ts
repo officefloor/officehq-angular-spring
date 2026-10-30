@@ -104,6 +104,8 @@ export interface PersonWithClaims {
   patrons: number[];
   /** Whether they have an OPEN or PENDING claim that counts dated within the 30 days up to and including the sheet's today. */
   active: boolean;
+  /** The settled figures of their SETTLED claims dated within the 90 days up to and including the sheet's today, added up. */
+  recentSettled: string;
 }
 
 const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;

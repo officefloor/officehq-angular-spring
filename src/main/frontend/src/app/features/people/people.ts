@@ -33,7 +33,7 @@ function csvField(value: string): string {
 // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
 // can be held from a date to an optional date, as many times as needed; their OPEN claims dated within a hold,
 // unless a statement binds them, count in no total. A person can name
-// others on the sheet as their patrons; their backing is their patrons' due-totals added up. Each signed-in
+// others on the sheet as their patrons; their backing is their patrons' recent settled figures added up. Each signed-in
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
@@ -376,14 +376,14 @@ export class People {
   );
 
   /** Each person's patrons' names, sorted and comma separated, and their backing: the patrons'
-   *  due-totals added up, a patron showing n/a skipped. */
+   *  recent settled figures (see {@link Person.recentSettled}) added up. */
   protected readonly patronage = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     return new Map(
       this.people().map((p) => {
         const patrons = p.patrons.map((id) => byId.get(id)).filter((q): q is Person => q !== undefined);
         const names = patrons.map((q) => q.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
-        const backing = patrons.reduce((sum, q) => sum + (q.dueTotal === null ? 0 : cents(q.dueTotal)), 0);
+        const backing = patrons.reduce((sum, q) => sum + cents(q.recentSettled), 0);
         return [p.id, { names, backing: (backing / 100).toFixed(2) }];
       }),
     );
