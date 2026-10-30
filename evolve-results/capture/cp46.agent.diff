@@ -1,0 +1,199 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 5554dedb..7728d40c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -6,11 +6,12 @@ import { Period, periodOf } from '../periods/periods';
+ 
+ /**
+  * DRAFT when added, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
+- * until a steward approves it (SETTLED) or rejects it (OPEN again). A DRAFT, OPEN or PENDING claim can be VOID.
++ * until a steward approves it (SETTLED) or rejects it (OPEN again). A steward can re-settle a SETTLED claim,
++ * fixing its due again at today's figure. A DRAFT, OPEN or PENDING claim can be VOID.
+  */
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
++export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'resettle' | 'void';
+ 
+ export interface Claim {
+   id: number;
+@@ -96,7 +97,7 @@ const NUMBER = /^([1-9]\d{0,8}|.{1,100}-[1-9]\d{0,8})$/;
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
+-// opened, edits it. Each claim can be opened, settled, approved, rejected (with a reason) or voided. A saved or moved claim answers with
++// opened, edits it. Each claim can be opened, settled, approved, rejected (with a reason), re-settled or voided. A saved or moved claim answers with
+ // the person, which is handed up as `saved`. Each claim can be selected, to be opened together with
+ // the others selected.
+ @Component({
+@@ -243,6 +244,7 @@ export class Claims {
+     { action: 'settle', label: 'Settle' },
+     { action: 'approve', label: 'Approve' },
+     { action: 'reject', label: 'Reject' },
++    { action: 'resettle', label: 'Re-settle' },
+     { action: 'void', label: 'Void' },
+   ];
+ 
+@@ -376,7 +378,7 @@ export class Claims {
+   }
+ 
+   /**
+-   * Open, settle, approve, reject or void a claim; a change its status does not allow is refused on its
++   * Open, settle, approve, reject, re-settle or void a claim; a change its status does not allow is refused on its
+    * row, as is a reject without a reason.
+    */
+   protected async move(c: Claim, action: ClaimAction): Promise<void> {
+@@ -421,5 +423,6 @@ const PAST: Record<ClaimAction, string> = {
+   settle: 'settled',
+   approve: 'approved',
+   reject: 'rejected',
++  resettle: 're-settled',
+   void: 'voided',
+ };
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 22d9db64..04317a08 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -5,6 +5,7 @@ import net.officefloor.hq.app.access.RoleSet;
+ import net.officefloor.hq.app.access.SettingChanged;
+ import net.officefloor.hq.app.claim.ClaimChanged;
+ import net.officefloor.hq.app.claim.ClaimReassigned;
++import net.officefloor.hq.app.claim.ClaimResettled;
+ import net.officefloor.hq.app.period.PeriodAdded;
+ import net.officefloor.hq.app.period.PeriodClosed;
+ import net.officefloor.hq.app.period.PeriodReopened;
+@@ -74,6 +75,18 @@ public class SheetAudit {
+                 + " from=" + e.from() + " to=" + e.to());
+     }
+ 
++    @TransactionalEventListener
++    public void on(ClaimResettled e) {
++        audit.record("CLAIM_RESETTLED sheet=" + e.sheetId() + " by=" + e.user()
++                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
++                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
++                + " old=" + figure(e.old()) + " new=" + figure(e.fresh()));
++    }
++
++    private static String figure(java.math.BigDecimal due) {
++        return due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_UP).toPlainString();
++    }
++
+     @TransactionalEventListener
+     public void on(RateChanged e) {
+         audit.record("RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 800949bc..68e434f8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -148,6 +148,14 @@ public class ClaimController {
+         return view(sheet, claims.approve(sheet, user.trim(), claimId));
+     }
+ 
++    /** A steward re-settles a SETTLED claim, fixing its due again at today's figure. */
++    @PostMapping("/claims/{claimId}/resettle")
++    public PersonView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
++        String sheet = sheetId.trim();
++        return view(sheet, claims.resettle(sheet, user.trim(), claimId));
++    }
++
+     /** A steward rejects a PENDING claim with a reason, putting it back to OPEN. */
+     @PostMapping("/claims/{claimId}/reject")
+     public PersonView reject(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimResettled.java b/src/main/java/net/officefloor/hq/app/claim/ClaimResettled.java
+new file mode 100644
+index 00000000..bf5a7229
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimResettled.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * A SETTLED claim was re-settled on a sheet, its fixed due moved from {@code old} to {@code fresh}
++ * (either null when there was no rate). The number is the claim's number.
++ */
++public record ClaimResettled(String sheetId, String user, String person, BigDecimal amount, LocalDate date,
++        String number, BigDecimal old, BigDecimal fresh) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 84130d99..d18fafce 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -31,7 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
+  * settling a claim whose due is above the sheet's clerk limit leaves it PENDING instead; a steward settles
+  * anything, and approves a PENDING claim (settling it, its due fixed then) or rejects it with a reason
+- * (back to OPEN); the user who opened a claim cannot approve it. A claim
++ * (back to OPEN); the user who opened a claim cannot approve it. A steward re-settles a SETTLED claim,
++ * fixing its due again at the figure it would have today as an OPEN claim bound by no statement. A claim
+  * with a negative amount is a correction: it is added or edited only when it names, by number, a SETTLED
+  * claim of the same person, and only a correction names one.
+  */
+@@ -212,6 +213,36 @@ public class ClaimService {
+         return claim.getPersonId();
+     }
+ 
++    /**
++     * Re-settle a SETTLED claim, fixing its due again at the figure it would have today as an OPEN claim bound
++     * by no statement (today's rates, grades, floor and late charge), and logging it SETTLED again. Only a
++     * steward re-settles; a claim not SETTLED or dated inside a closed period is refused and nothing changes.
++     * Returns the person it belongs to.
++     */
++    @Transactional
++    public long resettle(String sheetId, String user, long claimId) {
++        Claim claim = claim(sheetId, claimId);
++        if (claim.getStatus() != ClaimStatus.SETTLED) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be re-settled; only a SETTLED one can");
++        }
++        if (access.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can re-settle a claim");
++        }
++        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        Rollup.Figures before = rollup.figures(sheetId);
++        BigDecimal old = claim.getSettledDue();
++        BigDecimal fixed = Dues.asOpen(claim, owner::gradeOn, rates.table(sheetId));
++        claim.setSettledDue(fixed);
++        claim.logStatus(user, sheets.today(sheetId), fixed);
++        claims.flush();
++        events.publishEvent(new ClaimResettled(sheetId, user, owner.getName(), claim.getAmount(), claim.getDate(),
++                claim.getShownNumber(), old, fixed));
++        rollup.changed(sheetId, user, before);
++        return claim.getPersonId();
++    }
++
+     /**
+      * Reject a PENDING claim with a reason, putting it back to OPEN (bound again by the last statement if
+      * that statement counted it). Only a steward rejects; a claim not PENDING or dated inside a closed
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 5f3776a6..b1afa331 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -47,6 +47,23 @@ public final class Dues {
+                 : rates.due(claim.getAmount(), grade, claim.getDate());
+     }
+ 
++    /**
++     * The figure the claim would have today as an OPEN claim bound by no statement: the amount at the rate
++     * in force on its date for its person's grade then (at least the sheet's floor, a correction having none),
++     * plus the late charge it has today when its due-by has passed (a correction having none). Null when
++     * there is none. Re-settling a claim fixes its due at this figure.
++     */
++    public static BigDecimal asOpen(Claim claim, Grades grades, RateTable rates) {
++        String grade = grades.on(claim.getDate());
++        BigDecimal base = claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()),
++                rates.rounding(claim.getRoundsBy()))
++                : rates.due(claim.getAmount(), grade, claim.getDate());
++        if (base == null || claim.isCorrection() || !claim.getDueBy().isBefore(rates.today())) {
++            return base;
++        }
++        return base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()));
++    }
++
+     /** Whether a statement binds the claim's figure: it is stated and not PENDING. */
+     public static boolean bound(Claim claim) {
+         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;

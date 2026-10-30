@@ -1,0 +1,64 @@
+{
+  "checkpoint": 46,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp46_re-settle",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can re-settle a SETTLED claim (anyone else, or any other status, or a claim in a closed\nperiod, is refused with an error on the claim). Re-settling freezes the claim again at the figure\nit would have today as an open claim bound by no statement: today's rates, grades, floor and late\ncharge. The status log gains a SETTLED line for it, and CLAIM_RESETTLED is written, naming the\nclaim like every claim line, ending old=<previous figure> new=<new figure>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can re-settle a SETTLED claim (anyone else, or any other status, or a claim in a closed\nperiod, is refused with an error on the claim). Re-settling freezes the claim again at the figure\nit would have today as an open claim bound by no statement: today's rates, grades, floor and late\ncharge. The status log gains a SETTLED line for it, and CLAIM_RESETTLED is written, naming the\nclaim like every claim line, ending old=<previous figure> new=<new figure>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "698baef7f27c8d507eab08981cfc2c665ff8b585",
+  "reset_sha": "",
+  "preagent_sha": "3e8198b7d2be3473edc8199706afaff42428041f",
+  "prev_sha": "3e8198b7d2be3473edc8199706afaff42428041f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.831202,
+    "input_tokens": 34,
+    "output_tokens": 7137,
+    "cache_read_tokens": 798230,
+    "cache_creation_tokens": 66085,
+    "num_turns": 18,
+    "duration_ms": 207997,
+    "duration_api_ms": 69196,
+    "model": "claude-opus-5-5",
+    "session_id": "5fa2e973-c46f-41e3-992b-8906eaa49367",
+    "stop_reason": "success",
+    "result_text": "Stewards can now re-settle a SETTLED claim. I ran `bin/e2e` and all 4 acceptance tests passed on the first run.\n\n**Server**\n- **New figure:** `Dues.asOpen` works out what the claim would be today as an OPEN claim that no statement binds. It ignores the figure the claim was settled at and any figure a statement fixed. It uses the rate and grade for the claim's date, the floor, and today's late charge if the due-by date has passed. Corrections get no floor and no late charge, as elsewhere.\n- **The action:** `ClaimService.resettle` refuses a claim in a closed period, a claim that isn't SETTLED, and anyone who isn't a steward. Otherwise it sets the new figure, adds a SETTLED line to the status log and records the change in the rollup. A refusal writes nothing.\n- **Endpoint:** `POST /api/sheets/{sheetId}/claims/{claimId}/resettle`.\n- **Audit:** a new `ClaimResettled` event writes `CLAIM_RESETTLED \u2026 person= amount= date= number= old= new=`. If either figure is missing because there was no rate, it shows `n/a`.\n\n**Front end:** each claim row now has a Re-settle button (`claim-resettle`). It is shown on every claim, not just SETTLED ones, because the test presses it on an OPEN claim and expects it to be refused. A refusal shows in `claim-error`, like the other claim actions.\n\nThe user who opened a claim can still re-settle it. Settling and approving don't allow that, but the request didn't ask for that restriction, so I left it out.\n\nNo database migration was needed: the new figure goes into the existing `settled_due` column, and the log line into `claim_log`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.831202,
+        "num_turns": 18,
+        "duration_ms": 207997,
+        "duration_api_ms": 69196,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp46.agent.jsonl",
+  "agent_diff_file": "cp46.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
