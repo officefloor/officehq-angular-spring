@@ -49,15 +49,15 @@ public class AccessController {
      * when blank (off); the cap is a figure with two
      * decimals, null for none; so are the proof threshold and the note threshold. Each entry of the permission matrix (open, settle,
      * void, reassign, close, reopen) is the roles that may take the action as written, comma separated; null
-     * when blank (the standing rule).
+     * when blank (the standing rule). The entry date is a date (yyyy-mm-dd), null when blank (off).
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
-            String permClose, String permReopen) {
+            String permClose, String permReopen, String entryDate) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
-                Integer graceDays) {
+                Integer graceDays, LocalDate entryDate) {
             return new SettingsView(text(dated.clerkLimit(today)), dated.floor(today).toPlainString(),
                     Integer.toString(dated.terms(today)), text(dated.gradeTerms("A", today)),
                     text(dated.gradeTerms("B", today)), text(dated.gradeTerms("C", today)),
@@ -67,7 +67,8 @@ public class AccessController {
                     text(dated.cap(today)), text(dated.proofThreshold(today)), text(dated.noteThreshold(today)),
                     perm(dated, Permission.OPEN, today), perm(dated, Permission.SETTLE, today),
                     perm(dated, Permission.VOID, today), perm(dated, Permission.REASSIGN, today),
-                    perm(dated, Permission.CLOSE, today), perm(dated, Permission.REOPEN, today));
+                    perm(dated, Permission.CLOSE, today), perm(dated, Permission.REOPEN, today),
+                    entryDate == null ? null : entryDate.toString());
         }
 
         private static String perm(DatedSettings dated, Permission permission, LocalDate today) {
@@ -111,7 +112,8 @@ public class AccessController {
      * or more with up to two decimals, blank meaning no cap; so are the proof threshold and the note threshold, blank meaning none. Each setting that carries a figure takes a
      * from-date (yyyy-mm-dd) its value is in force from, blank or left out meaning the sheet's today. Each
      * entry of the permission matrix is a comma separated list of roles (clerk, steward), blank putting back
-     * the standing rule; it is not dated.
+     * the standing rule; it is not dated. The entry date is a date (yyyy-mm-dd), blank meaning off; not
+     * dated.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -141,7 +143,8 @@ public class AccessController {
             @Pattern(regexp = Permission.ROLES) String permVoid,
             @Pattern(regexp = Permission.ROLES) String permReassign,
             @Pattern(regexp = Permission.ROLES) String permClose,
-            @Pattern(regexp = Permission.ROLES) String permReopen) {
+            @Pattern(regexp = Permission.ROLES) String permReopen,
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String entryDate) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -202,13 +205,13 @@ public class AccessController {
         permissions.put(Permission.REOPEN, form.permReopen());
         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
                 form.periodNumberingFrom(), form.graceDays(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
-                dated(form.noteThreshold(), form.noteThresholdFrom()), permissions);
+                dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate());
         return settings(sheet);
     }
 
     private SettingsView settings(String sheet) {
         return SettingsView.of(service.settings(sheet), service.today(sheet), service.policyDate(sheet),
-                service.periodNumberingFrom(sheet), service.graceDays(sheet));
+                service.periodNumberingFrom(sheet), service.graceDays(sheet), service.entryDate(sheet));
     }
 
     /** A dated setting's value with its from-date (blank or left out: the sheet's today); null when the value is left out. */

@@ -46,6 +46,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** While set, the date a new claim takes when none is given, in place of the sheet's today; null: off. */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** An open period whose to-date plus these days is before a new today is closed when the today is changed; null: off. */
     @Column(name = "grace_days")
     private Integer graceDays;
@@ -93,6 +97,14 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
     }
 
     public Integer getGraceDays() {

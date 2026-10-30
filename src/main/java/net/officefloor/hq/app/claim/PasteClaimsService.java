@@ -15,7 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Paste claims: lines of {@code name,amount,date,note} (the note may hold commas and may be left out; a
- * blank date takes the sheet's today), each a DRAFT claim for the person of that name on the sheet,
+ * blank date takes the sheet's entry date while set, else its today), each a DRAFT claim for the person of that name on the sheet,
  * matched as the person form matches names. Every line is held to the claim form's rules and the whole
  * paste is one change: a refused line adds nothing.
  */

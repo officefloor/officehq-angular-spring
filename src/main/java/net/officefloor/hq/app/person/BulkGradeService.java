@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.Set;
+import net.officefloor.hq.app.access.AccessService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -18,12 +19,17 @@ public class BulkGradeService {
     }
 
     private final PersonService people;
+    private final AccessService access;
 
-    public BulkGradeService(PersonService people) {
+    public BulkGradeService(PersonService people, AccessService access) {
         this.people = people;
+        this.access = access;
     }
 
     public Result grade(String sheetId, String user, Set<Long> personIds, String grade, LocalDate from) {
+        if (access.isArchived(sheetId) || access.isViewer(sheetId, user)) {
+            return new Result(0); // an archived sheet, or a viewer, changes nothing: every one refused
+        }
         int graded = 0;
         for (Person p : people.list(sheetId)) {
             if (!personIds.contains(p.getId())) {

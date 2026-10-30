@@ -646,7 +646,7 @@ export class Claims implements OnInit {
       return;
     }
     if (date !== '' && !DATE.test(date)) {
-      this.error.set('Enter a date, or leave it blank for today.');
+      this.error.set('Enter a date, or leave it blank for the entry date (or today).');
       return;
     }
     const id = this.editing();

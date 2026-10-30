@@ -53,6 +53,8 @@ public class AccessService {
 
     public static final String GRACE_DAYS = "grace-days";
 
+    public static final String ENTRY_DATE = "entry-date";
+
     public static final String CAP = DatedSettings.CAP;
 
     public static final String PROOF_THRESHOLD = DatedSettings.PROOF_THRESHOLD;
@@ -195,6 +197,12 @@ public class AccessService {
         return sheets.periodNumberingFrom(sheetId);
     }
 
+    /** The sheet's entry date as set; null when blank (off). */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String sheetId) {
+        return sheets.entryDate(sheetId);
+    }
+
     /** The sheet's grace days as set; null when blank (off). */
     @Transactional(readOnly = true)
     public Integer graceDays(String sheetId) {
@@ -223,7 +231,7 @@ public class AccessService {
     @Transactional
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
-            Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions) {
+            Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -265,6 +273,9 @@ public class AccessService {
                 setPermission(sheetId, user, permission, roles.trim());
             }
         });
+        if (entryDate != null) {
+            setEntryDate(sheetId, user, entryDate.isEmpty() ? null : LocalDate.parse(entryDate));
+        }
     }
 
     /** The roles that may take the action as set (comma separated); null when blank (the standing rule). */
@@ -359,6 +370,19 @@ public class AccessService {
         sheetRows.saveAndFlush(sheet);
         events.publishEvent(new SettingChanged(sheetId, user, PERIOD_NUMBERING_FROM, from == null ? "" : from.toString(), null));
         return from;
+    }
+
+    /**
+     * Save the sheet's entry date; null turns it off. Not dated; while set, a new claim given no date takes
+     * it in place of the sheet's today. Claims already added keep the dates they have.
+     */
+    @Transactional
+    public LocalDate setEntryDate(String sheetId, String user, LocalDate entryDate) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheet.setEntryDate(entryDate);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, ENTRY_DATE, entryDate == null ? "" : entryDate.toString(), null));
+        return entryDate;
     }
 
     /**

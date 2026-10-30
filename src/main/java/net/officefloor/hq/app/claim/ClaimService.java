@@ -82,7 +82,7 @@ public class ClaimService {
         return claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
     }
 
-    /** Add a claim; a date left out takes the sheet's today. Returns the person it belongs to. */
+    /** Add a claim; a date left out takes the sheet's entry date while set, else its today. Returns the person it belongs to. */
     @Transactional
     public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         return add(sheetId, user, personId, amount, date, note, null);
@@ -90,14 +90,14 @@ public class ClaimService {
 
     /**
      * Add a claim, a correction naming the number of the claim it corrects; a date left out takes the
-     * sheet's today. Returns the person it belongs to.
+     * sheet's entry date while set, else its today. Returns the person it belongs to.
      */
     @Transactional
     public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        LocalDate on = date != null ? date : sheets.today(sheetId);
+        LocalDate on = date != null ? date : sheets.claimDate(sheetId);
         periods.requireOpen(sheetId, on);
         requireNotRetired(person, on);
         LocalDate correctsDate = requireCorrects(sheetId, personId, amount, corrects);

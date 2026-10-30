@@ -68,6 +68,17 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getPeriodNumberingFrom).orElse(null);
     }
 
+    /** The sheet's entry date as set; null when blank (off). */
+    public LocalDate entryDate(String id) {
+        return sheets.findById(id).map(Sheet::getEntryDate).orElse(null);
+    }
+
+    /** The date a new claim takes when none is given: the sheet's entry date while set, else its today. */
+    public LocalDate claimDate(String id) {
+        LocalDate entry = entryDate(id);
+        return entry != null ? entry : today(id);
+    }
+
     /** The sheet's grace days as set; null when blank (off). */
     public Integer graceDays(String id) {
         return sheets.findById(id).map(Sheet::getGraceDays).orElse(null);
