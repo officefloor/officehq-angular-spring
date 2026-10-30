@@ -1,0 +1,88 @@
+{
+  "checkpoint": 176,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp176_statement-binds-late-charge",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    24,
+    26,
+    40,
+    46,
+    52,
+    56,
+    64,
+    84,
+    88,
+    161,
+    174
+  ],
+  "replaced_tests": [
+    "cp161_as-of-exports.spec.ts::as of exports scenario 3",
+    "cp174_late-charge-waiver.spec.ts::late charge waiver",
+    "cp24_floor.spec.ts::floor",
+    "cp26_late-charge.spec.ts::late charge",
+    "cp40_hold-interval.spec.ts::hold interval scenario 3",
+    "cp46_re-settle.spec.ts::re settle",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp56_late-per-boundary.spec.ts::late per boundary",
+    "cp64_floor-after-late.spec.ts::floor after late",
+    "cp84_business-day-terms.spec.ts::business day terms scenario 2",
+    "cp88_compound-late-charge.spec.ts::compound late charge"
+  ],
+  "request": {
+    "spec": "A statement now binds a claim's due as shown, late charge included: while bound, the claim shows\nand totals that figure and its late charge no longer follows the sheet's today. The next statement\nbinds the figure as shown then (so a bound figure stays as it is until the statement is cancelled).\nA settled claim's frozen figure is unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA statement now binds a claim's due as shown, late charge included: while bound, the claim shows\nand totals that figure and its late charge no longer follows the sheet's today. The next statement\nbinds the figure as shown then (so a bound figure stays as it is until the statement is cancelled).\nA settled claim's frozen figure is unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3f40f998f2cc53893bb2009dae0a87ef66a616c4",
+  "reset_sha": "",
+  "preagent_sha": "faac68a5174974fe61f2bff0e53e702055afe598",
+  "prev_sha": "faac68a5174974fe61f2bff0e53e702055afe598",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7634568,
+    "input_tokens": 42,
+    "output_tokens": 8326,
+    "cache_read_tokens": 920164,
+    "cache_creation_tokens": 51592,
+    "num_turns": 21,
+    "duration_ms": 436104,
+    "duration_api_ms": 151399,
+    "model": "claude-opus-5-5",
+    "session_id": "f2fd4b02-9dd2-431d-ab70-7a78575c2cea",
+    "stop_reason": "success",
+    "result_text": "A statement now binds each claim's due as shown, late charge and floor included. All 4 acceptance tests pass with `bin/e2e`.\n\n**What happens now**\n- **Taking a statement:** each claim that counts is bound to the figure it shows at that moment. While bound, the claim and every total use that figure. Neither the sheet's today nor rate changes alter it.\n- **Taking the next statement:** a claim that is already bound shows its bound figure, so it gets bound again at that same figure. It only changes once the statement is cancelled.\n- **Cancelling a statement:** the claims go back to their live figures, as before.\n- **Settled claims:** a settled claim keeps its frozen figure. If a bound claim is settled, it settles at its bound figure.\n\n**Changes, all on the server**\n- `Dues.figure` returns the bound figure for a claim bound this way. `StatementService.take` now binds the full figure rather than the figure before the late charge.\n- New migration `V93__claim_stated_as_shown.sql` adds a `stated_as_shown` flag to each claim, set when a statement binds it.\n- `Claim.java` has a new `bind(figure, asShown)`.\n- When claims are copied, the flag goes with them: person transfers (`PersonTransferService`) and the saved end-of-day sheets used for back-dated statements (`DayEnds`).\n\n**One decision for you:** I made sure claims bound before this change keep behaving the old way. Their stored figure doesn't include the late charge, so they still add it from the sheet's today until the next statement or a cancel. The flag is how the app tells the two kinds of claim apart. If you'd rather existing bound claims switch to the new rule straight away, the flag can go.\n\nNo front-end changes were needed. I didn't touch the test, `bin/*` or the other protected files.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7634568,
+        "num_turns": 21,
+        "duration_ms": 436104,
+        "duration_api_ms": 151399,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp176.agent.jsonl",
+  "agent_diff_file": "cp176.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

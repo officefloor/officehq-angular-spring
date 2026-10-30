@@ -1,0 +1,165 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 82dfbb974..343cad9bd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -93,6 +93,13 @@ public class Claim {
+     @Column(name = "stated_due", precision = 14, scale = 2)
+     private BigDecimal statedDue;
+ 
++    /**
++     * Whether statedDue is the figure as shown, late charge included; false for a claim bound before
++     * statements bound that, whose statedDue is its figure without its late charge.
++     */
++    @Column(name = "stated_as_shown", nullable = false)
++    private boolean statedAsShown;
++
+     /** The number of the claim a correction corrects; null for any other claim. */
+     @Column(name = "corrects")
+     private String corrects;
+@@ -560,15 +567,26 @@ public class Claim {
+         return statedDue;
+     }
+ 
+-    /** Bind the claim to a figure (a statement it counts at). */
++    public boolean isStatedAsShown() {
++        return statedAsShown;
++    }
++
++    /** Bind the claim to its figure as shown, late charge included (a statement it counts at). */
+     public void bind(BigDecimal figure) {
++        bind(figure, true);
++    }
++
++    /** Bind the claim to a figure, as shown or (bound before statements bound that) without its late charge. */
++    public void bind(BigDecimal figure, boolean asShown) {
+         this.stated = true;
+         this.statedDue = figure;
++        this.statedAsShown = asShown;
+     }
+ 
+     /** Release the claim to its live figure (a statement it does not count at). */
+     public void unbind() {
+         this.stated = false;
+         this.statedDue = null;
++        this.statedAsShown = false;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 9ec5fb208..5d2034419 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -16,7 +16,8 @@ public final class Dues {
+     }
+ 
+     /**
+-     * A claim's due: once settled, the due fixed then (its late charge frozen in); a correction, its
++     * A claim's due: once settled, the due fixed then (its late charge frozen in); while bound by a statement
++     * to its figure as shown, that figure (its late charge bound in); a correction, its
+      * {@link #base} figure (no floor, no late charge); otherwise the greater of the floor in force on its date
+      * and its {@link #base} figure plus, while overdue and not waived, its {@link RateTable#lateCharge late charge} on that
+      * figure. Null when there is none.
+@@ -25,6 +26,9 @@ public final class Dues {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
++        if (bound(claim) && claim.isStatedAsShown()) {
++            return claim.getStatedDue();
++        }
+         BigDecimal base = base(claim, grades, rates);
+         if (base == null || claim.isCorrection()) {
+             return base;
+@@ -36,11 +40,12 @@ public final class Dues {
+     }
+ 
+     /**
+-     * A claim's figure before any late charge or floor: while bound by a statement, the figure bound then; otherwise its {@link #rateFigure rate figure}. Null when there is
+-     * none. A statement binds this figure, never the late charge or the floor.
++     * A claim's figure before any late charge or floor: while bound by a statement from before statements
++     * bound the figure as shown, the figure bound then; otherwise its {@link #rateFigure rate figure}. Null
++     * when there is none.
+      */
+     public static BigDecimal base(Claim claim, Grades grades, RateTable rates) {
+-        if (bound(claim)) {
++        if (bound(claim) && !claim.isStatedAsShown()) {
+             return claim.getStatedDue();
+         }
+         return rateFigure(claim, grades, rates);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index 037eca0bc..c8f9db1d7 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -158,7 +158,7 @@ public class PersonTransferService {
+         for (Claim claim : leaving) {
+             Claim copy = claim.arriving(toSheet, arrived.getId());
+             if (claim.isStated()) {
+-                copy.bind(claim.getStatedDue());
++                copy.bind(claim.getStatedDue(), claim.isStatedAsShown());
+             }
+             arriving.add(copy);
+             if (claim.getShownNumber() != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/DayEnds.java b/src/main/java/net/officefloor/hq/app/statement/DayEnds.java
+index f520c6a2e..3472c6259 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/DayEnds.java
++++ b/src/main/java/net/officefloor/hq/app/statement/DayEnds.java
+@@ -35,7 +35,7 @@ public class DayEnds {
+ 
+     record ClaimRow(long id, long personId, BigDecimal amount, LocalDate date, ClaimStatus status,
+             LocalDate correctsDate, LocalDate dueBy, LocalDate deferredUntil, BigDecimal settledDue, boolean stated,
+-            BigDecimal statedDue) {
++            BigDecimal statedDue, Boolean statedAsShown) {
+     }
+ 
+     record GradeRow(String grade, LocalDate from) {
+@@ -110,7 +110,7 @@ public class DayEnds {
+                 claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                         .map(c -> new ClaimRow(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getStatus(),
+                                 c.getCorrectsDate(), c.getDueBy(), c.getDeferredUntil(), c.getSettledDue(),
+-                                c.isStated(), c.getStatedDue()))
++                                c.isStated(), c.getStatedDue(), c.isStatedAsShown()))
+                         .toList());
+         dayEnds.saveAndFlush(new DayEnd(sheetId, day, json.writeValueAsString(state)));
+     }
+@@ -159,7 +159,7 @@ public class DayEnds {
+         claim.setDeferredUntil(row.deferredUntil());
+         claim.setSettledDue(row.settledDue());
+         if (row.stated()) {
+-            claim.bind(row.statedDue());
++            claim.bind(row.statedDue(), Boolean.TRUE.equals(row.statedAsShown()));
+         }
+         return claim;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index d7fa27927..b2515e857 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -25,8 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * The statements taken for the people on a sheet. Taking one records the person's due-total and
+- * binds each of their claims that counts to the figure it has then (without its late charge, which
+- * keeps following the sheet's today); a claim that does not count is released to its live figure. A
++ * binds each of their claims that counts to the figure it shows then, late charge included (so while
++ * bound its late charge no longer follows the sheet's today, and a claim already bound is bound again at
++ * that figure); a claim that does not count is released to its live figure. A
+  * statement can be taken as of a date gone by, from the sheet as it stood at the end of that date.
+  * A steward can cancel a person's last statement: the claims it bound are released to their live
+  * figures (a figure an earlier statement bound is not restored).
+@@ -114,7 +115,7 @@ public class StatementService {
+         for (Claim claim : theirs) {
+             Claim stood = claimsThen.get(claim.getId());
+             if (stood != null && Dues.counts(stood, then.leaves(), table.today())) {
+-                claim.bind(Dues.base(stood, then::gradeOn, table));
++                claim.bind(Dues.figure(stood, then::gradeOn, table));
+                 counting++;
+             } else {
+                 claim.unbind();
+diff --git a/src/main/resources/db/migration/V93__claim_stated_as_shown.sql b/src/main/resources/db/migration/V93__claim_stated_as_shown.sql
+new file mode 100644
+index 000000000..408555a06
+--- /dev/null
++++ b/src/main/resources/db/migration/V93__claim_stated_as_shown.sql
+@@ -0,0 +1,4 @@
++-- A statement now binds a claim's figure as shown, late charge and floor included (stated_due), so it
++-- no longer follows the sheet's today while bound. A claim bound before this (stated_as_shown false)
++-- keeps its bound figure without its late charge, as it was bound.
++ALTER TABLE claim ADD COLUMN stated_as_shown BOOLEAN DEFAULT FALSE NOT NULL;
