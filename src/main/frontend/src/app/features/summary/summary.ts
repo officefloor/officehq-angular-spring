@@ -12,6 +12,16 @@ function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
+/** Per grade, in grade order, the due-totals of the people on it today (retired people left out, n/a skipped) added up, in cents. */
+export function gradeDueCents(people: PersonWithClaims[]): { grade: string; due: number }[] {
+  return GRADES.map((grade) => ({
+    grade,
+    due: people
+      .filter((p) => !p.retired && p.grade === grade)
+      .reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0),
+  }));
+}
+
 /** How many claims the people have in each status, in status order. */
 export function statusCounts(people: PersonWithClaims[]): { status: string; count: number }[] {
   const claims = people.flatMap((p) => p.claims);
