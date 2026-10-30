@@ -1,0 +1,214 @@
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+new file mode 100644
+index 00000000..32bda5e6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app;
++
++import java.math.RoundingMode;
++import net.officefloor.hq.app.claim.ClaimChanged;
++import net.officefloor.hq.app.person.PersonChanged;
++import org.springframework.stereotype.Component;
++import org.springframework.transaction.event.TransactionalEventListener;
++
++/**
++ * Writes one audit line per change to a sheet, once the change is committed: a refused change
++ * rolls back and writes nothing. Each line is the event, {@code sheet=} and {@code by=}, then the
++ * event's fields.
++ */
++@Component
++public class SheetAudit {
++
++    private final Audit audit;
++
++    public SheetAudit(Audit audit) {
++        this.audit = audit;
++    }
++
++    @TransactionalEventListener
++    public void on(PersonChanged e) {
++        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
++                + " name=" + e.name() + " grade=" + e.grade());
++    }
++
++    @TransactionalEventListener
++    public void on(ClaimChanged e) {
++        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
++                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
++                + " date=" + e.date());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java b/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java
+new file mode 100644
+index 00000000..b5de8103
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimChanged.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A claim was added ({@code CLAIM_ADDED}) or edited ({@code CLAIM_EDITED}) on a sheet. */
++public record ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
++        LocalDate date) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 5bf82b04..f40f8eb0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -45,7 +45,7 @@ public class ClaimController {
+             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+             @Valid @RequestBody ClaimForm form) {
+         String sheet = sheetId.trim();
+-        long id = claims.add(sheet, personId, new BigDecimal(form.amount()), form.date(), form.note());
++        long id = claims.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.date(), form.note());
+         return view(sheet, id);
+     }
+ 
+@@ -54,7 +54,7 @@ public class ClaimController {
+             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+             @Valid @RequestBody ClaimForm form) {
+         String sheet = sheetId.trim();
+-        long id = claims.edit(sheet, claimId, new BigDecimal(form.amount()), form.date(), form.note());
++        long id = claims.edit(sheet, user.trim(), claimId, new BigDecimal(form.amount()), form.date(), form.note());
+         return view(sheet, id);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dc8e8c27..4d65b9ab 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -7,6 +7,8 @@ import java.util.Map;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.person.Person;
++import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -19,11 +21,14 @@ public class ClaimService {
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final ApplicationEventPublisher events;
+ 
+-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets) {
++    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
++            ApplicationEventPublisher events) {
+         this.claims = claims;
+         this.people = people;
+         this.sheets = sheets;
++        this.events = events;
+     }
+ 
+     /** Every claim on the sheet by the person who made it, each person's newest first. */
+@@ -40,24 +45,27 @@ public class ClaimService {
+ 
+     /** Add a claim; a date left out takes the sheet's today. Returns the person it belongs to. */
+     @Transactional
+-    public long add(String sheetId, long personId, BigDecimal amount, LocalDate date, String note) {
+-        if (people.findByIdAndSheetId(personId, sheetId).isEmpty()) {
+-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
+-        }
++    public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+         claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note == null ? "" : note));
++        events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on));
+         return personId;
+     }
+ 
+     /** Edit a claim's amount, date and note. Returns the person it belongs to. */
+     @Transactional
+-    public long edit(String sheetId, long claimId, BigDecimal amount, LocalDate date, String note) {
++    public long edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+         claim.setAmount(amount);
+         claim.setDate(date != null ? date : sheets.today(sheetId));
+         claim.setNote(note == null ? "" : note);
+         claims.flush();
++        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
++        events.publishEvent(new ClaimChanged("CLAIM_EDITED", sheetId, user, person, claim.getAmount(),
++                claim.getDate()));
+         return claim.getPersonId();
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonChanged.java b/src/main/java/net/officefloor/hq/app/person/PersonChanged.java
+new file mode 100644
+index 00000000..78d27626
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonChanged.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.person;
++
++/** A person was added ({@code PERSON_ADDED}) or edited ({@code PERSON_EDITED}) on a sheet. */
++public record PersonChanged(String event, String sheetId, String user, String name, String grade) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 2e330128..01bbeaa0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -85,7 +85,7 @@ public class PersonController {
+             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+             @Valid @RequestBody PersonForm form) {
+         String sheet = sheetId.trim();
+-        return PersonView.of(service.edit(sheet, personId, form.name(), form.grade()),
++        return PersonView.of(service.edit(sheet, user.trim(), personId, form.name(), form.grade()),
+                 claims.forPerson(sheet, personId));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 6b2ad4f4..718fd4e4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
+ 
+ import java.util.List;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -13,10 +14,12 @@ public class PersonService {
+ 
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final ApplicationEventPublisher events;
+ 
+-    public PersonService(PersonRepository people, SheetService sheets) {
++    public PersonService(PersonRepository people, SheetService sheets, ApplicationEventPublisher events) {
+         this.people = people;
+         this.sheets = sheets;
++        this.events = events;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -37,11 +40,13 @@ public class PersonService {
+         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
+             throw nameInUse();
+         }
+-        return people.saveAndFlush(new Person(sheetId, trimmed, grade));
++        Person person = people.saveAndFlush(new Person(sheetId, trimmed, grade));
++        events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade));
++        return person;
+     }
+ 
+     @Transactional
+-    public Person edit(String sheetId, long personId, String name, String grade) {
++    public Person edit(String sheetId, String user, long personId, String name, String grade) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         String trimmed = name.trim();
+@@ -51,6 +56,7 @@ public class PersonService {
+         person.setName(trimmed);
+         person.setGrade(grade);
+         people.flush();
++        events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, grade));
+         return person;
+     }
+ 
