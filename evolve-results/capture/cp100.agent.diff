@@ -1,0 +1,151 @@
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 2b23fb1a..21148665 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -5,6 +5,7 @@ import net.officefloor.hq.app.access.AccessService;
+ import net.officefloor.hq.app.access.Delegated;
+ import net.officefloor.hq.app.access.RoleSet;
+ import net.officefloor.hq.app.access.SettingChanged;
++import net.officefloor.hq.app.claim.BatchSettled;
+ import net.officefloor.hq.app.claim.ClaimChanged;
+ import net.officefloor.hq.app.claim.ClaimCommented;
+ import net.officefloor.hq.app.claim.ClaimDeferred;
+@@ -243,6 +244,12 @@ public class SheetAudit {
+                         : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString()));
+     }
+ 
++    @TransactionalEventListener
++    public void on(BatchSettled e) {
++        change(e.sheetId(), e.user(), "BATCH_SETTLED sheet=" + e.sheetId() + " by=" + e.user() + " batch=" + e.batch()
++                + " count=" + e.count() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString());
++    }
++
+     @TransactionalEventListener
+     public void on(Delegated e) {
+         change(e.sheetId(), e.user(), "DELEGATED sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name()
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BatchSettled.java b/src/main/java/net/officefloor/hq/app/claim/BatchSettled.java
+new file mode 100644
+index 00000000..009a2df9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/BatchSettled.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++
++/**
++ * A bulk settle settled its claims as the sheet's settle batch: the number of claims in it and the frozen
++ * figures of those that went SETTLED (not PENDING), added up.
++ */
++public record BatchSettled(String sheetId, String user, int batch, int count, BigDecimal total) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+index eeb294ca..53d04ecb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+@@ -6,14 +6,17 @@ import java.util.Set;
+ import net.officefloor.hq.app.access.AccessService;
+ import net.officefloor.hq.app.period.ClosedPeriodRefused;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.support.TransactionTemplate;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+- * Settles a selection of claims together, in list order: the people in the order they were added,
+- * each person's newest claim first. Each claim is settled on its own by the rules of settling one, so
+- * one that cannot be settled is refused and left as it is while the rest go through; one left PENDING
+- * (a clerk over the clerk limit) counts as settled. A bulk settle that settles at least one claim is the
+- * sheet's next settle batch, numbered 1, 2, ..., and each claim it settled shows that number.
++ * Settles a selection of claims together, all or nothing, in list order: the people in the order they were
++ * added, each person's newest claim first. Each claim is settled by the rules of settling one; if any one of
++ * them is refused, none is settled, every one counts as refused and nothing is written. One left PENDING
++ * (a clerk over the clerk limit) is not refused and counts as settled. A bulk settle that goes through is the
++ * sheet's next settle batch, numbered 1, 2, ..., each claim it settled shows that number, and after the
++ * claims' own lines a BATCH_SETTLED line records it.
+  */
+ @Service
+ public class BulkSettleService {
+@@ -24,29 +27,39 @@ public class BulkSettleService {
+     private final ClaimService claims;
+     private final SelectedClaims selected;
+     private final AccessService access;
++    private final TransactionTemplate transaction;
+ 
+-    public BulkSettleService(ClaimService claims, SelectedClaims selected, AccessService access) {
++    public BulkSettleService(ClaimService claims, SelectedClaims selected, AccessService access,
++            PlatformTransactionManager transactions) {
+         this.access = access;
+         this.claims = claims;
+         this.selected = selected;
++        this.transaction = new TransactionTemplate(transactions);
+     }
+ 
+     public Result settle(String sheetId, String user, Set<Long> claimIds) {
+         if (access.isArchived(sheetId) || access.isViewer(sheetId, user)) {
+             return new Result(0, claimIds.size()); // an archived sheet, or a viewer, changes nothing: every one refused
+         }
+-        List<Long> settled = new ArrayList<>();
+-        for (Claim c : selected.inListOrder(sheetId, claimIds)) {
+-            try {
+-                claims.move(sheetId, user, c.getId(), ClaimStatus.SETTLED);
+-                settled.add(c.getId());
+-            } catch (ResponseStatusException | ClosedPeriodRefused refused) {
+-                // refused: left as it is
+-            }
+-        }
+-        if (!settled.isEmpty()) {
+-            claims.settleBatch(sheetId, settled);
++        List<Claim> inOrder = selected.inListOrder(sheetId, claimIds);
++        if (inOrder.size() != claimIds.size()) {
++            return new Result(0, claimIds.size()); // a claim not on the sheet cannot be settled: every one refused
+         }
+-        return new Result(settled.size(), claimIds.size() - settled.size());
++        return transaction.execute(status -> {
++            List<Long> settled = new ArrayList<>();
++            for (Claim c : inOrder) {
++                try {
++                    claims.move(sheetId, user, c.getId(), ClaimStatus.SETTLED);
++                    settled.add(c.getId());
++                } catch (ResponseStatusException | ClosedPeriodRefused refused) {
++                    status.setRollbackOnly(); // one refused: none is settled and nothing is written
++                    return new Result(0, claimIds.size());
++                }
++            }
++            if (!settled.isEmpty()) {
++                claims.settleBatch(sheetId, user, settled);
++            }
++            return new Result(settled.size(), claimIds.size() - settled.size());
++        });
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 1444918d..a1c66f26 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -286,15 +286,22 @@ public class ClaimService {
+ 
+     /**
+      * Number a bulk settle that settled the claims (to SETTLED or PENDING) as the sheet's next settle batch,
+-     * each claim showing it. Returns the batch number.
++     * each claim showing it, and record it with the frozen figures of those SETTLED added up. Returns the
++     * batch number.
+      */
+     @Transactional
+-    public int settleBatch(String sheetId, List<Long> claimIds) {
++    public int settleBatch(String sheetId, String user, List<Long> claimIds) {
+         int batch = sheets.nextSettleBatch(sheetId);
++        BigDecimal total = BigDecimal.ZERO;
+         for (long id : claimIds) {
+-            claim(sheetId, id).setSettleBatch(batch);
++            Claim claim = claim(sheetId, id);
++            claim.setSettleBatch(batch);
++            if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
++                total = total.add(claim.getSettledDue());
++            }
+         }
+         claims.flush();
++        events.publishEvent(new BatchSettled(sheetId, user, batch, claimIds.size(), total));
+         return batch;
+     }
+ 
