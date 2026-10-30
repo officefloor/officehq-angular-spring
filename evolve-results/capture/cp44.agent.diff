@@ -1,0 +1,96 @@
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 8d81d812..22d9db64 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -121,11 +121,12 @@ public class SheetAudit {
+     public void on(RollupChanged e) {
+         for (Rollup.PersonFigures p : e.people()) {
+             audit.record("ROLLUP sheet=" + e.sheetId() + " by=" + e.user() + " person=" + p.name()
+-                    + " claimed=" + p.claimed() + " due-total=" + p.dueTotal());
++                    + " claimed=" + p.claimed() + " due-total=" + p.dueTotal() + " overdue-total=" + p.overdueTotal());
+         }
+         if (e.totals() != null) {
+             audit.record("TOTALS sheet=" + e.sheetId() + " by=" + e.user()
+-                    + " claimed-total=" + e.totals().claimed() + " due-total=" + e.totals().dueTotal());
++                    + " claimed-total=" + e.totals().claimed() + " due-total=" + e.totals().dueTotal()
++                    + " overdue-total=" + e.totals().overdueTotal());
+         }
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 78f88765..ec813742 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -22,23 +22,27 @@ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+- * The figures of a sheet: each person's claimed and due-total, and the sheet's claimed-total and
+- * due-total (a person showing n/a is skipped). A change takes the figures before it and, once done,
++ * The figures of a sheet: each person's claimed, due-total and overdue-total, and the sheet's
++ * claimed-total, due-total (a person showing n/a is skipped) and overdue-total. A change takes the figures before it and, once done,
+  * announces the ones it moved. Reads the store directly, within the change's own transaction.
+  */
+ @Service
+ public class Rollup {
+ 
+-    /** A person's figures as shown: claimed, and due-total ({@code n/a} when there is none). */
+-    public record PersonFigures(String name, String claimed, String dueTotal) {
++    /**
++     * A person's figures as shown: claimed, due-total ({@code n/a} when there is none), and overdue-total
++     * (the sum of the due figures of their overdue claims that count).
++     */
++    public record PersonFigures(String name, String claimed, String dueTotal, String overdueTotal) {
+ 
+         boolean sameFigures(PersonFigures other) {
+-            return other != null && claimed.equals(other.claimed) && dueTotal.equals(other.dueTotal);
++            return other != null && claimed.equals(other.claimed) && dueTotal.equals(other.dueTotal)
++                    && overdueTotal.equals(other.overdueTotal);
+         }
+     }
+ 
+-    /** The sheet's claimed-total and due-total as shown. */
+-    public record Totals(String claimed, String dueTotal) {
++    /** The sheet's claimed-total, due-total and overdue-total as shown. */
++    public record Totals(String claimed, String dueTotal, String overdueTotal) {
+     }
+ 
+     /** Everyone's figures by person id, in the order they were added, and the sheet's totals. */
+@@ -73,19 +77,22 @@ public class Rollup {
+         Map<Long, PersonFigures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = BigDecimal.ZERO;
+         BigDecimal dueTotal = BigDecimal.ZERO;
++        BigDecimal overdueTotal = BigDecimal.ZERO;
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
+             BigDecimal claimed = theirs.stream().filter(c -> Dues.counts(c, person::heldOn)).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+             BigDecimal due = Dues.total(person::gradeOn, theirs, table, person::heldOn);
++            BigDecimal overdue = Dues.sum(person::gradeOn, Dues.overdue(theirs, table, person::heldOn), table);
+             claimedTotal = claimedTotal.add(claimed);
++            overdueTotal = overdueTotal.add(overdue.setScale(2, RoundingMode.HALF_UP));
+             if (due != null) {
+                 dueTotal = dueTotal.add(due);
+             }
+             figures.put(person.getId(), new PersonFigures(person.getName(), money(claimed),
+-                    due == null ? "n/a" : money(due)));
++                    due == null ? "n/a" : money(due), money(overdue)));
+         }
+-        return new Figures(figures, new Totals(money(claimedTotal), money(dueTotal)));
++        return new Figures(figures, new Totals(money(claimedTotal), money(dueTotal), money(overdueTotal)));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupChanged.java b/src/main/java/net/officefloor/hq/app/rollup/RollupChanged.java
+index 39f54b63..55109b88 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupChanged.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupChanged.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.rollup;
+ import java.util.List;
+ 
+ /**
+- * A change moved figures on a sheet: each person whose claimed or due-total changed ({@code ROLLUP}),
++ * A change moved figures on a sheet: each person whose claimed, due-total or overdue-total changed ({@code ROLLUP}),
+  * in the order they were added, and the sheet's totals ({@code TOTALS}) when they changed, else null.
+  */
+ public record RollupChanged(String sheetId, String user, List<Rollup.PersonFigures> people, Rollup.Totals totals) {
