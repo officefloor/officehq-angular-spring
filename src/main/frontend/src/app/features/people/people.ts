@@ -9,6 +9,7 @@ import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Audit } from '../audit/audit';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, periodOf, personPeriodTotals } from '../periods/periods';
+import { PersonPlans, PlanList } from '../plans/plans';
 import { Pool, Pools } from '../pools/pools';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
@@ -88,7 +89,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [Access, Audit, ClaimTemplates, Claims, Holidays, Periods, Pools, Rates, Summary, Tags, VoidReasons],
+  imports: [Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -246,6 +247,13 @@ function csvField(value: string): string {
       <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+      </p>
+      <p>
+        <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+        <span>Made <strong data-testid="plan-generated-count">{{ planGenerated() ?? '' }}</strong></span>
+        @if (planGenerateError()) {
+          <span role="alert" data-testid="plan-generate-error">{{ planGenerateError() }}</span>
+        }
       </p>
       <p>
         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
@@ -525,6 +533,7 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo)">
                   Transfer<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <app-person-plans [personId]="p.id" [name]="p.name" />
               </td>
               <td><app-claims
                   [person]="p"
@@ -621,6 +630,12 @@ export class People {
   /** The ids of the claims selected to be opened or settled together. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** How many of the selected claims the last bulk open opened and refused; null while it runs. */
+  /** How many claims the last generate of the plans made; null while it runs. */
+  protected readonly planGenerated = signal<number | null>(null);
+  protected readonly planGenerateError = signal('');
+  /** A generate still waiting for its answer: another press meanwhile is ignored. */
+  private generating = false;
+  private readonly planList = inject(PlanList);
   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
   protected readonly bulkOpenError = signal('');
   /** A bulk open still waiting for its answer: another press meanwhile is ignored. */
@@ -742,6 +757,8 @@ export class People {
       this.personError.set(null);
       this.patronError.set(null);
       this.selectedClaims.set(new Set());
+      this.planGenerated.set(null);
+      this.planGenerateError.set('');
       this.bulkOpened.set(null);
       this.bulkOpenError.set('');
       this.bulkSettled.set(null);
@@ -891,6 +908,29 @@ export class People {
       this.bulkRetireError.set('Could not retire the selected people.');
     } finally {
       this.bulkRetiring = false;
+    }
+  }
+
+  /** Make the claims every plan on the sheet is due up to its today, then show them and how many were made. */
+  protected async generatePlans(): Promise<void> {
+    if (this.generating) return;
+    this.planGenerated.set(null);
+    this.planGenerateError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.generating = true;
+    try {
+      const made = await this.planList.generate(sheet);
+      if (this.session.sheet() !== sheet) return;
+      await this.reload(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.planGenerated.set(made);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const answer = err instanceof HttpErrorResponse ? err : null;
+      this.planGenerateError.set(answer?.error?.message ?? 'Could not generate the plans\' claims.');
+    } finally {
+      this.generating = false;
     }
   }
 
