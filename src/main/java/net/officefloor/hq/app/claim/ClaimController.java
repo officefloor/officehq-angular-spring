@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.statement.StatementService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,11 +37,14 @@ public class ClaimController {
     private final ClaimService claims;
     private final PersonService people;
     private final RateService rates;
+    private final StatementService statements;
 
-    public ClaimController(ClaimService claims, PersonService people, RateService rates) {
+    public ClaimController(ClaimService claims, PersonService people, RateService rates,
+            StatementService statements) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
+        this.statements = statements;
     }
 
     @PostMapping("/people/{personId}/claims")
@@ -86,6 +90,6 @@ public class ClaimController {
 
     private PersonView view(String sheetId, long personId) {
         return PersonView.of(people.get(sheetId, personId), claims.forPerson(sheetId, personId),
-                rates.table(sheetId));
+                rates.table(sheetId), statements.forPerson(sheetId, personId));
     }
 }

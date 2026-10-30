@@ -56,6 +56,7 @@ function cents(amount: string): number {
         <thead>
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -66,10 +67,19 @@ function cents(amount: string): number {
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ p.claimed }}</td>
               <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
+              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              <td data-testid="person-stated-total">{{ p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a') }}</td>
+              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-statement" (click)="statement(p)">
+                  Statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+                @if (personError()?.id === p.id) {
+                  <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                }
               </td>
               <td><app-claims [person]="p" (saved)="replace($event)" /></td>
             </tr>
@@ -93,6 +103,10 @@ export class People {
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
   protected readonly error = signal('');
+  /** The refusal of the last action taken on a person's row, shown on that row. */
+  protected readonly personError = signal<{ id: number; message: string } | null>(null);
+  /** A statement still waiting for its answer: another press meanwhile is ignored. */
+  private stating = false;
   protected readonly claimedTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
   );
@@ -106,6 +120,7 @@ export class People {
       const sheet = this.session.sheet();
       this.session.loads();
       this.people.set([]);
+      this.personError.set(null);
       this.reset();
       if (sheet) void this.reload(sheet);
     });
@@ -116,6 +131,7 @@ export class People {
   }
 
   protected edit(p: Person): void {
+    this.personError.set(null);
     this.editing.set(p.id);
     this.version = p.version;
     this.name.set(p.name);
@@ -173,6 +189,32 @@ export class People {
       this.error.set(id === null ? 'Could not add the person.' : 'Could not save the person.');
     } finally {
       this.busy = false;
+    }
+  }
+
+  /** Take a statement for the person: their counting claims are bound to the figures they have now. */
+  protected async statement(p: Person): Promise<void> {
+    if (this.stating) return;
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.stating = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/statement`,
+          null,
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({ id: p.id, message: 'Could not take the statement.' });
+    } finally {
+      this.stating = false;
     }
   }
 

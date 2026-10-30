@@ -20,6 +20,8 @@ export interface Claim {
   number: number | null;
   /** The user who opened the claim, kept once voided; null while it was never opened. */
   openedBy: string | null;
+  /** Whether the person's last statement binds the claim to the figure it had then. */
+  stated: boolean;
 }
 
 export interface PersonWithClaims {
@@ -33,6 +35,12 @@ export interface PersonWithClaims {
   claimed: string;
   /** Claimed at the rate for the person's grade; null when the grade has no rate. */
   dueTotal: string | null;
+  /** How many statements were taken for the person. */
+  statementCount: number;
+  /** The last statement's due-total; null when there is none or it was n/a. */
+  statedTotal: string | null;
+  /** The sheet's today when the last statement was taken; null when there is none. */
+  statementDate: string | null;
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -54,6 +62,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+          <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           @for (a of actions; track a.action) {
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>

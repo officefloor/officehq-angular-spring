@@ -51,6 +51,14 @@ public class Claim {
     @Column(name = "settled_due", precision = 14, scale = 2)
     private BigDecimal settledDue;
 
+    /** Whether the person's last statement bound the claim to statedDue. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The figure the last statement bound the claim to; null while unbound or when it had none. */
+    @Column(name = "stated_due", precision = 14, scale = 2)
+    private BigDecimal statedDue;
+
     protected Claim() {
     }
 
@@ -128,5 +136,25 @@ public class Claim {
 
     public void setSettledDue(BigDecimal settledDue) {
         this.settledDue = settledDue;
+    }
+
+    public boolean isStated() {
+        return stated;
+    }
+
+    public BigDecimal getStatedDue() {
+        return statedDue;
+    }
+
+    /** Bind the claim to a figure (a statement it counts at). */
+    public void bind(BigDecimal figure) {
+        this.stated = true;
+        this.statedDue = figure;
+    }
+
+    /** Release the claim to its live figure (a statement it does not count at). */
+    public void unbind() {
+        this.stated = false;
+        this.statedDue = null;
     }
 }

@@ -4,6 +4,7 @@ import java.math.RoundingMode;
 import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.rate.RateChanged;
+import net.officefloor.hq.app.statement.StatementTaken;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -40,5 +41,13 @@ public class SheetAudit {
         audit.record("RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
                 + " grade=" + e.grade() + " rate=" + e.rate().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.from() == null ? "" : " from=" + e.from()));
+    }
+
+    @TransactionalEventListener
+    public void on(StatementTaken e) {
+        audit.record("STATEMENT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                + " due-total=" + (e.dueTotal() == null ? "n/a"
+                        : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())
+                + " claims=" + e.claims());
     }
 }
