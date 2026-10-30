@@ -133,6 +133,31 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
           <p role="alert" data-testid="period-form-error">{{ error() }}</p>
         }
       </form>
+      <form (submit)="generate($event)" aria-label="Generate monthly periods">
+        <label for="period-generate-from">From</label>
+        <input
+          id="period-generate-from"
+          type="date"
+          data-testid="period-generate-from"
+          [value]="genFrom()"
+          (input)="genFrom.set(value($event)); genError.set('')"
+        />
+        <label for="period-generate-to">To</label>
+        <input
+          id="period-generate-to"
+          type="date"
+          data-testid="period-generate-to"
+          [value]="genTo()"
+          (input)="genTo.set(value($event)); genError.set('')"
+        />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <span>Made <strong data-testid="period-generated">{{ generated() }}</strong></span>
+        }
+        @if (genError()) {
+          <p role="alert" data-testid="period-generate-error">{{ genError() }}</p>
+        }
+      </form>
     </section>
   `,
 })
@@ -148,6 +173,11 @@ export class Periods {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal('');
+  protected readonly genFrom = signal('');
+  protected readonly genTo = signal('');
+  /** How many periods the last generate made; null while it runs. */
+  protected readonly generated = signal<number | null>(null);
+  protected readonly genError = signal('');
   /** The refusal of the last action on a period's row, shown on that row. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
@@ -162,6 +192,10 @@ export class Periods {
       this.from.set('');
       this.to.set('');
       this.error.set('');
+      this.genFrom.set('');
+      this.genTo.set('');
+      this.generated.set(null);
+      this.genError.set('');
       this.rowError.set(null);
       if (sheet) void this.reload(sheet);
     });
@@ -209,6 +243,48 @@ export class Periods {
         ? (err.error?.message ?? 'That period name is already in use on this sheet.')
         : 'Could not add the period.';
       this.error.set(message);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Generate one period per calendar month from the from-date's month to the to-date's, named yyyy-mm; a month
+   * whose name is taken or whose days overlap a period is left out. Shows how many were made.
+   */
+  protected async generate(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.busy) return;
+    this.generated.set(null);
+    this.genError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const from = this.genFrom().trim() || (this.session.today() ?? '');
+    const to = this.genTo().trim();
+    if (!DATE.test(from) || !DATE.test(to)) {
+      this.genError.set('Enter a from-date and a to-date.');
+      return;
+    }
+    if (to < from) {
+      this.genError.set('The to-date is before the from-date.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, { from, to }, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      const ids = new Set(made.map((p) => p.id));
+      this.periods.update((ps) => [...ps.filter((p) => !ids.has(p.id)), ...made].sort((a, b) => a.from.localeCompare(b.from)));
+      this.generated.set(made.length);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const message = err instanceof HttpErrorResponse && err.status === 409
+        ? (err.error?.message ?? 'The periods could not be generated.')
+        : 'Could not generate the periods.';
+      this.genError.set(message);
     } finally {
       this.busy = false;
     }

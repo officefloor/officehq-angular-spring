@@ -70,6 +70,16 @@ public class PeriodController {
         return PeriodView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to()));
     }
 
+    /** A from and to date: one period per calendar month from the from-date's month to the to-date's. */
+    public record GenerateForm(@NotNull LocalDate from, @NotNull LocalDate to) {
+    }
+
+    @PostMapping("/generate")
+    public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody GenerateForm form) {
+        return service.generate(sheetId.trim(), user.trim(), form.from(), form.to()).stream().map(PeriodView::of).toList();
+    }
+
     @PostMapping("/{periodId}/close")
     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
             @RequestHeader("X-User") @NotBlank String user) {
