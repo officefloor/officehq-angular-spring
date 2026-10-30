@@ -1,0 +1,127 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index dc3bd0a53..d2e105bce 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -100,6 +100,12 @@ export interface Snapshot {
+   dueTotal: string;
+ }
+ 
++/** A statement line of a person: the statement's date and its due-total as shown ('n/a': none). */
++export interface StatementLine {
++  date: string;
++  dueTotal: string;
++}
++
+ /** A past retirement of a person: from the date they were retired from to the day they were unretired. */
+ export interface Retirement {
+   from: string;
+@@ -156,6 +162,8 @@ export interface PersonWithClaims {
+   retirements: Retirement[];
+   /** The person's snapshot lines, one per SNAPSHOT written for them, oldest first. */
+   snapshots: Snapshot[];
++  /** The person's statement lines, one per statement still standing, oldest first by date. */
++  statementLines: StatementLine[];
+   /** Whether the person has any hold, whatever its dates. */
+   held: boolean;
+   /** The person's holds, earliest first: their OPEN claims dated within one, unless bound by a statement,
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 07cc5b9ca..35aa519eb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -582,6 +582,11 @@ function csvField(value: string): string {
+                     <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal }}</li>
+                   }
+                 </ul>
++                <ul aria-label="Statements">
++                  @for (s of p.statementLines; track $index) {
++                    <li data-testid="person-statement-line-line">{{ s.date }} {{ s.dueTotal }}</li>
++                  }
++                </ul>
+                 <ul aria-label="Holds">
+                   @for (h of p.holds; track $index) {
+                     <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 724a9806e..565c9a114 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -121,7 +121,8 @@ public class PersonController {
+      * from their SETTLED claims and from their OPEN and PENDING claims (see {@link Dues#settledTotal} and
+      * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
+      * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
+-     * transferred from (null: none), their past retirements, earliest first, and their snapshot lines, oldest first.
++     * transferred from (null: none), their past retirements, earliest first, their snapshot lines, oldest first, and
++     * their statement lines: one per statement still standing, oldest first by date.
+      */
+     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
+             List<String> tags,
+@@ -131,7 +132,7 @@ public class PersonController {
+             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
+             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
+             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
+-            List<SnapshotView> snapshots) {
++            List<SnapshotView> snapshots, List<StatementLineView> statementLines) {
+ 
+         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
+         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
+@@ -157,7 +158,10 @@ public class PersonController {
+                     money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing,
+                     person.getOrigin(), person.getRetirements().stream()
+                             .map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+-                    snapshots.stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList());
++                    snapshots.stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList(),
++                    statements.lines().stream()
++                            .map(l -> new StatementLineView(l.date(), l.dueTotal() == null ? "n/a" : money(l.dueTotal())))
++                            .toList());
+         }
+     }
+ 
+@@ -169,6 +173,10 @@ public class PersonController {
+     public record SnapshotView(LocalDate day, String dueTotal) {
+     }
+ 
++    /** A statement line of a person: the statement's date and its due-total as shown ('n/a': none). */
++    public record StatementLineView(LocalDate date, String dueTotal) {
++    }
++
+     /** A hold on a person: from a date to a date (null: open-ended). */
+     public record HoldView(LocalDate from, LocalDate to) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statements.java b/src/main/java/net/officefloor/hq/app/statement/Statements.java
+index 2709e1c15..a0455e3c9 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statements.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statements.java
+@@ -2,12 +2,20 @@ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.List;
+ 
+-/** A person's statements as shown: how many were taken, and the last one's due-total and date (null with none). */
+-public record Statements(int count, BigDecimal lastDueTotal, LocalDate lastDate) {
++/**
++ * A person's statements as shown: how many were taken, the last one's due-total and date (null with none),
++ * and every one still standing, oldest first by date (in the order taken on the same date).
++ */
++public record Statements(int count, BigDecimal lastDueTotal, LocalDate lastDate, List<Line> lines) {
+ 
+-    public static final Statements NONE = new Statements(0, null, null);
++    public static final Statements NONE = new Statements(0, null, null, List.of());
++
++    /** A statement still standing: its date and its due-total (null when it was n/a). */
++    public record Line(LocalDate date, BigDecimal dueTotal) {
++    }
+ 
+     /** A person's statements, in the order taken. */
+     public static Statements of(List<Statement> taken) {
+@@ -15,6 +23,9 @@ public record Statements(int count, BigDecimal lastDueTotal, LocalDate lastDate)
+             return NONE;
+         }
+         Statement last = taken.get(taken.size() - 1);
+-        return new Statements(taken.size(), last.getDueTotal(), last.getTakenOn());
++        List<Line> lines = taken.stream()
++                .sorted(Comparator.comparing(Statement::getTakenOn).thenComparing(Statement::getId))
++                .map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
++        return new Statements(taken.size(), last.getDueTotal(), last.getTakenOn(), lines);
+     }
+ }
