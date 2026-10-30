@@ -1,0 +1,37 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5385717b7..6fdb1f5ce 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -132,7 +132,11 @@ public class ClaimService {
+         return addClaim(sheetId, user, personId, amount, date, note, corrects, ref, tagText).getPersonId();
+     }
+ 
+-    /** Add a claim as {@link #add(String, String, long, BigDecimal, LocalDate, String, String, String, String)} does; returns the claim. */
++    /**
++     * Add a claim as {@link #add(String, String, long, BigDecimal, LocalDate, String, String, String, String)} does; returns the claim.
++     * Its due-by is fixed by the terms in force on the day it is created (the sheet's today), not on its date: the
++     * person's own terms, the terms of the grade they have that day and the sheet's are each looked up on that day.
++     */
+     @Transactional
+     Claim addClaim(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+             String corrects, String ref, String tagText) {
+@@ -142,7 +146,8 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         LocalDate on = date != null ? date : sheets.claimDate(sheetId);
+         sheets.load(sheetId, user);
+-        int terms = sheets.settings(sheetId).termsFor(person.termsOn(on), person.gradeOn(on), on);
++        LocalDate created = sheets.today(sheetId);
++        int terms = sheets.settings(sheetId).termsFor(person.termsOn(created), person.gradeOn(created), created);
+         LocalDate dueBy = holidays.dueBy(sheetId, on, terms);
+         periods.requireOpen(sheetId, dueBy);
+         requireNotRetired(person, on);
+@@ -604,7 +609,8 @@ public class ClaimService {
+         claim.unbind();
+         Claim part = new Claim(sheetId, owner.getId(), amount, claim.getDate(), claim.getNote(), null);
+         sheets.load(sheetId, user);
+-        int terms = sheets.settings(sheetId).termsFor(owner.termsOn(claim.getDate()), owner.gradeOn(claim.getDate()), claim.getDate());
++        LocalDate created = sheets.today(sheetId);
++        int terms = sheets.settings(sheetId).termsFor(owner.termsOn(created), owner.gradeOn(created), created);
+         part.setDueBy(holidays.dueBy(sheetId, claim.getDate(), terms));
+         part.setTerms(terms);
+         part.setSplitFrom(claim.getShownNumber());
