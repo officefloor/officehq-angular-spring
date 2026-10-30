@@ -6,13 +6,19 @@ import { Session } from '../../core/session';
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** A person's plan: the amount (two decimals) claimed every N days from the start up to the end. */
+/**
+ * A person's plan: the amount (two decimals) claimed every N days, or monthly on a day of the month, from the start up
+ * to the end.
+ */
 export interface Plan {
   id: number;
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  /** Every how many days, or null for a monthly plan. */
+  every: number | null;
+  /** The day of the month (1 to 31) a monthly plan runs on, or null. */
+  day: number | null;
   end: string;
   /** How many claims the plan has made so far. */
   generated: number;
@@ -35,13 +41,17 @@ export class PlanList {
     });
   }
 
-  /** Add a plan to the person: '' once added, else why it was refused. */
-  async add(personId: number, amount: string, start: string, every: string, end: string): Promise<string> {
+  /** Add a plan to the person, every N days or on a day of the month: '' once added, else why it was refused. */
+  async add(personId: number, amount: string, start: string, every: string, day: string, end: string): Promise<string> {
     const sheet = this.session.sheet();
     if (!sheet) return 'Load a sheet first.';
     if (!AMOUNT.test(amount.trim())) return 'Enter an amount with up to two decimals.';
     if (!DATE.test(start.trim())) return 'Enter a start date.';
-    if (!/^\d{1,6}$/.test(every.trim()) || Number(every.trim()) < 1) return 'Enter every how many days, at least 1.';
+    if ((every.trim() === '') === (day.trim() === '')) return 'Enter either every how many days or a day of the month.';
+    if (every.trim() && (!/^\d{1,6}$/.test(every.trim()) || Number(every.trim()) < 1))
+      return 'Enter every how many days, at least 1.';
+    if (day.trim() && (!/^\d{1,2}$/.test(day.trim()) || Number(day.trim()) < 1 || Number(day.trim()) > 31))
+      return 'Enter a day of the month from 1 to 31.';
     if (!DATE.test(end.trim())) return 'Enter an end date.';
     if (end.trim() < start.trim()) return 'The end cannot be before the start.';
     const headers = { 'X-User': this.session.user() ?? '' };
@@ -49,7 +59,13 @@ export class PlanList {
       const plans = await firstValueFrom(
         this.http.post<Plan[]>(
           `/api/sheets/${encodeURIComponent(sheet)}/people/${personId}/plans`,
-          { amount: amount.trim(), start: start.trim(), every: every.trim(), end: end.trim() },
+          {
+            amount: amount.trim(),
+            start: start.trim(),
+            every: every.trim() || null,
+            day: day.trim() || null,
+            end: end.trim(),
+          },
           { headers },
         ),
       );
@@ -87,7 +103,11 @@ export class PlanList {
         <li [attr.data-testid]="'plan-row-' + pl.id">
           <span>Plan <span data-testid="plan-amount-shown">{{ pl.amount }}</span></span>
           <span>from <span data-testid="plan-start">{{ pl.start }}</span></span>
-          <span>every <span data-testid="plan-every">{{ pl.every }}</span> days</span>
+          @if (pl.day === null) {
+            <span>every <span data-testid="plan-every">{{ pl.every }}</span> days</span>
+          } @else {
+            <span>monthly on day <span data-testid="plan-day">{{ pl.day }}</span></span>
+          }
           <span>to <span data-testid="plan-end">{{ pl.end }}</span></span>
           <span>Made <span data-testid="plan-generated">{{ pl.generated }}</span></span>
         </li>
@@ -118,6 +138,14 @@ export class PlanList {
         [value]="every()"
         (input)="every.set(value($event)); error.set('')"
       />
+      <label [for]="'plan-form-day-' + personId()">Or monthly on day</label>
+      <input
+        [id]="'plan-form-day-' + personId()"
+        data-testid="plan-form-day"
+        inputmode="numeric"
+        [value]="day()"
+        (input)="day.set(value($event)); error.set('')"
+      />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input
         type="date"
@@ -143,6 +171,7 @@ export class PersonPlans {
   protected readonly amount = signal('');
   protected readonly start = signal('');
   protected readonly every = signal('');
+  protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
@@ -158,13 +187,14 @@ export class PersonPlans {
     this.error.set('');
     this.busy = true;
     try {
-      const refusal = await this.list.add(this.personId(), this.amount(), this.start(), this.every(), this.end());
+      const refusal = await this.list.add(this.personId(), this.amount(), this.start(), this.every(), this.day(), this.end());
       if (refusal) {
         this.error.set(refusal);
       } else {
         this.amount.set('');
         this.start.set('');
         this.every.set('');
+        this.day.set('');
         this.end.set('');
       }
     } finally {

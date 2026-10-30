@@ -27,14 +27,18 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PlanController {
 
-    /** A plan to add: an amount with up to two decimals, a start, every N days (at least 1) and an end. */
+    /**
+     * A plan to add: an amount with up to two decimals, a start, either every N days (at least 1) or a day of the
+     * month (1 to 31), and an end.
+     */
     public record PlanForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
-            @NotNull LocalDate start, @NotNull @Pattern(regexp = "\\d{1,6}") String every, @NotNull LocalDate end) {
+            @NotNull LocalDate start, @Pattern(regexp = "\\d{1,6}") String every,
+            @Pattern(regexp = "\\d{1,2}") String day, @NotNull LocalDate end) {
     }
 
     /** A plan on the sheet; its amount with two decimals, and how many claims it has made so far. */
-    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end,
-            long generated) {
+    public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, long generated) {
     }
 
     /** How many claims a generate made. */
@@ -55,7 +59,7 @@ public class PlanController {
         return plans.list(sheetId.trim()).stream()
                 .map(p -> new PlanView(p.getId(), p.getPersonId(),
                         p.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString(), p.getStart(), p.getEvery(),
-                        p.getEnd(), plans.generated(p)))
+                        p.getDay(), p.getEnd(), plans.generated(p)))
                 .toList();
     }
 
@@ -65,7 +69,8 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PlanForm form) {
         String sheet = sheetId.trim();
         plans.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.start(),
-                Integer.parseInt(form.every()), form.end());
+                form.every() == null ? null : Integer.valueOf(form.every()),
+                form.day() == null ? null : Integer.valueOf(form.day()), form.end());
         return list(sheet);
     }
 

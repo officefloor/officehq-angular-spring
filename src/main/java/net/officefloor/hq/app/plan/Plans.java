@@ -18,7 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The people's plans on a sheet. Generating makes, for every plan in the order they were added, a DRAFT claim of
- * the plan's amount for each plan date (the start, then every N days) up to its end and the sheet's today that has
+ * the plan's amount for each plan date (the start, then every N days; or that day of every month from the start's month, on the month's
+ * last day when it is shorter, leaving out dates before the start) up to its end and the sheet's today that has
  * none yet, dated that day with an empty note, by every rule of the claim form. A date the form refuses is skipped,
  * writing nothing, and tried again the next time.
  */
@@ -59,12 +60,21 @@ public class Plans {
         return made.countByPlanId(plan.getId());
     }
 
-    /** Add a plan to the person; refused when its end is before its start or its interval is under one day. */
+    /**
+     * Add a plan to the person, running every N days or monthly on a day of the month (exactly one given); refused
+     * when its end is before its start, its interval is under one day or its day is not 1 to 31.
+     */
     @Transactional
-    public void add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
-        if (every < 1) {
+    public void add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
+            Integer day, LocalDate end) {
+        if ((every == null) == (day == null)) {
+            throw new PlanRefused("Enter either every how many days or a day of the month.");
+        }
+        if (every != null && every < 1) {
             throw new PlanRefused("Enter a whole number of days, at least 1.");
+        }
+        if (day != null && (day < 1 || day > 31)) {
+            throw new PlanRefused("Enter a day of the month from 1 to 31.");
         }
         if (end.isBefore(start)) {
             throw new PlanRefused("The end cannot be before the start.");
@@ -73,8 +83,8 @@ public class Plans {
         sheetRows.lockById(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, end));
-        events.publishEvent(new PlanAdded(sheetId, user, person.getName(), amount, start, every, end));
+        plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end));
+        events.publishEvent(new PlanAdded(sheetId, user, person.getName(), amount, start, every, day, end));
     }
 
     /** Make the claims the plans are due up to the sheet's today; returns how many were made. */
@@ -84,7 +94,7 @@ public class Plans {
         int count = 0;
         for (Plan plan : list(sheetId)) {
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
-            for (LocalDate on = plan.getStart(); !on.isAfter(last); on = on.plusDays(plan.getEvery())) {
+            for (LocalDate on : plan.datesUpTo(last)) {
                 if (makeClaim(sheetId, user, plan, on)) {
                     count++;
                 }
