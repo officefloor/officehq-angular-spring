@@ -30,8 +30,9 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The claims on a sheet: listed per person newest first, added, edited and moved through their
  * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
- * its number, which is never reused; a claim opened while period numbering is on is numbered within its
- * period instead of sheet-wide. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
+ * its number, which is never reused. A claim is numbered when it is settled or approved (an OPEN, PENDING or
+ * REVIEW claim has no number; one numbered on opening before keeps it); a claim settled while period numbering
+ * is on is numbered within its period instead of sheet-wide. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
  * (at least the sheet's floor then), or at the
  * figure a statement bound it to, plus the late charge it has then. A claim belongs to the period containing its due-by
  * (fixed when it was added, moved past the sheet's holidays then); no claim due by a date inside a closed period can be added, edited or moved,
@@ -44,7 +45,7 @@ import org.springframework.web.server.ResponseStatusException;
  * claim of the same person, and only a correction names one. A claim whose due is above the sheet's proof
  * threshold in force on its date cannot be settled or approved while it has no proof. A claim whose due is above
  * the sheet's review threshold in force on its date goes to REVIEW when opened, unnumbered, until a steward
- * reviews it (OPEN, numbered then).
+ * reviews it (OPEN).
  */
 @Service
 public class ClaimService {
@@ -417,16 +418,12 @@ public class ClaimService {
         if (next == ClaimStatus.OPEN && needsReview(sheetId, claim, owner)) {
             next = ClaimStatus.REVIEW;
         }
-        if (next == ClaimStatus.OPEN) {
-            giveNumber(sheetId, claim);
-        }
         if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
         }
         if (next == ClaimStatus.REVIEW) {
             claim.setReviewOn(sheets.today(sheetId));
         }
-        String number = claim.getShownNumber();
         String due = null;
         if (next == ClaimStatus.SETTLED) {
             BigDecimal fixed = then == null ? dueNow(sheetId, claim, owner) : then.due();
@@ -436,11 +433,13 @@ public class ClaimService {
             String grade = owner == null ? null : owner.gradeOn(sheets.today(sheetId));
             if (access.canSettle(sheetId, user, grade, fixed)) {
                 claim.setSettledDue(fixed);
+                numberIfNone(sheetId, claim);
                 due = fixed == null ? "n/a" : fixed.toPlainString();
             } else {
                 next = ClaimStatus.PENDING;
             }
         }
+        String number = claim.getShownNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.VOID) {
             claim.setVoidReason(reasonGiven);
@@ -477,7 +476,7 @@ public class ClaimService {
     }
 
     /**
-     * A steward reviews a REVIEW claim, opening it: it takes its number then and keeps the user who opened it.
+     * A steward reviews a REVIEW claim, opening it (still unnumbered): it keeps the user who opened it.
      * A claim not REVIEW, one due by a date inside a closed period, or a review by anyone but a steward is
      * refused and nothing changes. Returns the person it belongs to.
      */
@@ -494,7 +493,6 @@ public class ClaimService {
         Rollup.Figures before = rollup.figures(sheetId);
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         String person = owner == null ? "" : owner.getName();
-        giveNumber(sheetId, claim);
         claim.setStatus(ClaimStatus.OPEN);
         log(sheetId, user, claim, owner);
         claims.flush();
@@ -619,7 +617,7 @@ public class ClaimService {
     /**
      * Split an amount (more than 0.00 and less than the claim's amount) off an OPEN claim. The claim keeps
      * the rest and is released from any figure a statement bound it to; a new OPEN claim of the same person
-     * takes the amount split off, with the same date and note, the next number, opened by the user and
+     * takes the amount split off, with the same date and note, unnumbered, opened by the user and
      * due by its date plus the terms then of its person's grade on its date, naming the claim it was split
      * from, carrying its tags, and a late entry when that claim is. It is judged by the claim split alone: a claim not OPEN, a deferred one, one due by a date inside a closed period, an amount out of range, or a
      * split by a role the sheet's permission matrix does not allow to open a claim is refused and nothing
@@ -684,7 +682,6 @@ public class ClaimService {
         part.setSplitFrom(claim.getShownNumber());
         part.setTags(claim.getTags());
         part.setLateEntry(claim.isLateEntry());
-        giveNumber(sheetId, part);
         part.setOpenedBy(user);
         part.setStatus(ClaimStatus.OPEN);
         log(sheetId, user, part, owner);
@@ -941,6 +938,7 @@ public class ClaimService {
         BigDecimal fixed = dueNow(sheetId, claim, owner);
         requireProof(sheetId, claim, owner, fixed);
         claim.setSettledDue(fixed);
+        numberIfNone(sheetId, claim);
         claim.setStatus(ClaimStatus.SETTLED);
         log(sheetId, user, claim, owner);
         claims.flush();
@@ -1107,14 +1105,14 @@ public class ClaimService {
                 : Dues.figure(claim, owner::gradeOn, rates.table(sheetId));
     }
 
-    /** Give a claim arriving on the sheet from another, unnumbered there, the sheet's next number as opening does. */
+    /** Give a claim arriving on the sheet from another, unnumbered there, the sheet's next number as settling does. */
     public void numberArrived(String sheetId, Claim claim) {
         giveNumber(sheetId, claim);
         claims.flush();
     }
 
     /**
-     * Give a claim being opened its number: while the sheet's period numbering from is set and the
+     * Give a claim being settled its number: while the sheet's period numbering from is set and the
      * sheet's today is on or after it, the next in the period its due-by falls in (<period name>-<n>), or
      * in the sequence of claims in no period (X-<n>); otherwise the next sheet-wide number within the fiscal
      * year (by the sheet's fiscal start month) its due-by falls in (<FY>-<n>). Two users
@@ -1131,6 +1129,13 @@ public class ClaimService {
         String sequence = sequenceOf(sheetId, claim.getDueBy());
         int n = claims.lastInSequence(sheetId, sequence) + 1;
         claim.setPeriodNumber(sequence, n, (period == null ? "X" : period.getName()) + "-" + n);
+    }
+
+    /** Give a claim being settled or approved its number, unless it was numbered before (opened when claims were numbered on opening). */
+    private void numberIfNone(String sheetId, Claim claim) {
+        if (claim.getShownNumber() == null) {
+            giveNumber(sheetId, claim);
+        }
     }
 
     /**

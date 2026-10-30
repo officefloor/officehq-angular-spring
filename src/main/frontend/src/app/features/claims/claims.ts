@@ -27,7 +27,7 @@ export interface Claim {
   /** The amount at the rate for the person's grade, or once settled the due fixed then; null when there is no rate. */
   due: string | null;
   status: ClaimStatus;
-  /** The number the claim got when opened: the next on the sheet, or within its period (P1-1, X-1); null while a draft. */
+  /** The number the claim got when settled or approved (or when opened, for a claim numbered before): the next on the sheet, or within its period (P1-1, X-1); null until then. */
   number: string | null;
   /** The user who opened the claim, kept once voided; null while it was never opened. */
   openedBy: string | null;

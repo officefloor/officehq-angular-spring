@@ -24,7 +24,7 @@ interface Settings {
   latePct: string;
   /** The date a claim's rounding turns on (half up before it, half to even on or after); null when blank (the sheet's today). */
   policyDate: string | null;
-  /** From the sheet's today on this date, a claim opened is numbered within its period; null when blank (off). */
+  /** From the sheet's today on this date, a claim settled is numbered within its period; null when blank (off). */
   periodNumberingFrom: string | null;
   /** The days after a period's to-date before a change of the sheet's today closes it; null when blank (off). */
   graceDays: string | null;
@@ -397,7 +397,7 @@ const ROUNDING = /^(half-up|half-even)$/;
           (input)="policyDateInput.set(value($event)); policyDateTouched = true; settingsError.set('')"
           (keydown)="policyDateTouched = policyDateTouched || clears($event)"
         />
-        <label for="setting-period-numbering-from">Period numbering from: claims opened from this date are numbered within their period (blank: off)</label>
+        <label for="setting-period-numbering-from">Period numbering from: claims settled from this date are numbered within their period (blank: off)</label>
         <input
           id="setting-period-numbering-from"
           type="date"

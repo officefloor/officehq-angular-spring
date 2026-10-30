@@ -49,7 +49,7 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The number the claim got when opened; null while a draft; a voided claim keeps it. */
+    /** The number the claim got when settled or approved (or, before, when opened); null until then; a voided claim keeps it. */
     @Column(name = "claim_number")
     private Integer number;
 

@@ -208,7 +208,8 @@ public class SheetAudit {
     public void on(ClaimSplit e) {
         change(e.sheetId(), e.user(), "CLAIM_SPLIT sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
-                + " date=" + e.date() + " number=" + e.number() + " into=" + e.into());
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + " into=" + (e.into() == null ? "" : e.into()));
     }
 
     @TransactionalEventListener

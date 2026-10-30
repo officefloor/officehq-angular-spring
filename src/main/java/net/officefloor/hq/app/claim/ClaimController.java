@@ -248,7 +248,7 @@ public class ClaimController {
         return view(sheet, claims.review(sheet, user.trim(), claimId));
     }
 
-    /** Open the selected claims, numbered in list order; answers how many were opened and how many refused. */
+    /** Open the selected claims in list order; answers how many were opened and how many refused. */
     @PostMapping("/claims/bulk-open")
     public BulkOpenService.Result openAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkOpenForm form) {

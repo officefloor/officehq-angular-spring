@@ -30,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
  * has them, the days past a claim's due-by before it is overdue; and its late
  * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
  * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
- * the date from which a claim opened is numbered within its period (none: off); and its cap, the most a
+ * the date from which a claim settled is numbered within its period (none: off); and its cap, the most a
  * person's due-total comes to (none: no cap); and its proof threshold, the most due a claim may have to be
  * settled or approved while it has no proof (none: no threshold), and each grade's own (none: the sheet's). The settings that carry a figure are dated (see
  * {@link DatedSettings}): a save records its value from a from-date, the sheet's today when none is given.

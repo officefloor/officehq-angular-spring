@@ -24,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Paste claims: lines of {@code name,amount,date,note} (the note may hold commas and may be left out; a
  * blank date takes the sheet's entry date while set, else its today), each a claim for the person of that name on the sheet,
- * matched as the person form matches names, added and then opened by the user as the open button would, numbered in
+ * matched as the person form matches names, added and then opened by the user as the open button would, in
  * paste order. A note ending in {@code " #<reference>"} gives the claim that external reference, which is not part of
  * the note. A line whose person, date and note match one of that person's claims as they stood before the paste (void
  * and deleted claims never match) updates that claim instead: the newest matching DRAFT is edited to the line's amount
