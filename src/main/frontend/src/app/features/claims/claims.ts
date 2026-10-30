@@ -122,6 +122,10 @@ export interface PersonWithClaims {
   aged0to30: string;
   aged31to60: string;
   aged61: string;
+  /** The parts of their due-total before the cap from their SETTLED claims that count (at their frozen figures)
+   *  and from their OPEN and PENDING claims that count; a claim with no figure is skipped. */
+  settledTotal: string;
+  openTotal: string;
   /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
    * statement, then count in no live total. */
   retiredNow: boolean;

@@ -225,4 +225,25 @@ public final class Dues {
         return shown ? counting.stream().map(c -> figure(c, grades, rates))
                 .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add) : null;
     }
+
+    /**
+     * The settled part of a person's {@link #uncapped} sum: the due figures of their SETTLED claims that count,
+     * each at its frozen figure (corrections included); a claim with no figure is skipped.
+     */
+    public static BigDecimal settledTotal(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
+        return part(grades, claims, rates, holds, true);
+    }
+
+    /**
+     * The open part of a person's {@link #uncapped} sum: the due figures of their OPEN and PENDING claims that
+     * count (a held, deferred or retired-and-left-out claim does not); a claim with no figure is skipped.
+     */
+    public static BigDecimal openTotal(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
+        return part(grades, claims, rates, holds, false);
+    }
+
+    private static BigDecimal part(Grades grades, List<Claim> claims, RateTable rates, Holds holds, boolean settled) {
+        return sum(grades, claims.stream().filter(c -> counts(c, holds, rates.today())
+                && (c.getStatus() == ClaimStatus.SETTLED) == settled).toList(), rates);
+    }
 }

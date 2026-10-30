@@ -57,6 +57,8 @@ function csvField(value: string): string {
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+      <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
         <label for="person-form-name">Name</label>
         <input
@@ -204,7 +206,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Excess</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
@@ -233,6 +235,8 @@ function csvField(value: string): string {
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ p.claimed }}</td>
               <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
+              <td data-testid="person-settled-total">{{ p.settledTotal }}</td>
+              <td data-testid="person-open-total">{{ p.openTotal }}</td>
               <td data-testid="person-excess">{{ p.excess }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a') }}</td>
@@ -435,6 +439,14 @@ export class People {
   /** Everyone's due-total added up, trimmed (see {@link trimmedSum}); a person showing n/a is skipped. */
   protected readonly dueTotal = computed(() =>
     (trimmedSum(this.people().flatMap((p) => (p.dueTotal === null ? [] : [cents(p.dueTotal)]))) / 100).toFixed(2),
+  );
+  /** Everyone's settled-total added up, not trimmed. */
+  protected readonly settledTotal = computed(() =>
+    (this.people().reduce((sum, p) => sum + cents(p.settledTotal), 0) / 100).toFixed(2),
+  );
+  /** Everyone's open-total added up, not trimmed. */
+  protected readonly openTotal = computed(() =>
+    (this.people().reduce((sum, p) => sum + cents(p.openTotal), 0) / 100).toFixed(2),
   );
 
   /** Each person's patrons' names, sorted and comma separated, and their backing: the patrons'
