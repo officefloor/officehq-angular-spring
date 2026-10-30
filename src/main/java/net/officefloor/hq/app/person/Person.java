@@ -21,7 +21,7 @@ import net.officefloor.hq.app.claim.Holds;
 
 /**
  * A person on a sheet, with a name, their own terms (null: none) and their grades (A, B or C), each from a date (see {@link #gradeOn}), the date they are retired from (null while
- * not retired), their holds (see {@link #heldOn}) and the version it was last saved at.
+ * not retired), their past retirements (see {@link #getRetirements}), their holds (see {@link #heldOn}) and the version it was last saved at.
  */
 @Entity
 @Table(name = "person")
@@ -65,6 +65,11 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     @OrderBy("fromDate ASC")
     private List<HoldSpan> holds = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderBy("fromDate ASC")
+    private List<RetirementSpan> retirements = new ArrayList<>();
 
     @Version
     @Column(name = "version", nullable = false)
@@ -226,6 +231,22 @@ public class Person {
                 return Person.this.retiredOn(today);
             }
         };
+    }
+
+    /** The person's past retirements, earliest from-date first. */
+    public List<RetirementSpan> getRetirements() {
+        return retirements.stream().sorted(Comparator.comparing(RetirementSpan::getFromDate)).toList();
+    }
+
+    /** Unretire the person on the date: their retirement is kept as a past one, to that date. */
+    public void unretire(LocalDate on) {
+        retirements.add(new RetirementSpan(retiredFrom, on));
+        retiredFrom = null;
+    }
+
+    /** Whether a claim dated then is refused: after their retirement date, or within a past retirement. */
+    public boolean retiredAt(LocalDate date) {
+        return (retiredFrom != null && date.isAfter(retiredFrom)) || retirements.stream().anyMatch(r -> r.bars(date));
     }
 
     /** Whether a retirement date is set: retired at once, whatever the date. */

@@ -427,6 +427,14 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)">
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-unretire" (click)="unretire(p)">
+                  Unretire<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <ul aria-label="Past retirements">
+                  @for (r of p.retirements; track $index) {
+                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
                 <ul aria-label="Holds">
                   @for (h of p.holds; track $index) {
                     <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
@@ -1285,6 +1293,29 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.personError.set({ id: p.id, message: 'Could not retire the person.' });
+    } finally {
+      this.retiring = false;
+    }
+  }
+
+  /** Unretire the retired person on the sheet's today; anyone not retired is refused. */
+  protected async unretire(p: Person): Promise<void> {
+    if (this.retiring) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.retiring = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(`/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/unretire`, null, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({ id: p.id, message: 'Could not unretire: only a retired person can be.' });
     } finally {
       this.retiring = false;
     }

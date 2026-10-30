@@ -922,12 +922,16 @@ public class ClaimService {
                         "Claim " + corrects + " is not a settled claim of this person"));
     }
 
-    /** Refuse a claim dated after its person's retirement date. */
+    /** Refuse a claim dated after its person's retirement date, or within one of their past retirements. */
     private static void requireNotRetired(Person person, LocalDate date) {
         if (person.isRetired() && date.isAfter(person.getRetiredFrom())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     person.getName() + " is retired from " + person.getRetiredFrom()
                             + "; a claim cannot be dated after that");
+        }
+        if (person.retiredAt(date)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    person.getName() + " was retired then; a claim cannot be dated within a past retirement");
         }
     }
 }

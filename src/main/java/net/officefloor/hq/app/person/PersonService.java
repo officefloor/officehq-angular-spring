@@ -22,7 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
 /** The people on a sheet: listed by their position, a new person going to the end and a person moved up
  * or down swapping with their neighbour, added and edited one at a time;
  * an edit made from a version someone else has saved since is refused. A person can be retired from a
- * date; no claim dated after it can then be added for them. */
+ * date; no claim dated after it can then be added for them. A retired person can be unretired; no claim
+ * dated within a past retirement (after its from-date, before its to-date) can be added for them either. */
 @Service
 public class PersonService {
 
@@ -134,6 +135,28 @@ public class PersonService {
         person.setRetiredFrom(on);
         people.flush();
         events.publishEvent(new PersonRetired(sheetId, user, person.getName(), on));
+        rollup.changed(sheetId, user, before);
+        return person;
+    }
+
+    /**
+     * Unretire a retired person on the sheet's today: they are no longer retired, their retirement kept as a past
+     * one from its date to that today. Anyone not retired is refused. Their claims may come back into the live
+     * totals, so the figures it moves are announced.
+     */
+    @Transactional
+    public Person unretire(String sheetId, String user, long personId) {
+        sheetRows.lockById(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (!person.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " is not retired");
+        }
+        LocalDate on = sheets.today(sheetId);
+        Rollup.Figures before = rollup.figures(sheetId);
+        person.unretire(on);
+        people.flush();
+        events.publishEvent(new PersonUnretired(sheetId, user, person.getName(), on));
         rollup.changed(sheetId, user, before);
         return person;
     }

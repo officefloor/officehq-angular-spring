@@ -83,6 +83,12 @@ export interface ClaimLogLine {
   due: string | null;
 }
 
+/** A past retirement of a person: from the date they were retired from to the day they were unretired. */
+export interface Retirement {
+  from: string;
+  to: string;
+}
+
 /** A hold on a person from a date to a date (both included); null to-date: open-ended. */
 export interface Hold {
   from: string;
@@ -127,6 +133,8 @@ export interface PersonWithClaims {
   retired: boolean;
   /** The date the person is retired from; no claim dated after it can be added. Null when not retired. */
   retiredFrom: string | null;
+  /** The person's past retirements, earliest first: no claim dated after the from and before the to of one can be added. */
+  retirements: Retirement[];
   /** Whether the person has any hold, whatever its dates. */
   held: boolean;
   /** The person's holds, earliest first: their OPEN claims dated within one, unless bound by a statement,
