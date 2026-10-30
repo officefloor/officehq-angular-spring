@@ -1,0 +1,123 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index df2b909e..ca754661 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -102,6 +102,8 @@ export interface PersonWithClaims {
+   overdueTotal: string;
+   /** The ids of the people on the sheet the person named as their patrons. */
+   patrons: number[];
++  /** Whether they have an OPEN or PENDING claim that counts dated within the 30 days up to and including the sheet's today. */
++  active: boolean;
+ }
+ 
+ const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 389c216c..63eb301f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -180,7 +180,7 @@ function csvField(value: string): string {
+             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
+             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th>
++            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Active</th>
+             @for (pd of periods(); track pd.id) {
+               <th scope="col">Due in {{ pd.name }}</th>
+             }
+@@ -207,6 +207,7 @@ function csvField(value: string): string {
+               <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
+               <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
+               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
++              <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+               @for (pd of periods(); track pd.id) {
+                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodTotals().get(p.id)?.[pd.id] }}</td>
+               }
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 20d92f6f..abb97f7d 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -17,7 +17,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+ }
+ 
+ // The sheet's figures summed from the list: per grade, the people on it today (retired people left
+-// out) and their due-totals added up (n/a skipped); per period, its due-total; per status, how many
++// out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how many
+ // claims have it.
+ @Component({
+   selector: 'app-summary',
+@@ -27,7 +27,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+       <table>
+         <caption>By grade</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th><th scope="col">Active</th></tr>
+         </thead>
+         <tbody>
+           @for (g of byGrade(); track g.grade) {
+@@ -35,6 +35,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -78,7 +79,7 @@ export class Summary {
+     GRADES.map((grade) => {
+       const on = this.people().filter((p) => !p.retired && p.grade === grade);
+       const due = on.reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0);
+-      return { grade, count: on.length, dueTotal: (due / 100).toFixed(2) };
++      return { grade, count: on.length, dueTotal: (due / 100).toFixed(2), active: on.filter((p) => p.active).length };
+     }),
+   );
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 0a83829d..7c31c674 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -119,6 +119,16 @@ public final class Dues {
+                 && !bound(claim) && holds.on(claim.getDate()));
+     }
+ 
++    /**
++     * Whether the person is active on the sheet's today: they have an OPEN or PENDING claim that counts (see
++     * {@link #counts}) dated within the 30 days up to and including that today.
++     */
++    public static boolean active(List<Claim> claims, Holds holds, LocalDate today) {
++        LocalDate from = today.minusDays(29);
++        return claims.stream().anyMatch(c -> (c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
++                && counts(c, holds, today) && !c.getDate().isBefore(from) && !c.getDate().isAfter(today));
++    }
++
+     /**
+      * The status the claim had at the end of the given day, as its status log records it (each line on the
+      * sheet's today then); null when it was added after that day.
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 4a27bbe9..fb4e324c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -80,12 +80,13 @@ public class PersonController {
+      * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
+-     * that count are overdue and the sum of their due figures, and the ids of their patrons.
++     * that count are overdue and the sum of their due figures, the ids of their patrons, and whether they are
++     * active (see {@link Dues#active}).
+      */
+     public record PersonView(long id, long version, String name, String grade, Integer terms, List<ClaimView> claims,
+             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
+-            String overdueTotal, List<Long> patrons) {
++            String overdueTotal, List<Long> patrons, boolean active) {
+ 
+         /** The person as shown, given the sheet's rates. */
+         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
+@@ -103,7 +104,7 @@ public class PersonController {
+                     person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+                     overdue.size(), money(Dues.sum(grade, overdue, rates)),
+-                    patrons);
++                    patrons, Dues.active(claims, held, rates.today()));
+         }
+     }
+ 

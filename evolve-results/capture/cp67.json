@@ -1,0 +1,64 @@
+{
+  "checkpoint": 67,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp67_active-people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person whether they are active: yes when they have an OPEN or PENDING claim that\ncounts dated within the 30 days up to and including the sheet's today. The summary shows per\ngrade the number of active people on that grade (retired people excluded).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person whether they are active: yes when they have an OPEN or PENDING claim that\ncounts dated within the 30 days up to and including the sheet's today. The summary shows per\ngrade the number of active people on that grade (retired people excluded).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7a0a81ee7557ff12a63f59d9da7cfa92bbcb4f66",
+  "reset_sha": "",
+  "preagent_sha": "ab101bc086140ece99c28cf6b6ca0c77724f13ee",
+  "prev_sha": "ab101bc086140ece99c28cf6b6ca0c77724f13ee",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.464226,
+    "input_tokens": 24,
+    "output_tokens": 4011,
+    "cache_read_tokens": 399190,
+    "cache_creation_tokens": 38009,
+    "num_turns": 13,
+    "duration_ms": 242933,
+    "duration_api_ms": 70871,
+    "model": "claude-opus-5-5",
+    "session_id": "84df2cc1-b513-4ca2-a212-492cf72af924",
+    "stop_reason": "success",
+    "result_text": "Each person now shows whether they are active, and the summary shows how many active people each grade has. All 4 tests in the spec pass under `bin/e2e`.\n\n**What \"active\" means:** a person is active when they have an OPEN or PENDING claim that counts, dated from 29 days before the sheet's today up to and including today (30 days in all). For example, with today at 2026-03-10, a claim dated 2026-02-09 counts and one dated 2026-02-08 doesn't. \"Counts\" is the app's existing rule: an OPEN claim dated within a hold doesn't count (unless a statement binds it), and neither does a deferred claim. So putting a person on hold can make them inactive.\n\n**Changes:**\n- **Server:**\n  - `Dues.active(...)` in `claim/Dues.java` works out the rule above.\n  - `PersonView` in `person/PersonController.java` carries the result as a new `active` field. It's added as the last field, so nothing that's already there moves.\n- **Front end:**\n  - `PersonWithClaims` in `claims/claims.ts` gets the new `active` field.\n  - The people table in `people/people.ts` has a new \"Active\" column (`person-active`, showing yes or no).\n  - The by-grade summary in `summary/summary.ts` has a new \"Active\" column (`summary-grade-<G>-active`). It counts active people on each grade among those already counted there, so retired people are left out.\n\nNothing changes in the stored data and there are no new audit records, since the spec doesn't expect any.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.464226,
+        "num_turns": 13,
+        "duration_ms": 242933,
+        "duration_api_ms": 70871,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp67.agent.jsonl",
+  "agent_diff_file": "cp67.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
