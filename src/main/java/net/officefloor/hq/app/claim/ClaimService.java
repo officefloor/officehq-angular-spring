@@ -337,6 +337,15 @@ public class ClaimService {
      */
     @Transactional
     public long move(String sheetId, String user, long claimId, ClaimStatus next, String voidReason) {
+        return move(sheetId, user, claimId, next, voidReason, true);
+    }
+
+    /**
+     * Move a claim as {@link #move(String, String, long, ClaimStatus, String)}; without the four-eyes and
+     * proof checks when they were judged on another claim (a part-settle judges them on the claim split).
+     */
+    private long move(String sheetId, String user, long claimId, ClaimStatus next, String voidReason,
+            boolean judgeHere) {
         Claim claim = claim(sheetId, claimId);
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -362,11 +371,11 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be settled before then");
         }
-        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+        if (judgeHere && next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
         }
-        if (next == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+        if (judgeHere && next == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who last edited a claim cannot settle it");
         }
@@ -393,7 +402,9 @@ public class ClaimService {
         String due = null;
         if (next == ClaimStatus.SETTLED) {
             BigDecimal fixed = dueNow(sheetId, claim, owner);
-            requireProof(sheetId, claim, owner, fixed);
+            if (judgeHere) {
+                requireProof(sheetId, claim, owner, fixed);
+            }
             if (access.canSettle(sheetId, user, fixed)) {
                 claim.setSettledDue(fixed);
                 due = fixed == null ? "n/a" : fixed.toPlainString();
@@ -586,6 +597,33 @@ public class ClaimService {
      */
     @Transactional
     public long split(String sheetId, String user, long claimId, BigDecimal amount) {
+        return splitOff(sheetId, user, claimId, amount).getPersonId();
+    }
+
+    /**
+     * Part-settle an OPEN claim: split the amount off it as {@link #split} does, then settle the new claim
+     * at once as the user, as settling does (PENDING when the clerk limit says so). The four-eyes rules and
+     * the proof rule are judged on the claim split, before it is split; a split or a settle that would be
+     * refused refuses the whole and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long settlePart(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = claim(sheetId, claimId);
+        if (user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot settle it");
+        }
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        requireProof(sheetId, claim, owner, dueNow(sheetId, claim, owner));
+        Claim part = splitOff(sheetId, user, claimId, amount);
+        return move(sheetId, user, part.getId(), ClaimStatus.SETTLED, null, false);
+    }
+
+    /** Split an amount off a claim as {@link #split} does, returning the new claim. */
+    private Claim splitOff(String sheetId, String user, long claimId, BigDecimal amount) {
         Claim claim = claim(sheetId, claimId);
         if (claim.getStatus() != ClaimStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -626,7 +664,7 @@ public class ClaimService {
         events.publishEvent(new ClaimChanged("CLAIM_OPENED", sheetId, user, owner.getName(), part.getAmount(),
                 part.getDate(), part.getShownNumber(), null));
         rollup.changed(sheetId, user, before);
-        return owner.getId();
+        return part;
     }
 
     /**

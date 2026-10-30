@@ -331,6 +331,15 @@ public class ClaimController {
         return view(sheet, claims.split(sheet, user.trim(), claimId, new BigDecimal(form.amount())));
     }
 
+    /** Part-settle an OPEN claim: split an amount off it and settle the new claim at once. */
+    @PostMapping("/claims/{claimId}/settle-part")
+    public PersonView settlePart(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody SplitForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.settlePart(sheet, user.trim(), claimId, new BigDecimal(form.amount())));
+    }
+
     /** A steward waives an OPEN or PENDING claim's late charge. */
     @PostMapping("/claims/{claimId}/waive")
     public PersonView waive(@PathVariable @NotBlank @Size(max = 100) String sheetId,

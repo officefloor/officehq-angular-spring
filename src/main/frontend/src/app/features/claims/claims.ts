@@ -399,6 +399,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <button type="button" data-testid="claim-split" (click)="split(c)">
             Split<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
           </button>
+          <label [for]="'claim-settle-part-amount-' + c.id">Part-settle amount</label>
+          <input
+            [id]="'claim-settle-part-amount-' + c.id"
+            inputmode="decimal"
+            data-testid="claim-settle-part-amount"
+            [value]="partAmounts()[c.id] ?? ''"
+            (input)="setPartAmount(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-settle-part" (click)="settlePart(c)">
+            Part-settle<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -550,6 +561,9 @@ export class Claims implements OnInit {
   protected readonly newDates = signal<Record<number, string>>({});
   /** The amount typed for splitting off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+
+  /** The amount typed for part-settling each claim, by claim id. */
+  protected readonly partAmounts = signal<Record<number, string>>({});
   /** The line typed for each claim, by claim id. */
   protected readonly lineFields = signal<Record<number, { label: string; qty: string; unit: string }>>({});
   /** The comment typed for each claim, by claim id. */
@@ -711,6 +725,48 @@ export class Claims implements OnInit {
       const refusal =
         err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be split by that amount.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected setPartAmount(id: number, amount: string): void {
+    this.partAmounts.update((all) => ({ ...all, [id]: amount }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Part-settle an OPEN claim: split the amount typed off it and settle the new claim at once. A refusal of
+   * either shows on the claim's row and changes nothing.
+   */
+  protected async settlePart(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.partAmounts()[c.id] ?? '').trim();
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) {
+      this.claimError.set({ id: c.id, message: 'Enter the amount to settle, with up to two decimals.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/settle-part`,
+          { amount },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.partAmounts.update((all) => ({ ...all, [c.id]: '' }));
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be part-settled by that amount.' });
     } finally {
       this.busy = false;
     }
