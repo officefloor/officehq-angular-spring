@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -14,7 +16,6 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.rollup.Rollup;
-import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,7 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The statements taken for the people on a sheet. Taking one records the person's due-total and
  * binds each of their claims that counts to the figure it has then (without its late charge, which
- * keeps following the sheet's today); a claim that does not count is released to its live figure.
+ * keeps following the sheet's today); a claim that does not count is released to its live figure. A
+ * statement can be taken as of a date gone by, from the sheet as it stood at the end of that date.
  * A steward can cancel a person's last statement: the claims it bound are released to their live
  * figures (a figure an earlier statement bound is not restored).
  */
@@ -35,21 +37,21 @@ public class StatementService {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final RateService rates;
-    private final SheetService sheets;
     private final Rollup rollup;
     private final AccessService access;
+    private final DayEnds dayEnds;
     private final ApplicationEventPublisher events;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            RateService rates, SheetService sheets, Rollup rollup, AccessService access,
+            RateService rates, Rollup rollup, AccessService access, DayEnds dayEnds,
             ApplicationEventPublisher events) {
+        this.dayEnds = dayEnds;
         this.access = access;
         this.rollup = rollup;
         this.statements = statements;
         this.people = people;
         this.claims = claims;
         this.rates = rates;
-        this.sheets = sheets;
         this.events = events;
     }
 
@@ -69,24 +71,57 @@ public class StatementService {
     /** Take a statement for the person as of the sheet's today. */
     @Transactional
     public void take(String sheetId, String user, long personId) {
+        take(sheetId, user, personId, null);
+    }
+
+    /**
+     * Take a statement for the person as of a date on or before the sheet's today (null: as of now). Their
+     * claims that counted at the end of that date are bound to the figures they had then, with that date
+     * standing in for the sheet's today, and every other claim of theirs is released; the statement is
+     * dated that date and records their due-total then. A date gone by takes the sheet as it stood at the
+     * end of it (see {@link DayEnds}): refused when the date is after the sheet's today, or when the person
+     * was not on the sheet by then.
+     */
+    @Transactional
+    public void take(String sheetId, String user, long personId, LocalDate asOf) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        Rollup.Figures before = rollup.figures(sheetId);
         RateTable table = rates.table(sheetId);
+        LocalDate on = asOf == null ? table.today() : asOf;
+        if (on.isAfter(table.today())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A statement cannot be taken as of a date after today");
+        }
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
-        BigDecimal dueTotal = Dues.total(person::gradeOn, theirs, table, person.leaves());
+        Person then;
+        Map<Long, Claim> claimsThen;
+        if (on.isBefore(table.today())) {
+            DayEnds.SheetThen sheetThen = dayEnds.asOf(sheetId, on)
+                    .filter(t -> t.people().containsKey(personId))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                            "The person was not on the sheet by that date"));
+            then = sheetThen.people().get(personId);
+            claimsThen = sheetThen.claimsOf(personId);
+            table = sheetThen.table();
+        } else {
+            then = person;
+            claimsThen = new LinkedHashMap<>();
+            theirs.forEach(c -> claimsThen.put(c.getId(), c));
+        }
+        Rollup.Figures before = rollup.figures(sheetId);
+        BigDecimal dueTotal = Dues.total(then::gradeOn, List.copyOf(claimsThen.values()), table, then.leaves());
         int counting = 0;
         for (Claim claim : theirs) {
-            if (Dues.counts(claim, person.leaves(), table.today())) {
-                claim.bind(Dues.base(claim, person::gradeOn, table));
+            Claim stood = claimsThen.get(claim.getId());
+            if (stood != null && Dues.counts(stood, then.leaves(), table.today())) {
+                claim.bind(Dues.base(stood, then::gradeOn, table));
                 counting++;
             } else {
                 claim.unbind();
             }
         }
         claims.flush();
-        statements.saveAndFlush(new Statement(sheetId, personId, sheets.today(sheetId), dueTotal, counting));
-        events.publishEvent(new StatementTaken(sheetId, user, person.getName(), dueTotal, counting));
+        statements.saveAndFlush(new Statement(sheetId, personId, on, dueTotal, counting));
+        events.publishEvent(new StatementTaken(sheetId, user, person.getName(), dueTotal, counting, asOf));
         rollup.changed(sheetId, user, before);
     }
 

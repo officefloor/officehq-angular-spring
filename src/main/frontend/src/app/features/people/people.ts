@@ -223,7 +223,15 @@ function csvField(value: string): string {
                 >
                   {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
-                <button type="button" data-testid="person-statement" (click)="statement(p)">
+                <label [for]="'person-statement-asof-' + p.id">Statement for {{ p.name }} as of</label>
+                <input
+                  #statementAsOf
+                  type="date"
+                  [id]="'person-statement-asof-' + p.id"
+                  data-testid="person-statement-asof"
+                  (input)="clearError(p)"
+                />
+                <button type="button" data-testid="person-statement" (click)="statement(p, statementAsOf)">
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
                 <button type="button" data-testid="person-unstate" (click)="unstate(p)">
@@ -688,28 +696,42 @@ export class People {
     }
   }
 
-  /** Take a statement for the person: their counting claims are bound to the figures they have now. */
-  protected async statement(p: Person): Promise<void> {
+  /**
+   * Take a statement for the person as of a date on or before the sheet's today (blank: now): their claims
+   * that counted then are bound to the figures they had then. The date entry is cleared once it is taken.
+   */
+  protected async statement(p: Person, asOf: HTMLInputElement): Promise<void> {
     if (this.stating) return;
     this.personError.set(null);
     this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
+    const date = asOf.value.trim();
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.personError.set({ id: p.id, message: 'Enter a date, or leave it blank for now.' });
+      return;
+    }
     const headers = { 'X-User': this.session.user() ?? '' };
     this.stating = true;
     try {
       const saved = await firstValueFrom(
         this.http.post<Person>(
           `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/statement`,
-          null,
+          { asOf: date || null },
           { headers },
         ),
       );
       if (this.session.sheet() !== sheet) return;
+      asOf.value = '';
       this.replace(saved);
     } catch {
       if (this.session.sheet() !== sheet) return;
-      this.personError.set({ id: p.id, message: 'Could not take the statement.' });
+      this.personError.set({
+        id: p.id,
+        message: date
+          ? 'Could not take the statement as of that date: it must be on or before today, with the person on the sheet by then.'
+          : 'Could not take the statement.',
+      });
     } finally {
       this.stating = false;
     }

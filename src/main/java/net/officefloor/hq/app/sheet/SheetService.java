@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
 import java.time.Clock;
 import java.time.LocalDate;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.statement.DayEnds;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -19,11 +20,13 @@ public class SheetService {
     private final SheetRepository sheets;
     private final SheetSettingRepository settings;
     private final Rollup rollup;
+    private final DayEnds dayEnds;
     private final ApplicationEventPublisher events;
     private final Clock clock = Clock.systemDefaultZone();
 
-    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup,
+    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup, DayEnds dayEnds,
             ApplicationEventPublisher events) {
+        this.dayEnds = dayEnds;
         this.sheets = sheets;
         this.settings = settings;
         this.rollup = rollup;
@@ -84,12 +87,16 @@ public class SheetService {
     /**
      * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
      * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
-     * days are closed) and then the figures it moves.
+     * days are closed) and then the figures it moves. The sheet as it stands is first written down as at
+     * the end of the today it leaves (see {@link DayEnds}).
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
         Rollup.Figures before = rollup.figures(id);
+        if (!today.equals(sheet.getToday())) {
+            dayEnds.record(id, sheet.getToday());
+        }
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         events.publishEvent(new TodayChanged(id, user, today));

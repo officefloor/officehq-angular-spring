@@ -199,7 +199,7 @@ public class SheetAudit {
         change(e.sheetId(), e.user(), "STATEMENT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " due-total=" + (e.dueTotal() == null ? "n/a"
                         : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())
-                + " claims=" + e.claims());
+                + " claims=" + e.claims() + (e.asOf() == null ? "" : " asof=" + e.asOf()));
     }
 
     @TransactionalEventListener

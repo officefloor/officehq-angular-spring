@@ -119,7 +119,8 @@ public class ClaimService {
 
     /**
      * Edit a claim's amount, date and note; only a DRAFT can be edited (an open claim is voided and
-     * added again instead), and an edit is refused when a closed period contains its date or the new one.
+     * added again instead), and an edit is refused when a closed period contains its date or the new one, or
+     * when the date it is left with is after its person's retirement date.
      * Returns the person it belongs to.
      */
     @Transactional
@@ -134,9 +135,7 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
         }
         requireNotLockedByOther(claim, user);
-        if (!on.equals(claim.getDate())) {
-            people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
-        }
+        people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
         LocalDate correctsDate = requireCorrects(sheetId, claim.getPersonId(), amount, corrects);
         Rollup.Figures before = rollup.figures(sheetId);
         claim.setAmount(amount);

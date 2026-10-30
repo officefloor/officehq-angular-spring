@@ -184,12 +184,17 @@ public class PersonController {
                 form.grade(), form.gradeFrom(), form.termsDays()));
     }
 
+    /** A statement as asked for: as of a date on or before the sheet's today (none: as of now). */
+    public record StatementForm(LocalDate asOf) {
+    }
+
     /** Take a statement for the person; answers with the person as bound by it. */
     @PostMapping("/{personId}/statement")
     public PersonView statement(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user) {
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @RequestBody(required = false) StatementForm form) {
         String sheet = sheetId.trim();
-        statements.take(sheet, user.trim(), personId);
+        statements.take(sheet, user.trim(), personId, form == null ? null : form.asOf());
         return view(sheet, service.get(sheet, personId));
     }
 

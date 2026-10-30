@@ -96,6 +96,11 @@ public class Person {
                 .map(GradeFrom::getGrade).orElse(null);
     }
 
+    /** The grades the person was given, each from its date. */
+    public List<GradeFrom> getGrades() {
+        return List.copyOf(grades);
+    }
+
     /** Record the grade from the date, keeping the others; one already recorded from that date is replaced. */
     public void gradeFrom(String grade, LocalDate from) {
         grades.removeIf(g -> g.getFromDate() != null && Objects.equals(g.getFromDate(), from));
