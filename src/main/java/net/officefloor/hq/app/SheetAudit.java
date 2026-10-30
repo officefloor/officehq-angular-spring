@@ -32,6 +32,7 @@ import net.officefloor.hq.app.period.PeriodReopened;
 import net.officefloor.hq.app.period.PeriodUnlocked;
 import net.officefloor.hq.app.person.PatronAdded;
 import net.officefloor.hq.app.plan.PlanAdded;
+import net.officefloor.hq.app.plan.PlanPaused;
 import net.officefloor.hq.app.person.PersonAliasAdded;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.person.PersonFlagged;
@@ -344,6 +345,12 @@ public class SheetAudit {
         change(e.sheetId(), e.user(), "PLAN_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString() + " start=" + e.start()
                 + (e.day() == null ? " every=" + e.every() : " day=" + e.day()) + " end=" + e.end());
+    }
+
+    @TransactionalEventListener
+    public void on(PlanPaused e) {
+        change(e.sheetId(), e.user(), (e.resumed() ? "PLAN_RESUMED" : "PLAN_PAUSED") + " sheet=" + e.sheetId() + " by="
+                + e.user() + " name=" + e.name() + " start=" + e.start());
     }
 
     @TransactionalEventListener

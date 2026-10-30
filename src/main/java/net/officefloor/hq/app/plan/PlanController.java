@@ -36,9 +36,16 @@ public class PlanController {
             @Pattern(regexp = "\\d{1,2}") String day, @NotNull LocalDate end) {
     }
 
-    /** A plan on the sheet; its amount with two decimals, and how many claims it has made so far. */
+    /** A plan's pause: from the day it was paused up to the day it was resumed (null while still paused). */
+    public record PauseView(LocalDate from, LocalDate to) {
+    }
+
+    /**
+     * A plan on the sheet; its amount with two decimals, how many claims it has made so far, whether it is paused and
+     * its pauses.
+     */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated) {
+            LocalDate end, long generated, boolean paused, List<PauseView> pauses) {
     }
 
     /** How many claims a generate made. */
@@ -57,10 +64,35 @@ public class PlanController {
     @GetMapping("/plans")
     public List<PlanView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         return plans.list(sheetId.trim()).stream()
-                .map(p -> new PlanView(p.getId(), p.getPersonId(),
-                        p.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString(), p.getStart(), p.getEvery(),
-                        p.getDay(), p.getEnd(), plans.generated(p)))
+                .map(this::view)
                 .toList();
+    }
+
+    private PlanView view(Plan p) {
+        List<PauseView> pauses = plans.pauses(p).stream()
+                .map(x -> new PauseView(x.getPausedOn(), x.getResumedOn()))
+                .toList();
+        return new PlanView(p.getId(), p.getPersonId(), p.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString(),
+                p.getStart(), p.getEvery(), p.getDay(), p.getEnd(), plans.generated(p),
+                pauses.stream().anyMatch(x -> x.to() == null), pauses);
+    }
+
+    /** Pause a plan on the sheet's today; answers with every plan on the sheet. */
+    @PostMapping("/plans/{planId}/pause")
+    public List<PlanView> pause(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        plans.pause(sheet, user.trim(), planId, false);
+        return list(sheet);
+    }
+
+    /** Resume a paused plan on the sheet's today; answers with every plan on the sheet. */
+    @PostMapping("/plans/{planId}/resume")
+    public List<PlanView> resume(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        plans.pause(sheet, user.trim(), planId, true);
+        return list(sheet);
     }
 
     /** Add a plan to a person; answers with every plan on the sheet. */

@@ -3,6 +3,7 @@ package net.officefloor.hq.app.plan;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
@@ -22,7 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
  * the plan's amount for each plan date (the start, then every N days; or that day of every month from the start's month, on the month's
  * last day when it is shorter, leaving out dates before the start) up to its end and the sheet's today that has
  * none yet, dated that day with an empty note, by every rule of the claim form. A date the form refuses is skipped,
- * writing nothing, and tried again the next time. A viewer's generate makes nothing: every claim it would make is
+ * writing nothing, and tried again the next time. A plan date within one of the plan's pauses (on or after the day
+ * it was paused and before the day it was resumed) is skipped, not postponed: no claim is ever made for it. A viewer's generate makes nothing: every claim it would make is
  * refused.
  */
 @Service
@@ -30,6 +32,7 @@ public class Plans {
 
     private final PlanRepository plans;
     private final PlanClaimRepository made;
+    private final PlanPauseRepository pauses;
     private final PersonRepository people;
     private final ClaimService claims;
     private final SheetService sheets;
@@ -38,12 +41,13 @@ public class Plans {
     private final TransactionTemplate transaction;
     private final AccessService access;
 
-    public Plans(PlanRepository plans, PlanClaimRepository made, PersonRepository people, ClaimService claims,
+    public Plans(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses, PersonRepository people, ClaimService claims,
             SheetService sheets, SheetRepository sheetRows, ApplicationEventPublisher events,
             PlatformTransactionManager transactions, AccessService access) {
         this.access = access;
         this.plans = plans;
         this.made = made;
+        this.pauses = pauses;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
@@ -62,6 +66,38 @@ public class Plans {
     @Transactional(readOnly = true)
     public long generated(Plan plan) {
         return made.countByPlanId(plan.getId());
+    }
+
+    /** The plan's pauses in the order they were made. */
+    @Transactional(readOnly = true)
+    public List<PlanPause> pauses(Plan plan) {
+        return pauses.findByPlanIdOrderByIdAsc(plan.getId());
+    }
+
+    /**
+     * Pause the plan on the sheet's today, or resume it on the sheet's today; refused when pausing a paused plan or
+     * resuming a running one.
+     */
+    @Transactional
+    public void pause(String sheetId, String user, long planId, boolean resume) {
+        sheets.load(sheetId, user);
+        sheetRows.lockById(sheetId);
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
+        Optional<PlanPause> running = pauses.findByPlanIdAndResumedOnIsNull(planId);
+        LocalDate today = sheets.today(sheetId);
+        if (resume) {
+            PlanPause pause = running.orElseThrow(() -> new PlanRefused("The plan is not paused."));
+            pause.resume(today);
+            pauses.saveAndFlush(pause);
+        } else {
+            if (running.isPresent()) {
+                throw new PlanRefused("The plan is already paused.");
+            }
+            pauses.saveAndFlush(new PlanPause(planId, today));
+        }
+        String name = people.findByIdAndSheetId(plan.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new PlanPaused(sheetId, user, name, plan.getStart(), resume));
     }
 
     /**
@@ -101,7 +137,11 @@ public class Plans {
         int count = 0;
         for (Plan plan : list(sheetId)) {
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
+            List<PlanPause> skipped = pauses(plan);
             for (LocalDate on : plan.datesUpTo(last)) {
+                if (skipped.stream().anyMatch(p -> p.skips(on))) {
+                    continue;
+                }
                 if (makeClaim(sheetId, user, plan, on)) {
                     count++;
                 }

@@ -23,9 +23,12 @@ function fromDays(days: number): string {
 /**
  * The plan's first dates after the day and on or before its end, at most the limit, in order: the start then every N
  * days, or that day of every month from the start's month (on the month's last day when it is shorter, dates before
- * the start left out).
+ * the start left out). A date within one of the plan's pauses is left out; a plan still paused has none.
  */
 export function nextPlanDates(plan: Plan, after: string, limit = NEXT_DATES): string[] {
+  if (plan.paused) return [];
+  const skipped = (on: number) =>
+    plan.pauses.some((p) => on >= toDays(p.from) && (p.to === null || on < toDays(p.to)));
   const start = toDays(plan.start);
   const end = toDays(plan.end);
   const from = toDays(after);
@@ -33,7 +36,7 @@ export function nextPlanDates(plan: Plan, after: string, limit = NEXT_DATES): st
   if (plan.day === null) {
     const every = plan.every ?? 1;
     let on = from < start ? start : start + (Math.floor((from - start) / every) + 1) * every;
-    for (; on <= end && dates.length < limit; on += every) dates.push(fromDays(on));
+    for (; on <= end && dates.length < limit; on += every) if (!skipped(on)) dates.push(fromDays(on));
     return dates;
   }
   const [y, m] = plan.start.split('-').map(Number);
@@ -42,7 +45,7 @@ export function nextPlanDates(plan: Plan, after: string, limit = NEXT_DATES): st
     const length = new Date(Date.UTC(year, (month % 12) + 1, 0)).getUTCDate();
     const on = Date.UTC(year, month % 12, Math.min(plan.day, length)) / 86_400_000;
     if (on > end) break;
-    if (on >= start && on > from) dates.push(fromDays(on));
+    if (on >= start && on > from && !skipped(on)) dates.push(fromDays(on));
   }
   return dates;
 }
@@ -63,6 +66,10 @@ export interface Plan {
   end: string;
   /** How many claims the plan has made so far. */
   generated: number;
+  /** Whether the plan is paused now. */
+  paused: boolean;
+  /** The plan's pauses: from the day paused up to the day resumed (null while still paused). */
+  pauses: { from: string; to: string | null }[];
 }
 
 /** The active sheet's plans in the order they were added, re-read on every sheet load. */
@@ -118,6 +125,27 @@ export class PlanList {
     }
   }
 
+  /** Pause the plan, or resume it: '' once done, else why it was refused. */
+  async pause(planId: number, resume: boolean): Promise<string> {
+    const sheet = this.session.sheet();
+    if (!sheet) return 'Load a sheet first.';
+    const headers = { 'X-User': this.session.user() ?? '' };
+    try {
+      const plans = await firstValueFrom(
+        this.http.post<Plan[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/${resume ? 'resume' : 'pause'}`,
+          {},
+          { headers },
+        ),
+      );
+      if (this.session.sheet() === sheet) this.plans.set(plans);
+      return '';
+    } catch (err) {
+      const answer = err instanceof HttpErrorResponse ? err : null;
+      return answer?.error?.message ?? (resume ? 'Could not resume the plan.' : 'Could not pause the plan.');
+    }
+  }
+
   /** Make the claims every plan is due up to the sheet's today: how many were made. Throws when refused. */
   async generate(sheet: string): Promise<number> {
     const headers = { 'X-User': this.session.user() ?? '' };
@@ -153,6 +181,16 @@ export class PlanList {
           <span>to <span data-testid="plan-end">{{ pl.end }}</span></span>
           <span>Made <span data-testid="plan-generated">{{ pl.generated }}</span></span>
           <span>Next <span data-testid="plan-next-dates">{{ nextDates(pl) }}</span></span>
+          <span>Paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span></span>
+          <button type="button" data-testid="plan-pause" (click)="pause(pl.id, false)">
+            Pause<span class="visually-hidden"> plan from {{ pl.start }}</span>
+          </button>
+          <button type="button" data-testid="plan-resume" (click)="pause(pl.id, true)">
+            Resume<span class="visually-hidden"> plan from {{ pl.start }}</span>
+          </button>
+          @if (rowErrors()[pl.id]) {
+            <span role="alert" data-testid="plan-error">{{ rowErrors()[pl.id] }}</span>
+          }
         </li>
       }
     </ul>
@@ -218,6 +256,8 @@ export class PersonPlans {
   protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal('');
+  /** Why the last action on a plan's row was refused, by plan id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
 
@@ -225,6 +265,13 @@ export class PersonPlans {
   protected nextDates(plan: Plan): string {
     const today = this.session.today();
     return today ? nextPlanDates(plan, today).join(', ') : '';
+  }
+
+  /** Pause or resume the plan, showing on its row why when refused. */
+  protected async pause(planId: number, resume: boolean): Promise<void> {
+    this.rowErrors.update((errors) => ({ ...errors, [planId]: '' }));
+    const refusal = await this.list.pause(planId, resume);
+    this.rowErrors.update((errors) => ({ ...errors, [planId]: refusal }));
   }
 
   protected value(e: Event): string {
