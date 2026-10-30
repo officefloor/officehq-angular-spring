@@ -705,12 +705,14 @@ public class ClaimService {
 
     /**
      * A steward waives an OPEN or PENDING claim's late charge: it bears none from then on, whatever its
-     * overdue state. Anyone else, a claim in any other status, or one already waived is refused and nothing
+     * overdue state, even one due by a date inside a closed period (the period's fixed figures stay as they
+     * are). Anyone else, a claim in any other status, or one already waived is refused and nothing
      * changes. Returns the person it belongs to.
      */
     @Transactional
     public long waive(String sheetId, String user, long claimId) {
-        Claim claim = claim(sheetId, claimId);
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         if (access.roleOf(sheetId, user) != Role.STEWARD) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can waive a claim's late charge");
         }
@@ -732,8 +734,8 @@ public class ClaimService {
     }
 
     /**
-     * Hold an OPEN or PENDING claim, or release it when it is held: while held it counts in the live totals as a
-     * held person's claims do (left out unless a statement binds it). A claim in any other status is refused and
+     * Hold an OPEN or PENDING claim, or release it when it is held: while held its due figures count in the live totals as a
+     * held person's claims do (left out unless a statement binds it), but its amount stays in claimed. A claim in any other status is refused and
      * nothing changes. Returns the person it belongs to.
      */
     @Transactional

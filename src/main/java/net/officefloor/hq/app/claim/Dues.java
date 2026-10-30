@@ -145,12 +145,19 @@ public final class Dues {
     }
 
     /**
-     * A person's claimed: the sum of the amounts of the claims that {@link #counts count}, leaving out the
-     * claims that correct another.
+     * A person's claimed: the sum of the amounts of the OPEN, PENDING and SETTLED claims, leaving out the claims
+     * that correct another, a claim {@link #deferred deferred} on the sheet's today and an unbound OPEN or PENDING
+     * claim once that today has reached the person's retirement date. A hold (the person's or the claim's own)
+     * leaves a claim in claimed; only its due figures leave the totals while held.
      */
     public static BigDecimal claimed(List<Claim> claims, Holds holds, LocalDate today) {
-        return claims.stream().filter(c -> c.getCorrects() == null && counts(c, holds, today)).map(Claim::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return claims.stream().filter(c -> c.getCorrects() == null && c.getStatus().counts() && !deferred(c, today)
+                && !retiredOut(c, holds, today)).map(Claim::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** Whether the person's retirement leaves the claim out: unbound, OPEN or PENDING, and that today has reached it. */
+    private static boolean retiredOut(Claim claim, Holds holds, LocalDate today) {
+        return !bound(claim) && claim.getStatus().unpaid() && holds.retiredOn(today);
     }
 
     /**
@@ -159,9 +166,8 @@ public final class Dues {
      * sheet's today has reached the person's retirement date, and an OPEN or PENDING claim that is itself held.
      */
     private static boolean leftOut(Claim claim, Holds holds, LocalDate today) {
-        return !bound(claim) && ((claim.getStatus().unpaid() && holds.on(claim.getDate()))
-                || (claim.getStatus().unpaid() && holds.retiredOn(today))
-                || (claim.getStatus().unpaid() && claim.isHeld()));
+        return retiredOut(claim, holds, today) || (!bound(claim) && claim.getStatus().unpaid()
+                && (holds.on(claim.getDate()) || claim.isHeld()));
     }
 
     /**

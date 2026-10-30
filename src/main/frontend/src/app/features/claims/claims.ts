@@ -64,7 +64,7 @@ export interface Claim {
   reviewLate: boolean;
   /** Whether a steward waived the claim's late charge: it then bears none, whatever its overdue state. */
   waived: boolean;
-  /** Whether the claim is held: while OPEN or PENDING and not bound by a statement, it counts in no live total. */
+  /** Whether the claim is held: while OPEN or PENDING and not bound by a statement, its due figures count in no live total (its amount stays in claimed). */
   held: boolean;
   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
   remindedOn: string | null;
@@ -128,7 +128,7 @@ export interface Hold {
   to: string | null;
 }
 
-/** Whether the claim is OPEN, not bound by a statement, and dated within one of the holds: it then counts in no live total. */
+/** Whether the claim is OPEN, not bound by a statement, and dated within one of the holds: its due figures then count in no live total (its amount stays in claimed). */
 export function heldOut(c: Claim, holds: Hold[]): boolean {
   return c.status === 'OPEN' && !c.stated && holds.some((h) => c.date >= h.from && (h.to === null || c.date <= h.to));
 }
@@ -152,7 +152,7 @@ export interface PersonWithClaims {
   /** The person's tags: trimmed, lower-cased, without repeats, sorted. */
   tags: string[];
   claims: Claim[];
-  /** The amounts of the OPEN, PENDING and SETTLED claims added up, but not unbound OPEN ones dated within a hold. */
+  /** The amounts of the OPEN, PENDING and SETTLED claims added up, held ones included, but not deferred ones nor unbound ones left out by a retirement. */
   claimed: string;
   /** Claimed at the rate for the person's grade, held to the sheet's cap; null when the grade has no rate. */
   dueTotal: string | null;
