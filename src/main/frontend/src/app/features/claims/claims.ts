@@ -247,6 +247,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <button type="button" data-testid="claim-edit" (click)="edit(c)">
             Edit claim<span class="visually-hidden"> {{ c.amount }} {{ c.date }}</span>
           </button>
+          <label [for]="'claim-inline-amount-' + c.id">Amount</label>
+          <input
+            [id]="'claim-inline-amount-' + c.id"
+            inputmode="decimal"
+            data-testid="claim-inline-amount"
+            [value]="inlineAmounts()[c.id] ?? ''"
+            (input)="setInlineAmount(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-inline-save" (click)="saveAmount(c)">
+            Save amount<span class="visually-hidden"> of claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           @if (editing() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           }
@@ -329,6 +340,8 @@ export class Claims implements OnInit {
   protected readonly newDates = signal<Record<number, string>>({});
   /** The amount typed for splitting off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The new amount typed on each claim's row, by claim id. */
+  protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The id of the person chosen to reassign each claim to, by claim id. */
   protected readonly reassignTo = signal<Record<number, string>>({});
   /** The other people on the sheet, whom this person's claims can be reassigned to. */
@@ -583,6 +596,55 @@ export class Claims implements OnInit {
     if (period?.closed) return `The claim is in the closed period ${period.name}, so it cannot be edited.`;
     if (c.lockedBy !== null && c.lockedBy !== this.session.user()) return `${c.lockedBy} is editing this claim.`;
     return null;
+  }
+
+  protected setInlineAmount(id: number, amount: string): void {
+    this.inlineAmounts.update((all) => ({ ...all, [id]: amount }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Change a DRAFT claim's amount on its row, by the claim form's rules: it is refused on the row when the
+   * amount is malformed, the claim cannot be edited (not a DRAFT, in a closed period, or locked by another
+   * user), or the user is a viewer. A saved amount closes the user's own editor on the claim.
+   */
+  protected async saveAmount(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.inlineAmounts()[c.id] ?? '').trim();
+    if (!AMOUNT.test(amount)) {
+      this.claimError.set({ id: c.id, message: 'Enter an amount with up to two decimals; a negative amount is a correction.' });
+      return;
+    }
+    const refusal = this.editRefusal(c);
+    if (refusal !== null) {
+      this.claimError.set({ id: c.id, message: refusal });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.put<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/amount`,
+          { amount },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.inlineAmounts.update((all) => ({ ...all, [c.id]: '' }));
+      if (this.editing() === c.id) this.reset();
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refused =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refused || 'The claim\'s amount cannot be changed to that.' });
+    } finally {
+      this.busy = false;
+    }
   }
 
   /**

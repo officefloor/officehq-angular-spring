@@ -51,6 +51,10 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
     }
 
+    /** A DRAFT claim's new amount, entered on its row: up to two decimals, negative only for a correction. */
+    public record AmountForm(@NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount) {
+    }
+
     /** Pasted lines of name,amount,date,note, one claim per line. */
     public record PasteForm(@NotNull @Size(max = 100_000) String text) {
     }
@@ -141,6 +145,15 @@ public class ClaimController {
         long id = claims.edit(sheet, user.trim(), claimId, new BigDecimal(form.amount()), form.date(), form.note(),
                 form.corrects());
         return view(sheet, id);
+    }
+
+    /** Change a DRAFT claim's amount on its row, by the claim form's rules. */
+    @PutMapping("/claims/{claimId}/amount")
+    public PersonView editAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody AmountForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.editAmount(sheet, user.trim(), claimId, new BigDecimal(form.amount())));
     }
 
     /** Open a claim's editor, locking the claim for other users. */

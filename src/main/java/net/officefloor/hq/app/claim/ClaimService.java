@@ -160,6 +160,16 @@ public class ClaimService {
     }
 
     /**
+     * Change a claim's amount alone, keeping its date, note and the claim it corrects; refused exactly as
+     * an {@link #edit} with that amount is. Returns the person it belongs to.
+     */
+    @Transactional
+    public long editAmount(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = claim(sheetId, claimId);
+        return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects());
+    }
+
+    /**
      * Open a claim's editor, locking the claim for every other user until the editor is saved or cancelled
      * or the sheet's today changes. Only a DRAFT due by a date outside every closed period can be edited, and a claim
      * another user's editor holds is refused; a refusal takes no lock. No audit line. Returns the person
