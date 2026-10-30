@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.claim.RatePreviewService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -51,10 +53,25 @@ public class RateController {
         }
     }
 
-    private final RateService service;
+    /** A rate preview as shown: how many claims' dues would differ, and the sum of the differences (two decimals). */
+    public record PreviewView(int count, String diff) {
+    }
 
-    public RateController(RateService service) {
+    private final RateService service;
+    private final RatePreviewService previews;
+
+    public RateController(RateService service, RatePreviewService previews) {
         this.service = service;
+        this.previews = previews;
+    }
+
+    /** What the candidate percent would do to the dues of the grade's OPEN and PENDING claims; nothing is saved. */
+    @GetMapping("/{grade}/preview")
+    public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestParam @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct) {
+        RatePreviewService.Preview p = previews.preview(sheetId.trim(), grade, new BigDecimal(pct));
+        return new PreviewView(p.count(), p.diff().toPlainString());
     }
 
     @GetMapping

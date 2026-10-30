@@ -12,6 +12,12 @@ interface Rate {
   pct: string;
 }
 
+/** What a candidate rate would do: how many claims' dues would differ, and the sum of the differences. */
+interface Preview {
+  count: number;
+  diff: string;
+}
+
 const GRADES = ['A', 'B', 'C'];
 const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -94,6 +100,37 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
         }
       </form>
+      <form (submit)="preview($event)" aria-label="Preview rate">
+        <label for="rate-preview-grade">Grade</label>
+        <select
+          id="rate-preview-grade"
+          data-testid="rate-preview-grade"
+          [value]="previewGrade()"
+          (change)="previewGrade.set(value($event)); previewError.set('')"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input
+          id="rate-preview-pct"
+          inputmode="decimal"
+          data-testid="rate-preview-pct"
+          [value]="previewPct()"
+          (input)="previewPct.set(value($event)); previewError.set('')"
+        />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewed(); as p) {
+          <p>
+            Claims whose due would change: <span data-testid="rate-preview-count">{{ p.count }}</span>;
+            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+          </p>
+        }
+        @if (previewError()) {
+          <p role="alert" data-testid="rate-preview-error">{{ previewError() }}</p>
+        }
+      </form>
     </section>
   `,
 })
@@ -126,6 +163,10 @@ export class Rates {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal('');
+  protected readonly previewGrade = signal('A');
+  protected readonly previewPct = signal('');
+  protected readonly previewed = signal<Preview | null>(null);
+  protected readonly previewError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
 
@@ -139,6 +180,10 @@ export class Rates {
       this.from.set('');
       this.to.set('');
       this.error.set('');
+      this.previewGrade.set('A');
+      this.previewPct.set('');
+      this.previewed.set(null);
+      this.previewError.set('');
       if (sheet) void this.reload(sheet);
     });
   }
@@ -196,6 +241,33 @@ export class Rates {
       this.error.set('Could not set the rate.');
     } finally {
       this.busy = false;
+    }
+  }
+
+  /** Show what the candidate rate would do to the grade's OPEN and PENDING claims; nothing is saved. */
+  protected async preview(e: Event): Promise<void> {
+    e.preventDefault();
+    this.previewed.set(null);
+    this.previewError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const grade = this.previewGrade();
+    const pct = this.previewPct().trim();
+    if (!GRADES.includes(grade)) {
+      this.previewError.set('Choose a grade.');
+      return;
+    }
+    if (!PCT.test(pct)) {
+      this.previewError.set('Enter a rate of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    try {
+      const result = await firstValueFrom(
+        this.http.get<Preview>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}/preview`, { params: { pct } }),
+      );
+      if (this.session.sheet() === sheet) this.previewed.set(result);
+    } catch {
+      if (this.session.sheet() === sheet) this.previewError.set('Could not preview the rate.');
     }
   }
 
