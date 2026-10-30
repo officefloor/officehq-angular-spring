@@ -1,0 +1,115 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 589776441..6260d6ed3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -113,12 +113,13 @@ function sortPeople(people: Person[], key: SortKey): Person[] {
+   }
+ }
+ 
+-/** A sheet's figures that are consolidated over it and its descendants. */
++/** Figures consolidated over a sheet and its descendants. */
+ interface SheetFigures {
++  /** Each person counted once: people whose names or aliases match, as names are compared, are one person. */
+   people: number;
+-  /** In cents. */
++  /** In cents: every person's due-total over the tree, trimmed once over them all. */
+   due: number;
+-  /** In cents. */
++  /** In cents: every person's overdue-total over the tree, trimmed once over them all. */
+   overdue: number;
+   /** Per grade, in grade order, the due-totals of the people on it (retired people left out) added up, in cents. */
+   grades: { grade: string; due: number }[];
+@@ -126,9 +127,26 @@ interface SheetFigures {
+   statuses: { status: string; count: number }[];
+ }
+ 
++/** How many people there are, those whose names or aliases match (as names are compared) taken as one. */
++function distinctPeople(people: Person[]): number {
++  const parent = people.map((_, i) => i);
++  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
++  const byKey = new Map<string, number>();
++  people.forEach((p, i) => {
++    for (const n of [p.name, ...(p.aliases ?? [])]) {
++      const key = nameKey(n);
++      const seen = byKey.get(key);
++      if (seen === undefined) byKey.set(key, i);
++      else parent[root(i)] = root(seen);
++    }
++  });
++  return new Set(people.map((_, i) => root(i))).size;
++}
++
++/** The figures over all the people of a tree of sheets. */
+ function figuresOf(people: Person[]): SheetFigures {
+   return {
+-    people: people.length,
++    people: distinctPeople(people),
+     due: dueTotalOf(people),
+     overdue: overdueTotalOf(people),
+     grades: gradeDueCents(people),
+@@ -1062,29 +1080,23 @@ export class People {
+   /** Everyone's overdue-total added up, trimmed (see {@link trimmedSum}). */
+   protected readonly overdueTotal = computed(() => (overdueTotalOf(this.people()) / 100).toFixed(2));
+   /**
+-   * The figures of each of the sheet's descendants (its children, theirs, and so on), as each shows them: as of the
++   * The people of each of the sheet's descendants (its children, theirs, and so on), as each shows them: as of the
+    * date the sheet is shown as of, while one is set.
+    */
+-  private readonly descendants = signal<SheetFigures[]>([]);
++  private readonly descendants = signal<Person[][]>([]);
+   /**
+    * The people counted, the due- and overdue-totals, the due-totals per grade and the claims per status added up, over the sheet and all its descendants, as
+    * they stand live; while the sheet is shown as of a date, each as it stood at the end of that day, that date
+    * as its today.
+    */
+   protected readonly consolidated = computed(() => {
+-    const all = [figuresOf(this.people()), ...this.descendants()];
++    const f = figuresOf([...this.people(), ...this.descendants().flat()]);
+     return {
+-      people: all.reduce((sum, f) => sum + f.people, 0),
+-      due: (all.reduce((sum, f) => sum + f.due, 0) / 100).toFixed(2),
+-      overdue: (all.reduce((sum, f) => sum + f.overdue, 0) / 100).toFixed(2),
+-      grades: all[0].grades.map(({ grade }) => ({
+-        grade,
+-        due: (all.reduce((sum, f) => sum + (f.grades.find((g) => g.grade === grade)?.due ?? 0), 0) / 100).toFixed(2),
+-      })),
+-      statuses: all[0].statuses.map(({ status }) => ({
+-        status,
+-        count: all.reduce((sum, f) => sum + (f.statuses.find((s) => s.status === status)?.count ?? 0), 0),
+-      })),
++      people: f.people,
++      due: (f.due / 100).toFixed(2),
++      overdue: (f.overdue / 100).toFixed(2),
++      grades: f.grades.map(({ grade, due }) => ({ grade, due: (due / 100).toFixed(2) })),
++      statuses: f.statuses,
+     };
+   });
+ 
+@@ -2307,7 +2319,7 @@ export class People {
+       firstValueFrom(
+         this.http.get<{ last: number | null }>(`/api/sheets/${encodeURIComponent(sheet)}/claims/settle-batch`),
+       ),
+-      this.descendantFigures(sheet),
++      this.descendantPeople(sheet),
+       firstValueFrom(
+         this.http.get<string[]>('/api/me/hidden-columns', { headers: { 'X-User': this.session.user() ?? '' } }),
+       ),
+@@ -2323,15 +2335,13 @@ export class People {
+   }
+ 
+   /**
+-   * The figures of each of the sheet's descendants, each read from its own people as they stand live, or while the
++   * The people of each of the sheet's descendants, each read as they stand live, or while the
+    * screen shows the sheet as of a date, as they stood at the end of that day (the request names the date).
+    */
+-  private async descendantFigures(sheet: string): Promise<SheetFigures[]> {
++  private async descendantPeople(sheet: string): Promise<Person[][]> {
+     const ids = await firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/descendants`));
+     return Promise.all(
+-      ids.map(async (id) =>
+-        figuresOf(await firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(id)}/people`))),
+-      ),
++      ids.map((id) => firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(id)}/people`))),
+     );
+   }
+ }
