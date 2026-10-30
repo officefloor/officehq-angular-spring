@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
 import java.time.Clock;
 import java.time.LocalDate;
 import net.officefloor.hq.app.rollup.Rollup;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,12 +19,15 @@ public class SheetService {
     private final SheetRepository sheets;
     private final SheetSettingRepository settings;
     private final Rollup rollup;
+    private final ApplicationEventPublisher events;
     private final Clock clock = Clock.systemDefaultZone();
 
-    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup) {
+    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup,
+            ApplicationEventPublisher events) {
         this.sheets = sheets;
         this.settings = settings;
         this.rollup = rollup;
+        this.events = events;
     }
 
     public Sheet load(String id, String user) {
@@ -50,6 +54,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getPeriodNumberingFrom).orElse(null);
     }
 
+    /** The sheet's grace days as set; null when blank (off). */
+    public Integer graceDays(String id) {
+        return sheets.findById(id).map(Sheet::getGraceDays).orElse(null);
+    }
+
     /** The sheet's today: the date to use for every decision and default date on the sheet. */
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));
@@ -69,7 +78,8 @@ public class SheetService {
 
     /**
      * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
-     * line of its own, only the figures it moves.
+     * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
+     * days are closed) and then the figures it moves.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
@@ -77,6 +87,7 @@ public class SheetService {
         Rollup.Figures before = rollup.figures(id);
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
+        events.publishEvent(new TodayChanged(id, user, today));
         rollup.changed(id, user, before);
         return saved;
     }

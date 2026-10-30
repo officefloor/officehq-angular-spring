@@ -133,7 +133,8 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(PeriodClosed e) {
         audit.record("PERIOD_CLOSED sheet=" + e.sheetId() + " by=" + e.user()
-                + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString());
+                + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + (e.auto() ? " auto=yes" : ""));
     }
 
     @TransactionalEventListener

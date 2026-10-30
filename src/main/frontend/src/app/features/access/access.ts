@@ -25,6 +25,8 @@ interface Settings {
   policyDate: string | null;
   /** From the sheet's today on this date, a claim opened is numbered within its period; null when blank (off). */
   periodNumberingFrom: string | null;
+  /** The days after a period's to-date before a change of the sheet's today closes it; null when blank (off). */
+  graceDays: string | null;
   /** The most a person's due-total comes to, with two decimals; null when there is no cap. */
   cap: string | null;
   /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
@@ -75,7 +77,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // from its date (blank: 14), and each grade's own terms (blank: the sheet's terms), and the late percent, what an overdue claim's due gains of its figure for
 // every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
 // (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
-// numbered within its period (blank: off), and the cap, the most a person's due-total comes to (blank: no
+// numbered within its period (blank: off), and the grace days, the days after an open period's to-date
+// before a change of the sheet's today closes it (blank: off; not dated), and the cap, the most a person's due-total comes to (blank: no
 // cap), and the proof threshold, the most due a claim may have to be settled or approved with no proof
 // (blank: none), and the permission matrix, the roles that may open, settle, void, reassign, close and
 // reopen, each a comma separated list (blank: the standing rule; not dated). The settings that carry a figure are dated: each is saved from its from-date (blank: the sheet's
@@ -134,6 +137,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
+      <p>Grace days <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
       @for (p of perms; track p.field) {
@@ -245,6 +249,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="numberingFromInput.set(value($event)); numberingFromTouched = true; settingsError.set('')"
           (keydown)="numberingFromTouched = numberingFromTouched || clears($event)"
         />
+        <label for="setting-grace-days">Grace days: an open period closes once the sheet's today is past its to-date by more than these days (blank: off)</label>
+        <input
+          id="setting-grace-days"
+          inputmode="numeric"
+          data-testid="setting-grace-days"
+          [value]="graceDaysInput()"
+          (input)="graceDaysInput.set(value($event)); graceDaysTouched = true; settingsError.set('')"
+          (keydown)="graceDaysTouched = graceDaysTouched || clears($event)"
+        />
         <label for="setting-cap">Cap on a person's due-total (blank: no cap)</label>
         <input
           id="setting-cap"
@@ -321,6 +334,8 @@ export class Access {
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly numberingFromInput = signal('');
+  protected readonly graceDays = signal<string | null>(null);
+  protected readonly graceDaysInput = signal('');
   protected readonly cap = signal<string | null>(null);
   protected readonly capInput = signal('');
   protected readonly proofThreshold = signal<string | null>(null);
@@ -340,6 +355,7 @@ export class Access {
   protected latePctTouched = false;
   protected policyDateTouched = false;
   protected numberingFromTouched = false;
+  protected graceDaysTouched = false;
   protected capTouched = false;
   protected proofThresholdTouched = false;
   protected readonly settingsError = signal('');
@@ -354,7 +370,7 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, cap: null, proofThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, cap: null, proofThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -459,6 +475,11 @@ export class Access {
       this.settingsError.set('Enter a period numbering from date, or leave it blank for off.');
       return;
     }
+    const graceDays = this.graceDaysInput().trim();
+    if (this.graceDaysTouched && graceDays !== '' && !DAYS.test(graceDays)) {
+      this.settingsError.set('Enter grace days of 0 or more whole days, or leave them blank for off.');
+      return;
+    }
     const cap = this.capInput().trim();
     if (this.capTouched && cap !== '' && !LIMIT.test(cap)) {
       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank for no cap.');
@@ -495,6 +516,7 @@ export class Access {
     if (this.latePctTouched) body.latePct = latePct;
     if (this.policyDateTouched) body.policyDate = policyDate;
     if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
+    if (this.graceDaysTouched) body.graceDays = graceDays;
     if (this.capTouched) body.cap = cap;
     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
     for (const p of PERMS) {
@@ -551,6 +573,9 @@ export class Access {
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.numberingFromInput.set(settings.periodNumberingFrom ?? '');
     this.numberingFromTouched = false;
+    this.graceDays.set(settings.graceDays);
+    this.graceDaysInput.set(settings.graceDays ?? '');
+    this.graceDaysTouched = false;
     this.cap.set(settings.cap);
     this.capInput.set(settings.cap ?? '');
     this.capTouched = false;

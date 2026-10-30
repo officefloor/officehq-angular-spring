@@ -3,6 +3,7 @@ package net.officefloor.hq.app.period;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,8 @@ import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.event.EventListener;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -100,6 +103,30 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodRefused("The period is already closed.");
         }
+        fix(sheetId, user, period, false);
+        return period;
+    }
+
+    /**
+     * When the sheet's today is changed and it has grace days, close every open period whose to-date plus
+     * the grace days is before the new today, in order of their to-dates, each as a close by hand would.
+     */
+    @EventListener
+    @Transactional
+    public void on(TodayChanged e) {
+        Integer grace = sheets.graceDays(e.sheetId());
+        if (grace == null) {
+            return;
+        }
+        sheetRows.lockById(e.sheetId());
+        list(e.sheetId()).stream()
+                .filter(p -> !p.isClosed() && p.getToDate().plusDays(grace).isBefore(e.today()))
+                .sorted(Comparator.comparing(Period::getToDate))
+                .forEach(p -> fix(e.sheetId(), e.user(), p, true));
+    }
+
+    /** Fix the period's due-totals as of the end of its last day and close it. */
+    private void fix(String sheetId, String user, Period period, boolean auto) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, p -> p));
         RateTable table = rates.table(sheetId);
@@ -118,8 +145,7 @@ public class PeriodService {
         period.close(totals);
         BigDecimal total = period.getClosedTotal().setScale(2, RoundingMode.HALF_UP);
         periods.flush();
-        events.publishEvent(new PeriodClosed(sheetId, user, period.getName(), total));
-        return period;
+        events.publishEvent(new PeriodClosed(sheetId, user, period.getName(), total, auto));
     }
 
     /**

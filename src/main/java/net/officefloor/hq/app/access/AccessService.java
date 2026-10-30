@@ -48,6 +48,8 @@ public class AccessService {
 
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
+    public static final String GRACE_DAYS = "grace-days";
+
     public static final String CAP = DatedSettings.CAP;
 
     public static final String PROOF_THRESHOLD = DatedSettings.PROOF_THRESHOLD;
@@ -115,6 +117,12 @@ public class AccessService {
         return sheets.periodNumberingFrom(sheetId);
     }
 
+    /** The sheet's grace days as set; null when blank (off). */
+    @Transactional(readOnly = true)
+    public Integer graceDays(String sheetId) {
+        return sheets.graceDays(sheetId);
+    }
+
     /** Give a user name a role on the sheet, replacing the one it had. */
     @Transactional
     public SheetRole setRole(String sheetId, String user, String name, Role role) {
@@ -136,8 +144,8 @@ public class AccessService {
      */
     @Transactional
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
-            Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, Dated cap,
-            Dated proofThreshold, Map<Permission, String> permissions) {
+            Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
+            Dated cap, Dated proofThreshold, Map<Permission, String> permissions) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -161,6 +169,9 @@ public class AccessService {
         if (periodNumberingFrom != null) {
             setPeriodNumberingFrom(sheetId, user,
                     periodNumberingFrom.isEmpty() ? null : LocalDate.parse(periodNumberingFrom));
+        }
+        if (graceDays != null) {
+            setGraceDays(sheetId, user, graceDays.isEmpty() ? null : Integer.valueOf(graceDays));
         }
         if (cap != null) {
             setDated(sheetId, user, CAP, money(cap.value(), null), cap.from(), true);
@@ -267,6 +278,19 @@ public class AccessService {
         sheetRows.saveAndFlush(sheet);
         events.publishEvent(new SettingChanged(sheetId, user, PERIOD_NUMBERING_FROM, from == null ? "" : from.toString(), null));
         return from;
+    }
+
+    /**
+     * Save the sheet's grace days; null turns them off. Not dated; it takes effect at the next change of
+     * the sheet's today.
+     */
+    @Transactional
+    public Integer setGraceDays(String sheetId, String user, Integer days) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheet.setGraceDays(days);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, GRACE_DAYS, days == null ? "" : days.toString(), null));
+        return days;
     }
 
     /**
