@@ -588,6 +588,32 @@ public class ClaimService {
     }
 
     /**
+     * A steward assigns a REVIEW claim's review to a user; the claim keeps the user once it leaves REVIEW. A blank
+     * user, a claim not REVIEW, or an assignment by anyone but a steward is refused and nothing changes. Returns the
+     * person it belongs to.
+     */
+    @Transactional
+    public long assignReview(String sheetId, String user, long claimId, String assignee) {
+        Claim claim = claim(sheetId, claimId);
+        if (assignee == null || assignee.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter the user to assign the review to");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be assigned for review; only a REVIEW one can");
+        }
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can assign a review");
+        }
+        claim.setReviewAssigned(assignee);
+        claims.flush();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new ReviewAssigned(sheetId, user, person, claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), assignee));
+        return claim.getPersonId();
+    }
+
+    /**
      * A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement
      * bound it to stays bound; so does its period (the one containing its due-by) and its number. A claim
      * not OPEN or PENDING, one due by a date inside a closed period, a new date after its person's

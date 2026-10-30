@@ -92,6 +92,10 @@ public class ClaimController {
     public record VoidForm(@Size(max = 1000) String reason) {
     }
 
+    /** The user a REVIEW claim's review is assigned to. */
+    public record ReviewAssignForm(@NotBlank @Size(max = 100) String user) {
+    }
+
     /** The person a claim is shared with and their share, a percent with two decimals. */
     public record ShareForm(@NotNull Long personId, @NotBlank @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
     }
@@ -251,6 +255,15 @@ public class ClaimController {
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
         String sheet = sheetId.trim();
         return view(sheet, claims.review(sheet, user.trim(), claimId));
+    }
+
+    /** A steward assigns a REVIEW claim's review to a user. */
+    @PostMapping("/claims/{claimId}/assign-review")
+    public PersonView assignReview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody ReviewAssignForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.assignReview(sheet, user.trim(), claimId, form.user().trim()));
     }
 
     /** Open the selected claims in list order; answers how many were opened and how many refused. */

@@ -144,6 +144,10 @@ public class Claim {
     @Column(name = "held", nullable = false)
     private boolean held;
 
+    /** The user a steward assigned the claim's review to; null when never assigned. */
+    @Column(name = "review_assigned", length = 100)
+    private String reviewAssigned;
+
     /** How many proofs the claim has; it starts at 0. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -246,6 +250,7 @@ public class Claim {
         arrived.escalated = escalated;
         arrived.waived = waived;
         arrived.held = held;
+        arrived.reviewAssigned = reviewAssigned;
         arrived.reviewOn = reviewOn;
         arrived.proofs = proofs;
         arrived.proofPhotos = proofPhotos;
@@ -368,6 +373,14 @@ public class Claim {
 
     public void setHeld(boolean held) {
         this.held = held;
+    }
+
+    public String getReviewAssigned() {
+        return reviewAssigned;
+    }
+
+    public void setReviewAssigned(String reviewAssigned) {
+        this.reviewAssigned = reviewAssigned;
     }
 
     public boolean isEscalated() {

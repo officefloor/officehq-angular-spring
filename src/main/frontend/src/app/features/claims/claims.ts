@@ -69,6 +69,8 @@ export interface Claim {
   /** The other people the claim is shared with, in the order they were added: each holds a share (a percent with
    *  two decimals) of its due, which counts in their due-total, settled-total and open-total, and not in its own person's. */
   shares: ClaimShare[];
+  /** The user a steward assigned the claim's review to; null when never assigned. It stays once the claim leaves REVIEW. */
+  reviewAssigned: string | null;
   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
   remindedOn: string | null;
   /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
@@ -275,6 +277,17 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-hold" (click)="toggleHold(c)">
             {{ c.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+          </button>
+          <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssigned ?? '' }}</span></span>
+          <label [for]="'claim-review-user-' + c.id">Assign review to<span class="visually-hidden"> for claim {{ c.amount }} {{ c.date }}</span></label>
+          <input
+            [id]="'claim-review-user-' + c.id"
+            data-testid="claim-review-user"
+            [value]="reviewUsers()[c.id] ?? ''"
+            (input)="setReviewUser(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-review-assign" (click)="assignReview(c)">
+            Assign review<span class="visually-hidden"> of claim {{ c.amount }} {{ c.date }}</span>
           </button>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <button type="button" data-testid="claim-remind" (click)="remind(c)">
@@ -613,6 +626,8 @@ export class Claims implements OnInit {
   protected readonly lineFields = signal<Record<number, { label: string; qty: string; unit: string }>>({});
   /** The comment typed for each claim, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
+  /** The user typed to assign each claim's review to, by claim id. */
+  protected readonly reviewUsers = signal<Record<number, string>>({});
   /** The new amount typed on each claim's row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The id of the person chosen to share each claim with, by claim id. */
@@ -869,6 +884,45 @@ export class Claims implements OnInit {
       const refusal =
         err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? (c.held ? 'The claim cannot be released.' : 'The claim cannot be held.') });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected setReviewUser(id: number, user: string): void {
+    this.reviewUsers.update((all) => ({ ...all, [id]: user }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** A steward assigns a REVIEW claim's review to the user typed; a refusal shows on the claim's row. */
+  protected async assignReview(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const user = (this.reviewUsers()[c.id] ?? '').trim();
+    if (user === '') {
+      this.claimError.set({ id: c.id, message: 'Enter the user to assign the review to.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/assign-review`,
+          { user },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.reviewUsers.update((all) => ({ ...all, [c.id]: '' }));
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The claim\'s review cannot be assigned.' });
     } finally {
       this.busy = false;
     }

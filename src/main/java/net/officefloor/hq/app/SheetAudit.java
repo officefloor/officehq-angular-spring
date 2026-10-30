@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.ClaimShared;
 import net.officefloor.hq.app.claim.ClaimReminded;
 import net.officefloor.hq.app.claim.ClaimWaived;
 import net.officefloor.hq.app.claim.ClaimHeld;
+import net.officefloor.hq.app.claim.ReviewAssigned;
 import net.officefloor.hq.app.claim.ClaimReleased;
 import net.officefloor.hq.app.claim.ClaimEscalated;
 import net.officefloor.hq.app.claim.ClaimSplit;
@@ -204,6 +205,14 @@ public class SheetAudit {
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " with=" + e.with() + " share=" + e.share().setScale(2, RoundingMode.HALF_UP).toPlainString());
+    }
+
+    @TransactionalEventListener
+    public void on(ReviewAssigned e) {
+        change(e.sheetId(), e.user(), "REVIEW_ASSIGNED sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + " user=" + e.assignee());
     }
 
     @TransactionalEventListener

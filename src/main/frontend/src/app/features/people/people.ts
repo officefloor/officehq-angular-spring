@@ -181,6 +181,7 @@ function csvField(value: string): string {
       <p>My due total <strong data-testid="my-due-total">{{ (me() === null ? '' : (me()!.dueTotal ?? 'n/a')) | figure }}</strong></p>
       <p>My overdue total <strong data-testid="my-overdue-total">{{ (me()?.overdueTotal ?? '') | figure }}</strong></p>
       <p>My crew due total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+      <p>My reviews <strong data-testid="my-reviews-count">{{ myReviewsCount() }}</strong></p>
     </header>
     <section aria-label="Steward dashboard">
       <h2>Steward dashboard</h2>
@@ -1088,6 +1089,13 @@ export class People {
     if (user === null) return null;
     const key = nameKey(user);
     return this.people().find((p) => [p.name, ...(p.aliases ?? [])].some((n) => nameKey(n) === key)) ?? null;
+  });
+  /** How many REVIEW claims on the sheet are assigned to the signed-in user. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user();
+    return this.people()
+      .flatMap((p) => p.claims)
+      .filter((c) => c.status === 'REVIEW' && user !== null && c.reviewAssigned === user).length;
   });
   /** The sheet's crews, as the crews panel last read them. */
   protected readonly crews = signal<Crew[]>([]);

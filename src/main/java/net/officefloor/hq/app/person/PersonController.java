@@ -61,14 +61,14 @@ public class PersonController {
      * correction, the number of the claim it corrects (null otherwise), and whether it was deferred until a date after the
      * sheet's today, whatever its status since (its counting follows {@link Dues#deferred}), and the date it is deferred until (null when never),
      * its proofs count, and of them its receipts and its photos, and, for a claim split off another, the number of the claim it was split from (null otherwise),
-     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none), its lines, in the order they were added, whether it is late in review (see {@link Dues#reviewLate}), whether its late charge was waived, and whether it is held.
+     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none), its lines, in the order they were added, whether it is late in review (see {@link Dues#reviewLate}), whether its late charge was waived, whether it is held, the people it is shared with, and the user its review is assigned to (null when none).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, int proofsReceipt, int proofsPhoto, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
             String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch, List<LineView> lines,
-            boolean reviewLate, boolean waived, boolean held, List<ShareView> shares) {
+            boolean reviewLate, boolean waived, boolean held, List<ShareView> shares, String reviewAssigned) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates, Holds held) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
@@ -82,7 +82,7 @@ public class PersonController {
                     claim.getComments().stream().map(CommentView::of).toList(),
                     Dues.counts(claim, held, rates.today()), claim.getSettleBatch(),
                     claim.getLines().stream().map(LineView::of).toList(), Dues.reviewLate(claim, rates), claim.isWaived(),
-                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList());
+                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList(), claim.getReviewAssigned());
         }
     }
 
