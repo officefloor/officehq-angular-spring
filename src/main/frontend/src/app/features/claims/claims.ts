@@ -48,6 +48,10 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has. */
   proofs: number;
+  /** How many of its proofs are receipts. */
+  proofsReceipt: number;
+  /** How many of its proofs are photos. */
+  proofsPhoto: number;
   /** For a claim split off another, the number of the claim it was split from, as shown; null otherwise. */
   splitFrom: string | null;
   /** The number of the bulk settle batch that settled the claim (to SETTLED or PENDING); null when settled one at a time or never. */
@@ -242,6 +246,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Deferred <span data-testid="claim-deferred">{{ c.deferred ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Receipts <span data-testid="claim-proofs-receipt">{{ c.proofsReceipt }}</span></span>
+          <span>Photos <span data-testid="claim-proofs-photo">{{ c.proofsPhoto }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
@@ -254,6 +260,16 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <button type="button" data-testid="claim-remind" (click)="remind(c)">
             Remind<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
           </button>
+          <label [for]="'claim-proof-kind-' + c.id">Proof kind<span class="visually-hidden"> for claim {{ c.amount }} {{ c.date }}</span></label>
+          <select
+            [id]="'claim-proof-kind-' + c.id"
+            data-testid="claim-proof-kind"
+            (change)="setProofKind(c.id, value($event))"
+          >
+            <option value="" [selected]="!proofKinds()[c.id]">Choose a kind (receipt)</option>
+            <option value="receipt" [selected]="proofKinds()[c.id] === 'receipt'">receipt</option>
+            <option value="photo" [selected]="proofKinds()[c.id] === 'photo'">photo</option>
+          </select>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">
             Add proof<span class="visually-hidden"> to claim {{ c.amount }} {{ c.date }}</span>
           </button>
@@ -534,6 +550,8 @@ export class Claims implements OnInit {
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The id of the person chosen to reassign each claim to, by claim id. */
   protected readonly reassignTo = signal<Record<number, string>>({});
+  /** The proof kind chosen on each claim's row; none chosen adds a receipt. */
+  protected readonly proofKinds = signal<Record<number, string>>({});
   /** The audit lines shown for each claim's timeline, newest first, by claim id. */
   protected readonly timelines = signal<Record<number, string[]>>({});
   /** Why a claim's timeline could not be read, by claim id. */
@@ -822,7 +840,12 @@ export class Claims implements OnInit {
     }
   }
 
-  /** Add a proof to the claim, raising its proofs count by one; a refusal shows on the claim's row. */
+  protected setProofKind(id: number, kind: string): void {
+    this.proofKinds.update((all) => ({ ...all, [id]: kind }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Add a proof of the kind chosen to the claim, raising its proofs count by one; a refusal shows on the claim's row. */
   protected async addProof(c: Claim): Promise<void> {
     if (this.busy) return;
     this.claimError.set(null);
@@ -832,9 +855,14 @@ export class Claims implements OnInit {
     this.busy = true;
     try {
       const person = await firstValueFrom(
-        this.http.post<PersonWithClaims>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/proof`, {}, { headers }),
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/proof`,
+          { kind: this.proofKinds()[c.id] ?? '' },
+          { headers },
+        ),
       );
       if (this.session.sheet() !== sheet) return;
+      this.proofKinds.update((all) => ({ ...all, [c.id]: '' }));
       this.saved.emit(person);
     } catch (err) {
       if (this.session.sheet() !== sheet) return;

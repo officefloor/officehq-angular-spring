@@ -13,6 +13,7 @@ import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.WatchService;
+import net.officefloor.hq.app.sheet.DatedSettings;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.person.Person;
@@ -656,21 +657,22 @@ public class ClaimService {
     }
 
     /**
-     * Add a proof to a claim, raising its proofs count by one. A SETTLED or VOID claim, or a claim dated
+     * Add a proof of the kind (receipt or photo; null: none chosen, a receipt) to a claim, raising its proofs
+     * count by one. A SETTLED or VOID claim, or a claim dated
      * inside a closed period, is refused and nothing changes. Returns the person it belongs to.
      */
     @Transactional
-    public long addProof(String sheetId, String user, long claimId) {
+    public long addProof(String sheetId, String user, long claimId, String kind) {
         Claim claim = claim(sheetId, claimId);
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot take a proof");
         }
-        claim.addProof();
+        claim.addProof(kind == null ? Claim.RECEIPT : kind);
         claims.flush();
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
         events.publishEvent(new ClaimProofAdded(sheetId, user, person, claim.getAmount(), claim.getDate(),
-                claim.getShownNumber(), claim.getProofs()));
+                claim.getShownNumber(), claim.getProofs(), kind));
         return claim.getPersonId();
     }
 
@@ -783,17 +785,28 @@ public class ClaimService {
 
     /**
      * Refuse settling or approving a claim with no proof whose due (null: n/a) is above the proof threshold
-     * in force on the claim's date: its owner's grade's then when one is set, else the sheet's.
+     * in force on the claim's date: its owner's grade's then when one is set, else the sheet's. While the
+     * sheet's proof kinds are set, such a claim also needs at least one proof of each kind listed.
      */
     private void requireProof(String sheetId, Claim claim, Person owner, BigDecimal due) {
-        if (due == null || claim.getProofs() > 0) {
+        if (due == null) {
             return;
         }
         String grade = owner == null ? null : owner.gradeOn(claim.getDate());
-        BigDecimal threshold = sheets.settings(sheetId).proofThresholdFor(grade, claim.getDate());
-        if (threshold != null && due.compareTo(threshold) > 0) {
+        DatedSettings settings = sheets.settings(sheetId);
+        BigDecimal threshold = settings.proofThresholdFor(grade, claim.getDate());
+        if (threshold == null || due.compareTo(threshold) <= 0) {
+            return;
+        }
+        if (claim.getProofs() == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim with a due above " + threshold.toPlainString() + " needs a proof to be settled");
+        }
+        for (String kind : settings.proofKinds()) {
+            if (claim.getProofs(kind) == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "A claim with a due above " + threshold.toPlainString() + " needs a " + kind + " proof to be settled");
+            }
         }
     }
 

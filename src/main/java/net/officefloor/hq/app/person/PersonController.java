@@ -59,12 +59,12 @@ public class PersonController {
      * due by (fixed when it was added: its date plus its person's own terms, else the terms then of their grade on its date, else the sheet's), whether it is overdue (see {@link Dues#overdue}) and, for a
      * correction, the number of the claim it corrects (null otherwise), and whether it was deferred until a date after the
      * sheet's today, whatever its status since (its counting follows {@link Dues#deferred}), and the date it is deferred until (null when never),
-     * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
+     * its proofs count, and of them its receipts and its photos, and, for a claim split off another, the number of the claim it was split from (null otherwise),
      * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none), its lines, in the order they were added, whether it is late in review (see {@link Dues#reviewLate}), and whether its late charge was waived.
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
-            List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
+            List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, int proofsReceipt, int proofsPhoto, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
             String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch, List<LineView> lines,
             boolean reviewLate, boolean waived) {
@@ -75,7 +75,7 @@ public class PersonController {
                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, grade, rates),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
                     claim.getDeferredUntil() != null && rates.today().isBefore(claim.getDeferredUntil()),
-                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
+                    claim.getDeferredUntil(), claim.getProofs(), claim.getProofs(Claim.RECEIPT), claim.getProofs(Claim.PHOTO), claim.getSplitFrom(),
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     Tags.list(claim.getTags()), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(),

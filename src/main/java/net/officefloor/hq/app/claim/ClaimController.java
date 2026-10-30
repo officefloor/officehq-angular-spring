@@ -347,12 +347,18 @@ public class ClaimController {
         return view(sheet, claims.remind(sheet, user.trim(), claimId));
     }
 
-    /** Add a proof to a claim, raising its proofs count by one. */
+    /** A proof to add: its kind, receipt or photo; blank or left out when none is chosen (a receipt). */
+    public record ProofForm(@Pattern(regexp = "(receipt|photo)?") String kind) {
+    }
+
+    /** Add a proof to a claim, of the kind chosen (none: a receipt), raising its proofs count by one. */
     @PostMapping("/claims/{claimId}/proof")
     public PersonView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody(required = false) ProofForm form) {
         String sheet = sheetId.trim();
-        return view(sheet, claims.addProof(sheet, user.trim(), claimId));
+        String kind = form == null || form.kind() == null || form.kind().isEmpty() ? null : form.kind();
+        return view(sheet, claims.addProof(sheet, user.trim(), claimId, kind));
     }
 
     /** Add a line to a DRAFT claim, as the signed-in user. */

@@ -48,6 +48,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** A REVIEW claim is late once its review day plus this many days is before the sheet's today; not dated. */
     public static final String REVIEW_SLA = "review-sla";
 
+    /** The sheet's proof kinds, comma separated (receipt, photo): each a claim above its proof threshold needs a proof of; not dated. */
+    public static final String PROOF_KINDS = "proof-kinds";
+
     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
     public static final String PARENT = "parent";
 
@@ -181,6 +184,17 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's pot (not dated: it holds on every date); null when there is none. */
     public BigDecimal pot() {
         return on(POT, LocalDate.MAX).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The sheet's proof kinds as written, comma separated (not dated); null when none are set. */
+    public String proofKindsText() {
+        return on(PROOF_KINDS, LocalDate.MAX).orElse(null);
+    }
+
+    /** The sheet's proof kinds (not dated); empty when none are set. */
+    public List<String> proofKinds() {
+        String text = proofKindsText();
+        return text == null ? List.of() : java.util.Arrays.stream(text.split(",")).map(String::trim).filter(k -> !k.isEmpty()).distinct().toList();
     }
 
     /** The sheet's alert threshold (not dated: it holds on every date); null when it is off. */

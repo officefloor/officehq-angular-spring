@@ -144,6 +144,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of the claim's proofs are photos; the rest are receipts. */
+    @Column(name = "proof_photos", nullable = false)
+    private int proofPhotos;
+
     /** The number (as shown) of the claim this one was split off; null for any claim not split off another. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -233,6 +237,7 @@ public class Claim {
         arrived.waived = waived;
         arrived.reviewOn = reviewOn;
         arrived.proofs = proofs;
+        arrived.proofPhotos = proofPhotos;
         arrived.splitFrom = splitFrom;
         arrived.tags = tags;
         arrived.voidReason = voidReason;
@@ -358,9 +363,23 @@ public class Claim {
         return proofs;
     }
 
-    /** Add a proof: the proofs count is raised by one. */
-    public void addProof() {
+    /** How many of the claim's proofs are of the kind (receipt or photo). */
+    public int getProofs(String kind) {
+        return PHOTO.equals(kind) ? proofPhotos : RECEIPT.equals(kind) ? proofs - proofPhotos : 0;
+    }
+
+    /** A proof kind: a receipt, the kind of a proof added with none chosen. */
+    public static final String RECEIPT = "receipt";
+
+    /** A proof kind: a photo. */
+    public static final String PHOTO = "photo";
+
+    /** Add a proof of the kind (receipt or photo): the proofs count is raised by one. */
+    public void addProof(String kind) {
         proofs++;
+        if (PHOTO.equals(kind)) {
+            proofPhotos++;
+        }
     }
 
     public String getNote() {

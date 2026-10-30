@@ -222,7 +222,7 @@ public class SheetAudit {
         change(e.sheetId(), e.user(), "CLAIM_PROOF_ADDED sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
-                + " proofs=" + e.proofs());
+                + " proofs=" + e.proofs() + (e.kind() == null ? "" : " kind=" + e.kind()));
     }
 
     @TransactionalEventListener

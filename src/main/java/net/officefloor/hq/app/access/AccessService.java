@@ -80,6 +80,9 @@ public class AccessService {
 
     public static final String POT = DatedSettings.POT;
 
+    /** The key of the sheet's proof kinds. */
+    public static final String PROOF_KINDS = DatedSettings.PROOF_KINDS;
+
     public static final String ALERT_THRESHOLD = DatedSettings.ALERT_THRESHOLD;
 
     public static final String PARENT = DatedSettings.PARENT;
@@ -266,7 +269,7 @@ public class AccessService {
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
-            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla) {
+            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds) {
         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
@@ -346,6 +349,9 @@ public class AccessService {
         if (reviewSla != null) {
             setReviewSla(sheetId, user, days(reviewSla, null));
         }
+        if (proofKinds != null) {
+            setProofKinds(sheetId, user, proofKinds);
+        }
         if (parent != null) {
             setParent(sheetId, user, parent.isEmpty() ? null : parent);
         }
@@ -383,6 +389,17 @@ public class AccessService {
             settingRows.flush();
         }
         events.publishEvent(new SettingChanged(sheetId, user, permission.key(), roles, null));
+    }
+
+    /**
+     * Record the sheet's proof kinds, comma separated (blank: none). Not dated: the value holds from the beginning
+     * of time, replacing the one it had.
+     */
+    @Transactional
+    public void setProofKinds(String sheetId, String user, String kinds) {
+        String value = String.join(",", java.util.Arrays.stream(kinds.split(",")).map(String::trim)
+                .filter(k -> !k.isEmpty()).toList());
+        setUndated(sheetId, user, PROOF_KINDS, value.isEmpty() ? null : value);
     }
 
     /**
