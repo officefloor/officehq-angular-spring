@@ -529,7 +529,7 @@ interface TreePerson {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shown('terms')) {<th scope="col">Terms</th>}@if (columns.shown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columns.shown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">From sheet</th><th scope="col">Cut total</th>@if (columns.shown('claimed')) {<th scope="col">Claimed</th>}@if (columns.shown('due-total')) {<th scope="col">Due</th>}
-            <th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Score</th><th scope="col">Band</th>
+            <th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Open claims</th><th scope="col">Settled claims</th><th scope="col">Score</th><th scope="col">Band</th>
             @if (columns.shown('overdue-count')) {<th scope="col">Overdue</th>}@if (columns.shown('overdue-total')) {<th scope="col">Overdue total</th>}
             <th scope="col">Due aged 0-30</th><th scope="col">Due aged 31-60</th><th scope="col">Due aged 61+</th>
             @if (columns.shown('statement-count')) {<th scope="col">Statements</th>}@if (columns.shown('stated-total')) {<th scope="col">Last stated total</th>}@if (columns.shown('statement-date')) {<th scope="col">Last statement</th>}
@@ -577,6 +577,8 @@ interface TreePerson {
               }
               <td data-testid="person-settled-total">{{ (splitBy().get(p.id)?.settled ?? '0.00') | fig }}</td>
               <td data-testid="person-open-total">{{ (splitBy().get(p.id)?.open ?? '0.00') | fig }}</td>
+              <td data-testid="person-claims-OPEN-count">{{ statusCount(p.id, 'OPEN') | fig }}</td>
+              <td data-testid="person-claims-SETTLED-count">{{ statusCount(p.id, 'SETTLED') | fig }}</td>
               <td data-testid="person-score">{{ (scoreBy().get(p.id) ?? '0') | fig }}</td>
               <td data-testid="person-band">{{ bandBy().get(p.id) ?? '' }}</td>
               @if (columns.shown('overdue-count')) {
@@ -1014,6 +1016,10 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
+  // How many of a person's claims are in the given status.
+  protected statusCount(personId: number, status: Claim['status']): number {
+    return (this.claimsBy().get(personId) ?? []).filter((c) => c.status === status).length;
+  }
   // Every tag ever used on a claim or person of the sheet, as the store last told it.
   protected readonly usedTags = signal<string[]>([]);
   // For every tag ever used on the sheet (those the store keeps and those on the claims and people now), sorted: the
