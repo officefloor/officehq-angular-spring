@@ -37,7 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
  * settling a claim whose due is above the sheet's clerk limit leaves it PENDING instead; a steward settles
  * anything, and approves a PENDING claim (settling it, its due fixed then) or rejects it with a reason
- * (back to OPEN); the user who opened a claim cannot approve it. A steward re-settles a SETTLED claim,
+ * (back to OPEN); neither the user who opened a claim nor the one who last edited it can settle or approve it. A steward re-settles a SETTLED claim,
  * fixing its due again at the figure it would have today as an OPEN claim bound by no statement. A claim
  * with a negative amount is a correction: it is added or edited only when it names, by number, a SETTLED
  * claim of the same person, and only a correction names one. A claim whose due is above the sheet's proof
@@ -190,6 +190,7 @@ public class ClaimService {
         claim.setRef(reference);
         claim.setTags(tagged);
         claim.setLockedBy(null);
+        claim.setEditedBy(user);
         claims.flush();
         tags.use(sheetId, tagged);
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
@@ -317,6 +318,10 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
+        }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot settle it");
         }
         if (next == ClaimStatus.OPEN) {
             requireNote(sheetId, claim);
@@ -573,7 +578,7 @@ public class ClaimService {
 
     /**
      * Approve a PENDING claim, settling it with its due fixed now (its live figure, late charge frozen in).
-     * Only a steward approves, never the user who opened the claim; a claim not PENDING or due by a date inside a
+     * Only a steward approves, never the user who opened the claim or last edited it; a claim not PENDING or due by a date inside a
      * closed period is refused and nothing changes. Returns the person it belongs to.
      */
     @Transactional
@@ -581,6 +586,10 @@ public class ClaimService {
         Claim claim = pending(sheetId, user, claimId, "approve", "approved");
         if (user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot approve it");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot approve it");
         }
         Rollup.Figures before = rollup.figures(sheetId);
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);

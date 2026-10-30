@@ -69,6 +69,10 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** The user who last edited the claim; null while never edited. */
+    @Column(name = "edited_by")
+    private String editedBy;
+
     /** The due fixed when the claim was settled; null while not settled or when there was no rate. */
     @Column(name = "settled_due", precision = 14, scale = 2)
     private BigDecimal settledDue;
@@ -374,6 +378,14 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public String getEditedBy() {
+        return editedBy;
+    }
+
+    public void setEditedBy(String editedBy) {
+        this.editedBy = editedBy;
     }
 
     public BigDecimal getSettledDue() {
