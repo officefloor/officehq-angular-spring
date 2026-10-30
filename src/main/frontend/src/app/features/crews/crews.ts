@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -21,6 +21,24 @@ export interface Crew {
 /** Cents in an amount shown with two decimals ("12.50" is 1250). */
 function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
+}
+
+/**
+ * Per crew name, its due-total in cents: the lead's and the members' due-totals as the sheet shows them, added up,
+ * a person showing n/a skipped.
+ */
+export function crewDueCents(crews: Crew[], people: PersonWithClaims[]): Map<string, number> {
+  const due = new Map(people.map((p) => [p.id, p.dueTotal]));
+  return new Map(
+    crews.map((c) => {
+      const ids = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
+      const total = ids.reduce((sum, id) => {
+        const d = due.get(id);
+        return d == null ? sum : sum + cents(d);
+      }, 0);
+      return [c.name, total];
+    }),
+  );
 }
 
 // The sheet's crews, sorted by name, each with its lead and members and its due-total: the lead's and the members'
@@ -95,26 +113,20 @@ export class Crews {
   /** Everyone on the sheet with their figures: the choices for a lead or member, and their due-totals. */
   readonly people = input.required<PersonWithClaims[]>();
 
-  protected readonly crews = signal<Crew[]>([]);
+  /** The sheet's crews as last read, shared with the page (for the signed-in user's crew total). */
+  readonly crews = model<Crew[]>([]);
   protected readonly name = signal('');
   protected readonly lead = signal('');
   protected readonly error = signal('');
   /** Per crew, the person chosen to add and why its last add was refused. */
   protected readonly drafts = signal<Record<string, { personId: string; error: string }>>({});
   /** Per crew name, its due-total with two decimals: the lead's and members' added up, n/a skipped. */
-  protected readonly dueTotals = computed(() => {
-    const due = new Map(this.people().map((p) => [p.id, p.dueTotal]));
-    return new Map(
-      this.crews().map((c) => {
-        const ids = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
-        const total = ids.reduce((sum, id) => {
-          const d = due.get(id);
-          return d == null ? sum : sum + cents(d);
-        }, 0);
-        return [c.name, (total / 100).toFixed(2)];
-      }),
-    );
-  });
+  protected readonly dueTotals = computed(
+    () =>
+      new Map(
+        [...crewDueCents(this.crews(), this.people())].map(([name, total]) => [name, (total / 100).toFixed(2)]),
+      ),
+  );
   /** Each answer is numbered: one older than the last shown is dropped. */
   private asked = 0;
   private shown = 0;

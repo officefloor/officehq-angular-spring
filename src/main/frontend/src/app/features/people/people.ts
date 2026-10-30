@@ -11,7 +11,7 @@ import { Search } from '../search/search';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
 import { PersonPlans, PlanList } from '../plans/plans';
-import { Crews } from '../crews/crews';
+import { Crew, Crews, crewDueCents } from '../crews/crews';
 import { Pool, Pools } from '../pools/pools';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
@@ -147,6 +147,7 @@ function csvField(value: string): string {
       <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() | figure }}</strong></p>
       <p>My due total <strong data-testid="my-due-total">{{ (me() === null ? '' : (me()!.dueTotal ?? 'n/a')) | figure }}</strong></p>
       <p>My overdue total <strong data-testid="my-overdue-total">{{ (me()?.overdueTotal ?? '') | figure }}</strong></p>
+      <p>My crew due total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
     </header>
     <section aria-label="Consolidated figures">
       <h2>Consolidated over this sheet and its descendants</h2>
@@ -161,7 +162,7 @@ function csvField(value: string): string {
     <app-void-reasons />
     <app-claim-templates />
     <app-pools [people]="people()" [(pools)]="pools" />
-    <app-crews [people]="people()" />
+    <app-crews [people]="people()" [(crews)]="crews" />
     <app-summary [people]="people()" [periods]="periods()" />
     <app-tags [people]="people()" />
     <app-search />
@@ -902,6 +903,20 @@ export class People {
     if (user === null) return null;
     const key = nameKey(user);
     return this.people().find((p) => [p.name, ...(p.aliases ?? [])].some((n) => nameKey(n) === key)) ?? null;
+  });
+  /** The sheet's crews, as the crews panel last read them. */
+  protected readonly crews = signal<Crew[]>([]);
+  /**
+   * The due-totals of the crews led by the person with the signed-in user's name, added up, with two decimals; ''
+   * when that person leads no crew, or there is no such person.
+   */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    if (me === null) return '';
+    const led = this.crews().filter((c) => c.lead?.personId === me.id);
+    if (led.length === 0) return '';
+    const totals = crewDueCents(led, this.people());
+    return ([...totals.values()].reduce((sum, t) => sum + t, 0) / 100).toFixed(2);
   });
   /** Everyone's overdue-total added up, trimmed (see {@link trimmedSum}). */
   protected readonly overdueTotal = computed(() => (overdueTotalOf(this.people()) / 100).toFixed(2));
