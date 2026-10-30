@@ -78,7 +78,15 @@ public class Pools {
     /** The pools on the sheet, sorted by name, each with its members and figures. */
     @Transactional(readOnly = true)
     public List<Shown> list(String sheetId) {
-        List<Pool> all = pools.findBySheetIdOrderByNameAsc(sheetId);
+        return list(sheetId, false);
+    }
+
+    /**
+     * The pools on the sheet, sorted by name or else in the order they were added, each with its members and figures.
+     */
+    @Transactional(readOnly = true)
+    public List<Shown> list(String sheetId, boolean asAdded) {
+        List<Pool> all = asAdded ? pools.findBySheetIdOrderByIdAsc(sheetId) : pools.findBySheetIdOrderByNameAsc(sheetId);
         Map<Long, Pool> poolById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));

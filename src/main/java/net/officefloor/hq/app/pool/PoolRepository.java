@@ -8,5 +8,7 @@ public interface PoolRepository extends JpaRepository<Pool, Long> {
 
     List<Pool> findBySheetIdOrderByNameAsc(String sheetId);
 
+    List<Pool> findBySheetIdOrderByIdAsc(String sheetId);
+
     Optional<Pool> findBySheetIdAndName(String sheetId, String name);
 }

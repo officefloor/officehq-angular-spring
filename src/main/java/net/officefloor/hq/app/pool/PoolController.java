@@ -71,6 +71,12 @@ public class PoolController {
         return pools.list(sheetId.trim()).stream().map(PoolView::of).toList();
     }
 
+    /** The pools on the sheet in the order they were added, each with its members in the order they were added. */
+    @GetMapping(params = "order=added")
+    public List<PoolView> listAsAdded(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return pools.list(sheetId.trim(), true).stream().map(PoolView::of).toList();
+    }
+
     /** Add a pool; answers with every pool on the sheet. */
     @PostMapping
     public List<PoolView> add(@PathVariable @NotBlank @Size(max = 100) String sheetId,

@@ -41,6 +41,10 @@ interface Draft {
   error: string;
 }
 
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
 const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
 
 // The sheet's pools, sorted by name, each with its members and their shares, its total share and whether it is
@@ -124,6 +128,7 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
           </li>
         }
       </ul>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools as CSV</button>
       <form (submit)="add($event)" aria-label="Add pool">
         <label for="pool-form-name">Name</label>
         <input
@@ -240,6 +245,31 @@ export class Pools {
     }
     if (refusal) this.drafts.update((all) => ({ ...all, [pool]: { ...(all[pool] ?? EMPTY), error: refusal } }));
     else this.drafts.update((all) => ({ ...all, [pool]: EMPTY }));
+  }
+
+  /** Download every pool's members as the store holds them now, as a CSV file: pools and their members in the order
+   *  they were added, a pool member as pool:<name>, the cut as shown (empty when none). */
+  protected async exportCsv(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const pools = await firstValueFrom(
+      this.http.get<Pool[]>(`/api/sheets/${encodeURIComponent(sheet)}/pools`, { params: { order: 'added' } }),
+    );
+    if (this.session.sheet() !== sheet) return;
+    const lines = [
+      'pool,member,share,cut',
+      ...pools.flatMap((p) =>
+        p.members.map((m) =>
+          [p.name, m.pool !== null ? 'pool:' + m.pool : m.name, m.share, m.cut ?? ''].map(csvField).join(','),
+        ),
+      ),
+    ];
+    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `pools-${sheet}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   /** Post a change: '' once made (the pools shown as they now stand), else why it was refused. */
