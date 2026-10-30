@@ -71,6 +71,10 @@ interface Settings {
   proofThresholdC: string | null;
   /** How a claim's figures round: half-up or half-even; null when none (the policy date decides). */
   rounding: string | null;
+  /** The most due a clerk may settle on a claim of grade A, B or C; null when the grade has none (it uses the sheet's). */
+  clerkLimitA: string | null;
+  clerkLimitB: string | null;
+  clerkLimitC: string | null;
 }
 
 /** The steward role delegated by a steward (by) to a user, from a from-date to a to-date (yyyy-mm-dd), inclusive. */
@@ -94,10 +98,11 @@ type Grade = (typeof GRADES)[number];
 const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
 const GRADE_GRACE = { A: 'graceA', B: 'graceB', C: 'graceC' } as const;
 const GRADE_PROOF = { A: 'proofThresholdA', B: 'proofThresholdB', C: 'proofThresholdC' } as const;
+const GRADE_LIMIT = { A: 'clerkLimitA', B: 'clerkLimitB', C: 'clerkLimitC' } as const;
 /** The settings that carry a figure: each is saved from a from-date. */
-const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold', 'reviewThreshold', 'graceA', 'graceB', 'graceC', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC', 'rounding'] as const;
+const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold', 'reviewThreshold', 'graceA', 'graceB', 'graceC', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC', 'rounding', 'clerkLimitA', 'clerkLimitB', 'clerkLimitC'] as const;
 type Dated = (typeof DATED)[number];
-const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', reviewThreshold: '', graceA: '', graceB: '', graceC: '', proofThresholdA: '', proofThresholdB: '', proofThresholdC: '', rounding: '' };
+const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', reviewThreshold: '', graceA: '', graceB: '', graceC: '', proofThresholdA: '', proofThresholdB: '', proofThresholdC: '', rounding: '', clerkLimitA: '', clerkLimitB: '', clerkLimitC: '' };
 /** The permission matrix: each action with its setting and the roles that take it when left blank. */
 const PERMS = [
   { action: 'open', field: 'permOpen', standing: 'clerk, steward' },
@@ -225,6 +230,9 @@ const ROUNDING = /^(half-up|half-even)$/;
     <section aria-label="Settings">
       <h2>Settings</h2>
       <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</strong></p>
+      @for (g of grades; track g) {
+        <p>Clerk limit for grade {{ g }} <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (gradeLimit()[g] ?? '') | figure }}</strong></p>
+      }
       <p>Floor <strong data-testid="setting-floor-current">{{ floor() | figure }}</strong></p>
       <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
       @for (g of grades; track g) {
@@ -275,6 +283,25 @@ const ROUNDING = /^(half-up|half-even)$/;
           [value]="fromInput().clerkLimit"
           (input)="setFrom('clerkLimit', value($event)); limitTouched = true; settingsError.set('')"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }}: used for its claims in place of the sheet's (blank: none)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g"
+            inputmode="decimal"
+            [attr.data-testid]="'setting-clerk-limit-' + g"
+            [value]="gradeLimitInput()[g]"
+            (input)="setGradeLimitInput(g, value($event)); gradeLimitTouched[g] = true; settingsError.set('')"
+            (keydown)="gradeLimitTouched[g] = gradeLimitTouched[g] || clears($event)"
+          />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} in force from (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g + '-from'"
+            type="date"
+            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+            [value]="fromInput()[GRADE_LIMIT[g]]"
+            (input)="setFrom(GRADE_LIMIT[g], value($event)); gradeLimitTouched[g] = true; settingsError.set('')"
+          />
+        }
         <label for="setting-floor">Floor (blank: 1.00)</label>
         <input
           id="setting-floor"
@@ -609,6 +636,8 @@ export class Access {
   protected readonly delegateTo = signal('');
   protected readonly delegateError = signal('');
   protected readonly limitInput = signal('');
+  protected readonly gradeLimit = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
+  protected readonly gradeLimitInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly floor = signal('');
   protected readonly floorInput = signal('');
   protected readonly terms = signal('');
@@ -658,6 +687,7 @@ export class Access {
   protected readonly GRADE_TERMS = GRADE_TERMS;
   protected readonly GRADE_GRACE = GRADE_GRACE;
   protected readonly GRADE_PROOF = GRADE_PROOF;
+  protected readonly GRADE_LIMIT = GRADE_LIMIT;
   protected readonly perms = PERMS;
   protected readonly perm = signal<Record<Perm, string | null>>({ ...NO_PERMS });
   protected readonly permInput = signal<Record<Perm, string>>(NO_PERMS);
@@ -666,6 +696,7 @@ export class Access {
   protected readonly fromInput = signal<Record<Dated, string>>(NO_FROM);
   /** Whether each settings input was changed since the settings were last shown. */
   protected limitTouched = false;
+  protected gradeLimitTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
   protected floorTouched = false;
   protected termsTouched = false;
   protected gradeTermsTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
@@ -706,7 +737,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -727,6 +758,10 @@ export class Access {
 
   protected setGradeGraceInput(grade: Grade, v: string): void {
     this.gradeGraceInput.update((t) => ({ ...t, [grade]: v }));
+  }
+
+  protected setGradeLimitInput(grade: Grade, v: string): void {
+    this.gradeLimitInput.update((t) => ({ ...t, [grade]: v }));
   }
 
   protected setGradeProofInput(grade: Grade, v: string): void {
@@ -825,6 +860,14 @@ export class Access {
     if (this.limitTouched && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank for no limit.');
       return;
+    }
+    const gradeLimit = this.gradeLimitInput();
+    for (const g of GRADES) {
+      const limit = gradeLimit[g].trim();
+      if (this.gradeLimitTouched[g] && limit !== '' && !LIMIT.test(limit)) {
+        this.settingsError.set(`Enter a clerk limit for grade ${g} of 0.00 or more, with up to two decimals, or leave it blank for the sheet's.`);
+        return;
+      }
     }
     const floor = this.floorInput().trim();
     if (this.floorTouched && floor !== '' && !LIMIT.test(floor)) {
@@ -963,6 +1006,9 @@ export class Access {
     }
     const body: Partial<Record<keyof Settings | `${Dated}From`, string>> = {};
     if (this.limitTouched) body.clerkLimit = clerkLimit;
+    for (const g of GRADES) {
+      if (this.gradeLimitTouched[g]) body[GRADE_LIMIT[g]] = gradeLimit[g].trim();
+    }
     if (this.floorTouched) body.floor = floor;
     if (this.termsTouched) body.terms = terms;
     for (const g of GRADES) {
@@ -1038,6 +1084,9 @@ export class Access {
     this.latePct.set(settings.latePct);
     this.latePctInput.set(settings.latePct);
     this.limitTouched = false;
+    this.gradeLimit.set({ A: settings.clerkLimitA, B: settings.clerkLimitB, C: settings.clerkLimitC });
+    this.gradeLimitInput.set({ A: settings.clerkLimitA ?? '', B: settings.clerkLimitB ?? '', C: settings.clerkLimitC ?? '' });
+    this.gradeLimitTouched = { A: false, B: false, C: false };
     this.floorTouched = false;
     this.termsTouched = false;
     this.gradeTerms.set({ A: settings.termsA, B: settings.termsB, C: settings.termsC });

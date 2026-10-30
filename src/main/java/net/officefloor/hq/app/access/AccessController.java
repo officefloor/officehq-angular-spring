@@ -67,7 +67,7 @@ public class AccessController {
             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
             String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
-            String defaultGrade) {
+            String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
                 Integer graceDays, LocalDate entryDate) {
@@ -88,7 +88,8 @@ public class AccessController {
                     Integer.toString(dated.fiscalStartMonth()), text(dated.alertThreshold()),
                     dated.on(DatedSettings.ROUNDING, today).orElse(null), text(dated.reviewThreshold(today)),
                     text(dated.escalateAfter()), text(dated.reviewSla()), dated.proofKindsText(),
-                    dated.defaultGradeText());
+                    dated.defaultGradeText(), text(dated.gradeClerkLimit("A", today)),
+                    text(dated.gradeClerkLimit("B", today)), text(dated.gradeClerkLimit("C", today)));
         }
 
         /** The grade's grace days in force on the date as written; null when it has none then. */
@@ -148,6 +149,7 @@ public class AccessController {
      * The review SLA is a whole number of days, blank meaning none; not dated.
      * The proof kinds are a comma separated list of kinds (receipt, photo), blank meaning none; not dated.
      * The default grade is A, B or C, blank meaning A; not dated.
+     * A grade's clerk limit is 0.00 or more with up to two decimals, blank meaning none (the sheet's); dated.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -202,7 +204,13 @@ public class AccessController {
             @Pattern(regexp = "(\\d{1,5})?") String escalateAfter,
             @Pattern(regexp = "(\\d{1,5})?") String reviewSla,
             @Pattern(regexp = "\\s*((receipt|photo)\\s*(,\\s*(receipt|photo)\\s*)*)?") String proofKinds,
-            @Pattern(regexp = "[ABC]?") String defaultGrade) {
+            @Pattern(regexp = "[ABC]?") String defaultGrade,
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimitA,
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimitB,
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimitC,
+            @Pattern(regexp = DATE) String clerkLimitAFrom,
+            @Pattern(regexp = DATE) String clerkLimitBFrom,
+            @Pattern(regexp = DATE) String clerkLimitCFrom) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -268,6 +276,10 @@ public class AccessController {
         gradeProofThreshold.put("A", dated(form.proofThresholdA(), form.proofThresholdAFrom()));
         gradeProofThreshold.put("B", dated(form.proofThresholdB(), form.proofThresholdBFrom()));
         gradeProofThreshold.put("C", dated(form.proofThresholdC(), form.proofThresholdCFrom()));
+        Map<String, AccessService.Dated> gradeClerkLimit = new LinkedHashMap<>();
+        gradeClerkLimit.put("A", dated(form.clerkLimitA(), form.clerkLimitAFrom()));
+        gradeClerkLimit.put("B", dated(form.clerkLimitB(), form.clerkLimitBFrom()));
+        gradeClerkLimit.put("C", dated(form.clerkLimitC(), form.clerkLimitCFrom()));
         AccessService.Dated clerkLimit = dated(form.clerkLimit(), form.clerkLimitFrom());
         AccessService.Dated floor = dated(form.floor(), form.floorFrom());
         AccessService.Dated terms = dated(form.terms(), form.termsFrom());
@@ -286,7 +298,7 @@ public class AccessController {
                 form.pot(), form.parent() == null ? null : form.parent().trim(), form.fiscalStartMonth(),
                 form.alertThreshold(), dated(form.rounding(), form.roundingFrom()),
                 dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter(),
-                form.reviewSla(), form.proofKinds(), form.defaultGrade());
+                form.reviewSla(), form.proofKinds(), form.defaultGrade(), gradeClerkLimit);
         return settings(sheet);
     }
 

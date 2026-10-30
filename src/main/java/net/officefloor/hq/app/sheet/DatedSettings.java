@@ -11,7 +11,7 @@ import java.util.Optional;
  * A sheet's dated settings: the value of each in force on a date is the one with the latest from-date on
  * or before it (a value with no from-date applying from the beginning of time); before every from-date,
  * and where that value was saved blank, the sheet's starting value (1.00 for the floor, 0.00 for the late
- * percent, 14 days for the terms; none for the rounding mode, a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's proof threshold, the note threshold and the review threshold; the sheet's terms for a grade's own
+ * percent, 14 days for the terms; none for the rounding mode, a grade's grace days, the clerk limit, a grade's clerk limit, the cap, the proof threshold, a grade's proof threshold, the note threshold and the review threshold; the sheet's terms for a grade's own
  * terms).
  */
 public record DatedSettings(List<SheetSetting> values) {
@@ -76,6 +76,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The key of a grade's proof threshold: proof-threshold-A, proof-threshold-B or proof-threshold-C. */
     public static String gradeProofThresholdKey(String grade) {
         return PROOF_THRESHOLD + "-" + grade;
+    }
+
+    /** The key of a grade's clerk limit: clerk-limit-A, clerk-limit-B or clerk-limit-C. */
+    public static String gradeClerkLimitKey(String grade) {
+        return CLERK_LIMIT + "-" + grade;
     }
 
     /** The key of a grade's own terms: terms-A, terms-B or terms-C. */
@@ -151,6 +156,17 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The most due a clerk may settle on a claim on the date; null when there is no limit. */
     public BigDecimal clerkLimit(LocalDate date) {
         return on(CLERK_LIMIT, date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The grade's clerk limit on the date; null when it has none then (it uses the sheet's). */
+    public BigDecimal gradeClerkLimit(String grade, LocalDate date) {
+        return grade == null ? null : on(gradeClerkLimitKey(grade), date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The clerk limit for a claim of the grade on the date: the grade's own, or the sheet's; null when neither. */
+    public BigDecimal clerkLimitFor(String grade, LocalDate date) {
+        BigDecimal own = gradeClerkLimit(grade, date);
+        return own != null ? own : clerkLimit(date);
     }
 
     /** The most due a claim dated on the date may have to be settled or approved with no proof; null when there is none. */

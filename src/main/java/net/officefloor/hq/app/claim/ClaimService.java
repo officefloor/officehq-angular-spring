@@ -405,7 +405,8 @@ public class ClaimService {
             if (judgeHere) {
                 requireProof(sheetId, claim, owner, fixed);
             }
-            if (access.canSettle(sheetId, user, fixed)) {
+            String grade = owner == null ? null : owner.gradeOn(sheets.today(sheetId));
+            if (access.canSettle(sheetId, user, grade, fixed)) {
                 claim.setSettledDue(fixed);
                 due = fixed == null ? "n/a" : fixed.toPlainString();
             } else {

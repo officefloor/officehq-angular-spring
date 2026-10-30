@@ -273,7 +273,7 @@ public class AccessService {
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
             String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
-            String defaultGrade) {
+            String defaultGrade, Map<String, Dated> gradeClerkLimit) {
         if (defaultGrade != null && !defaultGrade.isEmpty() && !defaultGrade.matches("[ABC]")) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The default grade is A, B or C");
         }
@@ -287,6 +287,11 @@ public class AccessService {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
+        gradeClerkLimit.forEach((grade, limit) -> {
+            if (limit != null) {
+                setDated(sheetId, user, DatedSettings.gradeClerkLimitKey(grade), money(limit.value(), null), limit.from(), false);
+            }
+        });
         if (floor != null) {
             setDated(sheetId, user, FLOOR, money(floor.value(), Sheet.DEFAULT_FLOOR), floor.from(), true);
         }
@@ -608,15 +613,16 @@ public class AccessService {
 
     /**
      * Whether the user may settle a claim of the given due outright: a steward settles anything, a clerk
-     * a due up to the clerk limit in force on the sheet's today (a due of n/a, null, is within any limit). A clerk's settle above it
+     * a due up to the clerk limit in force on the sheet's today: the claim's person's grade's then when one is
+     * set, else the sheet's (a due of n/a, null, is within any limit). A clerk's settle above it
      * leaves the claim PENDING for a steward.
      */
     @Transactional(readOnly = true)
-    public boolean canSettle(String sheetId, String user, BigDecimal due) {
+    public boolean canSettle(String sheetId, String user, String grade, BigDecimal due) {
         if (due == null) {
             return true;
         }
-        BigDecimal limit = sheets.settings(sheetId).clerkLimit(sheets.today(sheetId));
+        BigDecimal limit = sheets.settings(sheetId).clerkLimitFor(grade, sheets.today(sheetId));
         return limit == null || due.compareTo(limit) <= 0 || roleOf(sheetId, user) != Role.CLERK;
     }
 }
