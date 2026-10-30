@@ -84,6 +84,12 @@ public class Period {
         this.closedTotal = total;
     }
 
+    /** Reopen the period: its due-total is live again. */
+    public void reopen() {
+        this.closed = false;
+        this.closedTotal = null;
+    }
+
     /** Whether the date falls in the period, its from and to date included. */
     public boolean contains(LocalDate date) {
         return !date.isBefore(fromDate) && !date.isAfter(toDate);

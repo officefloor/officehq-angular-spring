@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
@@ -35,16 +37,19 @@ public class PeriodService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final RateService rates;
+    private final AccessService access;
     private final ApplicationEventPublisher events;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetRows,
-            ClaimRepository claims, PersonRepository people, RateService rates, ApplicationEventPublisher events) {
+            ClaimRepository claims, PersonRepository people, RateService rates, AccessService access,
+            ApplicationEventPublisher events) {
         this.periods = periods;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
+        this.access = access;
         this.events = events;
     }
 
@@ -101,6 +106,27 @@ public class PeriodService {
         period.close(total);
         periods.flush();
         events.publishEvent(new PeriodClosed(sheetId, user, period.getName(), total));
+        return period;
+    }
+
+    /**
+     * Reopen a closed period: its due-total is live again, the current figures of the claims dated inside
+     * it. Refused unless the user is a steward on the sheet, and when the period is not closed.
+     */
+    @Transactional
+    public Period reopen(String sheetId, String user, long periodId) {
+        sheetRows.lockById(sheetId);
+        Period period = periods.findByIdAndSheetId(periodId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period"));
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodRefused("Only a steward can reopen a period.");
+        }
+        if (!period.isClosed()) {
+            throw new PeriodRefused("The period is not closed.");
+        }
+        period.reopen();
+        periods.flush();
+        events.publishEvent(new PeriodReopened(sheetId, user, period.getName()));
         return period;
     }
 

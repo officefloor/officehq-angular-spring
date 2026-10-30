@@ -6,6 +6,7 @@ import net.officefloor.hq.app.access.SettingChanged;
 import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
+import net.officefloor.hq.app.period.PeriodReopened;
 import net.officefloor.hq.app.person.PatronAdded;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.person.PersonHeld;
@@ -89,6 +90,11 @@ public class SheetAudit {
     public void on(PeriodClosed e) {
         audit.record("PERIOD_CLOSED sheet=" + e.sheetId() + " by=" + e.user()
                 + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString());
+    }
+
+    @TransactionalEventListener
+    public void on(PeriodReopened e) {
+        audit.record("PERIOD_REOPENED sheet=" + e.sheetId() + " by=" + e.user() + " period=" + e.name());
     }
 
     @TransactionalEventListener

@@ -67,6 +67,12 @@ public class PeriodController {
         return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
     }
 
+    @PostMapping("/{periodId}/reopen")
+    public PeriodView reopen(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
+    }
+
     @ExceptionHandler(PeriodRefused.class)
     public ResponseEntity<Refusal> refused(PeriodRefused e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));

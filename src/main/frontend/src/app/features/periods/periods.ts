@@ -48,7 +48,8 @@ function cents(amount: string): number {
               <td data-testid="period-due-total">{{ dueTotals()[p.id] }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
               <td>
-                <button type="button" data-testid="period-close" [attr.aria-label]="'Close period ' + p.name" (click)="close(p)">Close</button>
+                <button type="button" data-testid="period-close" [attr.aria-label]="'Close period ' + p.name" (click)="act(p, 'close')">Close</button>
+                <button type="button" data-testid="period-reopen" [attr.aria-label]="'Reopen period ' + p.name" (click)="act(p, 'reopen')">Reopen</button>
                 @if (rowError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ rowError()?.message }}</p>
                 }
@@ -184,8 +185,11 @@ export class Periods {
     }
   }
 
-  /** Close a period, fixing its due-total; closing one already closed is refused on its row. */
-  protected async close(p: Period): Promise<void> {
+  /**
+   * Close a period, fixing its due-total, or reopen a closed one (a steward only), making it live again;
+   * a refusal is shown on its row.
+   */
+  protected async act(p: Period, action: 'close' | 'reopen'): Promise<void> {
     if (this.busy) return;
     this.rowError.set(null);
     const sheet = this.session.sheet();
@@ -194,15 +198,15 @@ export class Periods {
     this.busy = true;
     try {
       const saved = await firstValueFrom(
-        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${p.id}/close`, null, { headers }),
+        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${p.id}/${action}`, null, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       this.periods.update((ps) => ps.map((q) => (q.id === saved.id ? saved : q)));
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
       const message = err instanceof HttpErrorResponse && err.status === 409
-        ? (err.error?.message ?? 'The period is already closed.')
-        : 'Could not close the period.';
+        ? (err.error?.message ?? (action === 'close' ? 'The period is already closed.' : 'The period cannot be reopened.'))
+        : `Could not ${action} the period.`;
       this.rowError.set({ id: p.id, message });
     } finally {
       this.busy = false;
