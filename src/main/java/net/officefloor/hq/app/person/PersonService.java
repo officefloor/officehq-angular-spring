@@ -343,8 +343,11 @@ public class PersonService {
         return person;
     }
 
-    /** A person found by {@link #search}: their sheet, name and due-total as shown ({@code n/a} when none). */
-    public record Found(String sheetId, String name, String dueTotal) {
+    /**
+     * A person found by {@link #search}: their sheet, name, grade in force on their sheet's today and due-total
+     * as shown ({@code n/a} when none).
+     */
+    public record Found(String sheetId, String name, String grade, String dueTotal) {
     }
 
     /**
@@ -363,10 +366,11 @@ public class PersonService {
         List<Found> found = new ArrayList<>();
         for (String sheet : order) {
             Map<Long, Rollup.PersonFigures> figures = rollup.figures(sheet).people();
+            LocalDate today = sheets.today(sheet);
             for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheet)) {
                 if (names(p).stream().anyMatch(n -> n.contains(key))) {
                     Rollup.PersonFigures f = figures.get(p.getId());
-                    found.add(new Found(sheet, p.getName(), f == null ? "n/a" : f.dueTotal()));
+                    found.add(new Found(sheet, p.getName(), p.gradeOn(today), f == null ? "n/a" : f.dueTotal()));
                 }
             }
         }

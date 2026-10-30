@@ -505,7 +505,7 @@ function csvField(value: string): string {
                   (change)="selectPerson(p, checked($event))"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-name">{{ p.name }} ({{ p.grade }})</td>
               @if (columnShown('aliases')) {
                 <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
               }
@@ -948,7 +948,7 @@ export class People {
     (this.people().reduce((sum, p) => sum + (this.personCuts().get(p.id) ?? 0), 0) / 100).toFixed(2),
   );
 
-  /** Each person's patrons, each as their name and share, sorted by name and comma separated, and their
+  /** Each person's patrons, each as their name with the grade in force today and share, sorted by name and comma separated, and their
    *  backing: each patron's recent settled figure (see {@link Person.recentSettled}) times their share
    *  divided by 100, added up and rounded half to even (see {@link patronShares}). */
   protected readonly patronage = computed(() => {
@@ -957,10 +957,10 @@ export class People {
       this.people().map((p) => {
         const patrons = p.patrons.map((id) => byId.get(id)).filter((q): q is Person => q !== undefined);
         const shares = patronShares(patrons.length);
-        const named = patrons.map((q, i) => ({ name: q.name, share: shares[i] }));
+        const named = patrons.map((q, i) => ({ name: q.name, grade: q.grade, share: shares[i] }));
         const names = named
           .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-          .map((n) => `${n.name} ${(n.share / 100).toFixed(2)}`)
+          .map((n) => `${n.name} (${n.grade}) ${(n.share / 100).toFixed(2)}`)
           .join(', ');
         // cents times hundredths of a percent: ten-thousandths of a cent.
         const backing = patrons.reduce((sum, q, i) => sum + cents(q.recentSettled) * shares[i], 0);

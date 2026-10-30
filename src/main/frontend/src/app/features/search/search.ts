@@ -3,15 +3,17 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A person found over the sheet's tree: their sheet, name and due-total as shown. */
+/** A person found over the sheet's tree: their sheet, name, grade and due-total as shown. */
 interface Found {
   sheetId: string;
   name: string;
+  /** Their grade in force on their sheet's today. */
+  grade: string;
   dueTotal: string;
 }
 
 // The tree search: every person on the sheet or another sheet of its tree whose name or an alias contains the
-// typed text (case ignored), one line each as <sheet id> <name> <due-total>, the sheet's own people first in
+// typed text (case ignored), one line each as <sheet id> <name> (<grade>) <due-total>, the sheet's own people first in
 // list order, then the other sheets' by sheet id. It reads the store; it records nothing.
 @Component({
   selector: 'app-search',
@@ -83,7 +85,7 @@ export class Search {
         }),
       );
       if (search !== this.searches) return;
-      this.lines.set(found.map((f) => `${f.sheetId} ${f.name} ${f.dueTotal}`));
+      this.lines.set(found.map((f) => `${f.sheetId} ${f.name} (${f.grade}) ${f.dueTotal}`));
       this.count.set(found.length);
     } catch {
       if (search === this.searches) this.error.set('Could not search the tree.');

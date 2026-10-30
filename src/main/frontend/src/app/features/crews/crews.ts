@@ -54,7 +54,7 @@ export function crewDueCents(crews: Crew[], people: PersonWithClaims[]): Map<str
         @for (c of crews(); track c.name) {
           <li [attr.data-testid]="'crew-row-' + c.name">
             <span data-testid="crew-name">{{ c.name }}</span>
-            <span>Lead <span data-testid="crew-lead">{{ c.lead?.name ?? '' }}</span></span>
+            <span>Lead <span data-testid="crew-lead">{{ c.lead ? withGrade(c.lead) : '' }}</span></span>
             <span>Due total <span data-testid="crew-due-total">{{ (dueTotals().get(c.name) ?? '0.00') | figure }}</span></span>
             <ul>
               @for (m of c.members; track m.personId) {
@@ -127,6 +127,14 @@ export class Crews {
         [...crewDueCents(this.crews(), this.people())].map(([name, total]) => [name, (total / 100).toFixed(2)]),
       ),
   );
+  /** Per person id, the grade in force on the sheet's today. */
+  private readonly grades = computed(() => new Map(this.people().map((p) => [p.id, p.grade])));
+
+  /** A crew person's name with their grade in force today ("Ben (B)"); the plain name when not on the sheet. */
+  protected withGrade(person: CrewPerson): string {
+    const grade = this.grades().get(person.personId);
+    return grade === undefined ? person.name : `${person.name} (${grade})`;
+  }
   /** Each answer is numbered: one older than the last shown is dropped. */
   private asked = 0;
   private shown = 0;
