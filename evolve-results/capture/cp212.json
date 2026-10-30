@@ -1,0 +1,68 @@
+{
+  "checkpoint": 212,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp212_score-without-corrections",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    209
+  ],
+  "replaced_tests": [
+    "cp209_score.spec.ts::score"
+  ],
+  "request": {
+    "spec": "The score's settled figures now leave out corrections: only SETTLED claims that correct nothing\ncount toward it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe score's settled figures now leave out corrections: only SETTLED claims that correct nothing\ncount toward it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7c282e2e2e74e71608a45125ed6ca72a0dc83274",
+  "reset_sha": "",
+  "preagent_sha": "224ad1ce06e4168c2af40c7ef9196b7d561c11ac",
+  "prev_sha": "224ad1ce06e4168c2af40c7ef9196b7d561c11ac",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2443936,
+    "input_tokens": 14,
+    "output_tokens": 1826,
+    "cache_read_tokens": 162848,
+    "cache_creation_tokens": 21906,
+    "num_turns": 7,
+    "duration_ms": 177148,
+    "duration_api_ms": 27123,
+    "model": "claude-opus-5-5",
+    "session_id": "b85670df-869f-460b-8b16-575da0dd5459",
+    "stop_reason": "success",
+    "result_text": "Corrections no longer count toward a person's score: only SETTLED claims that correct nothing feed the settled part of it. `bin/e2e` passes all 4 tests in the acceptance spec.\n\nThe fix is one change in `Dues.score` (`src/main/java/net/officefloor/hq/app/claim/Dues.java`): it now drops claims that correct something before adding up the settled figures. Since the score is worked out on the server, both places that show it pick this up: the person row (score and band) and the `SCORE` audit line written when the day changes.\n\nTwo things stay as they were:\n- **Settled total:** the \"settled total\" figure shown for each person still includes corrections, because the request only mentions the score.\n- **Overdue penalty:** the minus 5 for each overdue claim still looks at all of a person's claims, corrections included, for the same reason.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.2443936,
+        "num_turns": 7,
+        "duration_ms": 177148,
+        "duration_api_ms": 27123,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp212.agent.jsonl",
+  "agent_diff_file": "cp212.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
