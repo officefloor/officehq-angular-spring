@@ -1,0 +1,530 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 1066d229a..ef50d512e 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -33,6 +33,8 @@ interface Settings {
+   pot: string | null;
+   /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; null when none. Not dated. */
+   parent: string | null;
++  /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
++  fiscalStartMonth: string;
+   /** The most a person's due-total comes to, with two decimals; null when there is no cap. */
+   cap: string | null;
+   /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
+@@ -96,6 +98,7 @@ const NO_PERMS_TOUCHED: Record<Perm, boolean> = { permOpen: false, permSettle: f
+ const PERM_ROLES = /^\s*(clerk|steward)\s*(,\s*(clerk|steward)\s*)*$/;
+ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+ const DAYS = /^\d{1,5}$/;
++const MONTH = /^([1-9]|0[1-9]|1[0-2])$/;
+ const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+@@ -217,6 +220,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
+       <p>Pot <strong data-testid="setting-pot-current">{{ pot() ?? '' }}</strong></p>
+       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
++      <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
+       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
+       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
+       @for (g of grades; track g) {
+@@ -386,6 +390,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           (input)="parentInput.set(value($event)); parentTouched = true; settingsError.set('')"
+           (keydown)="parentTouched = parentTouched || clears($event)"
+         />
++        <label for="setting-fiscal-start-month">Fiscal year start month, 1 to 12 (blank: 1)</label>
++        <input
++          id="setting-fiscal-start-month"
++          inputmode="numeric"
++          data-testid="setting-fiscal-start-month"
++          [value]="fiscalStartMonthInput()"
++          (input)="fiscalStartMonthInput.set(value($event)); fiscalStartMonthTouched = true; settingsError.set('')"
++          (keydown)="fiscalStartMonthTouched = fiscalStartMonthTouched || clears($event)"
++        />
+         <label for="setting-cap">Cap on a person's due-total (blank: no cap)</label>
+         <input
+           id="setting-cap"
+@@ -515,6 +528,8 @@ export class Access {
+   protected readonly potInput = signal('');
+   protected readonly parent = signal<string | null>(null);
+   protected readonly parentInput = signal('');
++  protected readonly fiscalStartMonth = signal('1');
++  protected readonly fiscalStartMonthInput = signal('');
+   protected readonly cap = signal<string | null>(null);
+   protected readonly capInput = signal('');
+   protected readonly proofThreshold = signal<string | null>(null);
+@@ -545,6 +560,7 @@ export class Access {
+   protected entryDateTouched = false;
+   protected potTouched = false;
+   protected parentTouched = false;
++  protected fiscalStartMonthTouched = false;
+   protected capTouched = false;
+   protected proofThresholdTouched = false;
+   protected gradeProofTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
+@@ -566,7 +582,7 @@ export class Access {
+       this.delegateFrom.set('');
+       this.delegateTo.set('');
+       this.delegateError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, parent: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -742,6 +758,11 @@ export class Access {
+       this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
+       return;
+     }
++    const fiscalStartMonth = this.fiscalStartMonthInput().trim();
++    if (this.fiscalStartMonthTouched && fiscalStartMonth !== '' && !MONTH.test(fiscalStartMonth)) {
++      this.settingsError.set('Enter a fiscal year start month from 1 to 12, or leave it blank for 1.');
++      return;
++    }
+     const cap = this.capInput().trim();
+     if (this.capTouched && cap !== '' && !LIMIT.test(cap)) {
+       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank for no cap.');
+@@ -798,6 +819,7 @@ export class Access {
+     if (this.entryDateTouched) body.entryDate = entryDate;
+     if (this.potTouched) body.pot = pot;
+     if (this.parentTouched) body.parent = this.parentInput().trim();
++    if (this.fiscalStartMonthTouched) body.fiscalStartMonth = fiscalStartMonth === '' ? '' : String(Number(fiscalStartMonth));
+     if (this.capTouched) body.cap = cap;
+     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
+     for (const g of GRADES) {
+@@ -877,6 +899,9 @@ export class Access {
+     this.parent.set(settings.parent);
+     this.parentInput.set(settings.parent ?? '');
+     this.parentTouched = false;
++    this.fiscalStartMonth.set(settings.fiscalStartMonth);
++    this.fiscalStartMonthInput.set(settings.fiscalStartMonth);
++    this.fiscalStartMonthTouched = false;
+     this.cap.set(settings.cap);
+     this.capInput.set(settings.cap ?? '');
+     this.capTouched = false;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7ce7419cc..f22d590ec 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1775,9 +1775,16 @@ export class People {
+   /** Show the people again as the store holds them, once a setting changed what they are due. */
+   protected readonly reloadAfterSettings = async (): Promise<void> => {
+     const sheet = this.session.sheet();
+-    if (sheet) await this.reload(sheet).catch(() => undefined);
++    if (sheet) await Promise.all([this.reload(sheet), this.reloadPeriods(sheet)]).catch(() => undefined);
+   };
+ 
++  /** Re-read the sheet's periods: a setting such as the fiscal start month changes how they are shown. */
++  private async reloadPeriods(sheet: string): Promise<void> {
++    const loads = this.session.loads();
++    const periods = await firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`));
++    if (this.session.sheet() === sheet && this.session.loads() === loads) this.periods.set(periods);
++  }
++
+   private async reload(sheet: string): Promise<void> {
+     const loads = this.session.loads();
+     const [people, watched, batch, descendants, live] = await Promise.all([
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index b4b513ab6..2a62b0892 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -17,9 +17,12 @@ export interface Period {
+   closedTotal: string | null;
+   /** Per person id, the person's due-total fixed when the period was closed; empty while it is open. */
+   personTotals: Record<number, string>;
++  /** The fiscal year its from-date falls in: FY and the calendar year that fiscal year's first day falls in. */
++  fy: string;
+ }
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
++const YEAR = /^\d{4}$/;
+ 
+ /** The period whose dates contain the date, or undefined when none does. */
+ export function periodOf(periods: Period[], date: string): Period | undefined {
+@@ -91,7 +94,7 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]):
+       <h2>Periods</h2>
+       <table>
+         <thead>
+-          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of periods(); track p.id) {
+@@ -99,6 +102,7 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]):
+               <th scope="row" data-testid="period-name">{{ p.name }}</th>
+               <td data-testid="period-from">{{ p.from }}</td>
+               <td data-testid="period-to">{{ p.to }}</td>
++              <td data-testid="period-fy">{{ p.fy }}</td>
+               <td data-testid="period-due-total">{{ dueTotals()[p.id] }}</td>
+               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+               <td>
+@@ -167,6 +171,17 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]):
+           <p role="alert" data-testid="period-generate-error">{{ genError() }}</p>
+         }
+       </form>
++      <form (submit)="generateFy($event)" aria-label="Generate a fiscal year's monthly periods">
++        <label for="period-generate-fy-year">Fiscal year (the calendar year its first day falls in)</label>
++        <input
++          id="period-generate-fy-year"
++          inputmode="numeric"
++          data-testid="period-generate-fy-year"
++          [value]="fyYear()"
++          (input)="fyYear.set(value($event)); genError.set('')"
++        />
++        <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
++      </form>
+     </section>
+   `,
+ })
+@@ -184,6 +199,7 @@ export class Periods {
+   protected readonly error = signal('');
+   protected readonly genFrom = signal('');
+   protected readonly genTo = signal('');
++  protected readonly fyYear = signal('');
+   /** How many periods the last generate made; null while it runs. */
+   protected readonly generated = signal<number | null>(null);
+   protected readonly genError = signal('');
+@@ -203,6 +219,7 @@ export class Periods {
+       this.error.set('');
+       this.genFrom.set('');
+       this.genTo.set('');
++      this.fyYear.set('');
+       this.generated.set(null);
+       this.genError.set('');
+       this.rowError.set(null);
+@@ -278,11 +295,35 @@ export class Periods {
+       this.genError.set('The to-date is before the from-date.');
+       return;
+     }
++    await this.runGenerate(sheet, 'generate', { from, to });
++  }
++
++  /**
++   * Generate the twelve monthly periods of the fiscal year whose first day falls in the year given, from the
++   * sheet's fiscal start month on, as the monthly generate does. Shows how many were made.
++   */
++  protected async generateFy(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    this.generated.set(null);
++    this.genError.set('');
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const year = this.fyYear().trim();
++    if (!YEAR.test(year)) {
++      this.genError.set('Enter a year, such as 2026.');
++      return;
++    }
++    await this.runGenerate(sheet, 'generate-fy', { year: Number(year) });
++  }
++
++  /** Post a generate and show the periods made and how many, or the refusal. */
++  private async runGenerate(sheet: string, path: string, body: object): Promise<void> {
+     const headers = { 'X-User': this.session.user() ?? '' };
+     this.busy = true;
+     try {
+       const made = await firstValueFrom(
+-        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, { from, to }, { headers }),
++        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${path}`, body, { headers }),
+       );
+       if (this.session.sheet() !== sheet) return;
+       const ids = new Set(made.map((p) => p.id));
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index 7f31038c2..836164aa6 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -53,13 +53,15 @@ public class AccessController {
+      * days of grades A, B and C are a number of days, null for a grade with none; the proof thresholds of
+      * grades A, B and C are figures with two decimals, null for a grade with none (it uses the sheet's). The
+      * pot is a figure with two decimals, null for none; it is not dated. The parent is the id of the parent
+-     * sheet, null for none; it is not dated.
++     * sheet, null for none; it is not dated. The fiscal start month is the month (1 to 12) the sheet's fiscal
++     * year starts in; it is not dated.
+      */
+     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
+             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
+-            String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent) {
++            String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
++            String fiscalStartMonth) {
+ 
+         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
+                 Integer graceDays, LocalDate entryDate) {
+@@ -76,7 +78,8 @@ public class AccessController {
+                     entryDate == null ? null : entryDate.toString(), text(grace(dated, "A", today)),
+                     text(grace(dated, "B", today)), text(grace(dated, "C", today)),
+                     text(dated.gradeProofThreshold("A", today)), text(dated.gradeProofThreshold("B", today)),
+-                    text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent());
++                    text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent(),
++                    Integer.toString(dated.fiscalStartMonth()));
+         }
+ 
+         /** The grade's grace days in force on the date as written; null when it has none then. */
+@@ -129,7 +132,8 @@ public class AccessController {
+      * dated. A grade's grace days are a whole number of days, blank meaning none; dated. A grade's proof
+      * threshold is 0.00 or more with up to two decimals, blank meaning none (the sheet's); dated. The pot is
+      * 0.00 or more with up to two decimals, blank meaning none; not dated. The parent is the id of a sheet
+-     * that has been loaded, blank meaning none; not dated.
++     * that has been loaded, blank meaning none; not dated. The fiscal start month is a month, 1 to 12, blank
++     * putting back 1; not dated.
+      */
+     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
+@@ -174,7 +178,8 @@ public class AccessController {
+             @Pattern(regexp = DATE) String proofThresholdBFrom,
+             @Pattern(regexp = DATE) String proofThresholdCFrom,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String pot,
+-            @Size(max = 100) String parent) {
++            @Size(max = 100) String parent,
++            @Pattern(regexp = "(\\d{1,2})?") String fiscalStartMonth) {
+     }
+ 
+     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
+@@ -244,7 +249,7 @@ public class AccessController {
+         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
+                 form.periodNumberingFrom(), form.graceDays(), gradeGrace, cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
+                 dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold,
+-                form.pot(), form.parent() == null ? null : form.parent().trim());
++                form.pot(), form.parent() == null ? null : form.parent().trim(), form.fiscalStartMonth());
+         return settings(sheet);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 0da9f2a85..ebfae7d7f 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -78,6 +78,8 @@ public class AccessService {
+ 
+     public static final String PARENT = DatedSettings.PARENT;
+ 
++    public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
++
+     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
+     public record Dated(String value, LocalDate from) {
+     }
+@@ -254,7 +256,11 @@ public class AccessService {
+     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
+             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
+-            Map<String, Dated> gradeProofThreshold, String pot, String parent) {
++            Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth) {
++        if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
++                && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
++        }
+         if (clerkLimit != null) {
+             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
+         }
+@@ -315,6 +321,10 @@ public class AccessService {
+         if (parent != null) {
+             setParent(sheetId, user, parent.isEmpty() ? null : parent);
+         }
++        if (fiscalStartMonth != null) {
++            setFiscalStartMonth(sheetId, user, fiscalStartMonth.isEmpty()
++                    ? DatedSettings.DEFAULT_FISCAL_START_MONTH : Integer.parseInt(fiscalStartMonth));
++        }
+     }
+ 
+     /** The roles that may take the action as set (comma separated); null when blank (the standing rule). */
+@@ -398,6 +408,27 @@ public class AccessService {
+         rollup.changed(sheetId, user, before);
+     }
+ 
++    /**
++     * Record the month (1 to 12) the sheet's fiscal year starts in. Not dated: the value holds from the beginning
++     * of time, replacing the one it had. Refused (409, changing nothing) for any other month.
++     */
++    @Transactional
++    public void setFiscalStartMonth(String sheetId, String user, int month) {
++        if (month < 1 || month > 12) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
++        }
++        sheets.load(sheetId, user);
++        String value = Integer.toString(month);
++        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, FISCAL_START_MONTH, null).orElse(null);
++        if (row == null) {
++            settingRows.saveAndFlush(new SheetSetting(sheetId, FISCAL_START_MONTH, null, value));
++        } else {
++            row.setValue(value);
++            settingRows.flush();
++        }
++        events.publishEvent(new SettingChanged(sheetId, user, FISCAL_START_MONTH, value, null));
++    }
++
+     /** A figure as kept: two decimals; blank is the starting value given (null: none). */
+     private static String money(String value, BigDecimal start) {
+         BigDecimal figure = value.isEmpty() ? start : new BigDecimal(value).setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index c25e5b5a2..bd1713f0c 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.period;
+ 
+ import jakarta.validation.Valid;
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+@@ -31,18 +33,19 @@ public class PeriodController {
+ 
+     /**
+      * A period as shown, whether it is closed or soft-closed; once either, with the due-total fixed then (null
+-     * while open) and per person id the person's due-total fixed then (empty while open).
++     * while open) and per person id the person's due-total fixed then (empty while open); and the fiscal year
++     * (FY and a year) its from-date falls in.
+      */
+     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+-            String closedTotal, Map<Long, String> personTotals) {
++            String closedTotal, Map<Long, String> personTotals, String fy) {
+ 
+-        static PeriodView of(Period period) {
++        static PeriodView of(Period period, int fiscalStartMonth) {
+             Map<Long, String> personTotals = new TreeMap<>();
+             period.getPersonTotals().forEach((id, t) -> personTotals.put(id, t.setScale(2, RoundingMode.HALF_UP).toPlainString()));
+             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null
+                             : period.getClosedTotal().setScale(2, RoundingMode.HALF_UP).toPlainString(),
+-                    personTotals);
++                    personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth));
+         }
+     }
+ 
+@@ -61,13 +64,15 @@ public class PeriodController {
+ 
+     @GetMapping
+     public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+-        return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
++        String sheet = sheetId.trim();
++        return views(sheet, service.list(sheet));
+     }
+ 
+     @PostMapping
+     public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PeriodForm form) {
+-        return PeriodView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to()));
++        String sheet = sheetId.trim();
++        return view(sheet, service.add(sheet, user.trim(), form.name().trim(), form.from(), form.to()));
+     }
+ 
+     /** A from and to date: one period per calendar month from the from-date's month to the to-date's. */
+@@ -77,25 +82,49 @@ public class PeriodController {
+     @PostMapping("/generate")
+     public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody GenerateForm form) {
+-        return service.generate(sheetId.trim(), user.trim(), form.from(), form.to()).stream().map(PeriodView::of).toList();
++        String sheet = sheetId.trim();
++        return views(sheet, service.generate(sheet, user.trim(), form.from(), form.to()));
++    }
++
++    /** A calendar year: the twelve monthly periods of the fiscal year whose first day falls in it. */
++    public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9999) Integer year) {
++    }
++
++    @PostMapping("/generate-fy")
++    public List<PeriodView> generateFiscalYear(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody GenerateFiscalYearForm form) {
++        String sheet = sheetId.trim();
++        return views(sheet, service.generateFiscalYear(sheet, user.trim(), form.year()));
++    }
++
++    private PeriodView view(String sheet, Period period) {
++        return PeriodView.of(period, service.fiscalStartMonth(sheet));
++    }
++
++    private List<PeriodView> views(String sheet, List<Period> periods) {
++        int fiscalStartMonth = service.fiscalStartMonth(sheet);
++        return periods.stream().map(p -> PeriodView.of(p, fiscalStartMonth)).toList();
+     }
+ 
+     @PostMapping("/{periodId}/close")
+     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+             @RequestHeader("X-User") @NotBlank String user) {
+-        return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
++        String sheet = sheetId.trim();
++        return view(sheet, service.close(sheet, user.trim(), periodId));
+     }
+ 
+     @PostMapping("/{periodId}/soft-close")
+     public PeriodView softClose(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+             @RequestHeader("X-User") @NotBlank String user) {
+-        return PeriodView.of(service.softClose(sheetId.trim(), user.trim(), periodId));
++        String sheet = sheetId.trim();
++        return view(sheet, service.softClose(sheet, user.trim(), periodId));
+     }
+ 
+     @PostMapping("/{periodId}/reopen")
+     public PeriodView reopen(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+             @RequestHeader("X-User") @NotBlank String user) {
+-        return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
++        String sheet = sheetId.trim();
++        return view(sheet, service.reopen(sheet, user.trim(), periodId));
+     }
+ 
+     @ExceptionHandler(PeriodRefused.class)
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 166e90202..0cdfac594 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -117,6 +117,33 @@ public class PeriodService {
+         return made;
+     }
+ 
++    /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */
++    @Transactional(readOnly = true)
++    public int fiscalStartMonth(String sheetId) {
++        return sheets.settings(sheetId).fiscalStartMonth();
++    }
++
++    /**
++     * The fiscal year the date falls in, named FY and the calendar year its first day falls in: the year the
++     * fiscal year starting in the given month (1 to 12) on or before the date begins.
++     */
++    public static String fiscalYear(LocalDate date, int startMonth) {
++        int year = date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1;
++        return "FY" + year;
++    }
++
++    /**
++     * Generate the twelve monthly periods of the fiscal year whose first day falls in the given calendar year,
++     * from the sheet's fiscal start month on, exactly as {@link #generate} does. Returns the periods made,
++     * earliest first.
++     */
++    @Transactional
++    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
++        sheets.load(sheetId, user);
++        YearMonth first = YearMonth.of(year, fiscalStartMonth(sheetId));
++        return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
++    }
++
+     /**
+      * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims due by a date inside it that counted (OPEN, PENDING and SETTLED,
+      * but not an unbound OPEN claim dated within a hold of its person, nor a deferred one) at the end of its last day,
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+index 3675d45b2..05be29ac3 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+@@ -35,6 +35,12 @@ public record DatedSettings(List<SheetSetting> values) {
+     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
+     public static final String PARENT = "parent";
+ 
++    /** The month (1 to 12) the sheet's fiscal year starts in; not dated. */
++    public static final String FISCAL_START_MONTH = "fiscal-start-month";
++
++    /** The month a fiscal year starts in when none is set: January. */
++    public static final int DEFAULT_FISCAL_START_MONTH = 1;
++
+     /** A sheet with no value saved: every setting has its starting value on every date. */
+     public static final DatedSettings NONE = new DatedSettings(List.of());
+ 
+@@ -142,6 +148,11 @@ public record DatedSettings(List<SheetSetting> values) {
+         return on(POT, LocalDate.MAX).map(BigDecimal::new).orElse(null);
+     }
+ 
++    /** The month (1 to 12) the sheet's fiscal year starts in (not dated); 1 when none is set. */
++    public int fiscalStartMonth() {
++        return on(FISCAL_START_MONTH, LocalDate.MAX).map(Integer::valueOf).orElse(DEFAULT_FISCAL_START_MONTH);
++    }
++
+     /** The id of the sheet's parent sheet (not dated); null when it has none. */
+     public String parent() {
+         return on(PARENT, LocalDate.MAX).orElse(null);
