@@ -12,7 +12,7 @@ export interface Holiday {
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's holidays, earliest first, and the entry that adds one; no date is on the list twice. A claim's
-// due-by, fixed when it is added, is moved past the holidays on the sheet then.
+// due-by, fixed when it is added, counts business days, skipping the weekends and the holidays on the sheet then.
 @Component({
   selector: 'app-holidays',
   template: `

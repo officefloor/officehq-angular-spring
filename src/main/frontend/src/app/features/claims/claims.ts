@@ -28,7 +28,7 @@ export interface Claim {
   openedBy: string | null;
   /** Whether the person's last statement binds the claim to the figure it had then. */
   stated: boolean;
-  /** Fixed when the claim was added: its date plus the terms then of its person's grade on its date. */
+  /** Fixed when the claim was added: the terms-th business day after its date (no weekend or holiday on the sheet then). */
   dueBy: string;
   /** Whether the claim is OPEN or PENDING and its due-by is before the sheet's today. */
   overdue: boolean;

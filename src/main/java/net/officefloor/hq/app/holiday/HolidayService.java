@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.holiday;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -12,8 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The holidays on a sheet, earliest first; no date is on it twice. A claim's due-by, when it is fixed as the
- * claim is added, is moved past the holidays on the sheet then (see {@link #pastHolidays}); a holiday added
- * later leaves the due-by dates already fixed as they are.
+ * claim is added, is the terms-th business day after its date, skipping weekends and the holidays on the sheet
+ * then (see {@link #dueBy}); a holiday added later leaves the due-by dates already fixed as they are.
  */
 @Service
 public class HolidayService {
@@ -49,14 +50,30 @@ public class HolidayService {
         return saved;
     }
 
-    /** The date, or when it is a holiday on the sheet, the next day after it that is not. */
+    /** The due-by of a claim dated {@code date} with these terms, see {@link #businessDaysAfter}. */
     @Transactional(readOnly = true)
-    public LocalDate pastHolidays(String sheetId, LocalDate date) {
+    public LocalDate dueBy(String sheetId, LocalDate date, int terms) {
         Set<LocalDate> days = list(sheetId).stream().map(Holiday::getDay).collect(Collectors.toSet());
+        return businessDaysAfter(date, terms, days);
+    }
+
+    /**
+     * The {@code terms}-th business day after the date, counting forward from the day after it and skipping
+     * every Saturday, Sunday and holiday given; the date itself when the terms are 0 or less.
+     */
+    public static LocalDate businessDaysAfter(LocalDate date, int terms, Set<LocalDate> holidays) {
         LocalDate day = date;
-        while (days.contains(day)) {
+        for (int left = terms; left > 0; ) {
             day = day.plusDays(1);
+            if (businessDay(day, holidays)) {
+                left--;
+            }
         }
         return day;
+    }
+
+    private static boolean businessDay(LocalDate day, Set<LocalDate> holidays) {
+        DayOfWeek dow = day.getDayOfWeek();
+        return dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY && !holidays.contains(day);
     }
 }

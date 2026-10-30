@@ -89,7 +89,10 @@ public class Claim {
     @Column(name = "corrects_date")
     private LocalDate correctsDate;
 
-    /** The date the claim is due by, fixed when it was added from the terms then of its person's grade on its date. */
+    /**
+     * The date the claim is due by, fixed when it was added: the terms-th business day after its date, by the
+     * terms then of its person's grade on its date and the holidays on the sheet then.
+     */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
