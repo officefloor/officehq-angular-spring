@@ -93,6 +93,13 @@ public class Claim {
     @Column(name = "stated_due", precision = 14, scale = 2)
     private BigDecimal statedDue;
 
+    /**
+     * Whether statedDue is the figure as shown, late charge included; false for a claim bound before
+     * statements bound that, whose statedDue is its figure without its late charge.
+     */
+    @Column(name = "stated_as_shown", nullable = false)
+    private boolean statedAsShown;
+
     /** The number of the claim a correction corrects; null for any other claim. */
     @Column(name = "corrects")
     private String corrects;
@@ -560,15 +567,26 @@ public class Claim {
         return statedDue;
     }
 
-    /** Bind the claim to a figure (a statement it counts at). */
+    public boolean isStatedAsShown() {
+        return statedAsShown;
+    }
+
+    /** Bind the claim to its figure as shown, late charge included (a statement it counts at). */
     public void bind(BigDecimal figure) {
+        bind(figure, true);
+    }
+
+    /** Bind the claim to a figure, as shown or (bound before statements bound that) without its late charge. */
+    public void bind(BigDecimal figure, boolean asShown) {
         this.stated = true;
         this.statedDue = figure;
+        this.statedAsShown = asShown;
     }
 
     /** Release the claim to its live figure (a statement it does not count at). */
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+        this.statedAsShown = false;
     }
 }

@@ -25,8 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The statements taken for the people on a sheet. Taking one records the person's due-total and
- * binds each of their claims that counts to the figure it has then (without its late charge, which
- * keeps following the sheet's today); a claim that does not count is released to its live figure. A
+ * binds each of their claims that counts to the figure it shows then, late charge included (so while
+ * bound its late charge no longer follows the sheet's today, and a claim already bound is bound again at
+ * that figure); a claim that does not count is released to its live figure. A
  * statement can be taken as of a date gone by, from the sheet as it stood at the end of that date.
  * A steward can cancel a person's last statement: the claims it bound are released to their live
  * figures (a figure an earlier statement bound is not restored).
@@ -114,7 +115,7 @@ public class StatementService {
         for (Claim claim : theirs) {
             Claim stood = claimsThen.get(claim.getId());
             if (stood != null && Dues.counts(stood, then.leaves(), table.today())) {
-                claim.bind(Dues.base(stood, then::gradeOn, table));
+                claim.bind(Dues.figure(stood, then::gradeOn, table));
                 counting++;
             } else {
                 claim.unbind();

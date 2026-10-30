@@ -158,7 +158,7 @@ public class PersonTransferService {
         for (Claim claim : leaving) {
             Claim copy = claim.arriving(toSheet, arrived.getId());
             if (claim.isStated()) {
-                copy.bind(claim.getStatedDue());
+                copy.bind(claim.getStatedDue(), claim.isStatedAsShown());
             }
             arriving.add(copy);
             if (claim.getShownNumber() != null) {

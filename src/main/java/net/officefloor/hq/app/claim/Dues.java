@@ -16,7 +16,8 @@ public final class Dues {
     }
 
     /**
-     * A claim's due: once settled, the due fixed then (its late charge frozen in); a correction, its
+     * A claim's due: once settled, the due fixed then (its late charge frozen in); while bound by a statement
+     * to its figure as shown, that figure (its late charge bound in); a correction, its
      * {@link #base} figure (no floor, no late charge); otherwise the greater of the floor in force on its date
      * and its {@link #base} figure plus, while overdue and not waived, its {@link RateTable#lateCharge late charge} on that
      * figure. Null when there is none.
@@ -24,6 +25,9 @@ public final class Dues {
     public static BigDecimal figure(Claim claim, Grades grades, RateTable rates) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
+        }
+        if (bound(claim) && claim.isStatedAsShown()) {
+            return claim.getStatedDue();
         }
         BigDecimal base = base(claim, grades, rates);
         if (base == null || claim.isCorrection()) {
@@ -36,11 +40,12 @@ public final class Dues {
     }
 
     /**
-     * A claim's figure before any late charge or floor: while bound by a statement, the figure bound then; otherwise its {@link #rateFigure rate figure}. Null when there is
-     * none. A statement binds this figure, never the late charge or the floor.
+     * A claim's figure before any late charge or floor: while bound by a statement from before statements
+     * bound the figure as shown, the figure bound then; otherwise its {@link #rateFigure rate figure}. Null
+     * when there is none.
      */
     public static BigDecimal base(Claim claim, Grades grades, RateTable rates) {
-        if (bound(claim)) {
+        if (bound(claim) && !claim.isStatedAsShown()) {
             return claim.getStatedDue();
         }
         return rateFigure(claim, grades, rates);
