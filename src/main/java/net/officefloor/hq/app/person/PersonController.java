@@ -56,15 +56,15 @@ public class PersonController {
      * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
      * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}),
      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
-     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none) and its comments, oldest first.
+     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, and whether it counts in the live totals (see {@link Dues#counts}).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
-            String voidReason, List<CommentView> comments) {
+            String voidReason, List<CommentView> comments, boolean counts) {
 
-        static ClaimView of(Claim claim, Grades grade, RateTable rates) {
+        static ClaimView of(Claim claim, Grades grade, RateTable rates, Holds held) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getShownNumber(),
                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, grade, rates),
@@ -73,7 +73,8 @@ public class PersonController {
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     Tags.list(claim.getTags()), claim.getVoidReason(),
-                    claim.getComments().stream().map(CommentView::of).toList());
+                    claim.getComments().stream().map(CommentView::of).toList(),
+                    Dues.counts(claim, held, rates.today()));
         }
     }
 
@@ -122,7 +123,7 @@ public class PersonController {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
-                    grade.on(rates.today()), person.getTerms(), claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
+                    grade.on(rates.today()), person.getTerms(), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
                     statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),

@@ -60,6 +60,8 @@ export interface Claim {
   voidReason: string | null;
   /** The claim's comments, oldest first. */
   comments: ClaimComment[];
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, and not left out by a hold, a retirement or a deferral. */
+  counts: boolean;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today when it was written, and its text. */

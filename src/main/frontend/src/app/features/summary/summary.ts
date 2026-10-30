@@ -18,7 +18,8 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
 }
 
 // The sheet's figures summed from the list: per grade, the people on it today (retired people left
-// out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how many
+// out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per month any claim is dated in, the dues of
+// its claims that count; per status, how many
 // claims have it; per reason on the sheet's void reasons, how many VOID claims were voided with it.
 @Component({
   selector: 'app-summary',
@@ -51,6 +52,20 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
             <tr>
               <th scope="row">{{ p.name }}</th>
               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>By month</caption>
+        <thead>
+          <tr><th scope="col">Month</th><th scope="col">Due total</th></tr>
+        </thead>
+        <tbody>
+          @for (m of byMonth(); track m.month) {
+            <tr>
+              <th scope="row">{{ m.month }}</th>
+              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
             </tr>
           }
         </tbody>
@@ -103,6 +118,17 @@ export class Summary {
   protected readonly byPeriod = computed(() => {
     const totals = periodDueTotals(this.periods(), this.people());
     return this.periods().map((p) => ({ name: p.name, dueTotal: totals[p.id] }));
+  });
+
+  /** Every month (yyyy-mm) any claim is dated in, earliest first, with the dues of its claims that count added up. */
+  protected readonly byMonth = computed(() => {
+    const totals = new Map<string, number>();
+    for (const c of this.people().flatMap((p) => p.claims)) {
+      const month = c.date.slice(0, 7);
+      const due = c.counts && c.due !== null ? cents(c.due) : 0;
+      totals.set(month, (totals.get(month) ?? 0) + due);
+    }
+    return [...totals.keys()].sort().map((month) => ({ month, dueTotal: ((totals.get(month) ?? 0) / 100).toFixed(2) }));
   });
 
   protected readonly byStatus = computed(() => statusCounts(this.people()));
