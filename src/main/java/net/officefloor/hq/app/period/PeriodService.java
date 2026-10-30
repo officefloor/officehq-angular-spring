@@ -67,14 +67,18 @@ public class PeriodService {
     /**
      * Add a period from {@code from} to {@code to}, both inclusive. Refused when the name is taken on the
      * sheet, the to-date is before the from-date, or it shares a date with another period. Two users adding
-     * one at the same moment wait on each other, so no two overlap.
+     * one at the same moment wait on each other, so no two overlap. A cap, when given, is the most OPEN or PENDING
+     * claims a person may have in it, and must be a whole number of at least 1.
      */
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         sheets.load(sheetId, user);
         sheetRows.lockById(sheetId);
         if (to.isBefore(from)) {
             throw new PeriodRefused("The to-date is before the from-date.");
+        }
+        if (cap != null && cap < 1) {
+            throw new PeriodRefused("The cap must be a whole number of at least 1.");
         }
         if (periods.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
             throw new PeriodRefused("That period name is already in use on this sheet.");
@@ -82,8 +86,8 @@ public class PeriodService {
         if (list(sheetId).stream().anyMatch(p -> p.overlaps(from, to))) {
             throw new PeriodRefused("The period overlaps another period.");
         }
-        Period period = periods.saveAndFlush(new Period(sheetId, name, from, to));
-        events.publishEvent(new PeriodAdded(sheetId, user, name, from, to));
+        Period period = periods.saveAndFlush(new Period(sheetId, name, from, to, cap));
+        events.publishEvent(new PeriodAdded(sheetId, user, name, from, to, cap));
         return period;
     }
 
@@ -110,7 +114,7 @@ public class PeriodService {
                 continue;
             }
             Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
-            events.publishEvent(new PeriodAdded(sheetId, user, name, first, last));
+            events.publishEvent(new PeriodAdded(sheetId, user, name, first, last, null));
             existing.add(period);
             made.add(period);
         }

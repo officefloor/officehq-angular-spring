@@ -37,7 +37,7 @@ public class PeriodController {
      * (FY and a year) its from-date falls in.
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
-            String closedTotal, Map<Long, String> personTotals, String fy) {
+            String closedTotal, Map<Long, String> personTotals, String fy, Integer cap) {
 
         static PeriodView of(Period period, int fiscalStartMonth) {
             Map<Long, String> personTotals = new TreeMap<>();
@@ -45,12 +45,13 @@ public class PeriodController {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null
                             : period.getClosedTotal().setScale(2, RoundingMode.HALF_UP).toPlainString(),
-                    personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth));
+                    personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth), period.getCap());
         }
     }
 
-    /** A name, and a from and to date, both inclusive. */
-    public record PeriodForm(@NotBlank @Size(max = 100) String name, @NotNull LocalDate from, @NotNull LocalDate to) {
+    /** A name, a from and to date, both inclusive, and the most OPEN or PENDING claims a person may have in it (null for none). */
+    public record PeriodForm(@NotBlank @Size(max = 100) String name, @NotNull LocalDate from, @NotNull LocalDate to,
+            Integer cap) {
     }
 
     public record Refusal(String message) {
@@ -72,7 +73,7 @@ public class PeriodController {
     public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PeriodForm form) {
         String sheet = sheetId.trim();
-        return view(sheet, service.add(sheet, user.trim(), form.name().trim(), form.from(), form.to()));
+        return view(sheet, service.add(sheet, user.trim(), form.name().trim(), form.from(), form.to(), form.cap()));
     }
 
     /** A from and to date: one period per calendar month from the from-date's month to the to-date's. */

@@ -357,6 +357,7 @@ public class ClaimService {
         }
         if (next == ClaimStatus.OPEN) {
             requireNote(sheetId, claim);
+            requireUnderCap(sheetId, claim);
         }
         Rollup.Figures before = rollup.figures(sheetId);
         if (next == ClaimStatus.OPEN) {
@@ -926,6 +927,25 @@ public class ClaimService {
     private boolean numberingOn(String sheetId) {
         LocalDate from = sheets.periodNumberingFrom(sheetId);
         return from != null && !sheets.today(sheetId).isBefore(from);
+    }
+
+    /**
+     * Refuse opening a claim when the period its due-by falls in has a cap and its person already has that many
+     * OPEN or PENDING claims due by a date inside it. Holds the sheet's lock, so two opens cannot both pass.
+     */
+    private void requireUnderCap(String sheetId, Claim claim) {
+        sheetRows.lockById(sheetId);
+        Period period = periodOf(sheetId, claim.getDueBy());
+        if (period == null || period.getCap() == null) {
+            return;
+        }
+        long held = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()) && c.getStatus().unpaid() && period.contains(c.getDueBy()))
+                .count();
+        if (held >= period.getCap()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The person already has " + period.getCap()
+                    + " open claims in period " + period.getName());
+        }
     }
 
     /** The period whose dates contain the date, or null when none does. */

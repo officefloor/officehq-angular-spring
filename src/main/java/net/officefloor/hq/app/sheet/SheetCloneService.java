@@ -128,7 +128,7 @@ public class SheetCloneService {
                 .forEach(t -> templates.save(new ClaimTemplate(toSheet, t.getName(), t.getAmount(), t.getNote())));
         tags.findBySheetIdOrderByTagAsc(sheetId).forEach(t -> tags.save(new SheetTag(toSheet, t.getTag())));
         periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().sorted(Comparator.comparing(Period::getId))
-                .forEach(p -> periods.save(new Period(toSheet, p.getName(), p.getFromDate(), p.getToDate())));
+                .forEach(p -> periods.save(new Period(toSheet, p.getName(), p.getFromDate(), p.getToDate(), p.getCap())));
 
         Map<Long, Long> personIds = new HashMap<>();
         List<Person> theirs = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);

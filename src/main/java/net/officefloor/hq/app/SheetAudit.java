@@ -260,7 +260,7 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(PeriodAdded e) {
         change(e.sheetId(), e.user(), "PERIOD_ADDED sheet=" + e.sheetId() + " by=" + e.user()
-                + " period=" + e.name() + " from=" + e.from() + " to=" + e.to());
+                + " period=" + e.name() + " from=" + e.from() + " to=" + e.to() + (e.cap() == null ? "" : " cap=" + e.cap()));
     }
 
     @TransactionalEventListener
