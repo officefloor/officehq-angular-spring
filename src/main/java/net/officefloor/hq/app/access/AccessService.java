@@ -3,6 +3,7 @@ package net.officefloor.hq.app.access;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -623,6 +624,6 @@ public class AccessService {
             return true;
         }
         BigDecimal limit = sheets.settings(sheetId).clerkLimitFor(grade, sheets.today(sheetId));
-        return limit == null || due.compareTo(limit) <= 0 || roleOf(sheetId, user) != Role.CLERK;
+        return limit == null || due.compareTo(limit) <= 0 || !EnumSet.of(Role.CLERK, Role.RESTRICTED).contains(roleOf(sheetId, user));
     }
 }

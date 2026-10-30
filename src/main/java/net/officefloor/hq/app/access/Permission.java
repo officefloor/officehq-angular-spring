@@ -37,6 +37,9 @@ public enum Permission {
 
     /** Whether the role may take the action under the value set (null or blank: the standing rule). */
     public boolean allows(String value, Role role) {
+        if (role == Role.RESTRICTED) {
+            role = Role.CLERK;
+        }
         if (value == null || value.isBlank()) {
             return standing.contains(role);
         }

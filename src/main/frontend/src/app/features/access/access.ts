@@ -92,7 +92,7 @@ interface AccessView {
   delegations: DelegationRow[];
 }
 
-const ROLES = ['clerk', 'steward', 'viewer'];
+const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
 const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
 const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
@@ -148,7 +148,7 @@ const ROUNDING = /^(half-up|half-even)$/;
   template: `
     <section aria-label="Roles">
       <h2>Roles</h2>
-      <p>Anyone without a role is a clerk. A viewer sees everything and can change nothing.</p>
+      <p>Anyone without a role is a clerk. A viewer sees everything and can change nothing. A restricted user is listed only the people of the crews they lead or belong to, and themselves.</p>
       <ul aria-label="Roles set">
         @for (r of roles(); track r.user) {
           <li [attr.data-testid]="'role-row-' + r.user">
@@ -165,7 +165,7 @@ const ROUNDING = /^(half-up|half-even)$/;
           [value]="roleUser()"
           (input)="roleUser.set(value($event)); roleError.set('')"
         />
-        <label for="role-form-role">Role (clerk, steward or viewer)</label>
+        <label for="role-form-role">Role (clerk, steward, viewer or restricted)</label>
         <input
           id="role-form-role"
           data-testid="role-form-role"
@@ -789,7 +789,7 @@ export class Access {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.roleError.set('Enter a role: clerk, steward or viewer.');
+      this.roleError.set('Enter a role: clerk, steward, viewer or restricted.');
       return;
     }
     const headers = { 'X-User': this.session.user() ?? '' };

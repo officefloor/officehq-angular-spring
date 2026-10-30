@@ -123,8 +123,8 @@ public class AccessController {
             @NotBlank @Pattern(regexp = DATE) String to) {
     }
 
-    /** A user name and a role: clerk, steward or viewer. */
-    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
+    /** A user name and a role: clerk, steward, viewer or restricted. */
+    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward|viewer|restricted") String role) {
     }
 
     /**

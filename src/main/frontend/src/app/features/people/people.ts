@@ -979,10 +979,29 @@ export class People {
   private bulkRetiring = false;
   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
-  /** The people listed: everyone, or only those not retired unless "show retired" is on. */
-  protected readonly shown = computed(() =>
-    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
-  );
+  /**
+   * The people listed: everyone, or only those not retired unless "show retired" is on; for a restricted user only
+   * the person with their name and the people of the crews that person leads or belongs to.
+   */
+  protected readonly shown = computed(() => {
+    const visible = this.visible();
+    return this.people().filter((p) => (this.showRetired() || !p.retired) && (visible === null || visible.has(p.id)));
+  });
+  /**
+   * The ids of the people a restricted user may see listed: the person with their name and the leads and members of
+   * the crews that person leads or belongs to; none without such a person. Null (everyone) for any other role.
+   */
+  private readonly visible = computed(() => {
+    if (this.role() !== 'restricted') return null;
+    const me = this.me();
+    if (me === null) return new Set<number>();
+    const ids = new Set<number>([me.id]);
+    for (const c of this.crews()) {
+      const crew = [...(c.lead ? [c.lead] : []), ...c.members];
+      if (crew.some((w) => w.personId === me.id)) crew.forEach((w) => ids.add(w.personId));
+    }
+    return ids;
+  });
   protected readonly sortKeys = SORT_KEYS;
   /** How this user's screen orders the listed people; only the screen, never the list order itself. */
   protected readonly sortKey = signal<SortKey>('added');
