@@ -19,7 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The people on a sheet: listed in the order they were added, added and edited one at a time;
+/** The people on a sheet: listed by their position, a new person going to the end and a person moved up
+ * or down swapping with their neighbour, added and edited one at a time;
  * an edit made from a version someone else has saved since is refused. A person can be retired from a
  * date; no claim dated after it can then be added for them. */
 @Service
@@ -44,7 +45,7 @@ public class PersonService {
 
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     @Transactional(readOnly = true)
@@ -68,6 +69,7 @@ public class PersonService {
         Person added = new Person(sheetId, trimmed, grade);
         added.setTerms(terms);
         added.setContact(contact);
+        added.setPosition(people.maxPosition(sheetId) + 1);
         Person person = people.saveAndFlush(added);
         events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade,
                 terms == null ? null : terms.toString(), contact));
@@ -134,6 +136,42 @@ public class PersonService {
         events.publishEvent(new PersonRetired(sheetId, user, person.getName(), on));
         rollup.changed(sheetId, user, before);
         return person;
+    }
+
+    /**
+     * Move the person up or down the list: they swap places with the person above or below. The top person
+     * cannot move up nor the bottom one down. Their versions stay as they are: a move edits neither of them.
+     * Takes turns with other changes on the sheet.
+     */
+    @Transactional
+    public Person move(String sheetId, String user, long personId, boolean up) {
+        sheetRows.lockById(sheetId);
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId() == personId) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    up ? "The top person cannot move up" : "The bottom person cannot move down");
+        }
+        Person person = listed.get(at);
+        // the list is numbered afresh from 1 with the two swapped, so positions left by people who have
+        // gone from the sheet close up
+        for (int i = 0; i < listed.size(); i++) {
+            int position = (i == at ? to : i == to ? at : i) + 1;
+            if (listed.get(i).getPosition() != position) {
+                people.setPosition(listed.get(i).getId(), position);
+            }
+        }
+        events.publishEvent(new PersonMoved(sheetId, user, person.getName(), to + 1));
+        return get(sheetId, personId);
     }
 
     /**
@@ -214,7 +252,7 @@ public class PersonService {
             }
         }
         Set<Long> clashing = new HashSet<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (names(p).stream().anyMatch(n -> holders.getOrDefault(n, Set.of()).stream()
                     .anyMatch(id -> !id.equals(p.getId())))) {
                 clashing.add(p.getId());

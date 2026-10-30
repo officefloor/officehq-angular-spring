@@ -26,6 +26,7 @@ import net.officefloor.hq.app.person.PersonAliasAdded;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.person.PersonHeld;
 import net.officefloor.hq.app.person.PersonMerged;
+import net.officefloor.hq.app.person.PersonMoved;
 import net.officefloor.hq.app.person.PersonRetired;
 import net.officefloor.hq.app.person.PersonTransferred;
 import net.officefloor.hq.app.person.PersonWatched;
@@ -79,6 +80,12 @@ public class SheetAudit {
     public void on(PersonRetired e) {
         change(e.sheetId(), e.user(), "PERSON_RETIRED sheet=" + e.sheetId() + " by=" + e.user()
                 + " name=" + e.name() + " from=" + e.from());
+    }
+
+    @TransactionalEventListener
+    public void on(PersonMoved e) {
+        change(e.sheetId(), e.user(), "PERSON_MOVED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                + " position=" + e.position());
     }
 
     @TransactionalEventListener

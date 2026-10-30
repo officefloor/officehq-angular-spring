@@ -183,7 +183,7 @@ public class PeriodService {
 
     /** Fix the period's due-totals as of the end of its last day and close it, or soft-close it. */
     private void fix(String sheetId, String user, Period period, boolean auto, boolean soft) {
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, p -> p));
         RateTable table = rates.table(sheetId);
         Map<Long, BigDecimal> totals = new HashMap<>();

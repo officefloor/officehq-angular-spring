@@ -368,6 +368,12 @@ function csvField(value: string): string {
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-move-up" (click)="move(p, 'up')">
+                  Up<span class="visually-hidden">: move {{ p.name }} up the list</span>
+                </button>
+                <button type="button" data-testid="person-move-down" (click)="move(p, 'down')">
+                  Down<span class="visually-hidden">: move {{ p.name }} down the list</span>
+                </button>
                 <button
                   type="button"
                   data-testid="person-watch"
@@ -551,6 +557,8 @@ export class People {
   private aliasing = false;
   /** A merge still waiting for its answer: another press meanwhile is ignored. */
   private merging = false;
+  /** A move still waiting for its answer: another press meanwhile is ignored. */
+  private moving = false;
   /** A transfer still waiting for its answer: another press meanwhile is ignored. */
   private transferring = false;
   /** A statement still waiting for its answer: another press meanwhile is ignored. */
@@ -724,6 +732,7 @@ export class People {
     else next.delete(p.id);
     this.selectedPeople.set(next);
     this.bulkGradeError.set('');
+    this.clearError(p);
   }
 
   /** Give the selected people the grade from the date (blank: the sheet's today), each as the person form would. */
@@ -732,6 +741,7 @@ export class People {
     if (this.bulkGrading) return;
     this.bulkGraded.set(null);
     this.bulkGradeError.set('');
+    this.personError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const personIds = [...this.selectedPeople()];
@@ -1250,6 +1260,36 @@ export class People {
       this.personError.set({ id: p.id, message: 'Could not add the alias: it is already a name or alias on this sheet.' });
     } finally {
       this.aliasing = false;
+    }
+  }
+
+  /** Move the person up or down the list, swapping them with their neighbour; once done the list is shown again as the store holds it. */
+  protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
+    if (this.moving) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.moving = true;
+    try {
+      await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/move`,
+          { direction },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      await this.reload(sheet);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: direction === 'up' ? 'Could not move up: the top person cannot move up.' : 'Could not move down: the bottom person cannot move down.',
+      });
+    } finally {
+      this.moving = false;
     }
   }
 

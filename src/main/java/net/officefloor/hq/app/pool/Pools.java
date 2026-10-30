@@ -74,7 +74,7 @@ public class Pools {
     public List<Shown> list(String sheetId) {
         List<Pool> all = pools.findBySheetIdOrderByNameAsc(sheetId);
         Map<Long, Pool> poolById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList())
                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));

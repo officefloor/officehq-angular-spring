@@ -100,7 +100,7 @@ public class DayEnds {
                         .map(r -> new RateRow(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())).toList(),
                 settings.findBySheetId(sheetId).stream()
                         .map(s -> new SettingRow(s.getKey(), s.getFromDate(), s.getValue())).toList(),
-                people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                         .map(p -> new PersonRow(p.getId(), p.getName(),
                                 p.getGrades().stream().map(g -> new GradeRow(g.getGrade(), g.getFromDate())).toList(),
                                 p.getHolds().stream().map(h -> new HoldRow(h.getFromDate(), h.getToDate())).toList(),

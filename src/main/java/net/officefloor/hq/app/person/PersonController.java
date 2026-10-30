@@ -289,6 +289,19 @@ public class PersonController {
         return view(sheet, person);
     }
 
+    /** A move as asked for: up or down the list. */
+    public record MoveForm(@NotNull @Pattern(regexp = "up|down") String direction) {
+    }
+
+    /** Move the person up or down the list, swapping them with their neighbour; answers with the person as they are now. */
+    @PostMapping("/{personId}/move")
+    public PersonView move(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody MoveForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.move(sheet, user.trim(), personId, form.direction().equals("up")));
+    }
+
     /** A hold as entered: from a date (none: the sheet's today) to an optional date. */
     public record HoldForm(LocalDate from, LocalDate to) {
     }

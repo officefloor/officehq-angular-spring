@@ -27,7 +27,7 @@ public class SelectedClaims {
     /** The selected claims on the sheet, in list order; an id not on the sheet is left out. */
     public List<Claim> inListOrder(String sheetId, Set<Long> claimIds) {
         Map<Long, Integer> personOrder = new HashMap<>();
-        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         for (int i = 0; i < listed.size(); i++) {
             personOrder.put(listed.get(i).getId(), i);
         }

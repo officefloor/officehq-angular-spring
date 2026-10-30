@@ -48,7 +48,7 @@ public class RatePreviewService {
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         int count = 0;
         BigDecimal diff = BigDecimal.ZERO;
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             for (Claim claim : byPerson.getOrDefault(person.getId(), List.of())) {
                 if (!claim.getStatus().unpaid() || Dues.bound(claim) || !grade.equals(person.gradeOn(claim.getDate()))) {
                     continue;

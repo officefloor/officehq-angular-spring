@@ -117,7 +117,9 @@ public class PersonTransferService {
         Rollup.Figures beforeHere = rollup.figures(sheetId);
         Rollup.Figures beforeThere = rollup.figures(toSheet);
 
-        Person arrived = people.saveAndFlush(person.arriving(toSheet));
+        Person newcomer = person.arriving(toSheet);
+        newcomer.setPosition(people.maxPosition(toSheet) + 1);
+        Person arrived = people.saveAndFlush(newcomer);
         // added oldest listed first, so they list on the other sheet in the order they listed here
         List<Claim> leaving = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId));
         Collections.reverse(leaving);

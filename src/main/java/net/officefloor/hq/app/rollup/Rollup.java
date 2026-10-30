@@ -85,7 +85,7 @@ public class Rollup {
         BigDecimal claimedTotal = BigDecimal.ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
             BigDecimal claimed = theirs.stream().filter(c -> Dues.counts(c, person.leaves(), today)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);

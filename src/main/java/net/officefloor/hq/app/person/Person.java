@@ -55,6 +55,9 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    @Column(name = "list_position", nullable = false)
+    private int position;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     @OrderBy("fromDate ASC")
@@ -94,6 +97,15 @@ public class Person {
         arrived.terms = terms;
         arrived.contact = contact;
         return arrived;
+    }
+
+    /** The person's place in the sheet's list: the list is by position, lowest first. */
+    public int getPosition() {
+        return position;
+    }
+
+    public void setPosition(int position) {
+        this.position = position;
     }
 
     public String getName() {
