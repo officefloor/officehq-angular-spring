@@ -31,7 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
  * settling a claim whose due is above the sheet's clerk limit leaves it PENDING instead; a steward settles
  * anything, and approves a PENDING claim (settling it, its due fixed then) or rejects it with a reason
- * (back to OPEN); the user who opened a claim cannot approve it. A claim
+ * (back to OPEN); the user who opened a claim cannot approve it. A steward re-settles a SETTLED claim,
+ * fixing its due again at the figure it would have today as an OPEN claim bound by no statement. A claim
  * with a negative amount is a correction: it is added or edited only when it names, by number, a SETTLED
  * claim of the same person, and only a correction names one.
  */
@@ -208,6 +209,36 @@ public class ClaimService {
         claims.flush();
         events.publishEvent(new ClaimChanged("CLAIM_APPROVED", sheetId, user, owner == null ? "" : owner.getName(),
                 claim.getAmount(), claim.getDate(), claim.getShownNumber(), fixed == null ? "n/a" : fixed.toPlainString()));
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
+    }
+
+    /**
+     * Re-settle a SETTLED claim, fixing its due again at the figure it would have today as an OPEN claim bound
+     * by no statement (today's rates, grades, floor and late charge), and logging it SETTLED again. Only a
+     * steward re-settles; a claim not SETTLED or dated inside a closed period is refused and nothing changes.
+     * Returns the person it belongs to.
+     */
+    @Transactional
+    public long resettle(String sheetId, String user, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-settled; only a SETTLED one can");
+        }
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can re-settle a claim");
+        }
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Rollup.Figures before = rollup.figures(sheetId);
+        BigDecimal old = claim.getSettledDue();
+        BigDecimal fixed = Dues.asOpen(claim, owner::gradeOn, rates.table(sheetId));
+        claim.setSettledDue(fixed);
+        claim.logStatus(user, sheets.today(sheetId), fixed);
+        claims.flush();
+        events.publishEvent(new ClaimResettled(sheetId, user, owner.getName(), claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), old, fixed));
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }

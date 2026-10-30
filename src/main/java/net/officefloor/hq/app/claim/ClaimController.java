@@ -148,6 +148,14 @@ public class ClaimController {
         return view(sheet, claims.approve(sheet, user.trim(), claimId));
     }
 
+    /** A steward re-settles a SETTLED claim, fixing its due again at today's figure. */
+    @PostMapping("/claims/{claimId}/resettle")
+    public PersonView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.resettle(sheet, user.trim(), claimId));
+    }
+
     /** A steward rejects a PENDING claim with a reason, putting it back to OPEN. */
     @PostMapping("/claims/{claimId}/reject")
     public PersonView reject(@PathVariable @NotBlank @Size(max = 100) String sheetId,

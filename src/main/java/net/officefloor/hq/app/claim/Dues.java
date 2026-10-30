@@ -47,6 +47,23 @@ public final class Dues {
                 : rates.due(claim.getAmount(), grade, claim.getDate());
     }
 
+    /**
+     * The figure the claim would have today as an OPEN claim bound by no statement: the amount at the rate
+     * in force on its date for its person's grade then (at least the sheet's floor, a correction having none),
+     * plus the late charge it has today when its due-by has passed (a correction having none). Null when
+     * there is none. Re-settling a claim fixes its due at this figure.
+     */
+    public static BigDecimal asOpen(Claim claim, Grades grades, RateTable rates) {
+        String grade = grades.on(claim.getDate());
+        BigDecimal base = claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()),
+                rates.rounding(claim.getRoundsBy()))
+                : rates.due(claim.getAmount(), grade, claim.getDate());
+        if (base == null || claim.isCorrection() || !claim.getDueBy().isBefore(rates.today())) {
+            return base;
+        }
+        return base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()));
+    }
+
     /** Whether a statement binds the claim's figure: it is stated and not PENDING. */
     public static boolean bound(Claim claim) {
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;

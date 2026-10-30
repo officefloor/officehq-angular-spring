@@ -5,6 +5,7 @@ import net.officefloor.hq.app.access.RoleSet;
 import net.officefloor.hq.app.access.SettingChanged;
 import net.officefloor.hq.app.claim.ClaimChanged;
 import net.officefloor.hq.app.claim.ClaimReassigned;
+import net.officefloor.hq.app.claim.ClaimResettled;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
 import net.officefloor.hq.app.period.PeriodReopened;
@@ -72,6 +73,18 @@ public class SheetAudit {
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " from=" + e.from() + " to=" + e.to());
+    }
+
+    @TransactionalEventListener
+    public void on(ClaimResettled e) {
+        audit.record("CLAIM_RESETTLED sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + " old=" + figure(e.old()) + " new=" + figure(e.fresh()));
+    }
+
+    private static String figure(java.math.BigDecimal due) {
+        return due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     @TransactionalEventListener

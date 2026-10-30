@@ -6,11 +6,12 @@ import { Period, periodOf } from '../periods/periods';
 
 /**
  * DRAFT when added, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
- * until a steward approves it (SETTLED) or rejects it (OPEN again). A DRAFT, OPEN or PENDING claim can be VOID.
+ * until a steward approves it (SETTLED) or rejects it (OPEN again). A steward can re-settle a SETTLED claim,
+ * fixing its due again at today's figure. A DRAFT, OPEN or PENDING claim can be VOID.
  */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'resettle' | 'void';
 
 export interface Claim {
   id: number;
@@ -96,7 +97,7 @@ const NUMBER = /^([1-9]\d{0,8}|.{1,100}-[1-9]\d{0,8})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
-// opened, edits it. Each claim can be opened, settled, approved, rejected (with a reason) or voided. A saved or moved claim answers with
+// opened, edits it. Each claim can be opened, settled, approved, rejected (with a reason), re-settled or voided. A saved or moved claim answers with
 // the person, which is handed up as `saved`. Each claim can be selected, to be opened together with
 // the others selected.
 @Component({
@@ -243,6 +244,7 @@ export class Claims {
     { action: 'settle', label: 'Settle' },
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
+    { action: 'resettle', label: 'Re-settle' },
     { action: 'void', label: 'Void' },
   ];
 
@@ -376,7 +378,7 @@ export class Claims {
   }
 
   /**
-   * Open, settle, approve, reject or void a claim; a change its status does not allow is refused on its
+   * Open, settle, approve, reject, re-settle or void a claim; a change its status does not allow is refused on its
    * row, as is a reject without a reason.
    */
   protected async move(c: Claim, action: ClaimAction): Promise<void> {
@@ -421,5 +423,6 @@ const PAST: Record<ClaimAction, string> = {
   settle: 'settled',
   approve: 'approved',
   reject: 'rejected',
+  resettle: 're-settled',
   void: 'voided',
 };
