@@ -1,0 +1,64 @@
+{
+  "checkpoint": 75,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp75_bulk-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a1bcc89083bd90d36d09ba2726974bd5fe6b1e53",
+  "reset_sha": "",
+  "preagent_sha": "e29ae46e834c3e6df3267f22d2e68d121e287915",
+  "prev_sha": "e29ae46e834c3e6df3267f22d2e68d121e287915",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.911247,
+    "input_tokens": 34,
+    "output_tokens": 9200,
+    "cache_read_tokens": 823115,
+    "cache_creation_tokens": 70311,
+    "num_turns": 19,
+    "duration_ms": 342519,
+    "duration_api_ms": 162468,
+    "model": "claude-opus-5-5",
+    "session_id": "71fdd0bd-f7cb-463e-a8a1-dc7e714a9bbd",
+    "stop_reason": "success",
+    "result_text": "Bulk grading is in, and `bin/e2e` passes all 4 tests in the spec on the first run.\n\n**How it works**\n- **Server:** I added a new endpoint, `POST /api/sheets/{sheetId}/people/grade`, which takes the selected person ids, a grade and an optional from-date. It's handled by the new `person/BulkGradeService.java`, which goes through the selected people in list order. For each one it calls the same `PersonService.edit` the person form uses, keeping their name and own terms. So each person gets the usual PERSON_EDITED line, plus the ROLLUP/TOTALS lines when their figures move. A blank date means the sheet's today, as on the person form.\n- **Screen** (`people/people.ts`):\n  - a `person-select` checkbox at the start of each row;\n  - a grade picker (`bulk-grade`), a from-date (`bulk-grade-from`) and a button (`bulk-grade-apply`);\n  - the number changed is shown in `bulk-graded`. The number disappears while the action runs, and the selection clears once it's done.\n  - a refusal shows `person-error`, and editing the form or a selection clears it.\n\n**Choices I made that you may want to change**\n- **Viewers and archived sheets:** I didn't use a `bulk-\u2026` path, so the existing guard refuses these outright with an error. The other bulk actions instead report zero done and everything refused.\n- **One person failing:** each person is saved on their own. If one edit is refused, the others still go through and the count only includes the ones that changed, the same way bulk open works.\n- **Nothing selected:** pressing the button with no one selected shows an error rather than \"Changed 0\".\n\nThe spec doesn't test any of these three cases.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.911247,
+        "num_turns": 19,
+        "duration_ms": 342519,
+        "duration_api_ms": 162468,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp75.agent.jsonl",
+  "agent_diff_file": "cp75.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
