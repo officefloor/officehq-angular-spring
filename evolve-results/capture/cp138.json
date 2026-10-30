@@ -1,0 +1,64 @@
+{
+  "checkpoint": 138,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp138_inline-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bd57c9101d1c8f9a2884b3439b69165a41c96433",
+  "reset_sha": "",
+  "preagent_sha": "a3faafcd58533f90f9dae25c7cd223036ba1d30e",
+  "prev_sha": "a3faafcd58533f90f9dae25c7cd223036ba1d30e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5505332000000001,
+    "input_tokens": 28,
+    "output_tokens": 4509,
+    "cache_read_tokens": 489526,
+    "cache_creation_tokens": 45292,
+    "num_turns": 14,
+    "duration_ms": 233224,
+    "duration_api_ms": 72432,
+    "model": "claude-opus-5-5",
+    "session_id": "5cb3ca2a-75ee-4c8d-8ee4-b2e06b5ead7c",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has a grade select and a \"Save grade\" button, and `bin/e2e` passes all 4 tests.\n\nThe change is front end only, in `src/main/frontend/src/app/features/people/people.ts`. Saving sends the same request the person form's editor does: the chosen grade with no from-date (so it applies from the sheet's today), and the person's name, terms, contact and tags exactly as the row shows them. Because it goes through the existing edit path, it writes the same `PERSON_EDITED` and rollup lines, and the server still turns down viewers, names already in use, and anyone who saved the person in the meantime.\n\n- **Saves made in the meantime:** the save carries the version from when the sheet was loaded. If another user saved that person since, it is refused with a message to re-load the sheet.\n- **Errors:** a refusal shows in the row's `person-error`. Changing the select or taking another action on the row clears it.\n- **Same grade:** saving the grade the row already shows still writes a `PERSON_EDITED` line, as the person form does.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5505332000000001,
+        "num_turns": 14,
+        "duration_ms": 233224,
+        "duration_api_ms": 72432,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp138.agent.jsonl",
+  "agent_diff_file": "cp138.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
