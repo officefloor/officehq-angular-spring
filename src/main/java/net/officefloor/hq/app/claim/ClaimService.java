@@ -17,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The claims on a sheet: listed per person newest first, added, edited and moved through their
- * statuses one at a time. Settling a claim fixes its due at the rate its person's grade has then.
+ * statuses one at a time. Settling a claim fixes its due at the rate its person's grade has then on the claim's date.
  */
 @Service
 public class ClaimService {
@@ -97,7 +97,7 @@ public class ClaimService {
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         String due = null;
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal pct = owner == null ? null : rates.byGrade(sheetId).get(owner.getGrade());
+            BigDecimal pct = owner == null ? null : rates.table(sheetId).on(owner.getGrade(), claim.getDate());
             BigDecimal fixed = RateService.due(claim.getAmount(), pct);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();

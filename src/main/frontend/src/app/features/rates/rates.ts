@@ -5,14 +5,23 @@ import { Session } from '../../core/session';
 
 interface Rate {
   grade: string;
+  /** The first date the rate applies to (yyyy-mm-dd); null when it applies from the beginning of time. */
+  from: string | null;
   pct: string;
 }
 
 const GRADES = ['A', 'B', 'C'];
 const PCT = /^\d{1,3}(\.\d{1,2})?$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's rate for each grade, a percent with two decimals, and the form that sets one. A rate
-// that was set is handed up as `changed`, so the dues it makes can be shown again.
+/** Each grade's rates, earliest first, one with no from-date before all. */
+function byGradeAndFrom(a: Rate, b: Rate): number {
+  return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
+}
+
+// The sheet's rates for each grade, a percent with two decimals from a from-date (or from the
+// beginning of time), the rate in force on the sheet's today per grade, and the form that sets one. A
+// rate that was set is handed up as `changed`, so the dues it makes can be shown again.
 @Component({
   selector: 'app-rates',
   template: `
@@ -32,9 +41,10 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
         </tbody>
       </table>
       <ul aria-label="Rates set">
-        @for (r of rates(); track r.grade) {
-          <li [attr.data-testid]="'rate-row-' + r.grade + '-start'">
-            Grade {{ r.grade }}: <span data-testid="rate-pct">{{ r.pct }}</span>%
+        @for (r of rates(); track r.grade + (r.from ?? '')) {
+          <li [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+            Grade {{ r.grade }} from <span data-testid="rate-from">{{ r.from ?? 'start' }}</span>:
+            <span data-testid="rate-pct">{{ r.pct }}</span>%
           </li>
         }
       </ul>
@@ -58,6 +68,14 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
           [value]="pct()"
           (input)="pct.set(value($event)); error.set('')"
         />
+        <label for="rate-form-from">From (blank: from the start)</label>
+        <input
+          id="rate-form-from"
+          type="date"
+          data-testid="rate-form-from"
+          [value]="from()"
+          (input)="from.set(value($event)); error.set('')"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
@@ -74,11 +92,18 @@ export class Rates {
 
   protected readonly grades = GRADES;
   protected readonly rates = signal<Rate[]>([]);
-  protected readonly current = computed<Record<string, string>>(() =>
-    Object.fromEntries(this.rates().map((r) => [r.grade, r.pct])),
-  );
+  /** Per grade, the rate in force on the sheet's today: the one with the latest from-date on or before it. */
+  protected readonly current = computed<Record<string, string>>(() => {
+    const today = this.session.today() ?? '';
+    const inForce: Record<string, string> = {};
+    for (const r of this.rates()) {
+      if (r.from === null || r.from <= today) inForce[r.grade] = r.pct;
+    }
+    return inForce;
+  });
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
+  protected readonly from = signal('');
   protected readonly error = signal('');
 
   constructor() {
@@ -88,6 +113,7 @@ export class Rates {
       this.rates.set([]);
       this.grade.set('A');
       this.pct.set('');
+      this.from.set('');
       this.error.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -104,6 +130,7 @@ export class Rates {
     if (!sheet) return;
     const grade = this.grade();
     const pct = this.pct().trim();
+    const from = this.from().trim();
     if (!GRADES.includes(grade)) {
       this.error.set('Choose a grade.');
       return;
@@ -112,16 +139,21 @@ export class Rates {
       this.error.set('Enter a rate of 0.00 or more, with up to two decimals.');
       return;
     }
+    if (from !== '' && !DATE.test(from)) {
+      this.error.set('Enter a from-date, or leave it blank for from the start.');
+      return;
+    }
     const headers = { 'X-User': this.session.user() ?? '' };
     try {
       const saved = await firstValueFrom(
-        this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { pct }, { headers }),
+        this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { pct, from: from === '' ? null : from }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       this.rates.update((rs) =>
-        [...rs.filter((r) => r.grade !== saved.grade), saved].sort((a, b) => a.grade.localeCompare(b.grade)),
+        [...rs.filter((r) => r.grade !== saved.grade || r.from !== saved.from), saved].sort(byGradeAndFrom),
       );
       this.pct.set('');
+      this.from.set('');
       this.changed.emit();
     } catch {
       if (this.session.sheet() !== sheet) return;

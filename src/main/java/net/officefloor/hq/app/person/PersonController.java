@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rate.RateTable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -36,16 +37,16 @@ public class PersonController {
 
     /**
      * A claim as shown: its amount with two decimals, its date, its note, its due: the amount at
-     * the rate for its person's grade (null when the grade has no rate) or, once settled, the due fixed
+     * the rate for its person's grade in force on its date (null when none is) or, once settled, the due fixed
      * then, its status, and its number (null while it has none).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             Integer number) {
 
-        static ClaimView of(Claim claim, BigDecimal pct) {
+        static ClaimView of(Claim claim, String grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
                     money(claim.getSettledDue() != null ? claim.getSettledDue()
-                            : RateService.due(claim.getAmount(), pct)), claim.getStatus(),
+                            : RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()))), claim.getStatus(),
                     claim.getNumber());
         }
     }
@@ -53,17 +54,17 @@ public class PersonController {
     /**
      * A person with their claims, newest first, claimed: the sum of the amounts of the claims that
      * count (OPEN and SETTLED), and
-     * dueTotal: claimed at the rate for their grade (null when the grade has no rate).
+     * dueTotal: claimed at the rate for their grade in force on the sheet's today (null when none is).
      */
     public record PersonView(long id, String name, String grade, List<ClaimView> claims, String claimed,
             String dueTotal) {
 
-        /** The person as shown, given the sheet's rate for each grade. */
-        public static PersonView of(Person person, List<Claim> claims, Map<String, BigDecimal> rates) {
-            BigDecimal pct = rates.get(person.getGrade());
+        /** The person as shown, given the sheet's rates. */
+        public static PersonView of(Person person, List<Claim> claims, RateTable rates) {
+            BigDecimal pct = rates.current(person.getGrade());
             BigDecimal claimed = claims.stream().filter(c -> c.getStatus().counts()).map(Claim::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
             return new PersonView(person.getId(), person.getName(), person.getGrade(),
-                    claims.stream().map(c -> ClaimView.of(c, pct)).toList(), money(claimed),
+                    claims.stream().map(c -> ClaimView.of(c, person.getGrade(), rates)).toList(), money(claimed),
                     money(RateService.due(claimed, pct)));
         }
     }
@@ -90,9 +91,9 @@ public class PersonController {
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String sheet = sheetId.trim();
         Map<Long, List<Claim>> bySheet = claims.bySheet(sheet);
-        Map<String, BigDecimal> byGrade = rates.byGrade(sheet);
+        RateTable table = rates.table(sheet);
         return service.list(sheet).stream()
-                .map(p -> PersonView.of(p, bySheet.getOrDefault(p.getId(), List.of()), byGrade)).toList();
+                .map(p -> PersonView.of(p, bySheet.getOrDefault(p.getId(), List.of()), table)).toList();
     }
 
     @PostMapping
@@ -100,7 +101,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade()), List.of(),
-                rates.byGrade(sheet));
+                rates.table(sheet));
     }
 
     @PutMapping("/{personId}")
@@ -109,7 +110,7 @@ public class PersonController {
             @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return PersonView.of(service.edit(sheet, user.trim(), personId, form.name(), form.grade()),
-                claims.forPerson(sheet, personId), rates.byGrade(sheet));
+                claims.forPerson(sheet, personId), rates.table(sheet));
     }
 
     /** Another save took the name first: the unique name on the sheet refuses this one. */

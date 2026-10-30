@@ -7,8 +7,12 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
-/** The sheet's rate for a grade (A, B or C): a percent with two decimals. */
+/**
+ * A sheet's rate for a grade (A, B or C): a percent with two decimals, in force from its from-date,
+ * or from the beginning of time when it has none.
+ */
 @Entity
 @Table(name = "rate")
 public class Rate {
@@ -26,12 +30,17 @@ public class Rate {
     @Column(name = "pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal pct;
 
+    /** The first date the rate applies to; null when it applies from the beginning of time. */
+    @Column(name = "from_date")
+    private LocalDate fromDate;
+
     protected Rate() {
     }
 
-    public Rate(String sheetId, String grade, BigDecimal pct) {
+    public Rate(String sheetId, String grade, LocalDate fromDate, BigDecimal pct) {
         this.sheetId = sheetId;
         this.grade = grade;
+        this.fromDate = fromDate;
         this.pct = pct;
     }
 
@@ -45,6 +54,10 @@ public class Rate {
 
     public String getGrade() {
         return grade;
+    }
+
+    public LocalDate getFromDate() {
+        return fromDate;
     }
 
     public BigDecimal getPct() {

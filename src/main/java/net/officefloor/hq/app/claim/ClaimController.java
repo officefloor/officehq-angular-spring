@@ -86,6 +86,6 @@ public class ClaimController {
 
     private PersonView view(String sheetId, long personId) {
         return PersonView.of(people.get(sheetId, personId), claims.forPerson(sheetId, personId),
-                rates.byGrade(sheetId));
+                rates.table(sheetId));
     }
 }

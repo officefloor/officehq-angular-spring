@@ -2,15 +2,15 @@ package net.officefloor.hq.app.rate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The rate for each grade on a sheet, and the due it makes of an amount. */
+/** The rates for each grade on a sheet, each from its from-date, and the due a rate makes of an amount. */
 @Service
 public class RateService {
 
@@ -26,30 +26,34 @@ public class RateService {
         this.events = events;
     }
 
+    /** The sheet's rates by grade, each grade's earliest first (one with no from-date before all). */
     @Transactional(readOnly = true)
     public List<Rate> list(String sheetId) {
-        return rates.findBySheetIdOrderByGradeAsc(sheetId);
+        return rates.findBySheetId(sheetId).stream()
+                .sorted(Comparator.comparing(Rate::getGrade).thenComparing(Rate::getFromDate,
+                        Comparator.nullsFirst(Comparator.naturalOrder())))
+                .toList();
     }
 
-    /** The percent for each grade that has a rate on the sheet. */
+    /** The sheet's rates with its today, to find the rate in force for a grade on any date. */
     @Transactional(readOnly = true)
-    public Map<String, BigDecimal> byGrade(String sheetId) {
-        return list(sheetId).stream().collect(Collectors.toMap(Rate::getGrade, Rate::getPct));
+    public RateTable table(String sheetId) {
+        return new RateTable(list(sheetId), sheets.today(sheetId));
     }
 
-    /** Set a grade's rate, replacing the one it had. */
+    /** Set a grade's rate from a from-date (null: from the beginning of time), replacing the one it had. */
     @Transactional
-    public Rate set(String sheetId, String user, String grade, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
         sheets.load(sheetId, user);
         BigDecimal scaled = pct.setScale(2, RoundingMode.HALF_UP);
-        Rate rate = rates.findBySheetIdAndGrade(sheetId, grade).orElse(null);
+        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from).orElse(null);
         if (rate == null) {
-            rate = rates.saveAndFlush(new Rate(sheetId, grade, scaled));
+            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, scaled));
         } else {
             rate.setPct(scaled);
             rates.flush();
         }
-        events.publishEvent(new RateChanged(sheetId, user, grade, scaled));
+        events.publishEvent(new RateChanged(sheetId, user, grade, scaled, from));
         return rate;
     }
 
