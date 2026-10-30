@@ -14,9 +14,16 @@ import java.time.LocalDate;
  * SETTLED claim takes out of the totals ({@code n/a} when it had none), or null when the event carries none.
  * The ref is an added claim's external reference, or null when it has none or the event carries none. The
  * tags are an added claim's tags, sorted and comma separated, or null when it has none or the event carries none.
+ * The void reason is the reason from the sheet's list a claim was voided with, or null when none was given.
  */
 public record ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
-        LocalDate date, String number, String due, String reason, String reversed, String ref, String tags) {
+        LocalDate date, String number, String due, String reason, String reversed, String ref, String tags,
+        String voidReason) {
+
+    public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
+            LocalDate date, String number, String due, String reason, String reversed, String ref, String tags) {
+        this(event, sheetId, user, person, amount, date, number, due, reason, reversed, ref, tags, null);
+    }
 
     public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
             LocalDate date, String number, String due, String reason, String reversed, String ref) {

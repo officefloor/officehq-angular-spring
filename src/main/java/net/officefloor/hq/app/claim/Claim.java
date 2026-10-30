@@ -120,6 +120,10 @@ public class Claim {
     @Column(name = "tags", nullable = false)
     private String tags = "";
 
+    /** The reason from the sheet's list the claim was voided with; null when it is not VOID or was voided without one. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     /** Whether the claim was added while a soft-closed period contained its due-by. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -323,6 +327,14 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     public String getTags() {

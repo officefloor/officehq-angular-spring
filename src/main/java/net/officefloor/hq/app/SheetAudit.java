@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimRedated;
 import net.officefloor.hq.app.claim.ClaimReminded;
 import net.officefloor.hq.app.claim.ClaimSplit;
 import net.officefloor.hq.app.claim.ClaimResettled;
+import net.officefloor.hq.app.claim.VoidReasonAdded;
 import net.officefloor.hq.app.holiday.HolidayAdded;
 import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
@@ -103,7 +104,8 @@ public class SheetAudit {
                 + (e.reason() == null ? "" : " reason=" + e.reason())
                 + (e.reversed() == null ? "" : " reversed=" + e.reversed())
                 + (e.ref() == null ? "" : " ref=" + e.ref())
-                + (e.tags() == null ? "" : " tags=" + e.tags()));
+                + (e.tags() == null ? "" : " tags=" + e.tags())
+                + (e.voidReason() == null ? "" : " reason=" + e.voidReason()));
     }
 
     @TransactionalEventListener
@@ -192,6 +194,11 @@ public class SheetAudit {
     public void on(PeriodAdded e) {
         change(e.sheetId(), e.user(), "PERIOD_ADDED sheet=" + e.sheetId() + " by=" + e.user()
                 + " period=" + e.name() + " from=" + e.from() + " to=" + e.to());
+    }
+
+    @TransactionalEventListener
+    public void on(VoidReasonAdded e) {
+        change(e.sheetId(), e.user(), "VOID_REASON_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " reason=" + e.reason());
     }
 
     @TransactionalEventListener

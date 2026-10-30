@@ -57,12 +57,15 @@ public class ClaimService {
     private final WatchService watches;
     private final HolidayService holidays;
     private final Tags tags;
+    private final VoidReasons voidReasons;
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetRows, RateService rates, Rollup rollup, PeriodService periods, AccessService access,
-            WatchService watches, HolidayService holidays, Tags tags, ApplicationEventPublisher events) {
+            WatchService watches, HolidayService holidays, Tags tags, VoidReasons voidReasons,
+            ApplicationEventPublisher events) {
         this.tags = tags;
+        this.voidReasons = voidReasons;
         this.holidays = holidays;
         this.access = access;
         this.watches = watches;
@@ -276,6 +279,16 @@ public class ClaimService {
      */
     @Transactional
     public long move(String sheetId, String user, long claimId, ClaimStatus next) {
+        return move(sheetId, user, claimId, next, null);
+    }
+
+    /**
+     * Move a claim to a status as {@link #move(String, String, long, ClaimStatus)}; a claim is voided with the
+     * given reason, which while the sheet's list of void reasons is not empty must be on it, else the void is
+     * refused (see {@link VoidReasons#require}).
+     */
+    @Transactional
+    public long move(String sheetId, String user, long claimId, ClaimStatus next, String voidReason) {
         Claim claim = claim(sheetId, claimId);
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -291,6 +304,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Your role may not " + permission.action() + " a claim on this sheet");
         }
+        String reasonGiven = next == ClaimStatus.VOID ? voidReasons.require(sheetId, voidReason) : null;
         String reversed = null;
         if (next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
             requireVoidableSettled(sheetId, user, claim);
@@ -326,6 +340,9 @@ public class ClaimService {
             }
         }
         claim.setStatus(next);
+        if (next == ClaimStatus.VOID) {
+            claim.setVoidReason(reasonGiven);
+        }
         log(sheetId, user, claim, owner);
         claims.flush();
         String person = owner == null ? "" : owner.getName();
@@ -337,7 +354,7 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number,
-                due, null, reversed));
+                due, null, reversed, null, null, reasonGiven));
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, owner, number);
         }

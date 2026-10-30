@@ -1,6 +1,7 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
 import type { PersonWithClaims } from '../claims/claims';
 import { Period, periodDueTotals } from '../periods/periods';
+import { VoidReasonList } from '../void-reasons/void-reasons';
 
 const GRADES = ['A', 'B', 'C'];
 const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
@@ -18,7 +19,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
 
 // The sheet's figures summed from the list: per grade, the people on it today (retired people left
 // out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how many
-// claims have it.
+// claims have it; per reason on the sheet's void reasons, how many VOID claims were voided with it.
 @Component({
   selector: 'app-summary',
   template: `
@@ -68,10 +69,26 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
           }
         </tbody>
       </table>
+      <table>
+        <caption>By void reason</caption>
+        <thead>
+          <tr><th scope="col">Reason</th><th scope="col">Voided claims</th></tr>
+        </thead>
+        <tbody>
+          @for (v of byVoidReason(); track v.reason) {
+            <tr>
+              <th scope="row">{{ v.reason }}</th>
+              <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </section>
   `,
 })
 export class Summary {
+  private readonly voidReasons = inject(VoidReasonList);
+
   readonly people = input.required<PersonWithClaims[]>();
   readonly periods = input.required<Period[]>();
 
@@ -89,4 +106,9 @@ export class Summary {
   });
 
   protected readonly byStatus = computed(() => statusCounts(this.people()));
+
+  protected readonly byVoidReason = computed(() => {
+    const voided = this.people().flatMap((p) => p.claims).filter((c) => c.status === 'VOID');
+    return this.voidReasons.reasons().map((reason) => ({ reason, count: voided.filter((c) => c.voidReason === reason).length }));
+  });
 }

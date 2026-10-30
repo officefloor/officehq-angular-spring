@@ -74,6 +74,10 @@ public class ClaimController {
     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
     }
 
+    /** The reason from the sheet's list a claim is voided with; none (null or blank) while the list is empty. */
+    public record VoidForm(@Size(max = 1000) String reason) {
+    }
+
     /** The person a claim is reassigned to. */
     public record ReassignForm(@NotNull Long personId) {
     }
@@ -290,8 +294,10 @@ public class ClaimController {
 
     @PostMapping("/claims/{claimId}/void")
     public PersonView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
-        return move(sheetId, claimId, user, ClaimStatus.VOID);
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody(required = false) VoidForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.move(sheet, user.trim(), claimId, ClaimStatus.VOID, form == null ? null : form.reason()));
     }
 
     private PersonView move(String sheetId, long claimId, String user, ClaimStatus next) {

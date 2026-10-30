@@ -9,6 +9,7 @@ import { Period, Periods, personPeriodTotals } from '../periods/periods';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
 import { Tags } from '../tags/tags';
+import { VoidReasons } from '../void-reasons/void-reasons';
 
 const GRADES = ['A', 'B', 'C'];
 const DAYS = /^\d{1,5}$/;
@@ -39,7 +40,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [Access, Claims, Holidays, Periods, Rates, Summary, Tags],
+  imports: [Access, Claims, Holidays, Periods, Rates, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -53,6 +54,7 @@ function csvField(value: string): string {
     <app-access />
     <app-periods [people]="people()" [(periods)]="periods" />
     <app-holidays />
+    <app-void-reasons />
     <app-summary [people]="people()" [periods]="periods()" />
     <app-tags [people]="people()" />
     <section aria-label="People">
