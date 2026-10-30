@@ -109,7 +109,8 @@ public class PersonController {
      * sheet's today (see {@link Dues#aged}), and settledTotal and openTotal: the parts of their uncapped due-total
      * from their SETTLED claims and from their OPEN and PENDING claims (see {@link Dues#settledTotal} and
      * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
-     * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}).
+     * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
+     * transferred from (null: none).
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<ClaimView> claims,
@@ -117,7 +118,7 @@ public class PersonController {
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
-            List<String> aliases, boolean clashing) {
+            List<String> aliases, boolean clashing, String origin) {
 
         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -141,7 +142,8 @@ public class PersonController {
                     money(Dues.aged(grade, claims, rates, held, 31, 60)),
                     money(Dues.aged(grade, claims, rates, held, 61, Long.MAX_VALUE)),
                     money(Dues.settledTotal(grade, claims, rates, held)),
-                    money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing);
+                    money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing,
+                    person.getOrigin());
         }
     }
 

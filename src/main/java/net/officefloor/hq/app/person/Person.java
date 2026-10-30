@@ -52,6 +52,9 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    @Column(name = "origin")
+    private String origin;
+
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
@@ -86,7 +89,8 @@ public class Person {
 
     /**
      * The person as they arrive on another sheet: their name, every grade they were given (each from its
-     * date), their terms, contact and aliases; not their holds nor retirement.
+     * date), their terms, contact and aliases, and this sheet as the one they came from; not their holds nor
+     * retirement.
      */
     public Person arriving(String sheetId) {
         Person arrived = new Person();
@@ -96,6 +100,7 @@ public class Person {
         arrived.aliases.addAll(aliases);
         arrived.terms = terms;
         arrived.contact = contact;
+        arrived.origin = this.sheetId;
         return arrived;
     }
 
@@ -164,6 +169,11 @@ public class Person {
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     public String getContact() {
         return contact;
+    }
+
+    /** The sheet the person was transferred from; null when they were not transferred here. */
+    public String getOrigin() {
+        return origin;
     }
 
     public void setContact(String contact) {

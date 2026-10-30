@@ -154,6 +154,8 @@ export interface PersonWithClaims {
   aliases: string[];
   /** Whether their name or an alias is another's on a sheet of the sheet's tree; every edit is refused until it is not. */
   clashing: boolean;
+  /** The sheet the person was transferred from; null when they were not transferred here. */
+  origin: string | null;
   /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
    * statement, then count in no live total. */
   retiredNow: boolean;

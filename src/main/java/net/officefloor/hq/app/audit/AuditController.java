@@ -9,6 +9,8 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,7 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The audit viewer: the audit lines of a sheet exactly as the audit file holds them, newest first. Given a
  * name, only the lines about that person: those carrying {@code name=} or {@code person=} that name, compared
- * as names are (case and surrounding spaces ignored). It reads the file; it records nothing.
+ * as names are (case and surrounding spaces ignored); when that person was transferred here, the sheet they came
+ * from's lines about them follow, newest first. It reads the file; it records nothing.
  */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/audit")
@@ -30,9 +33,11 @@ public class AuditController {
     private static final Pattern FIELD = Pattern.compile("(?:^|\\s)([A-Za-z][\\w-]*)=(.*?)(?=\\s[A-Za-z][\\w-]*=|$)");
 
     private final Audit audit;
+    private final PersonRepository people;
 
-    public AuditController(Audit audit) {
+    public AuditController(Audit audit, PersonRepository people) {
         this.audit = audit;
+        this.people = people;
     }
 
     @GetMapping
@@ -40,7 +45,18 @@ public class AuditController {
             @RequestParam(required = false) String name) {
         String sheet = sheetId.trim();
         String who = name == null ? "" : name.strip().toLowerCase(Locale.ROOT);
-        List<String> lines = new ArrayList<>(audit.lines().stream()
+        List<String> all = audit.lines();
+        List<String> lines = about(all, sheet, who);
+        if (!who.isEmpty()) {
+            people.findBySheetIdAndNameIgnoreCase(sheet, name.strip()).map(Person::getOrigin)
+                    .ifPresent(origin -> lines.addAll(about(all, origin, who)));
+        }
+        return lines;
+    }
+
+    /** The sheet's lines, newest first; given a name (lower-cased), only those about that person. */
+    private static List<String> about(List<String> all, String sheet, String who) {
+        List<String> lines = new ArrayList<>(all.stream()
                 .filter(l -> carries(l, "sheet", sheet, false))
                 .filter(l -> who.isEmpty() || carries(l, "name", who, true) || carries(l, "person", who, true))
                 .toList());
