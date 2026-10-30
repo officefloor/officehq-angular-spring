@@ -95,10 +95,15 @@ public class Claim {
 
     /**
      * The date the claim is due by, fixed when it was added: the terms-th business day after its date, by the
-     * terms then of its person's grade on its date and the holidays on the sheet then.
+     * terms then of its person's grade on its date and the holidays on the sheet then. A holiday added later
+     * fixes it again over the holidays then, with the same terms (see {@link #terms}).
      */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms (in business days) the claim's due-by was fixed with. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
 
     /** The date the claim is deferred until; null when it was never deferred. See {@link Dues#deferred}. */
     @Column(name = "deferred_until")
@@ -209,6 +214,14 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
     }
 
     public String getLockedBy() {
