@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
@@ -31,7 +33,8 @@ import org.springframework.web.server.ResponseStatusException;
  * sheet's newest first, the sheets in id order), then, when that person was transferred here, the sheet they
  * came from's lines about them, newest first. A claim's timeline is the sheet's lines about that claim, newest
  * first: those carrying its number, or for a claim with no number those carrying no number that name its
- * person, amount and date together. It reads the file; it records nothing.
+ * person, amount and date together. The sheet's activity is, for every user and every event in its lines, how
+ * many lines that user's event has, sorted by user then event. It reads the file; it records nothing.
  */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/audit")
@@ -89,6 +92,38 @@ public class AuditController {
                 .toList());
         Collections.reverse(lines);
         return lines;
+    }
+
+    /** The sheet's activity: one {@code <user> <EVENT> <count>} per user and event, sorted by user then event. */
+    @GetMapping("/activity")
+    public List<String> activity(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        String sheet = sheetId.trim();
+        Map<String, Map<String, Long>> counts = new TreeMap<>();
+        for (String line : audit.lines()) {
+            if (!carries(line, "sheet", sheet, false)) {
+                continue;
+            }
+            String user = value(line, "by");
+            if (user == null) {
+                continue;
+            }
+            String event = line.split(" ", 2)[0];
+            counts.computeIfAbsent(user, u -> new TreeMap<>()).merge(event, 1L, Long::sum);
+        }
+        List<String> lines = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, n) -> lines.add(user + " " + event + " " + n)));
+        return lines;
+    }
+
+    /** The line's first value for the key, or null when it has none. */
+    private static String value(String line, String key) {
+        Matcher m = FIELD.matcher(line);
+        while (m.find()) {
+            if (m.group(1).equals(key)) {
+                return m.group(2);
+            }
+        }
+        return null;
     }
 
     /** The sheet's lines, newest first; given a name (lower-cased), only those about that person. */

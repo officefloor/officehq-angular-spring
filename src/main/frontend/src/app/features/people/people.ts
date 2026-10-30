@@ -8,6 +8,7 @@ import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { Notes } from '../notes/notes';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Audit } from '../audit/audit';
+import { Activity } from '../activity/activity';
 import { Search } from '../search/search';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
@@ -137,7 +138,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Crews, Holidays, Notes, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
+  imports: [FigurePipe, Access, Activity, Audit, ClaimTemplates, Claims, Crews, Holidays, Notes, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -175,6 +176,7 @@ function csvField(value: string): string {
     <app-tags [people]="people()" />
     <app-search />
     <app-audit />
+    <app-activity />
     <section aria-label="People">
       <h2>People</h2>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
