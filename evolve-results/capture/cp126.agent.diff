@@ -1,0 +1,467 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index f7231a1dc..62b378e97 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -30,6 +30,8 @@ export class Session {
+   readonly archived = signal(false);
+   /** The id of the active sheet's parent sheet, as it stands; null when it has none. */
+   readonly parent = signal<string | null>(null);
++  /** The id of the last clone of the active sheet made from this screen; null before any. */
++  readonly clonedTo = signal<string | null>(null);
+   /** Bumped on every sheet load, so what is shown for the sheet is re-read even for the same id. */
+   readonly loads = signal(0);
+ 
+@@ -40,6 +42,7 @@ export class Session {
+     this.asOf.set(null);
+     this.archived.set(false);
+     this.parent.set(null);
++    this.clonedTo.set(null);
+     this.loads.update((n) => n + 1);
+     this.user.set(res.name);
+   }
+@@ -54,6 +57,7 @@ export class Session {
+     this.sheetToday.set(res.today);
+     this.archived.set(res.archived);
+     this.parent.set(res.parent);
++    this.clonedTo.set(null);
+     if (this.asOf() !== null) await this.readShown(res.id);
+     this.loads.update((n) => n + 1);
+   }
+@@ -93,4 +97,16 @@ export class Session {
+     );
+     if (this.sheet() === res.id) this.archived.set(res.archived);
+   }
++
++  /** Clone the active sheet to another id, which must never have been used. */
++  async cloneTo(to: string): Promise<void> {
++    const id = this.sheet();
++    if (!id) return;
++    await firstValueFrom(
++      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/clone`, { to }, {
++        headers: { 'X-User': this.user() ?? '' },
++      }),
++    );
++    if (this.sheet() === id) this.clonedTo.set(to);
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 2a1ef1258..02f103e87 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -55,6 +55,17 @@ import { People } from '../people/people';
+             Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
+             <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+           </p>
++          <form (submit)="cloneTo($event)" aria-label="Clone sheet">
++            <label for="sheet-clone-to">Clone to sheet id</label>
++            <input
++              id="sheet-clone-to"
++              data-testid="sheet-clone-to"
++              [value]="cloneInput()"
++              (input)="cloneInput.set(value($event)); sheetError.set('')"
++            />
++            <button type="submit" data-testid="sheet-clone">Clone sheet</button>
++            <p>Last clone made <strong data-testid="sheet-cloned-to">{{ session.clonedTo() ?? '' }}</strong></p>
++          </form>
+           <app-people />
+         }
+       </section>
+@@ -83,7 +94,8 @@ export class Home {
+   protected readonly sheetError = signal('');
+   protected readonly todayInput = signal('');
+   protected readonly asOfInput = signal('');
+-  /** A today change or archive still waiting for its answer: another press meanwhile is ignored. */
++  protected readonly cloneInput = signal('');
++  /** A today change, archive or clone still waiting for its answer: another press meanwhile is ignored. */
+   private busy = false;
+ 
+   protected value(e: Event): string {
+@@ -133,6 +145,25 @@ export class Home {
+     }
+   }
+ 
++  protected async cloneTo(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    this.sheetError.set('');
++    const to = this.cloneInput().trim();
++    if (!to) {
++      this.sheetError.set('Enter a sheet id to clone to.');
++      return;
++    }
++    this.busy = true;
++    try {
++      await this.session.cloneTo(to);
++    } catch {
++      this.sheetError.set('Could not clone the sheet.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   protected async setAsOf(e: Event): Promise<void> {
+     e.preventDefault();
+     this.sheetError.set('');
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 15105e619..d07610a46 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -39,6 +39,7 @@ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.rollup.RollupChanged;
+ import net.officefloor.hq.app.sheet.DaySnapshot;
+ import net.officefloor.hq.app.sheet.SheetArchived;
++import net.officefloor.hq.app.sheet.SheetCloned;
+ import net.officefloor.hq.app.statement.StatementCancelled;
+ import net.officefloor.hq.app.statement.StatementTaken;
+ import org.springframework.stereotype.Component;
+@@ -229,6 +230,12 @@ public class SheetAudit {
+         change(e.sheetId(), e.user(), "SHEET_ARCHIVED sheet=" + e.sheetId() + " by=" + e.user());
+     }
+ 
++    @TransactionalEventListener
++    public void on(SheetCloned e) {
++        change(e.sheetId(), e.user(), (e.to() != null ? "SHEET_CLONE_MADE" : "SHEET_CLONED") + " sheet=" + e.sheetId()
++                + " by=" + e.user() + (e.to() == null ? "" : " to=" + e.to()) + (e.from() == null ? "" : " from=" + e.from()));
++    }
++
+     @TransactionalEventListener
+     public void on(RoleSet e) {
+         change(e.sheetId(), e.user(), "ROLE_SET sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name() + " role=" + e.role());
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 1bcfcec09..10e227e60 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -210,6 +210,16 @@ public class Claim {
+         return arrived;
+     }
+ 
++    /**
++     * The claim as copied onto a clone of its sheet for the person there: as {@link #arriving}, keeping its
++     * reference too.
++     */
++    public Claim cloned(String sheetId, Long personId) {
++        Claim copy = arriving(sheetId, personId);
++        copy.ref = ref;
++        return copy;
++    }
++
+     public Long getListed() {
+         return listed;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 0c2707883..6106086f9 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -109,6 +109,20 @@ public class Person {
+         return arrived;
+     }
+ 
++    /**
++     * The person as copied onto a clone of their sheet: everything they have here (grades, terms, contact,
++     * aliases, origin, place in the list, holds, retirement and past retirements).
++     */
++    public Person cloned(String sheetId) {
++        Person copy = arriving(sheetId);
++        copy.origin = origin;
++        copy.position = position;
++        copy.retiredFrom = retiredFrom;
++        holds.forEach(h -> copy.holds.add(new HoldSpan(h.getFromDate(), h.getToDate())));
++        retirements.forEach(r -> copy.retirements.add(new RetirementSpan(r.getFromDate(), r.getToDate())));
++        return copy;
++    }
++
+     /** The person's place in the sheet's list: the list is by position, lowest first. */
+     public int getPosition() {
+         return position;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index d6ac31255..6267306e9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -71,6 +71,19 @@ public class Sheet {
+         this.today = today;
+     }
+ 
++    /**
++     * The sheet as copied to a clone under another id: its creator, today, policy date, period numbering from,
++     * entry date and grace days; no claim number or settle batch taken yet, and not archived.
++     */
++    public Sheet cloned(String id) {
++        Sheet copy = new Sheet(id, createdBy, today);
++        copy.policyDate = policyDate;
++        copy.periodNumberingFrom = periodNumberingFrom;
++        copy.entryDate = entryDate;
++        copy.graceDays = graceDays;
++        return copy;
++    }
++
+     public String getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+new file mode 100644
+index 000000000..55e93ac0d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -0,0 +1,207 @@
++package net.officefloor.hq.app.sheet;
++
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import net.officefloor.hq.app.access.AccessService;
++import net.officefloor.hq.app.access.Role;
++import net.officefloor.hq.app.access.SheetRole;
++import net.officefloor.hq.app.access.SheetRoleRepository;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimLogLine;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.claim.ClaimTemplate;
++import net.officefloor.hq.app.claim.ClaimTemplateRepository;
++import net.officefloor.hq.app.claim.SheetTag;
++import net.officefloor.hq.app.claim.SheetTagRepository;
++import net.officefloor.hq.app.claim.VoidReason;
++import net.officefloor.hq.app.claim.VoidReasonRepository;
++import net.officefloor.hq.app.holiday.Holiday;
++import net.officefloor.hq.app.holiday.HolidayRepository;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.person.Patron;
++import net.officefloor.hq.app.person.PatronRepository;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.Pool;
++import net.officefloor.hq.app.pool.PoolMember;
++import net.officefloor.hq.app.pool.PoolMemberRepository;
++import net.officefloor.hq.app.pool.PoolRepository;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.rate.RateRepository;
++import net.officefloor.hq.app.rollup.Rollup;
++import net.officefloor.hq.app.rollup.RollupChanged;
++import org.springframework.context.ApplicationEventPublisher;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Cloning a sheet to another id. Only a steward of this sheet may, and only to an id never used; anything
++ * else is refused. The clone gets this sheet's today, settings, roles, rates, holidays, void reasons,
++ * templates and tags, its people (grades, terms, contacts, aliases, holds, retirements, patrons), pools,
++ * periods (all open) and claims (status, frozen figures, dates, notes, tags, logs and comments). Each claim
++ * that had a number takes the clone's next one, in the order the claims were opened (by the sheet's today
++ * when each was opened, then by the order they were added, person by person in list order). Statements are
++ * not copied: figures a statement bound are released.
++ */
++@Service
++public class SheetCloneService {
++
++    private final SheetRepository sheetRows;
++    private final SheetSettingRepository settings;
++    private final SheetRoleRepository roles;
++    private final RateRepository rates;
++    private final HolidayRepository holidays;
++    private final VoidReasonRepository voidReasons;
++    private final ClaimTemplateRepository templates;
++    private final SheetTagRepository tags;
++    private final PersonRepository people;
++    private final PatronRepository patrons;
++    private final PoolRepository pools;
++    private final PoolMemberRepository poolMembers;
++    private final PeriodRepository periods;
++    private final ClaimRepository claims;
++    private final ClaimService claimService;
++    private final AccessService access;
++    private final Rollup rollup;
++    private final ApplicationEventPublisher events;
++
++    public SheetCloneService(SheetRepository sheetRows, SheetSettingRepository settings, SheetRoleRepository roles,
++            RateRepository rates, HolidayRepository holidays, VoidReasonRepository voidReasons,
++            ClaimTemplateRepository templates, SheetTagRepository tags, PersonRepository people,
++            PatronRepository patrons, PoolRepository pools, PoolMemberRepository poolMembers,
++            PeriodRepository periods, ClaimRepository claims, ClaimService claimService, AccessService access,
++            Rollup rollup, ApplicationEventPublisher events) {
++        this.sheetRows = sheetRows;
++        this.settings = settings;
++        this.roles = roles;
++        this.rates = rates;
++        this.holidays = holidays;
++        this.voidReasons = voidReasons;
++        this.templates = templates;
++        this.tags = tags;
++        this.people = people;
++        this.patrons = patrons;
++        this.pools = pools;
++        this.poolMembers = poolMembers;
++        this.periods = periods;
++        this.claims = claims;
++        this.claimService = claimService;
++        this.access = access;
++        this.rollup = rollup;
++        this.events = events;
++    }
++
++    /** Clone the sheet to the other id; refused (403) for anyone but a steward, (409) when the id was used. */
++    @Transactional
++    public Sheet cloneTo(String sheetId, String user, String toSheet) {
++        Sheet sheet = sheetRows.lockById(sheetId);
++        if (sheet == null) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet");
++        }
++        if (access.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can clone the sheet");
++        }
++        if (toSheet.equals(sheetId) || sheetRows.existsById(toSheet)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The other sheet is already in use");
++        }
++        sheetRows.saveAndFlush(sheet.cloned(toSheet));
++
++        settings.findBySheetId(sheetId).stream().sorted(Comparator.comparing(SheetSetting::getId))
++                .forEach(s -> settings.save(new SheetSetting(toSheet, s.getKey(), s.getFromDate(), s.getValue())));
++        roles.findBySheetIdOrderByUserName(sheetId)
++                .forEach(r -> roles.save(new SheetRole(toSheet, r.getUserName(), r.getRole())));
++        rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).forEach(r -> rates
++                .save(new Rate(toSheet, r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())));
++        holidays.findBySheetIdOrderByDayAsc(sheetId).forEach(h -> holidays.save(new Holiday(toSheet, h.getDay())));
++        voidReasons.findBySheetIdOrderByIdAsc(sheetId)
++                .forEach(v -> voidReasons.save(new VoidReason(toSheet, v.getReason())));
++        templates.findBySheetIdOrderByNameAsc(sheetId)
++                .forEach(t -> templates.save(new ClaimTemplate(toSheet, t.getName(), t.getAmount(), t.getNote())));
++        tags.findBySheetIdOrderByTagAsc(sheetId).forEach(t -> tags.save(new SheetTag(toSheet, t.getTag())));
++        periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().sorted(Comparator.comparing(Period::getId))
++                .forEach(p -> periods.save(new Period(toSheet, p.getName(), p.getFromDate(), p.getToDate())));
++
++        Map<Long, Long> personIds = new HashMap<>();
++        List<Person> theirs = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
++        for (Person person : theirs) {
++            personIds.put(person.getId(), people.save(person.cloned(toSheet)).getId());
++        }
++        patrons.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> patrons
++                .save(new Patron(toSheet, personIds.get(p.getPersonId()), personIds.get(p.getPatronId()))));
++
++        Map<Long, Long> poolIds = new HashMap<>();
++        List<Pool> theirPools = pools.findBySheetIdOrderByNameAsc(sheetId).stream()
++                .sorted(Comparator.comparing(Pool::getId)).toList();
++        for (Pool pool : theirPools) {
++            poolIds.put(pool.getId(), pools.save(new Pool(toSheet, pool.getName())).getId());
++        }
++        if (!poolIds.isEmpty()) {
++            for (PoolMember m : poolMembers.findByPoolIdInOrderByIdAsc(poolIds.keySet())) {
++                PoolMember copy = m.getMemberPoolId() != null
++                        ? PoolMember.ofPool(poolIds.get(m.getPoolId()), poolIds.get(m.getMemberPoolId()), m.getShare())
++                        : new PoolMember(poolIds.get(m.getPoolId()), personIds.get(m.getPersonId()), m.getShare());
++                poolMembers.save(copy.dated(m.getFrom(), m.getTo()));
++            }
++        }
++        sheetRows.flush();
++
++        // person by person in list order, each one's claims oldest listed first, so they list as they do here
++        Map<Long, List<Claim>> byPerson = new HashMap<>();
++        List<Claim> listed = new ArrayList<>(claims.findBySheetIdOrderByListedDesc(sheetId));
++        Collections.reverse(listed);
++        listed.forEach(c -> byPerson.computeIfAbsent(c.getPersonId(), k -> new ArrayList<>()).add(c));
++        List<Claim> copies = new ArrayList<>();
++        Map<Claim, String> oldNumbers = new HashMap<>();
++        Map<Claim, LocalDate> openedOn = new HashMap<>();
++        for (Person person : theirs) {
++            for (Claim claim : byPerson.getOrDefault(person.getId(), List.of())) {
++                Claim copy = claim.cloned(toSheet, personIds.get(person.getId()));
++                copies.add(copy);
++                if (claim.getShownNumber() != null) {
++                    oldNumbers.put(copy, claim.getShownNumber());
++                }
++                openedOn.put(copy, openedOn(claim));
++            }
++        }
++        claims.saveAllAndFlush(copies);
++
++        Map<String, String> renumbered = new HashMap<>();
++        copies.stream().filter(oldNumbers::containsKey).sorted(Comparator.comparing(openedOn::get))
++                .forEach(claim -> {
++                    claimService.numberArrived(toSheet, claim);
++                    renumbered.put(oldNumbers.get(claim), claim.getShownNumber());
++                });
++        // a correction, or a claim split off another, names the claim it came from by its new number
++        for (Claim claim : copies) {
++            if (claim.getCorrects() != null) {
++                claim.setCorrects(renumbered.getOrDefault(claim.getCorrects(), claim.getCorrects()));
++            }
++            if (claim.getSplitFrom() != null) {
++                claim.setSplitFrom(renumbered.getOrDefault(claim.getSplitFrom(), claim.getSplitFrom()));
++            }
++        }
++        claims.flush();
++
++        events.publishEvent(new SheetCloned(sheetId, user, toSheet, null));
++        events.publishEvent(new SheetCloned(toSheet, user, null, sheetId));
++        Rollup.Figures figures = rollup.figures(toSheet);
++        events.publishEvent(new RollupChanged(toSheet, user, List.copyOf(figures.people().values()), figures.totals()));
++        return sheet;
++    }
++
++    /** The sheet's today when the claim was opened: its first status after DRAFT; its date when it has no log of it. */
++    private static LocalDate openedOn(Claim claim) {
++        return claim.getLog().stream().filter(l -> l.getStatus() != ClaimStatus.DRAFT).map(ClaimLogLine::getOn)
++                .findFirst().orElse(claim.getDate());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloned.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloned.java
+new file mode 100644
+index 000000000..f842e6160
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloned.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.sheet;
++
++/**
++ * A steward cloned a sheet to another id: on the sheet cloned ({@code SHEET_CLONE_MADE}), {@code to} names the
++ * clone; on the clone ({@code SHEET_CLONED}), {@code from} names the sheet it was cloned from.
++ */
++public record SheetCloned(String sheetId, String user, String to, String from) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 42355662b..c34bbf04b 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -30,12 +30,18 @@ public class SheetController {
+     public record TodayChange(@NotNull LocalDate today) {
+     }
+ 
++    /** The id of the sheet to clone this one to. */
++    public record CloneRequest(@NotBlank @Size(max = 100) String to) {
++    }
++
+     private final SheetService service;
+     private final AccessService access;
++    private final SheetCloneService clones;
+ 
+-    public SheetController(SheetService service, AccessService access) {
++    public SheetController(SheetService service, AccessService access, SheetCloneService clones) {
+         this.service = service;
+         this.access = access;
++        this.clones = clones;
+     }
+ 
+     @PostMapping("/{id}/load")
+@@ -69,6 +75,16 @@ public class SheetController {
+         return view(access.archive(id.trim(), user.trim()));
+     }
+ 
++    /**
++     * Clone the sheet to another id: a steward only, and only to an id never used; anyone else (403), or a
++     * used id (409), is refused.
++     */
++    @PostMapping("/{id}/clone")
++    public SheetView cloneTo(@PathVariable @NotBlank @Size(max = 100) String id,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody CloneRequest request) {
++        return view(clones.cloneTo(id.trim(), user.trim(), request.to().trim()));
++    }
++
+     private SheetView view(Sheet sheet) {
+         return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), service.settings(sheet.getId()).parent());
+     }
