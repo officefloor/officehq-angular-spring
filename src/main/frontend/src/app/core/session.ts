@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 interface SheetView {
   id: string;
   today: string;
+  archived: boolean;
 }
 
 // The signed-in user and the active sheet. Every request after sign-in names the user in X-User.
@@ -16,6 +17,8 @@ export class Session {
   readonly sheet = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date the screen decides on or defaults to. */
   readonly today = signal<string | null>(null);
+  /** Whether the active sheet is archived: it stays visible and every change to it is refused. */
+  readonly archived = signal(false);
   /** Bumped on every sheet load, so what is shown for the sheet is re-read even for the same id. */
   readonly loads = signal(0);
 
@@ -23,6 +26,7 @@ export class Session {
     const res = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
     this.sheet.set(null);
     this.today.set(null);
+    this.archived.set(false);
     this.loads.update((n) => n + 1);
     this.user.set(res.name);
   }
@@ -35,6 +39,7 @@ export class Session {
     );
     this.sheet.set(res.id);
     this.today.set(res.today);
+    this.archived.set(res.archived);
     this.loads.update((n) => n + 1);
   }
 
@@ -47,5 +52,16 @@ export class Session {
       }),
     );
     if (this.sheet() === res.id) this.today.set(res.today);
+  }
+
+  async archive(): Promise<void> {
+    const id = this.sheet();
+    if (!id) return;
+    const res = await firstValueFrom(
+      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null, {
+        headers: { 'X-User': this.user() ?? '' },
+      }),
+    );
+    if (this.sheet() === res.id) this.archived.set(res.archived);
   }
 }

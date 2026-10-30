@@ -28,8 +28,8 @@ public class BulkOpenService {
     }
 
     public Result open(String sheetId, String user, Set<Long> claimIds) {
-        if (access.isViewer(sheetId, user)) {
-            return new Result(0, claimIds.size()); // a viewer changes nothing: every one refused
+        if (access.isArchived(sheetId) || access.isViewer(sheetId, user)) {
+            return new Result(0, claimIds.size()); // an archived sheet, or a viewer, changes nothing: every one refused
         }
         int opened = 0;
         for (Claim c : selected.inListOrder(sheetId, claimIds)) {

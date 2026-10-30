@@ -11,13 +11,16 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
 
 /**
- * Refuses every change a viewer asks for on a sheet (403, writing nothing). Reading, and loading a sheet,
- * go through; so do the bulk actions, which answer with nothing done and every selected item refused.
+ * Refuses every change a viewer asks for on a sheet, and every change anyone asks for on an archived sheet
+ * (403, writing nothing). Reading, and loading a sheet, go through; so do the bulk actions, which answer
+ * with nothing done and every selected item refused.
  */
 @Component
 public class ViewerGuard implements HandlerInterceptor {
 
     private static final String REFUSAL = "{\"message\":\"A viewer can change nothing.\"}";
+
+    private static final String ARCHIVED = "{\"message\":\"The sheet is archived: nothing on it can change.\"}";
 
     private final AccessService access;
 
@@ -44,12 +47,14 @@ public class ViewerGuard implements HandlerInterceptor {
         if (!(sheet instanceof String id)) {
             return true;
         }
-        if (!access.isViewer(id.trim(), user.trim())) {
+        String refusal = access.isArchived(id.trim()) ? ARCHIVED
+                : access.isViewer(id.trim(), user.trim()) ? REFUSAL : null;
+        if (refusal == null) {
             return true;
         }
         response.setStatus(HttpStatus.FORBIDDEN.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().write(REFUSAL);
+        response.getWriter().write(refusal);
         return false;
     }
 }

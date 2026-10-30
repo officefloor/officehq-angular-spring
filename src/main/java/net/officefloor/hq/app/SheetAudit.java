@@ -23,6 +23,7 @@ import net.officefloor.hq.app.person.WatcherNotified;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
+import net.officefloor.hq.app.sheet.SheetArchived;
 import net.officefloor.hq.app.statement.StatementTaken;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -146,6 +147,11 @@ public class SheetAudit {
                 + " grade=" + e.grade() + " rate=" + e.rate().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.from() == null ? "" : " from=" + e.from())
                 + (e.to() == null ? "" : " to=" + e.to()));
+    }
+
+    @TransactionalEventListener
+    public void on(SheetArchived e) {
+        change(e.sheetId(), e.user(), "SHEET_ARCHIVED sheet=" + e.sheetId() + " by=" + e.user());
     }
 
     @TransactionalEventListener

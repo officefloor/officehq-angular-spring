@@ -8,13 +8,16 @@ import java.util.Map;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.DatedSettings;
 import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetArchived;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.sheet.SheetSetting;
 import net.officefloor.hq.app.sheet.SheetSettingRepository;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
@@ -139,6 +142,31 @@ public class AccessService {
     @Transactional(readOnly = true)
     public boolean isViewer(String sheetId, String user) {
         return roleOf(sheetId, user) == Role.VIEWER;
+    }
+
+    /** Whether the sheet is archived: every change to it is refused, whoever asks. */
+    @Transactional(readOnly = true)
+    public boolean isArchived(String sheetId) {
+        return sheets.isArchived(sheetId);
+    }
+
+    /**
+     * Archive the sheet. Only a steward may; the sheet then stays visible and every change to it,
+     * archiving it again among them, is refused.
+     */
+    @Transactional
+    public Sheet archive(String sheetId, String user) {
+        Sheet sheet = sheetRows.lockById(sheetId);
+        if (sheet == null) {
+            sheet = sheets.load(sheetId, user);
+        }
+        if (roleOf(sheetId, user) != Role.STEWARD || sheet.isArchived()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can archive the sheet");
+        }
+        sheet.setArchived(true);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SheetArchived(sheetId, user));
+        return sheet;
     }
 
     /** The sheet's dated settings, with the sheet's today to read the values in force now. */

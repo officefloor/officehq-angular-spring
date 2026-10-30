@@ -59,6 +59,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getGraceDays).orElse(null);
     }
 
+    /** Whether the sheet is archived: every change to it is refused. */
+    public boolean isArchived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+    }
+
     /** The sheet's today: the date to use for every decision and default date on the sheet. */
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));

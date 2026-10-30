@@ -37,6 +37,10 @@ import { People } from '../people/people';
             />
             <button type="submit" data-testid="sheet-today-save">Set today</button>
           </form>
+          <p>
+            Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
+            <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+          </p>
           <app-people />
         }
       </section>
@@ -64,7 +68,7 @@ export class Home {
   protected readonly signinError = signal('');
   protected readonly sheetError = signal('');
   protected readonly todayInput = signal('');
-  /** A today change still waiting for its answer: another press meanwhile is ignored. */
+  /** A today change or archive still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
 
   protected value(e: Event): string {
@@ -98,6 +102,19 @@ export class Home {
       await this.session.loadSheet(id);
     } catch {
       this.sheetError.set('Could not load the sheet.');
+    }
+  }
+
+  protected async archive(): Promise<void> {
+    if (this.busy) return;
+    this.sheetError.set('');
+    this.busy = true;
+    try {
+      await this.session.archive();
+    } catch {
+      this.sheetError.set('Could not archive the sheet.');
+    } finally {
+      this.busy = false;
     }
   }
 
