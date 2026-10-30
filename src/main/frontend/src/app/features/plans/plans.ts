@@ -70,6 +70,8 @@ export interface Plan {
   paused: boolean;
   /** The plan's pauses: from the day paused up to the day resumed (null while still paused). */
   pauses: { from: string; to: string | null }[];
+  /** The plan's amount changes, oldest first: the day made and the new amount (two decimals). */
+  changes: { on: string; amount: string }[];
 }
 
 /** The active sheet's plans in the order they were added, re-read on every sheet load. */
@@ -146,6 +148,28 @@ export class PlanList {
     }
   }
 
+  /** Change the plan's amount from now on: '' once changed, else why it was refused. */
+  async changeAmount(planId: number, amount: string): Promise<string> {
+    const sheet = this.session.sheet();
+    if (!sheet) return 'Load a sheet first.';
+    if (!AMOUNT.test(amount.trim())) return 'Enter an amount with up to two decimals.';
+    const headers = { 'X-User': this.session.user() ?? '' };
+    try {
+      const plans = await firstValueFrom(
+        this.http.post<Plan[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/amount`,
+          { amount: amount.trim() },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() === sheet) this.plans.set(plans);
+      return '';
+    } catch (err) {
+      const answer = err instanceof HttpErrorResponse ? err : null;
+      return answer?.error?.message ?? 'Could not change the plan amount.';
+    }
+  }
+
   /** Make the claims every plan is due up to the sheet's today: how many were made. Throws when refused. */
   async generate(sheet: string): Promise<number> {
     const headers = { 'X-User': this.session.user() ?? '' };
@@ -188,6 +212,22 @@ export class PlanList {
           <button type="button" data-testid="plan-resume" (click)="pause(pl.id, true)">
             Resume<span class="visually-hidden"> plan from {{ pl.start }}</span>
           </button>
+          <label [for]="'plan-amount-' + pl.id">New amount<span class="visually-hidden"> for plan from {{ pl.start }}</span></label>
+          <input
+            [id]="'plan-amount-' + pl.id"
+            data-testid="plan-amount"
+            inputmode="decimal"
+            [value]="newAmounts()[pl.id] ?? ''"
+            (input)="setNewAmount(pl.id, value($event))"
+          />
+          <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl.id)">
+            Save amount<span class="visually-hidden"> for plan from {{ pl.start }}</span>
+          </button>
+          <ul aria-label="Amount changes">
+            @for (c of pl.changes; track $index) {
+              <li data-testid="plan-change-line">{{ c.on }} amount={{ c.amount }}</li>
+            }
+          </ul>
           @if (rowErrors()[pl.id]) {
             <span role="alert" data-testid="plan-error">{{ rowErrors()[pl.id] }}</span>
           }
@@ -258,6 +298,8 @@ export class PersonPlans {
   protected readonly error = signal('');
   /** Why the last action on a plan's row was refused, by plan id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The new amount typed on each plan's row, by plan id. */
+  protected readonly newAmounts = signal<Record<number, string>>({});
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
 
@@ -272,6 +314,19 @@ export class PersonPlans {
     this.rowErrors.update((errors) => ({ ...errors, [planId]: '' }));
     const refusal = await this.list.pause(planId, resume);
     this.rowErrors.update((errors) => ({ ...errors, [planId]: refusal }));
+  }
+
+  protected setNewAmount(planId: number, amount: string): void {
+    this.newAmounts.update((amounts) => ({ ...amounts, [planId]: amount }));
+    this.rowErrors.update((errors) => ({ ...errors, [planId]: '' }));
+  }
+
+  /** Change the plan's amount to the one typed, showing on its row why when refused. */
+  protected async changeAmount(planId: number): Promise<void> {
+    this.rowErrors.update((errors) => ({ ...errors, [planId]: '' }));
+    const refusal = await this.list.changeAmount(planId, this.newAmounts()[planId] ?? '');
+    this.rowErrors.update((errors) => ({ ...errors, [planId]: refusal }));
+    if (!refusal) this.newAmounts.update((amounts) => ({ ...amounts, [planId]: '' }));
   }
 
   protected value(e: Event): string {

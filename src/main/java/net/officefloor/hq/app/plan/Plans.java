@@ -33,6 +33,7 @@ public class Plans {
     private final PlanRepository plans;
     private final PlanClaimRepository made;
     private final PlanPauseRepository pauses;
+    private final PlanChangeRepository changes;
     private final PersonRepository people;
     private final ClaimService claims;
     private final SheetService sheets;
@@ -41,13 +42,15 @@ public class Plans {
     private final TransactionTemplate transaction;
     private final AccessService access;
 
-    public Plans(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses, PersonRepository people, ClaimService claims,
+    public Plans(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses,
+            PlanChangeRepository changes, PersonRepository people, ClaimService claims,
             SheetService sheets, SheetRepository sheetRows, ApplicationEventPublisher events,
             PlatformTransactionManager transactions, AccessService access) {
         this.access = access;
         this.plans = plans;
         this.made = made;
         this.pauses = pauses;
+        this.changes = changes;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
@@ -72,6 +75,29 @@ public class Plans {
     @Transactional(readOnly = true)
     public List<PlanPause> pauses(Plan plan) {
         return pauses.findByPlanIdOrderByIdAsc(plan.getId());
+    }
+
+    /** The plan's amount changes in the order they were made. */
+    @Transactional(readOnly = true)
+    public List<PlanChange> changes(Plan plan) {
+        return changes.findByPlanIdOrderByIdAsc(plan.getId());
+    }
+
+    /**
+     * Change the plan's amount on the sheet's today: the claims generated from then on are made for it, those already
+     * generated keep theirs.
+     */
+    @Transactional
+    public void changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        sheets.load(sheetId, user);
+        sheetRows.lockById(sheetId);
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
+        plan.changeAmount(amount);
+        plans.saveAndFlush(plan);
+        changes.saveAndFlush(new PlanChange(planId, sheets.today(sheetId), amount));
+        String name = people.findByIdAndSheetId(plan.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new PlanChanged(sheetId, user, name, plan.getStart(), amount));
     }
 
     /**

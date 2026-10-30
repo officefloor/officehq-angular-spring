@@ -76,6 +76,11 @@ public class Plan {
         return amount;
     }
 
+    /** Change the amount the plan's claims are made for from now on. */
+    public void changeAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
+
     public LocalDate getStart() {
         return start;
     }

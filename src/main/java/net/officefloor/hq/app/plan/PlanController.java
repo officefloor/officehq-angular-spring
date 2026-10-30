@@ -36,16 +36,24 @@ public class PlanController {
             @Pattern(regexp = "\\d{1,2}") String day, @NotNull LocalDate end) {
     }
 
+    /** A plan's new amount: up to two decimals. */
+    public record AmountForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
+    }
+
+    /** A change of a plan's amount: the day it was made and the new amount with two decimals. */
+    public record ChangeView(LocalDate on, String amount) {
+    }
+
     /** A plan's pause: from the day it was paused up to the day it was resumed (null while still paused). */
     public record PauseView(LocalDate from, LocalDate to) {
     }
 
     /**
      * A plan on the sheet; its amount with two decimals, how many claims it has made so far, whether it is paused and
-     * its pauses.
+     * its pauses, and its amount changes oldest first.
      */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated, boolean paused, List<PauseView> pauses) {
+            LocalDate end, long generated, boolean paused, List<PauseView> pauses, List<ChangeView> changes) {
     }
 
     /** How many claims a generate made. */
@@ -74,7 +82,20 @@ public class PlanController {
                 .toList();
         return new PlanView(p.getId(), p.getPersonId(), p.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString(),
                 p.getStart(), p.getEvery(), p.getDay(), p.getEnd(), plans.generated(p),
-                pauses.stream().anyMatch(x -> x.to() == null), pauses);
+                pauses.stream().anyMatch(x -> x.to() == null), pauses,
+                plans.changes(p).stream()
+                        .map(x -> new ChangeView(x.getChangedOn(),
+                                x.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString()))
+                        .toList());
+    }
+
+    /** Change a plan's amount on the sheet's today; answers with every plan on the sheet. */
+    @PostMapping("/plans/{planId}/amount")
+    public List<PlanView> amount(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody AmountForm form) {
+        String sheet = sheetId.trim();
+        plans.changeAmount(sheet, user.trim(), planId, new BigDecimal(form.amount()));
+        return list(sheet);
     }
 
     /** Pause a plan on the sheet's today; answers with every plan on the sheet. */
