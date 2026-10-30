@@ -64,7 +64,8 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(PersonChanged e) {
         change(e.sheetId(), e.user(), e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
-                + " name=" + e.name() + " grade=" + e.grade() + (e.terms() == null ? "" : " terms=" + e.terms()));
+                + " name=" + e.name() + " grade=" + e.grade() + (e.terms() == null ? "" : " terms=" + e.terms())
+                + (e.contact() == null ? "" : " contact=" + e.contact()));
     }
 
     @TransactionalEventListener

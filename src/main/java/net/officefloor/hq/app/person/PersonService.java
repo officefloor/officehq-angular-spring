@@ -49,18 +49,22 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
+        if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
+            throw contactInUse();
+        }
         Rollup.Figures before = rollup.figures(sheetId);
         Person added = new Person(sheetId, trimmed, grade);
         added.setTerms(terms);
+        added.setContact(contact);
         Person person = people.saveAndFlush(added);
         events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade,
-                terms == null ? null : terms.toString()));
+                terms == null ? null : terms.toString(), contact));
         rollup.changed(sheetId, user, before);
         return person;
     }
@@ -68,12 +72,13 @@ public class PersonService {
     /**
      * Save the person's name and record the grade from a date (none: the sheet's today), keeping the
      * grades already recorded; a grade left as the row showed it (in force on the sheet's today) with no
-     * date records nothing. The person's own terms are set to those given (null: none). The edit names the
-     * grade in force on the sheet's today after it and, when they changed, the terms.
+     * date records nothing. The person's own terms and contact are set to those given (null: none); a contact
+     * another person on the sheet has is refused. The edit names the grade in force on the sheet's today after
+     * it and, when they changed, the terms and the contact.
      */
     @Transactional
     public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version != null && version != person.getVersion()) {
@@ -83,6 +88,9 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)) {
             throw nameInUse();
         }
+        if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
+            throw contactInUse();
+        }
         Rollup.Figures before = rollup.figures(sheetId);
         person.setName(trimmed);
         LocalDate today = sheets.today(sheetId);
@@ -91,9 +99,11 @@ public class PersonService {
         }
         String termsChange = Objects.equals(terms, person.getTerms()) ? null : terms == null ? "" : terms.toString();
         person.setTerms(terms);
+        String contactChange = Objects.equals(contact, person.getContact()) ? null : contact == null ? "" : contact;
+        person.setContact(contact);
         people.flush();
         events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, person.gradeOn(today),
-                termsChange));
+                termsChange, contactChange));
         rollup.changed(sheetId, user, before);
         return person;
     }
@@ -182,5 +192,9 @@ public class PersonService {
 
     private static ResponseStatusException nameInUse() {
         return new ResponseStatusException(HttpStatus.CONFLICT, "Name already in use");
+    }
+
+    private static ResponseStatusException contactInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Contact already in use");
     }
 }

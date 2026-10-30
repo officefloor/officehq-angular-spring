@@ -36,7 +36,7 @@ public class BulkGradeService {
                 continue;
             }
             try {
-                people.edit(sheetId, user, p.getId(), null, p.getName(), grade, from, p.getTerms());
+                people.edit(sheetId, user, p.getId(), null, p.getName(), grade, from, p.getTerms(), p.getContact());
                 graded++;
             } catch (ResponseStatusException refused) {
                 // refused: left as they are

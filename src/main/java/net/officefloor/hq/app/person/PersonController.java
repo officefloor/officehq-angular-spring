@@ -11,6 +11,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimComment;
@@ -108,7 +109,8 @@ public class PersonController {
      * from their SETTLED claims and from their OPEN and PENDING claims (see {@link Dues#settledTotal} and
      * {@link Dues#openTotal}; 0.00 with none, never n/a).
      */
-    public record PersonView(long id, long version, String name, String grade, Integer terms, List<ClaimView> claims,
+    public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
+            List<ClaimView> claims,
             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
@@ -123,7 +125,7 @@ public class PersonController {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
-                    grade.on(rates.today()), person.getTerms(), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
+                    grade.on(rates.today()), person.getTerms(), person.getContact(), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
                     statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
@@ -151,11 +153,17 @@ public class PersonController {
     /**
      * A person as entered; an edit carries the version its editor loaded (none: no check) and the date
      * its grade applies from (none: the sheet's today). An add's grade applies from the beginning of time.
-     * The person's own terms are a number of days, blank (or none) for none.
+     * The person's own terms are a number of days, blank (or none) for none; their contact a text, blank
+     * (or none) for none.
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
-            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms) {
+            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms, @Size(max = 200) String contact) {
+
+        /** The contact trimmed and lower-cased; null when there is none. */
+        String contactKey() {
+            return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
+        }
 
         /** The terms as days; null when there are none. */
         Integer termsDays() {
@@ -204,7 +212,8 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
-        return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays()), List.of(),
+        return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays(),
+                form.contactKey()), List.of(),
                 rates.table(sheet), Statements.NONE, List.of());
     }
 
@@ -214,7 +223,7 @@ public class PersonController {
             @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(),
-                form.grade(), form.gradeFrom(), form.termsDays()));
+                form.grade(), form.gradeFrom(), form.termsDays(), form.contactKey()));
     }
 
     /** Give the selected people the grade from the date, in list order; answers how many were changed. */
@@ -292,7 +301,7 @@ public class PersonController {
                 statements.forPerson(sheet, personId), service.patrons(sheet, personId));
     }
 
-    /** Another save took the name first: the unique name on the sheet refuses this one. */
+    /** Another save took the name or contact first: the unique name or contact on the sheet refuses this one. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public void nameInUse() {
