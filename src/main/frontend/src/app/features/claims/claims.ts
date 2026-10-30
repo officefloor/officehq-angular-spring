@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOf } from '../periods/periods';
@@ -45,6 +45,8 @@ export interface Claim {
   proofs: number;
   /** For a claim split off another, the number of the claim it was split from, as shown; null otherwise. */
   splitFrom: string | null;
+  /** The user whose open editor locks the claim for everyone else; null when no editor holds it. */
+  lockedBy: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
@@ -220,7 +222,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             Edit claim<span class="visually-hidden"> {{ c.amount }} {{ c.date }}</span>
           </button>
           @if (editing() === c.id) {
-            <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+            <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           }
         </li>
       }
@@ -231,6 +233,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         [id]="fid('amount')"
         inputmode="decimal"
         data-testid="claim-form-amount"
+        [disabled]="locking()"
         [value]="amount()"
         (input)="amount.set(value($event)); error.set('')"
       />
@@ -239,6 +242,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         [id]="fid('date')"
         type="date"
         data-testid="claim-form-date"
+        [disabled]="locking()"
         [value]="date()"
         (input)="date.set(value($event)); error.set('')"
       />
@@ -246,6 +250,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <input
         [id]="fid('note')"
         data-testid="claim-form-note"
+        [disabled]="locking()"
         [value]="note()"
         (input)="note.set(value($event)); error.set('')"
       />
@@ -254,10 +259,11 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         [id]="fid('corrects')"
         inputmode="numeric"
         data-testid="claim-form-corrects"
+        [disabled]="locking()"
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set('')"
       />
-      <button type="submit" data-testid="claim-form-submit">
+      <button type="submit" data-testid="claim-form-submit" [disabled]="locking()">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
       @if (error()) {
@@ -266,7 +272,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
     </form>
   `,
 })
-export class Claims {
+export class Claims implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
@@ -285,6 +291,8 @@ export class Claims {
   protected readonly corrects = signal('');
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
+  /** An edit button waiting for its claim's lock: the form is held until the answer comes. */
+  protected readonly locking = signal(false);
   /** The refusal of the last action taken on a claim's row, shown on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   /** The reason typed for rejecting each claim, by claim id. */
@@ -512,19 +520,86 @@ export class Claims {
     return (e.target as HTMLInputElement).checked;
   }
 
-  /** Open a claim's editor; only a DRAFT can be edited, so any other is refused on its row. */
-  protected edit(c: Claim): void {
+  /** An editor the signed-in user left open on one of the person's claims is open again once the sheet is re-read. */
+  ngOnInit(): void {
+    const mine = this.person().claims.find((c) => c.status === 'DRAFT' && c.lockedBy !== null && c.lockedBy === this.session.user());
+    if (mine) this.fill(mine);
+  }
+
+  /** Why the claim's editor cannot be opened, as far as the screen knows; null when it may be. */
+  private editRefusal(c: Claim): string | null {
+    if (c.status !== 'DRAFT') return `A ${c.status} claim cannot be edited; void it and add a new one.`;
+    const period = periodOf(this.periods(), c.date);
+    if (period?.closed) return `The claim is in the closed period ${period.name}, so it cannot be edited.`;
+    if (c.lockedBy !== null && c.lockedBy !== this.session.user()) return `${c.lockedBy} is editing this claim.`;
+    return null;
+  }
+
+  /**
+   * Open a claim's editor, locking the claim for other users until it is saved or cancelled (or the sheet's
+   * today changes). A claim that cannot be edited (not a DRAFT, in a closed period, or locked by another
+   * user), or a viewer's edit, is refused on its row and takes no lock.
+   */
+  protected async edit(c: Claim): Promise<void> {
+    if (this.busy) return;
     this.claimError.set(null);
-    if (c.status !== 'DRAFT') {
-      this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be edited; void it and add a new one.` });
+    const refusal = this.editRefusal(c);
+    if (refusal !== null) {
+      this.claimError.set({ id: c.id, message: refusal });
       return;
     }
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const previous = this.editing();
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    this.locking.set(true);
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/lock`, null, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      if (previous !== null && previous !== c.id) this.unlock(previous);
+      this.saved.emit(person);
+      this.fill(person.claims.find((x) => x.id === c.id) ?? c);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refused =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refused || 'The claim cannot be edited now; another user may be editing it.' });
+    } finally {
+      this.busy = false;
+      this.locking.set(false);
+    }
+  }
+
+  private fill(c: Claim): void {
     this.editing.set(c.id);
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
     this.corrects.set(c.corrects ?? '');
     this.error.set('');
+  }
+
+  /** Close the claim's editor without saving, releasing its lock. */
+  protected cancel(): void {
+    const id = this.editing();
+    if (id !== null) {
+      if (this.claimError()?.id === id) this.claimError.set(null);
+      this.unlock(id);
+    }
+    this.reset();
+  }
+
+  /** Release the signed-in user's lock on a claim; nothing to show either way. */
+  private unlock(id: number): void {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.http.post(`/api/sheets/${encodeURIComponent(sheet)}/claims/${id}/unlock`, null, { headers }).subscribe({
+      error: () => undefined,
+    });
   }
 
   protected reset(): void {

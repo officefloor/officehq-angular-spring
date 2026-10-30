@@ -105,6 +105,13 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /**
+     * The user whose open editor locks the claim for everyone else, until it is saved or cancelled or the
+     * sheet's today changes; null when no editor holds it.
+     */
+    @Column(name = "locked_by")
+    private String lockedBy;
+
     /** The claim's place in its person's list, newest first; the store takes it on adding and reassigning. */
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
@@ -169,6 +176,14 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
     }
 
     public LocalDate getDeferredUntil() {

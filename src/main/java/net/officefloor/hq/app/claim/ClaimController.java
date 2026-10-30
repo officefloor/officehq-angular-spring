@@ -143,6 +143,22 @@ public class ClaimController {
         return view(sheet, id);
     }
 
+    /** Open a claim's editor, locking the claim for other users. */
+    @PostMapping("/claims/{claimId}/lock")
+    public PersonView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.lock(sheet, user.trim(), claimId));
+    }
+
+    /** Cancel a claim's editor, releasing its lock. */
+    @PostMapping("/claims/{claimId}/unlock")
+    public PersonView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.unlock(sheet, user.trim(), claimId));
+    }
+
     @PostMapping("/claims/{claimId}/open")
     public PersonView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {

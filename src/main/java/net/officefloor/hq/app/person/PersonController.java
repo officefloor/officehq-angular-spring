@@ -54,7 +54,8 @@ public class PersonController {
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
-            List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom) {
+            List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
+            String lockedBy) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
@@ -62,7 +63,8 @@ public class PersonController {
                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, rates),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
                     Dues.deferred(claim, rates.today()),
-                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom());
+                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
+                    claim.getLockedBy());
         }
     }
 
