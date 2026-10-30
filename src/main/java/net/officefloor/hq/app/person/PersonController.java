@@ -54,8 +54,8 @@ public class PersonController {
      * then, or while bound by a statement, the figure bound then, its status, its number (null while it has
      * none), who opened it (null while it was never opened), whether a statement binds it, the date it is
      * due by (fixed when it was added: its date plus its person's own terms, else the terms then of their grade on its date, else the sheet's), whether it is overdue (see {@link Dues#overdue}) and, for a
-     * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
-     * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}),
+     * correction, the number of the claim it corrects (null otherwise), and whether it was deferred until a date after the
+     * sheet's today, whatever its status since (its counting follows {@link Dues#deferred}), and the date it is deferred until (null when never),
      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
      * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}) and the bulk settle batch that settled it (null when none).
      */
@@ -70,7 +70,7 @@ public class PersonController {
                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getShownNumber(),
                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, grade, rates),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
-                    Dues.deferred(claim, rates.today()),
+                    claim.getDeferredUntil() != null && rates.today().isBefore(claim.getDeferredUntil()),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     Tags.list(claim.getTags()), claim.getVoidReason(),
@@ -107,14 +107,15 @@ public class PersonController {
      * and aged0to30, aged31to60 and aged61: the due of their OPEN and PENDING claims that count by the claim's age on the
      * sheet's today (see {@link Dues#aged}), and settledTotal and openTotal: the parts of their uncapped due-total
      * from their SETTLED claims and from their OPEN and PENDING claims (see {@link Dues#settledTotal} and
-     * {@link Dues#openTotal}; 0.00 with none, never n/a).
+     * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared.
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<ClaimView> claims,
             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
-            String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal) {
+            String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
+            List<String> aliases) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -138,7 +139,7 @@ public class PersonController {
                     money(Dues.aged(grade, claims, rates, held, 31, 60)),
                     money(Dues.aged(grade, claims, rates, held, 61, Long.MAX_VALUE)),
                     money(Dues.settledTotal(grade, claims, rates, held)),
-                    money(Dues.openTotal(grade, claims, rates, held)));
+                    money(Dues.openTotal(grade, claims, rates, held)), person.getAliases());
         }
     }
 
@@ -293,6 +294,19 @@ public class PersonController {
             @Valid @RequestBody PatronForm form) {
         String sheet = sheetId.trim();
         return view(sheet, service.addPatron(sheet, user.trim(), personId, form.patronId()));
+    }
+
+    /** An alias as entered; a blank one is refused. */
+    public record AliasForm(@Size(max = 200) String alias) {
+    }
+
+    /** Give the person an alias; answers with the person as they are now. */
+    @PostMapping("/{personId}/aliases")
+    public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody AliasForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.addAlias(sheet, user.trim(), personId, form.alias()));
     }
 
     private PersonView view(String sheet, Person person) {

@@ -41,6 +41,11 @@ public class Person {
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
     private List<GradeFrom> grades = new ArrayList<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    @Column(name = "alias")
+    private List<String> aliases = new ArrayList<>();
+
     @Column(name = "terms")
     private Integer terms;
 
@@ -108,6 +113,16 @@ public class Person {
     public void gradeFrom(String grade, LocalDate from) {
         grades.removeIf(g -> g.getFromDate() != null && Objects.equals(g.getFromDate(), from));
         grades.add(new GradeFrom(grade, from));
+    }
+
+    /** The person's aliases, sorted as names are compared (without regard to case). */
+    public List<String> getAliases() {
+        return aliases.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    /** Add an alias, stored trimmed, keeping the others. */
+    public void addAlias(String alias) {
+        aliases.add(alias);
     }
 
     /** The person's own terms in days, in force on every date; null when they have none. */

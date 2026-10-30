@@ -120,7 +120,7 @@ function csvField(value: string): string {
         }
       </form>
       <form (submit)="quickAdd($event)" aria-label="Quick add claim">
-        <label for="quick-name">Name</label>
+        <label for="quick-name">Name or alias</label>
         <input
           id="quick-name"
           data-testid="quick-name"
@@ -141,7 +141,7 @@ function csvField(value: string): string {
         }
       </form>
       <form (submit)="pasteClaims($event)" aria-label="Paste claims">
-        <label for="paste-claims">Paste claims, a line each: name,amount,date,note (a note may end in " #reference")</label>
+        <label for="paste-claims">Paste claims, a line each: name or alias,amount,date,note (a note may end in " #reference")</label>
         <textarea
           id="paste-claims"
           data-testid="paste-claims"
@@ -243,7 +243,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
@@ -268,6 +268,7 @@ function csvField(value: string): string {
                 />
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -355,6 +356,17 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)">
                   Hold<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'person-alias-input-' + p.id">Alias for {{ p.name }}</label>
+                <input
+                  #aliasInput
+                  type="text"
+                  [id]="'person-alias-input-' + p.id"
+                  data-testid="person-alias-input"
+                  (input)="clearError(p)"
+                />
+                <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)">
+                  Add alias<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -434,6 +446,8 @@ export class People {
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** A patron still waiting for its answer: another press meanwhile is ignored. */
   private naming = false;
+  /** An alias still waiting for its answer: another press meanwhile is ignored. */
+  private aliasing = false;
   /** A statement still waiting for its answer: another press meanwhile is ignored. */
   private stating = false;
   /** A retirement still waiting for its answer: another press meanwhile is ignored. */
@@ -831,7 +845,7 @@ export class People {
         return;
       }
       if (err instanceof HttpErrorResponse && err.status === 409) {
-        this.error.set('That name or contact is already in use on this sheet.');
+        this.error.set('That name (or alias) or contact is already in use on this sheet.');
         return;
       }
       this.error.set(id === null ? 'Could not add the person.' : 'Could not save the person.');
@@ -1038,6 +1052,39 @@ export class People {
       this.personError.set({ id: p.id, message: on ? 'Could not watch the person.' : 'Could not stop watching the person.' });
     } finally {
       this.watching = false;
+    }
+  }
+
+  /** Give the person the typed alias; a blank one, or one already a name or alias on the sheet, is refused. */
+  protected async addAlias(p: Person, input: HTMLInputElement): Promise<void> {
+    if (this.aliasing) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const alias = input.value.trim();
+    if (!alias) {
+      this.personError.set({ id: p.id, message: 'Enter an alias.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.aliasing = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/aliases`,
+          { alias },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+      input.value = '';
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({ id: p.id, message: 'Could not add the alias: it is already a name or alias on this sheet.' });
+    } finally {
+      this.aliasing = false;
     }
   }
 

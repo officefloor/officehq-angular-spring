@@ -78,7 +78,7 @@ public class PasteClaimsService {
         if (f.length < 2) throw refused(raw, "give a name and an amount");
         String name = f[0].trim();
         Person person = name.isEmpty() ? null
-                : people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
+                : people.findBySheetIdAndNameOrAlias(sheetId, name).stream().findFirst().orElse(null);
         if (person == null) throw refused(raw, "no one named \"" + name + "\" is on the sheet");
         String amount = f[1].trim();
         if (!AMOUNT.matcher(amount).matches()) throw refused(raw, "the amount must have up to two decimals");

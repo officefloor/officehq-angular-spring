@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -51,8 +52,9 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         sheets.load(sheetId, user);
+        sheetRows.lockById(sheetId);
         String trimmed = name.trim();
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed) || people.existsAlias(sheetId, trimmed, null)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
@@ -79,13 +81,15 @@ public class PersonService {
     @Transactional
     public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        sheetRows.lockById(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version != null && version != person.getVersion()) {
             throw edited();
         }
         String trimmed = name.trim();
-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)) {
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)
+                || people.existsAlias(sheetId, trimmed, personId)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
@@ -147,6 +151,35 @@ public class PersonService {
         people.flush();
         events.publishEvent(new PersonHeld(sheetId, user, person.getName(), on));
         rollup.changed(sheetId, user, before);
+        return person;
+    }
+
+    /**
+     * The person on the sheet whose name or an alias is the given one, compared without regard to case.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Person> findByNameOrAlias(String sheetId, String name) {
+        return people.findBySheetIdAndNameOrAlias(sheetId, name.trim()).stream().findFirst();
+    }
+
+    /**
+     * Give the person an alias, stored trimmed. A blank alias, or one equal (without regard to case) to any
+     * name or alias on the sheet, is refused. Takes turns with other changes on the sheet.
+     */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long personId, String alias) {
+        sheetRows.lockById(sheetId);
+        Person person = get(sheetId, personId);
+        String trimmed = alias == null ? "" : alias.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give an alias");
+        }
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed) || people.existsAlias(sheetId, trimmed, null)) {
+            throw nameInUse();
+        }
+        person.addAlias(trimmed);
+        people.flush();
+        events.publishEvent(new PersonAliasAdded(sheetId, user, person.getName(), trimmed));
         return person;
     }
 

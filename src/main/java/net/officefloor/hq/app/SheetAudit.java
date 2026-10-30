@@ -21,6 +21,7 @@ import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.period.PeriodClosed;
 import net.officefloor.hq.app.period.PeriodReopened;
 import net.officefloor.hq.app.person.PatronAdded;
+import net.officefloor.hq.app.person.PersonAliasAdded;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.person.PersonHeld;
 import net.officefloor.hq.app.person.PersonRetired;
@@ -96,6 +97,12 @@ public class SheetAudit {
     public void on(PatronAdded e) {
         change(e.sheetId(), e.user(), "PATRON_ADDED sheet=" + e.sheetId() + " by=" + e.user()
                 + " name=" + e.name() + " patron=" + e.patron());
+    }
+
+    @TransactionalEventListener
+    public void on(PersonAliasAdded e) {
+        change(e.sheetId(), e.user(), "PERSON_ALIAS_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+                + " name=" + e.name() + " alias=" + e.alias());
     }
 
     @TransactionalEventListener

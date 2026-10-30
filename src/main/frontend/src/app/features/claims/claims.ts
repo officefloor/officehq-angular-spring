@@ -148,6 +148,8 @@ export interface PersonWithClaims {
    *  and from their OPEN and PENDING claims that count; a claim with no figure is skipped. */
   settledTotal: string;
   openTotal: string;
+  /** The person's aliases, sorted as names are compared. */
+  aliases: string[];
   /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
    * statement, then count in no live total. */
   retiredNow: boolean;
