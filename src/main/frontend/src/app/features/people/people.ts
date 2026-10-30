@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Access } from '../access/access';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
+import { Audit } from '../audit/audit';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, personPeriodTotals } from '../periods/periods';
 import { Rates } from '../rates/rates';
@@ -40,7 +41,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [Access, Claims, Holidays, Periods, Rates, Summary, Tags, VoidReasons],
+  imports: [Access, Audit, Claims, Holidays, Periods, Rates, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -57,6 +58,7 @@ function csvField(value: string): string {
     <app-void-reasons />
     <app-summary [people]="people()" [periods]="periods()" />
     <app-tags [people]="people()" />
+    <app-audit />
     <section aria-label="People">
       <h2>People</h2>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>

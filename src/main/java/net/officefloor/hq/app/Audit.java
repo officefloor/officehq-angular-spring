@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +37,17 @@ public class Audit {
             }
             Files.writeString(file, entry + System.lineSeparator(), StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.SYNC);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** Every record the file holds, in file order (none while there is no file). */
+    public synchronized List<String> lines() {
+        try {
+            return Files.exists(file)
+                    ? Files.readAllLines(file, StandardCharsets.UTF_8).stream().filter(l -> !l.isEmpty()).toList()
+                    : List.of();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
