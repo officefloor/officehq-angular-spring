@@ -1,0 +1,127 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 70b950c93..b76a38c03 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -54,7 +54,7 @@ export function crewDueCents(crews: Crew[], people: PersonWithClaims[]): Map<str
+         @for (c of crews(); track c.name) {
+           <li [attr.data-testid]="'crew-row-' + c.name">
+             <span data-testid="crew-name">{{ c.name }}</span>
+-            <span>Lead <span data-testid="crew-lead">{{ c.lead?.name ?? '' }}</span></span>
++            <span>Lead <span data-testid="crew-lead">{{ c.lead ? withGrade(c.lead) : '' }}</span></span>
+             <span>Due total <span data-testid="crew-due-total">{{ (dueTotals().get(c.name) ?? '0.00') | figure }}</span></span>
+             <ul>
+               @for (m of c.members; track m.personId) {
+@@ -127,6 +127,14 @@ export class Crews {
+         [...crewDueCents(this.crews(), this.people())].map(([name, total]) => [name, (total / 100).toFixed(2)]),
+       ),
+   );
++  /** Per person id, the grade in force on the sheet's today. */
++  private readonly grades = computed(() => new Map(this.people().map((p) => [p.id, p.grade])));
++
++  /** A crew person's name with their grade in force today ("Ben (B)"); the plain name when not on the sheet. */
++  protected withGrade(person: CrewPerson): string {
++    const grade = this.grades().get(person.personId);
++    return grade === undefined ? person.name : `${person.name} (${grade})`;
++  }
+   /** Each answer is numbered: one older than the last shown is dropped. */
+   private asked = 0;
+   private shown = 0;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c08f2fe76..c1ff25f30 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -505,7 +505,7 @@ function csvField(value: string): string {
+                   (change)="selectPerson(p, checked($event))"
+                 />
+               </td>
+-              <td data-testid="person-name">{{ p.name }}</td>
++              <td data-testid="person-name">{{ p.name }} ({{ p.grade }})</td>
+               @if (columnShown('aliases')) {
+                 <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
+               }
+@@ -948,7 +948,7 @@ export class People {
+     (this.people().reduce((sum, p) => sum + (this.personCuts().get(p.id) ?? 0), 0) / 100).toFixed(2),
+   );
+ 
+-  /** Each person's patrons, each as their name and share, sorted by name and comma separated, and their
++  /** Each person's patrons, each as their name with the grade in force today and share, sorted by name and comma separated, and their
+    *  backing: each patron's recent settled figure (see {@link Person.recentSettled}) times their share
+    *  divided by 100, added up and rounded half to even (see {@link patronShares}). */
+   protected readonly patronage = computed(() => {
+@@ -957,10 +957,10 @@ export class People {
+       this.people().map((p) => {
+         const patrons = p.patrons.map((id) => byId.get(id)).filter((q): q is Person => q !== undefined);
+         const shares = patronShares(patrons.length);
+-        const named = patrons.map((q, i) => ({ name: q.name, share: shares[i] }));
++        const named = patrons.map((q, i) => ({ name: q.name, grade: q.grade, share: shares[i] }));
+         const names = named
+           .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+-          .map((n) => `${n.name} ${(n.share / 100).toFixed(2)}`)
++          .map((n) => `${n.name} (${n.grade}) ${(n.share / 100).toFixed(2)}`)
+           .join(', ');
+         // cents times hundredths of a percent: ten-thousandths of a cent.
+         const backing = patrons.reduce((sum, q, i) => sum + cents(q.recentSettled) * shares[i], 0);
+diff --git a/src/main/frontend/src/app/features/search/search.ts b/src/main/frontend/src/app/features/search/search.ts
+index d54226b38..1890745fa 100644
+--- a/src/main/frontend/src/app/features/search/search.ts
++++ b/src/main/frontend/src/app/features/search/search.ts
+@@ -3,15 +3,17 @@ import { Component, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+-/** A person found over the sheet's tree: their sheet, name and due-total as shown. */
++/** A person found over the sheet's tree: their sheet, name, grade and due-total as shown. */
+ interface Found {
+   sheetId: string;
+   name: string;
++  /** Their grade in force on their sheet's today. */
++  grade: string;
+   dueTotal: string;
+ }
+ 
+ // The tree search: every person on the sheet or another sheet of its tree whose name or an alias contains the
+-// typed text (case ignored), one line each as <sheet id> <name> <due-total>, the sheet's own people first in
++// typed text (case ignored), one line each as <sheet id> <name> (<grade>) <due-total>, the sheet's own people first in
+ // list order, then the other sheets' by sheet id. It reads the store; it records nothing.
+ @Component({
+   selector: 'app-search',
+@@ -83,7 +85,7 @@ export class Search {
+         }),
+       );
+       if (search !== this.searches) return;
+-      this.lines.set(found.map((f) => `${f.sheetId} ${f.name} ${f.dueTotal}`));
++      this.lines.set(found.map((f) => `${f.sheetId} ${f.name} (${f.grade}) ${f.dueTotal}`));
+       this.count.set(found.length);
+     } catch {
+       if (search === this.searches) this.error.set('Could not search the tree.');
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9b19e41d4..5eab5d483 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -343,8 +343,11 @@ public class PersonService {
+         return person;
+     }
+ 
+-    /** A person found by {@link #search}: their sheet, name and due-total as shown ({@code n/a} when none). */
+-    public record Found(String sheetId, String name, String dueTotal) {
++    /**
++     * A person found by {@link #search}: their sheet, name, grade in force on their sheet's today and due-total
++     * as shown ({@code n/a} when none).
++     */
++    public record Found(String sheetId, String name, String grade, String dueTotal) {
+     }
+ 
+     /**
+@@ -363,10 +366,11 @@ public class PersonService {
+         List<Found> found = new ArrayList<>();
+         for (String sheet : order) {
+             Map<Long, Rollup.PersonFigures> figures = rollup.figures(sheet).people();
++            LocalDate today = sheets.today(sheet);
+             for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheet)) {
+                 if (names(p).stream().anyMatch(n -> n.contains(key))) {
+                     Rollup.PersonFigures f = figures.get(p.getId());
+-                    found.add(new Found(sheet, p.getName(), f == null ? "n/a" : f.dueTotal()));
++                    found.add(new Found(sheet, p.getName(), p.gradeOn(today), f == null ? "n/a" : f.dueTotal()));
+                 }
+             }
+         }
