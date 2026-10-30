@@ -21,8 +21,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The statements taken for the people on a sheet. Taking one records the person's due-total and
- * binds each of their claims that counts to the figure it has then; a claim that does not count is
- * released to its live figure.
+ * binds each of their claims that counts to the figure it has then (without its late charge, which
+ * keeps following the sheet's today); a claim that does not count is released to its live figure.
  */
 @Service
 public class StatementService {
@@ -67,11 +67,11 @@ public class StatementService {
         Rollup.Figures before = rollup.figures(sheetId);
         RateTable table = rates.table(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
-        BigDecimal dueTotal = Dues.total(person.getGrade(), theirs, table);
+        BigDecimal dueTotal = Dues.total(person.getGrade(), theirs, table, person.isHeld());
         int counting = 0;
         for (Claim claim : theirs) {
-            if (claim.getStatus().counts()) {
-                claim.bind(Dues.figure(claim, person.getGrade(), table));
+            if (Dues.counts(claim, person.isHeld())) {
+                claim.bind(Dues.base(claim, person.getGrade(), table));
                 counting++;
             } else {
                 claim.unbind();

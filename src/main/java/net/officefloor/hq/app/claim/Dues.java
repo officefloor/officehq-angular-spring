@@ -12,14 +12,27 @@ public final class Dues {
     }
 
     /**
-     * A claim's due figure: once settled, the due fixed then; while bound by a statement, the figure
-     * bound then; otherwise the amount at the rate for its person's grade in force on its date, but at
-     * least the sheet's floor. Null when there is none.
+     * A claim's due: once settled, the due fixed then (its late charge frozen in); otherwise its
+     * {@link #base} figure plus, while overdue, its {@link RateTable#lateCharge late charge}. Null when there
+     * is none.
      */
     public static BigDecimal figure(Claim claim, String grade, RateTable rates) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
+        BigDecimal base = base(claim, grade, rates);
+        if (base == null || !overdue(claim, rates)) {
+            return base;
+        }
+        return base.add(rates.lateCharge(base, rates.dueBy(claim.getDate())));
+    }
+
+    /**
+     * A claim's figure before any late charge: while bound by a statement, the figure bound then;
+     * otherwise the amount at the rate for its person's grade in force on its date, but at least the
+     * sheet's floor. Null when there is none. A statement binds this figure, never the late charge.
+     */
+    public static BigDecimal base(Claim claim, String grade, RateTable rates) {
         return claim.isStated() ? claim.getStatedDue()
                 : rates.due(claim.getAmount(), grade, claim.getDate());
     }

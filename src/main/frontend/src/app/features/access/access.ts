@@ -15,6 +15,8 @@ interface Settings {
   floor: string;
   /** The days a claim has to be paid by, from its date. */
   terms: string;
+  /** The percent of its figure an overdue claim's due gains for every full 30 days overdue, with two decimals. */
+  latePct: string;
 }
 
 interface AccessView {
@@ -25,12 +27,14 @@ interface AccessView {
 const ROLES = ['clerk', 'steward'];
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
+const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
 
 // The sheet's roles (any name without one is a clerk) with the form that sets one, and the
 // sheet's settings: the clerk limit, the most due a clerk may settle (blank: no limit), and the floor,
 // the least live due a claim has (blank: 1.00), and the terms, the days a claim has to be paid by
-// from its date (blank: 14). Each input shows the value saved; a save sends only the
-// settings whose input was changed.
+// from its date (blank: 14), and the late percent, what an overdue claim's due gains of its figure for
+// every full 30 days overdue (blank: 0.00). Each input shows the value saved; a save sends only the
+// settings whose input was changed (a Delete or Backspace in a blank input asks to save it blank).
 @Component({
   selector: 'app-access',
   template: `
@@ -77,6 +81,7 @@ const DAYS = /^\d{1,5}$/;
       <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
       <p>Floor <strong data-testid="setting-floor-current">{{ floor() }}</strong></p>
       <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
+      <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
       <form (submit)="saveSettings($event)" aria-label="Save settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
@@ -85,6 +90,7 @@ const DAYS = /^\d{1,5}$/;
           data-testid="setting-clerk-limit"
           [value]="limitInput()"
           (input)="limitInput.set(value($event)); limitTouched = true; settingsError.set('')"
+          (keydown)="limitTouched = limitTouched || clears($event)"
         />
         <label for="setting-floor">Floor (blank: 1.00)</label>
         <input
@@ -93,6 +99,7 @@ const DAYS = /^\d{1,5}$/;
           data-testid="setting-floor"
           [value]="floorInput()"
           (input)="floorInput.set(value($event)); floorTouched = true; settingsError.set('')"
+          (keydown)="floorTouched = floorTouched || clears($event)"
         />
         <label for="setting-terms">Terms in days (blank: 14)</label>
         <input
@@ -101,6 +108,16 @@ const DAYS = /^\d{1,5}$/;
           data-testid="setting-terms"
           [value]="termsInput()"
           (input)="termsInput.set(value($event)); termsTouched = true; settingsError.set('')"
+          (keydown)="termsTouched = termsTouched || clears($event)"
+        />
+        <label for="setting-late-pct">Late percent per full 30 days overdue (blank: 0.00)</label>
+        <input
+          id="setting-late-pct"
+          inputmode="decimal"
+          data-testid="setting-late-pct"
+          [value]="latePctInput()"
+          (input)="latePctInput.set(value($event)); latePctTouched = true; settingsError.set('')"
+          (keydown)="latePctTouched = latePctTouched || clears($event)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
@@ -125,10 +142,13 @@ export class Access {
   protected readonly floorInput = signal('');
   protected readonly terms = signal('');
   protected readonly termsInput = signal('');
+  protected readonly latePct = signal('');
+  protected readonly latePctInput = signal('');
   /** Whether each settings input was changed since the settings were last shown. */
   protected limitTouched = false;
   protected floorTouched = false;
   protected termsTouched = false;
+  protected latePctTouched = false;
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
@@ -141,10 +161,15 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '' });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', latePct: '' });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
+  }
+
+  /** Whether a key asks to clear the input: Delete or Backspace, even on an input already blank. */
+  protected clears(e: KeyboardEvent): boolean {
+    return e.key === 'Delete' || e.key === 'Backspace';
   }
 
   protected value(e: Event): string {
@@ -206,10 +231,16 @@ export class Access {
       this.settingsError.set('Enter terms of 0 or more whole days, or leave them blank for 14.');
       return;
     }
+    const latePct = this.latePctInput().trim();
+    if (this.latePctTouched && latePct !== '' && !PERCENT.test(latePct)) {
+      this.settingsError.set('Enter a late percent of 0.00 or more, with up to two decimals, or leave it blank for 0.00.');
+      return;
+    }
     const body: Partial<Settings> = {};
     if (this.limitTouched) body.clerkLimit = clerkLimit;
     if (this.floorTouched) body.floor = floor;
     if (this.termsTouched) body.terms = terms;
+    if (this.latePctTouched) body.latePct = latePct;
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
@@ -243,8 +274,11 @@ export class Access {
     this.floorInput.set(settings.floor);
     this.terms.set(settings.terms);
     this.termsInput.set(settings.terms);
+    this.latePct.set(settings.latePct);
+    this.latePctInput.set(settings.latePct);
     this.limitTouched = false;
     this.floorTouched = false;
     this.termsTouched = false;
+    this.latePctTouched = false;
   }
 }

@@ -44,6 +44,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getTerms).orElse(Sheet.DEFAULT_TERMS);
     }
 
+    /** The sheet's late percent: what an overdue claim's due gains of its figure for every full 30 days. */
+    public BigDecimal latePct(String id) {
+        return sheets.findById(id).map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT);
+    }
+
     /** The sheet's today: the date to use for every decision and default date on the sheet. */
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));

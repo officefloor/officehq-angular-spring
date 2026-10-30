@@ -35,13 +35,13 @@ public class AccessController {
 
     /**
      * The sheet's settings as shown; a limit is a figure with two decimals, null for none; so is the floor;
-     * the terms are a number of days.
+     * the terms are a number of days; the late percent is a figure with two decimals.
      */
-    public record SettingsView(String clerkLimit, String floor, String terms) {
+    public record SettingsView(String clerkLimit, String floor, String terms, String latePct) {
 
-        static SettingsView of(BigDecimal limit, BigDecimal floor, int terms) {
+        static SettingsView of(BigDecimal limit, BigDecimal floor, int terms, BigDecimal latePct) {
             return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
-                    Integer.toString(terms));
+                    Integer.toString(terms), latePct.toPlainString());
         }
     }
 
@@ -55,11 +55,13 @@ public class AccessController {
     /**
      * The settings to save; one left out (null) is kept as it is. A clerk limit is 0.00 or more with up
      * to two decimals, blank meaning no limit; so is a floor, blank putting back 1.00. The terms are a
-     * whole number of days, blank putting back 14.
+     * whole number of days, blank putting back 14. The late percent is 0.00 or more with up to two
+     * decimals, blank putting back 0.00.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
-            @Pattern(regexp = "(\\d{1,5})?") String terms) {
+            @Pattern(regexp = "(\\d{1,5})?") String terms,
+            @Pattern(regexp = "(\\d{1,10}(\\.\\d{1,2})?)?") String latePct) {
     }
 
     private final AccessService service;
@@ -72,7 +74,8 @@ public class AccessController {
     public AccessView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String sheet = sheetId.trim();
         return new AccessView(service.roles(sheet).stream().map(RoleView::of).toList(),
-                SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet)));
+                SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet),
+                service.latePct(sheet)));
     }
 
     @PutMapping("/roles")
@@ -86,8 +89,10 @@ public class AccessController {
     public SettingsView setSettings(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody SettingsForm form) {
         String sheet = sheetId.trim();
-        service.setSettings(sheet, user.trim(), form.clerkLimit(), form.floor(), form.terms());
-        return SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet));
+        service.setSettings(sheet, user.trim(), form.clerkLimit(), form.floor(), form.terms(),
+                form.latePct());
+        return SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet),
+                service.latePct(sheet));
     }
 
     /** Another user set a role for the same name at the same moment: this one is refused. */

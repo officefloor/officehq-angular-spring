@@ -14,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
  * clerk limit, the most due a clerk may settle on a claim (none: no limit); and the sheet's floor, the
- * least live due a claim has; and its terms, the days a claim has to be paid by from its date.
+ * least live due a claim has; its terms, the days a claim has to be paid by from its date; and its late
+ * percent, what an overdue claim's due gains of its figure for every full 30 days overdue.
  */
 @Service
 public class AccessService {
@@ -24,6 +25,8 @@ public class AccessService {
     public static final String FLOOR = "floor";
 
     public static final String TERMS = "terms";
+
+    public static final String LATE_PCT = "late-pct";
 
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRows;
@@ -67,6 +70,11 @@ public class AccessService {
         return sheets.terms(sheetId);
     }
 
+    @Transactional(readOnly = true)
+    public BigDecimal latePct(String sheetId) {
+        return sheets.latePct(sheetId);
+    }
+
     /** Give a user name a role on the sheet, replacing the one it had. */
     @Transactional
     public SheetRole setRole(String sheetId, String user, String name, Role role) {
@@ -87,7 +95,8 @@ public class AccessService {
      * out (null) is kept as it is.
      */
     @Transactional
-    public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms) {
+    public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms,
+            String latePct) {
         if (clerkLimit != null) {
             setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
         }
@@ -97,20 +106,41 @@ public class AccessService {
         if (terms != null) {
             setTerms(sheetId, user, terms.isEmpty() ? null : Integer.valueOf(terms));
         }
+        if (latePct != null) {
+            setLatePct(sheetId, user, latePct.isEmpty() ? null : new BigDecimal(latePct));
+        }
     }
 
     /**
      * Save the sheet's terms in days; null puts back the ones a sheet starts with. Every claim's due-by
-     * moves with them; no due figure does.
+     * moves with them, and with it every late charge not yet settled.
      */
     @Transactional
     public int setTerms(String sheetId, String user, Integer terms) {
         Sheet sheet = sheets.load(sheetId, user);
         int days = terms == null ? Sheet.DEFAULT_TERMS : terms;
+        Rollup.Figures before = rollup.figures(sheetId);
         sheet.setTerms(days);
         sheetRows.saveAndFlush(sheet);
         events.publishEvent(new SettingChanged(sheetId, user, TERMS, Integer.toString(days)));
+        rollup.changed(sheetId, user, before);
         return days;
+    }
+
+    /**
+     * Save the sheet's late percent; null puts back the one a sheet starts with (0.00). Every late charge
+     * not yet settled moves with it; a settled due keeps the one it had.
+     */
+    @Transactional
+    public BigDecimal setLatePct(String sheetId, String user, BigDecimal latePct) {
+        Sheet sheet = sheets.load(sheetId, user);
+        BigDecimal scaled = latePct == null ? Sheet.DEFAULT_LATE_PCT : latePct.setScale(2, RoundingMode.HALF_UP);
+        Rollup.Figures before = rollup.figures(sheetId);
+        sheet.setLatePct(scaled);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, LATE_PCT, scaled.toPlainString()));
+        rollup.changed(sheetId, user, before);
+        return scaled;
     }
 
     /** Save the sheet's clerk limit; null removes it. */

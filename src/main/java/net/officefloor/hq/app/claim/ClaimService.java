@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
  * statuses one at a time. Only a DRAFT can be edited. A voided claim keeps
  * its number, which is never reused. Settling a claim fixes its due at the rate its person's grade has then on the claim's date
  * (at least the sheet's floor then), or at the
- * figure a statement bound it to. No claim dated inside a closed period can be added, edited or moved,
+ * figure a statement bound it to, plus the late charge it has then. No claim dated inside a closed period can be added, edited or moved,
  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
  * cannot settle a claim whose due is above the sheet's clerk limit; a steward settles anything.
  */
@@ -137,13 +137,9 @@ public class ClaimService {
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         String due = null;
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal fixed;
-            if (claim.isStated()) {
-                fixed = claim.getStatedDue();
-            } else {
-                fixed = owner == null ? null
-                        : rates.table(sheetId).due(claim.getAmount(), owner.getGrade(), claim.getDate());
-            }
+            // The due now, its late charge frozen in.
+            BigDecimal fixed = owner == null ? (claim.isStated() ? claim.getStatedDue() : null)
+                    : Dues.figure(claim, owner.getGrade(), rates.table(sheetId));
             access.requireCanSettle(sheetId, user, fixed);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();
