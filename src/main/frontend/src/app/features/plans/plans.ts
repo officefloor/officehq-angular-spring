@@ -5,6 +5,46 @@ import { Session } from '../../core/session';
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** How many of a plan's next dates are shown. */
+const NEXT_DATES = 5;
+
+/** A yyyy-mm-dd date as days since the epoch. */
+function toDays(date: string): number {
+  const [y, m, d] = date.split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / 86_400_000;
+}
+
+/** Days since the epoch as a yyyy-mm-dd date. */
+function fromDays(days: number): string {
+  return new Date(days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The plan's first dates after the day and on or before its end, at most the limit, in order: the start then every N
+ * days, or that day of every month from the start's month (on the month's last day when it is shorter, dates before
+ * the start left out).
+ */
+export function nextPlanDates(plan: Plan, after: string, limit = NEXT_DATES): string[] {
+  const start = toDays(plan.start);
+  const end = toDays(plan.end);
+  const from = toDays(after);
+  const dates: string[] = [];
+  if (plan.day === null) {
+    const every = plan.every ?? 1;
+    let on = from < start ? start : start + (Math.floor((from - start) / every) + 1) * every;
+    for (; on <= end && dates.length < limit; on += every) dates.push(fromDays(on));
+    return dates;
+  }
+  const [y, m] = plan.start.split('-').map(Number);
+  for (let month = y * 12 + (m - 1); dates.length < limit; month++) {
+    const year = Math.floor(month / 12);
+    const length = new Date(Date.UTC(year, (month % 12) + 1, 0)).getUTCDate();
+    const on = Date.UTC(year, month % 12, Math.min(plan.day, length)) / 86_400_000;
+    if (on > end) break;
+    if (on >= start && on > from) dates.push(fromDays(on));
+  }
+  return dates;
+}
 
 /**
  * A person's plan: the amount (two decimals) claimed every N days, or monthly on a day of the month, from the start up
@@ -110,6 +150,7 @@ export class PlanList {
           }
           <span>to <span data-testid="plan-end">{{ pl.end }}</span></span>
           <span>Made <span data-testid="plan-generated">{{ pl.generated }}</span></span>
+          <span>Next <span data-testid="plan-next-dates">{{ nextDates(pl) }}</span></span>
         </li>
       }
     </ul>
@@ -163,6 +204,7 @@ export class PlanList {
 })
 export class PersonPlans {
   private readonly list = inject(PlanList);
+  private readonly session = inject(Session);
 
   readonly personId = input.required<number>();
   readonly name = input('');
@@ -176,6 +218,12 @@ export class PersonPlans {
   protected readonly error = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
+
+  /** The plan's next dates after the sheet's today, comma and space separated. */
+  protected nextDates(plan: Plan): string {
+    const today = this.session.today();
+    return today ? nextPlanDates(plan, today).join(', ') : '';
+  }
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;

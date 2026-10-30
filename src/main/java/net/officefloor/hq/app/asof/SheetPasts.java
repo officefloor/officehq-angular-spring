@@ -46,6 +46,7 @@ public class SheetPasts {
             new Scope("PERSON_PATRON", "sheet_id = ?"),
             new Scope("PERSON_WATCH", "sheet_id = ?"),
             new Scope("CLAIM", "sheet_id = ?"),
+            new Scope("CLAIM_LINE", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
             new Scope("CLAIM_LOG", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
             new Scope("CLAIM_COMMENT", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"),
             new Scope("CLAIM_RETIRED_NUMBER", "sheet_id = ?"),
@@ -59,7 +60,9 @@ public class SheetPasts {
             new Scope("SHEET_TAG", "sheet_id = ?"),
             new Scope("SHEET_VOID_REASON", "sheet_id = ?"),
             new Scope("POOL", "sheet_id = ?"),
-            new Scope("POOL_MEMBER", "pool_id IN (SELECT id FROM pool WHERE sheet_id = ?)"));
+            new Scope("POOL_MEMBER", "pool_id IN (SELECT id FROM pool WHERE sheet_id = ?)"),
+            new Scope("SHEET_PLAN", "sheet_id = ?"),
+            new Scope("SHEET_PLAN_CLAIM", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"));
 
     /** The sheet's own columns that stay as they are: its key, who started it and its today. */
     private static final List<String> SHEET_KEPT = List.of("ID", "CREATED_BY", "TODAY");
