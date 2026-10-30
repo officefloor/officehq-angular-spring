@@ -1,0 +1,64 @@
+{
+  "checkpoint": 78,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp78_age-buckets",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2e25a779f54cc86815523920f0e07b80ce88f7f3",
+  "reset_sha": "",
+  "preagent_sha": "522a45595ad6f755279d5ab82b16c14bb78cd048",
+  "prev_sha": "522a45595ad6f755279d5ab82b16c14bb78cd048",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45182140000000004,
+    "input_tokens": 22,
+    "output_tokens": 4392,
+    "cache_read_tokens": 334827,
+    "cache_creation_tokens": 37116,
+    "num_turns": 12,
+    "duration_ms": 269808,
+    "duration_api_ms": 44652,
+    "model": "claude-opus-5-5",
+    "session_id": "421ca1d3-4788-45d7-9f0e-48731cd3f01a",
+    "stop_reason": "success",
+    "result_text": "I've added the three age buckets to each person's row, and all 4 acceptance tests pass under `bin/e2e`.\n\nEach bucket adds up the due of the person's OPEN and PENDING claims, using the same \"counts\" rules the due-total already uses. Claims dated in a hold, deferred claims and claims after retirement stay out, unless a statement binds them. Age is the number of days from the claim's date to the sheet's today. A claim dated after today counts as age 0, so it goes in the first bucket. A claim with no due figure (for example, no rate for its grade) is skipped.\n\nWhat changed:\n- **Calculation** \u2013 a new `Dues.aged(grades, claims, rates, holds, fromDays, toDays)` in `claim/Dues.java` does the sum.\n- **Server** \u2013 `PersonView` in `person/PersonController.java` now carries `aged0to30`, `aged31to60` and `aged61`, each with two decimals.\n- **Screen** \u2013 the people table in `features/people/people.ts` has three new columns, `person-aged-0-30`, `person-aged-31-60` and `person-aged-61`. The matching fields are added to the `Person` type in `features/claims/claims.ts`.\n\nThe buckets are worked out each time the sheet loads, so nothing in the database changed. They aren't written to the audit file either, since the tests don't expect them there.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45182140000000004,
+        "num_turns": 12,
+        "duration_ms": 269808,
+        "duration_api_ms": 44652,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp78.agent.jsonl",
+  "agent_diff_file": "cp78.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
