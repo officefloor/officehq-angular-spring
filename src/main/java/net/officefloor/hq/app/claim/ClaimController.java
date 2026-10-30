@@ -51,6 +51,14 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
     }
 
+    /** Pasted lines of name,amount,date,note, one claim per line. */
+    public record PasteForm(@NotNull @Size(max = 100_000) String text) {
+    }
+
+    /** How many claims a paste added. */
+    public record PasteResult(int added) {
+    }
+
     /** The claims selected to be opened together. */
     public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
     }
@@ -68,18 +76,20 @@ public class ClaimController {
 
     private final ClaimService claims;
     private final QuickAddService quick;
+    private final PasteClaimsService paste;
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
 
-    public ClaimController(ClaimService claims, QuickAddService quick, BulkOpenService bulkOpen,
+    public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
             BulkSettleService bulkSettle, PersonService people, RateService rates, StatementService statements) {
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
         this.claims = claims;
         this.quick = quick;
+        this.paste = paste;
         this.people = people;
         this.rates = rates;
         this.statements = statements;
@@ -102,6 +112,13 @@ public class ClaimController {
         String sheet = sheetId.trim();
         long id = quick.add(sheet, user.trim(), form.name(), new BigDecimal(form.amount()));
         return view(sheet, id);
+    }
+
+    /** Paste DRAFT claims, a line each, for people on the sheet; one refused line adds none. */
+    @PostMapping("/claims/paste")
+    public PasteResult paste(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PasteForm form) {
+        return new PasteResult(paste.paste(sheetId.trim(), user.trim(), form.text()));
     }
 
     @PutMapping("/claims/{claimId}")
