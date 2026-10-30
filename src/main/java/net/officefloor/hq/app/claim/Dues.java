@@ -83,10 +83,23 @@ public final class Dues {
     }
 
     /**
-     * The sum of the due figures of the claims that count (0.00 with none); a person not on hold.
+     * A person's due-total (see {@link #total}); a person not on hold.
      */
     public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates) {
         return total(grades, claims, rates, Holds.NONE);
+    }
+
+    /**
+     * A person's due-total: their {@link #uncapped} sum held to the sheet's cap, see {@link RateTable#capped}.
+     * Null (n/a) when the sum is.
+     */
+    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
+        return rates.capped(uncapped(grades, claims, rates, holds));
+    }
+
+    /** What a person's {@link #uncapped} sum is above the sheet's cap: 0.00 when it is not, or is n/a. */
+    public static BigDecimal excess(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
+        return rates.excess(uncapped(grades, claims, rates, holds));
     }
 
     /**
@@ -96,7 +109,7 @@ public final class Dues {
      * is the sum of the figures there are; so too when that grade's rate has ended by the sheet's today and
      * a claim that counts has a figure.
      */
-    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
+    public static BigDecimal uncapped(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
         List<Claim> counting = claims.stream().filter(c -> counts(c, holds)).toList();
         String current = grades.on(rates.today());
         boolean ended = rates.ended(current, rates.today());

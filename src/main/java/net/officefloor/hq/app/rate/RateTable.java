@@ -9,12 +9,13 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Every rate on a sheet, the sheet's today, its floor, its late percent and its policy date (null: the
- * sheet's today): which rate is in force for a grade on a date, the live due it makes of an amount, the
- * late charge an overdue figure gains, and how a claim's figures round.
+ * Every rate on a sheet, the sheet's today, its floor, its late percent, its policy date (null: the
+ * sheet's today) and its cap (null: none): which rate is in force for a grade on a date, the live due it
+ * makes of an amount, the late charge an overdue figure gains, how a claim's figures round, and the most a
+ * person's due-total comes to.
  */
 public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, BigDecimal latePct,
-        LocalDate policyDate) {
+        LocalDate policyDate, BigDecimal cap) {
 
     /** The days in each period overdue that adds the late percent once more. */
     private static final int LATE_PERIOD_DAYS = 30;
@@ -43,6 +44,16 @@ public record RateTable(List<Rate> rates, LocalDate today, BigDecimal floor, Big
 
     private static boolean ended(Rate rate, LocalDate date) {
         return rate.getToDate() != null && rate.getToDate().isBefore(date);
+    }
+
+    /** A due-total held to the cap: the cap when the sum is above it; as it is otherwise, or when n/a (null). */
+    public BigDecimal capped(BigDecimal sum) {
+        return sum == null || cap == null || sum.compareTo(cap) <= 0 ? sum : cap;
+    }
+
+    /** What a due-total's sum is above the cap: 0.00 when it is not, or when n/a (null). */
+    public BigDecimal excess(BigDecimal sum) {
+        return sum == null || cap == null || sum.compareTo(cap) <= 0 ? BigDecimal.ZERO : sum.subtract(cap);
     }
 
     /** The percent in force for the grade on the sheet's today; null when none is. */

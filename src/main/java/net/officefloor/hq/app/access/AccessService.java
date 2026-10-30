@@ -20,7 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
  * of each grade that has its own (a grade without uses the sheet's); and its late
  * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
  * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
- * the date from which a claim opened is numbered within its period (none: off).
+ * the date from which a claim opened is numbered within its period (none: off); and its cap, the most a
+ * person's due-total comes to (none: no cap).
  */
 @Service
 public class AccessService {
@@ -41,6 +42,8 @@ public class AccessService {
     public static final String POLICY_DATE = "policy-date";
 
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
+
+    public static final String CAP = "cap";
 
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRows;
@@ -107,6 +110,12 @@ public class AccessService {
         return sheets.periodNumberingFrom(sheetId);
     }
 
+    /** The sheet's cap as set; null when blank (no cap). */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String sheetId) {
+        return sheets.cap(sheetId);
+    }
+
     /** Give a user name a role on the sheet, replacing the one it had. */
     @Transactional
     public SheetRole setRole(String sheetId, String user, String name, Role role) {
@@ -128,7 +137,7 @@ public class AccessService {
      */
     @Transactional
     public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms,
-            Map<String, String> gradeTerms, String latePct, String policyDate, String periodNumberingFrom) {
+            Map<String, String> gradeTerms, String latePct, String policyDate, String periodNumberingFrom, String cap) {
         if (clerkLimit != null) {
             setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
         }
@@ -153,6 +162,25 @@ public class AccessService {
             setPeriodNumberingFrom(sheetId, user,
                     periodNumberingFrom.isEmpty() ? null : LocalDate.parse(periodNumberingFrom));
         }
+        if (cap != null) {
+            setCap(sheetId, user, cap.isEmpty() ? null : new BigDecimal(cap));
+        }
+    }
+
+    /**
+     * Save the sheet's cap; null removes it. Every person's due-total is held to it from then on, and every
+     * figure that adds them up moves with it.
+     */
+    @Transactional
+    public BigDecimal setCap(String sheetId, String user, BigDecimal cap) {
+        Sheet sheet = sheets.load(sheetId, user);
+        BigDecimal scaled = cap == null ? null : cap.setScale(2, RoundingMode.HALF_UP);
+        Rollup.Figures before = rollup.figures(sheetId);
+        sheet.setCap(scaled);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, CAP, scaled == null ? "" : scaled.toPlainString()));
+        rollup.changed(sheetId, user, before);
+        return scaled;
     }
 
     /**

@@ -73,13 +73,13 @@ public class PersonController {
     /**
      * A person with the grade in force on the sheet's today, their claims, newest first, claimed: the sum of the amounts of the claims that
      * count (OPEN, PENDING and SETTLED, but not an unbound OPEN claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
-     * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
+     * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
      * that count are overdue and the sum of their due figures, and the ids of their patrons.
      */
     public record PersonView(long id, long version, String name, String grade, List<ClaimView> claims,
-            String claimed, String dueTotal, int statementCount, String statedTotal, LocalDate statementDate,
+            String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
             String overdueTotal, List<Long> patrons) {
 
@@ -93,7 +93,8 @@ public class PersonController {
             List<Claim> overdue = Dues.overdue(claims, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
                     grade.on(rates.today()), claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
-                    money(Dues.total(grade, claims, rates, held)), statements.count(),
+                    money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
+                    statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
                     person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),

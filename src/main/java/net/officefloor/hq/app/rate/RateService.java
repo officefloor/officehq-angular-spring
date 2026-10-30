@@ -42,7 +42,7 @@ public class RateService {
     @Transactional(readOnly = true)
     public RateTable table(String sheetId) {
         return new RateTable(list(sheetId), sheets.today(sheetId), sheets.floor(sheetId),
-                sheets.latePct(sheetId), sheets.policyDate(sheetId));
+                sheets.latePct(sheetId), sheets.policyDate(sheetId), sheets.cap(sheetId));
     }
 
     /**

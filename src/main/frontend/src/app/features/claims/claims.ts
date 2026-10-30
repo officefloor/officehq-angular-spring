@@ -64,8 +64,10 @@ export interface PersonWithClaims {
   claims: Claim[];
   /** The amounts of the OPEN, PENDING and SETTLED claims added up, but not unbound OPEN ones dated within a hold. */
   claimed: string;
-  /** Claimed at the rate for the person's grade; null when the grade has no rate. */
+  /** Claimed at the rate for the person's grade, held to the sheet's cap; null when the grade has no rate. */
   dueTotal: string | null;
+  /** What the person's sum of figures is above the sheet's cap; 0.00 when it is not (or is n/a). */
+  excess: string;
   /** How many statements were taken for the person. */
   statementCount: number;
   /** The last statement's due-total; null when there is none or it was n/a. */

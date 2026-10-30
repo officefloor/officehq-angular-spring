@@ -41,19 +41,22 @@ public class AccessController {
      * The sheet's settings as shown; a limit is a figure with two decimals, null for none; so is the floor;
      * the terms are a number of days, and so are the terms of grades A, B and C, null for a grade without
      * its own (it uses the sheet's); the late percent is a figure with two decimals; the policy date and
-     * the period numbering from are dates (yyyy-mm-dd), null when blank.
+     * the period numbering from are dates (yyyy-mm-dd), null when blank; the cap is a figure with two
+     * decimals, null for none.
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
-            String termsC, String latePct, String policyDate, String periodNumberingFrom) {
+            String termsC, String latePct, String policyDate, String periodNumberingFrom, String cap) {
 
         static SettingsView of(BigDecimal limit, BigDecimal floor, int terms, Integer termsA, Integer termsB,
-                Integer termsC, BigDecimal latePct, LocalDate policyDate, LocalDate periodNumberingFrom) {
+                Integer termsC, BigDecimal latePct, LocalDate policyDate, LocalDate periodNumberingFrom,
+                BigDecimal cap) {
             return new SettingsView(limit == null ? null : limit.toPlainString(), floor.toPlainString(),
                     Integer.toString(terms), termsA == null ? null : termsA.toString(),
                     termsB == null ? null : termsB.toString(), termsC == null ? null : termsC.toString(),
                     latePct.toPlainString(),
                     policyDate == null ? null : policyDate.toString(),
-                    periodNumberingFrom == null ? null : periodNumberingFrom.toString());
+                    periodNumberingFrom == null ? null : periodNumberingFrom.toString(),
+                    cap == null ? null : cap.toPlainString());
         }
     }
 
@@ -70,7 +73,8 @@ public class AccessController {
      * whole number of days, blank putting back 14; so are a grade's own terms, blank removing them (the
      * grade then uses the sheet's). The late percent is 0.00 or more with up to two
      * decimals, blank putting back 0.00. The policy date is a date (yyyy-mm-dd), blank meaning the
-     * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off.
+     * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off. The cap is 0.00
+     * or more with up to two decimals, blank meaning no cap.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -80,7 +84,8 @@ public class AccessController {
             @Pattern(regexp = "(\\d{1,5})?") String termsC,
             @Pattern(regexp = "(\\d{1,10}(\\.\\d{1,2})?)?") String latePct,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String policyDate,
-            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String periodNumberingFrom) {
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String periodNumberingFrom,
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String cap) {
     }
 
     private final AccessService service;
@@ -112,14 +117,14 @@ public class AccessController {
         gradeTerms.put("B", form.termsB());
         gradeTerms.put("C", form.termsC());
         service.setSettings(sheet, user.trim(), form.clerkLimit(), form.floor(), form.terms(), gradeTerms,
-                form.latePct(), form.policyDate(), form.periodNumberingFrom());
+                form.latePct(), form.policyDate(), form.periodNumberingFrom(), form.cap());
         return settings(sheet);
     }
 
     private SettingsView settings(String sheet) {
         return SettingsView.of(service.clerkLimit(sheet), service.floor(sheet), service.terms(sheet),
                 service.gradeTerms(sheet, "A"), service.gradeTerms(sheet, "B"), service.gradeTerms(sheet, "C"),
-                service.latePct(sheet), service.policyDate(sheet), service.periodNumberingFrom(sheet));
+                service.latePct(sheet), service.policyDate(sheet), service.periodNumberingFrom(sheet), service.cap(sheet));
     }
 
     /** A policy date or period numbering from that is no date on the calendar: the save is refused and changes nothing. */

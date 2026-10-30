@@ -133,7 +133,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Excess</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
@@ -148,6 +148,7 @@ function csvField(value: string): string {
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ p.claimed }}</td>
               <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
+              <td data-testid="person-excess">{{ p.excess }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a') }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>

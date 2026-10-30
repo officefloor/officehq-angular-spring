@@ -49,6 +49,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT);
     }
 
+    /** The sheet's cap: the most a person's due-total comes to; null when there is none. */
+    public BigDecimal cap(String id) {
+        return sheets.findById(id).map(Sheet::getCap).orElse(null);
+    }
+
     /** The sheet's policy date as set; null when blank (the sheet's today is the policy date then). */
     public LocalDate policyDate(String id) {
         return sheets.findById(id).map(Sheet::getPolicyDate).orElse(null);
