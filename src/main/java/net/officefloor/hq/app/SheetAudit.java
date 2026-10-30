@@ -95,7 +95,8 @@ public class SheetAudit {
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + (e.due() == null ? "" : " due=" + e.due())
-                + (e.reason() == null ? "" : " reason=" + e.reason()));
+                + (e.reason() == null ? "" : " reason=" + e.reason())
+                + (e.reversed() == null ? "" : " reversed=" + e.reversed()));
     }
 
     @TransactionalEventListener

@@ -169,6 +169,11 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Your role may not " + permission.action() + " a claim on this sheet");
         }
+        String reversed = null;
+        if (next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
+            requireVoidableSettled(sheetId, user, claim);
+            reversed = claim.getSettledDue() == null ? "n/a" : claim.getSettledDue().toPlainString();
+        }
         if (next == ClaimStatus.SETTLED && Dues.deferred(claim, sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim is deferred until " + claim.getDeferredUntil() + " and cannot be settled before then");
@@ -206,7 +211,8 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number, due));
+        events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number,
+                due, null, reversed));
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, owner, number);
         }
@@ -455,6 +461,24 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can " + action + " a claim");
         }
         return claim;
+    }
+
+    /**
+     * A SETTLED claim may be voided only by a steward, and only while the sheet's today is no more than
+     * 7 days after the date its status log records it SETTLED.
+     */
+    private void requireVoidableSettled(String sheetId, String user, Claim claim) {
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may void a SETTLED claim");
+        }
+        LocalDate settledOn = claim.getLog().stream().filter(l -> l.getStatus() == ClaimStatus.SETTLED)
+                .map(ClaimLogLine::getOn).reduce((a, b) -> b).orElse(null);
+        LocalDate today = sheets.today(sheetId);
+        if (settledOn == null || today.isAfter(settledOn.plusDays(7))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A SETTLED claim can only be voided within 7 days of its settlement"
+                            + (settledOn == null ? "" : " (" + settledOn + ")"));
+        }
     }
 
     private Claim claim(String sheetId, long claimId) {

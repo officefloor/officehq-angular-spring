@@ -7,7 +7,8 @@ import { Period, periodOf } from '../periods/periods';
 /**
  * DRAFT when added, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
  * until a steward approves it (SETTLED) or rejects it (OPEN again). A steward can re-settle a SETTLED claim,
- * fixing its due again at today's figure. A DRAFT, OPEN or PENDING claim can be VOID.
+ * fixing its due again at today's figure. A DRAFT, OPEN or PENDING claim can be VOID,
+ * as can a SETTLED one by a steward within 7 days of settling.
  */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
