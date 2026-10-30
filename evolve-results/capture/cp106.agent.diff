@@ -1,0 +1,379 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 44096edeb..db2b29be1 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -29,6 +29,8 @@ interface Settings {
+   graceDays: string | null;
+   /** While set, the date a new claim takes when none is given, in place of the sheet's today; null when blank (off). */
+   entryDate: string | null;
++  /** The sheet's pot, shared out over each balanced pool, with two decimals; null when there is none. Not dated. */
++  pot: string | null;
+   /** The most a person's due-total comes to, with two decimals; null when there is no cap. */
+   cap: string | null;
+   /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
+@@ -211,6 +213,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         <p>Grace days for grade {{ g }} <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</strong></p>
+       }
+       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
++      <p>Pot <strong data-testid="setting-pot-current">{{ pot() ?? '' }}</strong></p>
+       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
+       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
+       @for (g of grades; track g) {
+@@ -363,6 +366,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           (input)="entryDateInput.set(value($event)); entryDateTouched = true; settingsError.set('')"
+           (keydown)="entryDateTouched = entryDateTouched || clears($event)"
+         />
++        <label for="setting-pot">Pot shared out over each balanced pool (blank: none)</label>
++        <input
++          id="setting-pot"
++          inputmode="decimal"
++          data-testid="setting-pot"
++          [value]="potInput()"
++          (input)="potInput.set(value($event)); potTouched = true; settingsError.set('')"
++          (keydown)="potTouched = potTouched || clears($event)"
++        />
+         <label for="setting-cap">Cap on a person's due-total (blank: no cap)</label>
+         <input
+           id="setting-cap"
+@@ -486,6 +498,8 @@ export class Access {
+   protected readonly graceDaysInput = signal('');
+   protected readonly entryDate = signal<string | null>(null);
+   protected readonly entryDateInput = signal('');
++  protected readonly pot = signal<string | null>(null);
++  protected readonly potInput = signal('');
+   protected readonly cap = signal<string | null>(null);
+   protected readonly capInput = signal('');
+   protected readonly proofThreshold = signal<string | null>(null);
+@@ -514,6 +528,7 @@ export class Access {
+   protected numberingFromTouched = false;
+   protected graceDaysTouched = false;
+   protected entryDateTouched = false;
++  protected potTouched = false;
+   protected capTouched = false;
+   protected proofThresholdTouched = false;
+   protected gradeProofTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
+@@ -535,7 +550,7 @@ export class Access {
+       this.delegateFrom.set('');
+       this.delegateTo.set('');
+       this.delegateError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -706,6 +721,11 @@ export class Access {
+       this.settingsError.set('Enter an entry date, or leave it blank for off.');
+       return;
+     }
++    const pot = this.potInput().trim();
++    if (this.potTouched && pot !== '' && !LIMIT.test(pot)) {
++      this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
++      return;
++    }
+     const cap = this.capInput().trim();
+     if (this.capTouched && cap !== '' && !LIMIT.test(cap)) {
+       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank for no cap.');
+@@ -760,6 +780,7 @@ export class Access {
+       if (this.gradeGraceTouched[g]) body[GRADE_GRACE[g]] = gradeGrace[g].trim();
+     }
+     if (this.entryDateTouched) body.entryDate = entryDate;
++    if (this.potTouched) body.pot = pot;
+     if (this.capTouched) body.cap = cap;
+     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
+     for (const g of GRADES) {
+@@ -830,6 +851,9 @@ export class Access {
+     this.entryDate.set(settings.entryDate);
+     this.entryDateInput.set(settings.entryDate ?? '');
+     this.entryDateTouched = false;
++    this.pot.set(settings.pot);
++    this.potInput.set(settings.pot ?? '');
++    this.potTouched = false;
+     this.cap.set(settings.cap);
+     this.capInput.set(settings.cap ?? '');
+     this.capTouched = false;
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 8e3698d9b..45d8faeba 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -6,12 +6,14 @@ import { PersonWithClaims } from '../claims/claims';
+ 
+ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+ 
+-/** A member of a pool: the person, their share (two decimals) and whether they are retired. */
++/** A member of a pool: the person, their share (two decimals), whether they are retired and their cut of the pot. */
+ export interface PoolMember {
+   personId: number;
+   name: string;
+   share: string;
+   retired: boolean;
++  /** Two decimals; null in an unbalanced pool or when the sheet has no pot. */
++  cut: string | null;
+ }
+ 
+ /** A pool: its members, its total share (a retired member's counting 0.00) and whether that is exactly 100.00. */
+@@ -32,7 +34,7 @@ interface Draft {
+ const EMPTY: Draft = { personId: '', share: '', error: '' };
+ 
+ // The sheet's pools, sorted by name, each with its members and their shares, its total share and whether it is
+-// balanced; the form that adds a pool, and on each pool's row the form that adds a person to it with a share.
++// balanced, and each member's cut of the sheet's pot (none unless the pool is balanced and there is a pot); the form that adds a pool, and on each pool's row the form that adds a person to it with a share.
+ // A person can be in several pools, each at most once.
+ @Component({
+   selector: 'app-pools',
+@@ -50,6 +52,7 @@ const EMPTY: Draft = { personId: '', share: '', error: '' };
+                 <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
+                   <span data-testid="pool-member-name">{{ m.name }}</span>
+                   <span>Share <span data-testid="pool-share">{{ m.share }}</span></span>
++                  <span>Cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span></span>
+                   @if (m.retired) {
+                     <span>(retired)</span>
+                   }
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index 3f4794cc4..b9580ca84 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -51,13 +51,14 @@ public class AccessController {
+      * void, reassign, close, reopen) is the roles that may take the action as written, comma separated; null
+      * when blank (the standing rule). The entry date is a date (yyyy-mm-dd), null when blank (off). The grace
+      * days of grades A, B and C are a number of days, null for a grade with none; the proof thresholds of
+-     * grades A, B and C are figures with two decimals, null for a grade with none (it uses the sheet's).
++     * grades A, B and C are figures with two decimals, null for a grade with none (it uses the sheet's). The
++     * pot is a figure with two decimals, null for none; it is not dated.
+      */
+     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
+             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
+-            String proofThresholdA, String proofThresholdB, String proofThresholdC) {
++            String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot) {
+ 
+         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
+                 Integer graceDays, LocalDate entryDate) {
+@@ -74,7 +75,7 @@ public class AccessController {
+                     entryDate == null ? null : entryDate.toString(), text(grace(dated, "A", today)),
+                     text(grace(dated, "B", today)), text(grace(dated, "C", today)),
+                     text(dated.gradeProofThreshold("A", today)), text(dated.gradeProofThreshold("B", today)),
+-                    text(dated.gradeProofThreshold("C", today)));
++                    text(dated.gradeProofThreshold("C", today)), text(dated.pot()));
+         }
+ 
+         /** The grade's grace days in force on the date as written; null when it has none then. */
+@@ -125,7 +126,8 @@ public class AccessController {
+      * entry of the permission matrix is a comma separated list of roles (clerk, steward), blank putting back
+      * the standing rule; it is not dated. The entry date is a date (yyyy-mm-dd), blank meaning off; not
+      * dated. A grade's grace days are a whole number of days, blank meaning none; dated. A grade's proof
+-     * threshold is 0.00 or more with up to two decimals, blank meaning none (the sheet's); dated.
++     * threshold is 0.00 or more with up to two decimals, blank meaning none (the sheet's); dated. The pot is
++     * 0.00 or more with up to two decimals, blank meaning none; not dated.
+      */
+     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
+@@ -168,7 +170,8 @@ public class AccessController {
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String proofThresholdC,
+             @Pattern(regexp = DATE) String proofThresholdAFrom,
+             @Pattern(regexp = DATE) String proofThresholdBFrom,
+-            @Pattern(regexp = DATE) String proofThresholdCFrom) {
++            @Pattern(regexp = DATE) String proofThresholdCFrom,
++            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String pot) {
+     }
+ 
+     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
+@@ -237,7 +240,8 @@ public class AccessController {
+         permissions.put(Permission.REOPEN, form.permReopen());
+         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
+                 form.periodNumberingFrom(), form.graceDays(), gradeGrace, cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
+-                dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold);
++                dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold,
++                form.pot());
+         return settings(sheet);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 9c1d52e6d..f47464cd0 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -72,6 +72,8 @@ public class AccessService {
+ 
+     public static final String NOTE_THRESHOLD = DatedSettings.NOTE_THRESHOLD;
+ 
++    public static final String POT = DatedSettings.POT;
++
+     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
+     public record Dated(String value, LocalDate from) {
+     }
+@@ -248,7 +250,7 @@ public class AccessService {
+     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
+             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
+-            Map<String, Dated> gradeProofThreshold) {
++            Map<String, Dated> gradeProofThreshold, String pot) {
+         if (clerkLimit != null) {
+             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
+         }
+@@ -303,6 +305,9 @@ public class AccessService {
+         if (entryDate != null) {
+             setEntryDate(sheetId, user, entryDate.isEmpty() ? null : LocalDate.parse(entryDate));
+         }
++        if (pot != null) {
++            setPot(sheetId, user, money(pot, null));
++        }
+     }
+ 
+     /** The roles that may take the action as set (comma separated); null when blank (the standing rule). */
+@@ -335,6 +340,23 @@ public class AccessService {
+         events.publishEvent(new SettingChanged(sheetId, user, permission.key(), roles, null));
+     }
+ 
++    /**
++     * Record the sheet's pot, two decimals (null: none). Not dated: the value holds from the beginning of time,
++     * replacing the one it had.
++     */
++    @Transactional
++    public void setPot(String sheetId, String user, String pot) {
++        sheets.load(sheetId, user);
++        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, POT, null).orElse(null);
++        if (row == null) {
++            settingRows.saveAndFlush(new SheetSetting(sheetId, POT, null, pot));
++        } else {
++            row.setValue(pot);
++            settingRows.flush();
++        }
++        events.publishEvent(new SettingChanged(sheetId, user, POT, pot == null ? "" : pot, null));
++    }
++
+     /** A figure as kept: two decimals; blank is the starting value given (null: none). */
+     private static String money(String value, BigDecimal start) {
+         BigDecimal figure = value.isEmpty() ? start : new BigDecimal(value).setScale(2, RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 26273435d..2dc357d5e 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -34,8 +34,8 @@ public class PoolController {
+             @Size(max = 100) String share) {
+     }
+ 
+-    /** A member of a pool; the share with two decimals. */
+-    public record MemberView(long personId, String name, String share, boolean retired) {
++    /** A member of a pool; the share with two decimals, and so the cut, null when the member has none. */
++    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
+     }
+ 
+     /** A pool on the sheet; its total share with two decimals. */
+@@ -43,7 +43,8 @@ public class PoolController {
+ 
+         static PoolView of(Pools.Shown p) {
+             return new PoolView(p.name(), p.members().stream()
+-                    .map(m -> new MemberView(m.personId(), m.name(), m.share().toPlainString(), m.retired())).toList(),
++                    .map(m -> new MemberView(m.personId(), m.name(), m.share().toPlainString(), m.retired(),
++                            m.cut() == null ? null : m.cut().toPlainString())).toList(),
+                     p.total().toPlainString(), p.balanced());
+         }
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pools.java b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+index f74ee23ee..ee58daffb 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/Pools.java
++++ b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.pool;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.function.Function;
+@@ -16,7 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
+ /**
+  * The pools on a sheet, sorted by name, and their members: people of the sheet, each in a pool at most once, with a
+  * share percent. A pool's total share counts a retired member's share (a retirement date set, whatever the date) as
+- * 0.00; the pool is balanced when its total is exactly 100.00.
++ * 0.00; the pool is balanced when its total is exactly 100.00. When the sheet has a pot, each member of a balanced
++ * pool has a cut: the pot times their share divided by 100, rounded half to even to two decimals (0.00 for a retired
++ * member); the remainder, the pot less the cuts added up, goes to the member with the largest share, the earliest
++ * added on a tie, so the cuts total exactly the pot.
+  */
+ @Service
+ public class Pools {
+@@ -26,8 +31,8 @@ public class Pools {
+ 
+     private static final BigDecimal HUNDRED = new BigDecimal("100.00");
+ 
+-    /** A member of a pool as shown: the person, their share and whether they are retired. */
+-    public record Member(long personId, String name, BigDecimal share, boolean retired) {
++    /** A member of a pool as shown: the person, their share, whether they are retired and their cut (null: none). */
++    public record Member(long personId, String name, BigDecimal share, boolean retired, BigDecimal cut) {
+     }
+ 
+     /** A pool as shown: its members in the order they were added, its total share and whether it is balanced. */
+@@ -59,19 +64,45 @@ public class Pools {
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList())
+                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
++        BigDecimal pot = sheets.settings(sheetId).pot();
+         return all.stream().map(pool -> {
+             List<Member> shown = byPool.getOrDefault(pool.getId(), List.of()).stream()
+                     .filter(m -> byId.containsKey(m.getPersonId()))
+                     .map(m -> {
+                         Person p = byId.get(m.getPersonId());
+-                        return new Member(p.getId(), p.getName(), m.getShare().setScale(2), p.isRetired());
++                        return new Member(p.getId(), p.getName(), m.getShare().setScale(2), p.isRetired(), null);
+                     }).toList();
+             BigDecimal total = shown.stream().filter(m -> !m.retired()).map(Member::share)
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+-            return new Shown(pool.getName(), shown, total, total.compareTo(HUNDRED) == 0);
++            boolean balanced = total.compareTo(HUNDRED) == 0;
++            return new Shown(pool.getName(), balanced && pot != null ? cut(shown, pot) : shown, total, balanced);
+         }).toList();
+     }
+ 
++    /** The members, in the order added, each with their cut of the pot; the remainder goes to the largest share. */
++    private static List<Member> cut(List<Member> shown, BigDecimal pot) {
++        List<BigDecimal> cuts = new ArrayList<>();
++        int largest = -1;
++        for (int i = 0; i < shown.size(); i++) {
++            Member m = shown.get(i);
++            cuts.add(m.retired() ? BigDecimal.ZERO.setScale(2)
++                    : pot.multiply(m.share()).divide(HUNDRED, 2, RoundingMode.HALF_EVEN));
++            if (!m.retired() && (largest < 0 || m.share().compareTo(shown.get(largest).share()) > 0)) {
++                largest = i;
++            }
++        }
++        if (largest >= 0) {
++            BigDecimal sum = cuts.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
++            cuts.set(largest, cuts.get(largest).add(pot.subtract(sum)).setScale(2));
++        }
++        List<Member> cut = new ArrayList<>();
++        for (int i = 0; i < shown.size(); i++) {
++            Member m = shown.get(i);
++            cut.add(new Member(m.personId(), m.name(), m.share(), m.retired(), cuts.get(i)));
++        }
++        return cut;
++    }
++
+     /** Add a pool under its name, trimmed; refused when the name is blank, too long or already a pool's. */
+     @Transactional
+     public void add(String sheetId, String user, String text) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+index 53bf1323a..a5e0cf478 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+@@ -29,6 +29,9 @@ public record DatedSettings(List<SheetSetting> values) {
+ 
+     public static final String NOTE_THRESHOLD = "note-threshold";
+ 
++    /** The sheet's pot, shared out over each balanced pool; not dated. */
++    public static final String POT = "pot";
++
+     /** A sheet with no value saved: every setting has its starting value on every date. */
+     public static final DatedSettings NONE = new DatedSettings(List.of());
+ 
+@@ -130,4 +133,9 @@ public record DatedSettings(List<SheetSetting> values) {
+     public BigDecimal cap(LocalDate date) {
+         return on(CAP, date).map(BigDecimal::new).orElse(null);
+     }
++
++    /** The sheet's pot (not dated: it holds on every date); null when there is none. */
++    public BigDecimal pot() {
++        return on(POT, LocalDate.MAX).map(BigDecimal::new).orElse(null);
++    }
+ }
