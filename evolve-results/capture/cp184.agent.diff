@@ -1,0 +1,131 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index f2db70578..5067dc484 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -64,7 +64,7 @@ export interface Claim {
+   reviewLate: boolean;
+   /** Whether a steward waived the claim's late charge: it then bears none, whatever its overdue state. */
+   waived: boolean;
+-  /** Whether the claim is held: while OPEN or PENDING and not bound by a statement, it counts in no live total. */
++  /** Whether the claim is held: while OPEN or PENDING and not bound by a statement, its due figures count in no live total (its amount stays in claimed). */
+   held: boolean;
+   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
+   remindedOn: string | null;
+@@ -128,7 +128,7 @@ export interface Hold {
+   to: string | null;
+ }
+ 
+-/** Whether the claim is OPEN, not bound by a statement, and dated within one of the holds: it then counts in no live total. */
++/** Whether the claim is OPEN, not bound by a statement, and dated within one of the holds: its due figures then count in no live total (its amount stays in claimed). */
+ export function heldOut(c: Claim, holds: Hold[]): boolean {
+   return c.status === 'OPEN' && !c.stated && holds.some((h) => c.date >= h.from && (h.to === null || c.date <= h.to));
+ }
+@@ -152,7 +152,7 @@ export interface PersonWithClaims {
+   /** The person's tags: trimmed, lower-cased, without repeats, sorted. */
+   tags: string[];
+   claims: Claim[];
+-  /** The amounts of the OPEN, PENDING and SETTLED claims added up, but not unbound OPEN ones dated within a hold. */
++  /** The amounts of the OPEN, PENDING and SETTLED claims added up, held ones included, but not deferred ones nor unbound ones left out by a retirement. */
+   claimed: string;
+   /** Claimed at the rate for the person's grade, held to the sheet's cap; null when the grade has no rate. */
+   dueTotal: string | null;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c69433bde..7aad52fed 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -140,7 +140,7 @@ public class Claim {
+     @Column(name = "waived", nullable = false)
+     private boolean waived;
+ 
+-    /** Whether the claim is held: while OPEN or PENDING and not bound by a statement, it counts in no live total. */
++    /** Whether the claim is held: while OPEN or PENDING and not bound by a statement, its due figures count in no live total (its amount stays in claimed). */
+     @Column(name = "held", nullable = false)
+     private boolean held;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 56e4e6971..f84377347 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -705,12 +705,14 @@ public class ClaimService {
+ 
+     /**
+      * A steward waives an OPEN or PENDING claim's late charge: it bears none from then on, whatever its
+-     * overdue state. Anyone else, a claim in any other status, or one already waived is refused and nothing
++     * overdue state, even one due by a date inside a closed period (the period's fixed figures stay as they
++     * are). Anyone else, a claim in any other status, or one already waived is refused and nothing
+      * changes. Returns the person it belongs to.
+      */
+     @Transactional
+     public long waive(String sheetId, String user, long claimId) {
+-        Claim claim = claim(sheetId, claimId);
++        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+         if (access.roleOf(sheetId, user) != Role.STEWARD) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can waive a claim's late charge");
+         }
+@@ -732,8 +734,8 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Hold an OPEN or PENDING claim, or release it when it is held: while held it counts in the live totals as a
+-     * held person's claims do (left out unless a statement binds it). A claim in any other status is refused and
++     * Hold an OPEN or PENDING claim, or release it when it is held: while held its due figures count in the live totals as a
++     * held person's claims do (left out unless a statement binds it), but its amount stays in claimed. A claim in any other status is refused and
+      * nothing changes. Returns the person it belongs to.
+      */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index c19549cba..31fa839f8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -145,12 +145,19 @@ public final class Dues {
+     }
+ 
+     /**
+-     * A person's claimed: the sum of the amounts of the claims that {@link #counts count}, leaving out the
+-     * claims that correct another.
++     * A person's claimed: the sum of the amounts of the OPEN, PENDING and SETTLED claims, leaving out the claims
++     * that correct another, a claim {@link #deferred deferred} on the sheet's today and an unbound OPEN or PENDING
++     * claim once that today has reached the person's retirement date. A hold (the person's or the claim's own)
++     * leaves a claim in claimed; only its due figures leave the totals while held.
+      */
+     public static BigDecimal claimed(List<Claim> claims, Holds holds, LocalDate today) {
+-        return claims.stream().filter(c -> c.getCorrects() == null && counts(c, holds, today)).map(Claim::getAmount)
+-                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        return claims.stream().filter(c -> c.getCorrects() == null && c.getStatus().counts() && !deferred(c, today)
++                && !retiredOut(c, holds, today)).map(Claim::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
++    }
++
++    /** Whether the person's retirement leaves the claim out: unbound, OPEN or PENDING, and that today has reached it. */
++    private static boolean retiredOut(Claim claim, Holds holds, LocalDate today) {
++        return !bound(claim) && claim.getStatus().unpaid() && holds.retiredOn(today);
+     }
+ 
+     /**
+@@ -159,9 +166,8 @@ public final class Dues {
+      * sheet's today has reached the person's retirement date, and an OPEN or PENDING claim that is itself held.
+      */
+     private static boolean leftOut(Claim claim, Holds holds, LocalDate today) {
+-        return !bound(claim) && ((claim.getStatus().unpaid() && holds.on(claim.getDate()))
+-                || (claim.getStatus().unpaid() && holds.retiredOn(today))
+-                || (claim.getStatus().unpaid() && claim.isHeld()));
++        return retiredOut(claim, holds, today) || (!bound(claim) && claim.getStatus().unpaid()
++                && (holds.on(claim.getDate()) || claim.isHeld()));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 99718f324..e0287a58a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -110,8 +110,8 @@ public class PersonController {
+     }
+ 
+     /**
+-     * A person with the grade in force on the sheet's today, their own terms in force on it (null: none), their claims, newest first, claimed: the sum of the amounts of the claims that
+-     * count, leaving out corrections (OPEN, PENDING and SETTLED, but not an unbound OPEN or PENDING claim dated within a hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
++     * A person with the grade in force on the sheet's today, their own terms in force on it (null: none), their claims, newest first, claimed: the sum of the amounts of the claims (see
++     * {@link Dues#claimed}: a hold leaves a claim in it), dueTotal: the sum of the due figures of the claims that count (see
+      * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
