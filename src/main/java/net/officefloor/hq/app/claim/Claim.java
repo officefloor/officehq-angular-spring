@@ -329,6 +329,14 @@ public class Claim {
         this.number = number;
     }
 
+    /** Take away the claim's number, sheet-wide or within a period, so it can be given a new one. */
+    public void clearNumber() {
+        this.number = null;
+        this.periodSequence = null;
+        this.periodSeqNumber = null;
+        this.periodNumber = null;
+    }
+
     /** Number the claim within a period sequence, shown as {@code label}. */
     public void setPeriodNumber(String sequence, int n, String label) {
         this.periodSequence = sequence;

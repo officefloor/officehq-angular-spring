@@ -688,8 +688,9 @@ public class ClaimService {
 
     /**
      * A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. The claim keeps its
-     * number and date, is released from any figure a statement bound it to (live again until its new
-     * person's next statement), and lists as its new person's newest claim. A settled or voided claim, a
+     * date and takes the next number in the sequence it would be numbered in now (the sheet's, or its
+     * period's while period numbering is on), its old number never given again; a draft gets none. It is
+     * released from any figure a statement bound it to (live again until its new person's next statement), and lists as its new person's newest claim. A settled or voided claim, a
      * correction, a claim due by a date inside a closed period or after the new person's retirement date, or a move
      * by a role the sheet's permission matrix does not allow (a steward, unless set) is refused and nothing changes. Returns the people it moved from and to.
      */
@@ -728,6 +729,7 @@ public class ClaimService {
         Rollup.Figures before = rollup.figures(sheetId);
         claim.setPersonId(to.getId());
         claim.unbind();
+        renumber(sheetId, claim);
         claims.flush();
         claims.relist(claim.getId());
         events.publishEvent(new ClaimReassigned(sheetId, user, to.getName(), claim.getAmount(), claim.getDate(),
@@ -803,6 +805,21 @@ public class ClaimService {
         String sequence = sequenceOf(sheetId, claim.getDueBy());
         int n = claims.lastInSequence(sheetId, sequence) + 1;
         claim.setPeriodNumber(sequence, n, (period == null ? "X" : period.getName()) + "-" + n);
+    }
+
+    /**
+     * Give a numbered claim the next number in the sequence it would be numbered in now; the place it
+     * leaves in a period sequence is kept as taken, so it is never given again. A draft stays unnumbered.
+     */
+    private void renumber(String sheetId, Claim claim) {
+        if (claim.getShownNumber() == null) {
+            return;
+        }
+        if (claim.getPeriodSequence() != null) {
+            claims.retireNumber(sheetId, claim.getPeriodSequence(), claim.getPeriodSeqNumber());
+        }
+        claim.clearNumber();
+        giveNumber(sheetId, claim);
     }
 
     /** Whether the sheet's period numbering from is set and the sheet's today is on or after it. */
