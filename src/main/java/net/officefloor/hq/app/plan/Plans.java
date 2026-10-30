@@ -5,7 +5,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -37,6 +39,7 @@ public class Plans {
     private final PlanChangeRepository changes;
     private final PersonRepository people;
     private final ClaimService claims;
+    private final ClaimRepository claimRows;
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final ApplicationEventPublisher events;
@@ -44,7 +47,7 @@ public class Plans {
     private final AccessService access;
 
     public Plans(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses,
-            PlanChangeRepository changes, PersonRepository people, ClaimService claims,
+            PlanChangeRepository changes, PersonRepository people, ClaimService claims, ClaimRepository claimRows,
             SheetService sheets, SheetRepository sheetRows, ApplicationEventPublisher events,
             PlatformTransactionManager transactions, AccessService access) {
         this.access = access;
@@ -54,6 +57,7 @@ public class Plans {
         this.changes = changes;
         this.people = people;
         this.claims = claims;
+        this.claimRows = claimRows;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
         this.events = events;
@@ -85,20 +89,43 @@ public class Plans {
     }
 
     /**
-     * Change the plan's amount on the sheet's today: the claims generated from then on are made for it, those already
-     * generated keep theirs.
+     * Change the plan's amount on the sheet's today: the claims generated from then on are made for it, and those
+     * already generated that are still DRAFT are edited to it, each as the claim form edits a claim's amount and in
+     * its own change (one the form refuses keeps its amount); those in any other status keep theirs.
      */
-    @Transactional
     public void changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
-        sheets.load(sheetId, user);
-        sheetRows.lockById(sheetId);
-        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
-        plan.changeAmount(amount);
-        plans.saveAndFlush(plan);
-        changes.saveAndFlush(new PlanChange(planId, sheets.today(sheetId), amount));
-        String name = people.findByIdAndSheetId(plan.getPersonId(), sheetId).map(Person::getName).orElse("");
-        events.publishEvent(new PlanChanged(sheetId, user, name, plan.getStart(), amount));
+        Plan plan = transaction.execute(status -> {
+            sheets.load(sheetId, user);
+            sheetRows.lockById(sheetId);
+            Plan changed = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
+            changed.changeAmount(amount);
+            plans.saveAndFlush(changed);
+            changes.saveAndFlush(new PlanChange(planId, sheets.today(sheetId), amount));
+            String name = people.findByIdAndSheetId(changed.getPersonId(), sheetId).map(Person::getName).orElse("");
+            events.publishEvent(new PlanChanged(sheetId, user, name, changed.getStart(), amount));
+            return changed;
+        });
+        String target = plan.getTargetSheetId() == null ? sheetId : plan.getTargetSheetId();
+        for (PlanClaim claim : made.findByPlanIdOrderByIdAsc(planId)) {
+            if (claim.getClaimId() != null) {
+                editDraft(target, user, claim.getClaimId(), amount);
+            }
+        }
+    }
+
+    /** Edit the plan's claim on the sheet to the amount in its own change, when it is still a DRAFT. */
+    private void editDraft(String sheetId, String user, long claimId, BigDecimal amount) {
+        try {
+            transaction.executeWithoutResult(status -> {
+                sheetRows.lockById(sheetId);
+                claimRows.findByIdAndSheetId(claimId, sheetId)
+                        .filter(c -> c.getStatus() == ClaimStatus.DRAFT)
+                        .ifPresent(c -> claims.editAmount(sheetId, user, claimId, amount));
+            });
+        } catch (RuntimeException refused) {
+            // refused by the claim form's rules: nothing written, the claim keeps its amount
+        }
     }
 
     /**
@@ -208,8 +235,9 @@ public class Plans {
                 if (made.existsByPlanIdAndOn(plan.getId(), on)) {
                     return false;
                 }
-                claims.add(sheetId, user, personId, plan.getAmount(), on, "");
-                made.saveAndFlush(new PlanClaim(plan.getId(), on));
+                long claimId = claims.addClaim(sheetId, user, personId, plan.getAmount(), on, "", null, null, null)
+                        .getId();
+                made.saveAndFlush(new PlanClaim(plan.getId(), on, claimId));
                 return true;
             }));
         } catch (RuntimeException refused) {

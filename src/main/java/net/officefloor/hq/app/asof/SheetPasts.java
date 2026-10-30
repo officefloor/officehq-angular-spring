@@ -77,7 +77,8 @@ public class SheetPasts {
             new Scope("SHEET_NOTE", "sheet_id = ?"),
             new Scope("SHEET_PLAN", "sheet_id = ?"),
             new Scope("SHEET_PLAN_CLAIM", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"),
-            new Scope("SHEET_PLAN_PAUSE", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"));
+            new Scope("SHEET_PLAN_PAUSE", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"),
+            new Scope("SHEET_PLAN_CHANGE", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"));
 
     /** The sheet's own columns that stay as they are: its key, who started it and its today. */
     private static final List<String> SHEET_KEPT = List.of("ID", "CREATED_BY", "TODAY");

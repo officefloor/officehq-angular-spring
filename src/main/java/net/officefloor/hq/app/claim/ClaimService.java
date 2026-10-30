@@ -141,7 +141,7 @@ public class ClaimService {
      * person's own terms, the terms of the grade they have that day and the sheet's are each looked up on that day.
      */
     @Transactional
-    Claim addClaim(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+    public Claim addClaim(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, String tagText) {
         String tagged = Tags.normalize(tagText);
         String reference = requireFreeRef(sheetId, ref, null);
@@ -1092,7 +1092,8 @@ public class ClaimService {
         if (share.scale() > 2 || share.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A share is a percent with two decimals, more than 0.00");
         }
-        Claim claim = claim(sheetId, claimId);
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
                 || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot be shared");

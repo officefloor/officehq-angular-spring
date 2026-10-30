@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, Injectable, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -301,6 +301,8 @@ export class PersonPlans {
 
   readonly personId = input.required<number>();
   readonly name = input('');
+  /** A plan's amount was changed, editing the DRAFT claims it generated. */
+  readonly amountChanged = output<void>();
 
   protected readonly plans = computed(() => this.list.plans().filter((p) => p.personId === this.personId()));
   protected readonly amount = signal('');
@@ -340,7 +342,10 @@ export class PersonPlans {
     this.rowErrors.update((errors) => ({ ...errors, [planId]: '' }));
     const refusal = await this.list.changeAmount(planId, this.newAmounts()[planId] ?? '');
     this.rowErrors.update((errors) => ({ ...errors, [planId]: refusal }));
-    if (!refusal) this.newAmounts.update((amounts) => ({ ...amounts, [planId]: '' }));
+    if (!refusal) {
+      this.newAmounts.update((amounts) => ({ ...amounts, [planId]: '' }));
+      this.amountChanged.emit();
+    }
   }
 
   protected value(e: Event): string {

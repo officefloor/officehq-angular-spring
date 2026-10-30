@@ -811,7 +811,7 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)">
                   Undo transfer<span class="visually-hidden"> of {{ p.name }}</span>
                 </button>
-                <app-person-plans [personId]="p.id" [name]="p.name" />
+                <app-person-plans [personId]="p.id" [name]="p.name" (amountChanged)="planAmountChanged()" />
               </td>
               <td><app-claims
                   [person]="p"
@@ -1331,6 +1331,12 @@ export class People {
     } finally {
       this.bulkRetiring = false;
     }
+  }
+
+  /** Show the DRAFT claims a plan's amount change edited. */
+  protected async planAmountChanged(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (sheet) await this.reload(sheet);
   }
 
   /** Make the claims every plan on the sheet is due up to its today, then show them and how many were made. */

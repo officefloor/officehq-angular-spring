@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 
-/** A plan date a claim was made for: each plan date has at most one. */
+/** A plan date a claim was made for, and the claim: each plan date has at most one. */
 @Entity
 @Table(name = "sheet_plan_claim")
 public class PlanClaim {
@@ -23,12 +23,16 @@ public class PlanClaim {
     @Column(name = "on_date", nullable = false)
     private LocalDate on;
 
+    @Column(name = "claim_id")
+    private Long claimId;
+
     protected PlanClaim() {
     }
 
-    public PlanClaim(Long planId, LocalDate on) {
+    public PlanClaim(Long planId, LocalDate on, Long claimId) {
         this.planId = planId;
         this.on = on;
+        this.claimId = claimId;
     }
 
     public Long getPlanId() {
@@ -37,5 +41,10 @@ public class PlanClaim {
 
     public LocalDate getOn() {
         return on;
+    }
+
+    /** The claim made for the plan date (null when it was made before it was kept). */
+    public Long getClaimId() {
+        return claimId;
     }
 }
