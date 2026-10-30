@@ -1,0 +1,637 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index cc681435..fa768143 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -40,9 +40,19 @@ interface Settings {
+   permReopen: string | null;
+ }
+ 
++/** The steward role delegated by a steward (by) to a user, from a from-date to a to-date (yyyy-mm-dd), inclusive. */
++interface DelegationRow {
++  id: number;
++  user: string;
++  by: string;
++  from: string;
++  to: string;
++}
++
+ interface AccessView {
+   roles: RoleRow[];
+   settings: Settings;
++  delegations: DelegationRow[];
+ }
+ 
+ const ROLES = ['clerk', 'steward', 'viewer'];
+@@ -126,6 +136,49 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         }
+       </form>
+     </section>
++    <section aria-label="Delegations">
++      <h2>Delegations</h2>
++      <p>A steward can delegate the steward role to a user from a from-date to a to-date, inclusive, by the sheet's today.</p>
++      <ul aria-label="Delegations made">
++        @for (d of delegations(); track d.id) {
++          <li data-testid="delegate-line">
++            <span data-testid="delegate-line-user">{{ d.user }}</span> acts as steward for
++            <span data-testid="delegate-line-by">{{ d.by }}</span> from
++            <span data-testid="delegate-line-from">{{ d.from }}</span> to
++            <span data-testid="delegate-line-to">{{ d.to }}</span>
++          </li>
++        }
++      </ul>
++      <form (submit)="delegate($event)" aria-label="Delegate the steward role">
++        <label for="delegate-user">User name</label>
++        <input
++          id="delegate-user"
++          data-testid="delegate-user"
++          [value]="delegateUser()"
++          (input)="delegateUser.set(value($event)); delegateError.set('')"
++        />
++        <label for="delegate-from">From (blank: the sheet's today)</label>
++        <input
++          id="delegate-from"
++          type="date"
++          data-testid="delegate-from"
++          [value]="delegateFrom()"
++          (input)="delegateFrom.set(value($event)); delegateError.set('')"
++        />
++        <label for="delegate-to">To</label>
++        <input
++          id="delegate-to"
++          type="date"
++          data-testid="delegate-to"
++          [value]="delegateTo()"
++          (input)="delegateTo.set(value($event)); delegateError.set('')"
++        />
++        <button type="submit" data-testid="delegate-submit">Delegate</button>
++        @if (delegateError()) {
++          <p role="alert" data-testid="delegate-error">{{ delegateError() }}</p>
++        }
++      </form>
++    </section>
+     <section aria-label="Settings">
+       <h2>Settings</h2>
+       <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
+@@ -321,6 +374,11 @@ export class Access {
+   protected readonly roleUser = signal('');
+   protected readonly role = signal('');
+   protected readonly roleError = signal('');
++  protected readonly delegations = signal<DelegationRow[]>([]);
++  protected readonly delegateUser = signal('');
++  protected readonly delegateFrom = signal('');
++  protected readonly delegateTo = signal('');
++  protected readonly delegateError = signal('');
+   protected readonly limitInput = signal('');
+   protected readonly floor = signal('');
+   protected readonly floorInput = signal('');
+@@ -370,6 +428,11 @@ export class Access {
+       this.roleUser.set('');
+       this.role.set('');
+       this.roleError.set('');
++      this.delegations.set([]);
++      this.delegateUser.set('');
++      this.delegateFrom.set('');
++      this.delegateTo.set('');
++      this.delegateError.set('');
+       this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, cap: null, proofThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+@@ -431,6 +494,46 @@ export class Access {
+     }
+   }
+ 
++  protected async delegate(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    this.delegateError.set('');
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const user = this.delegateUser().trim();
++    const from = this.delegateFrom().trim() || (this.session.today() ?? '');
++    const to = this.delegateTo().trim();
++    if (!user) {
++      this.delegateError.set('Enter a user name.');
++      return;
++    }
++    if (!DATE.test(from) || !DATE.test(to)) {
++      this.delegateError.set('Enter a from-date (or leave it blank for the sheet\'s today) and a to-date.');
++      return;
++    }
++    if (to < from) {
++      this.delegateError.set('Enter a to-date on or after the from-date.');
++      return;
++    }
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.busy = true;
++    try {
++      const saved = await firstValueFrom(
++        this.http.post<DelegationRow[]>(`/api/sheets/${encodeURIComponent(sheet)}/delegations`, { user, from, to }, { headers }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.delegations.set(saved);
++      this.delegateUser.set('');
++      this.delegateFrom.set('');
++      this.delegateTo.set('');
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.delegateError.set('Could not delegate: only a steward can delegate the steward role.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   protected async saveSettings(e: Event): Promise<void> {
+     e.preventDefault();
+     if (this.busy) return;
+@@ -546,6 +649,7 @@ export class Access {
+     const view = await firstValueFrom(this.http.get<AccessView>(`/api/sheets/${encodeURIComponent(sheet)}/access`));
+     if (this.session.sheet() === sheet && this.session.loads() === loads) {
+       this.roles.set(view.roles);
++      this.delegations.set(view.delegations);
+       this.showSettings(view.settings);
+     }
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 08c9ba0d..0b6c9174 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app;
+ 
+ import java.math.RoundingMode;
++import net.officefloor.hq.app.access.AccessService;
++import net.officefloor.hq.app.access.Delegated;
+ import net.officefloor.hq.app.access.RoleSet;
+ import net.officefloor.hq.app.access.SettingChanged;
+ import net.officefloor.hq.app.claim.ClaimChanged;
+@@ -28,38 +30,50 @@ import org.springframework.transaction.event.TransactionalEventListener;
+ /**
+  * Writes one audit line per change to a sheet, once the change is committed: a refused change
+  * rolls back and writes nothing. Each line is the event, {@code sheet=} and {@code by=}, then the
+- * event's fields.
++ * event's fields; a change by a user acting in a delegated steward role then ends with {@code for=}
++ * the steward who delegated it (not the ROLLUP and TOTALS lines, nor NOTIFY, which only report).
+  */
+ @Component
+ public class SheetAudit {
+ 
+     private final Audit audit;
++    private final AccessService access;
+ 
+-    public SheetAudit(Audit audit) {
++    public SheetAudit(Audit audit, AccessService access) {
+         this.audit = audit;
++        this.access = access;
++    }
++
++    /**
++     * Record the line of a change the user made: while the user acts in the steward role delegated to
++     * them, it ends with {@code for=} the steward who delegated it.
++     */
++    private void change(String sheetId, String user, String line) {
++        String delegator = access.delegator(sheetId, user);
++        audit.record(delegator == null ? line : line + " for=" + delegator);
+     }
+ 
+     @TransactionalEventListener
+     public void on(PersonChanged e) {
+-        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
+                 + " name=" + e.name() + " grade=" + e.grade());
+     }
+ 
+     @TransactionalEventListener
+     public void on(PersonRetired e) {
+-        audit.record("PERSON_RETIRED sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "PERSON_RETIRED sheet=" + e.sheetId() + " by=" + e.user()
+                 + " name=" + e.name() + " from=" + e.from());
+     }
+ 
+     @TransactionalEventListener
+     public void on(PersonHeld e) {
+-        audit.record("PERSON_HELD sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
++        change(e.sheetId(), e.user(), "PERSON_HELD sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                 + " from=" + e.from());
+     }
+ 
+     @TransactionalEventListener
+     public void on(PersonWatched e) {
+-        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
++        change(e.sheetId(), e.user(), e.event() + " sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name());
+     }
+ 
+     @TransactionalEventListener
+@@ -70,13 +84,13 @@ public class SheetAudit {
+ 
+     @TransactionalEventListener
+     public void on(PatronAdded e) {
+-        audit.record("PATRON_ADDED sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "PATRON_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+                 + " name=" + e.name() + " patron=" + e.patron());
+     }
+ 
+     @TransactionalEventListener
+     public void on(ClaimChanged e) {
+-        audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
+                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                 + (e.due() == null ? "" : " due=" + e.due())
+@@ -85,7 +99,7 @@ public class SheetAudit {
+ 
+     @TransactionalEventListener
+     public void on(ClaimReassigned e) {
+-        audit.record("CLAIM_REASSIGNED sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "CLAIM_REASSIGNED sheet=" + e.sheetId() + " by=" + e.user()
+                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                 + " from=" + e.from() + " to=" + e.to());
+@@ -93,14 +107,14 @@ public class SheetAudit {
+ 
+     @TransactionalEventListener
+     public void on(ClaimSplit e) {
+-        audit.record("CLAIM_SPLIT sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "CLAIM_SPLIT sheet=" + e.sheetId() + " by=" + e.user()
+                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + " date=" + e.date() + " number=" + e.number() + " into=" + e.into());
+     }
+ 
+     @TransactionalEventListener
+     public void on(ClaimDeferred e) {
+-        audit.record("CLAIM_DEFERRED sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "CLAIM_DEFERRED sheet=" + e.sheetId() + " by=" + e.user()
+                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                 + " until=" + e.until());
+@@ -108,7 +122,7 @@ public class SheetAudit {
+ 
+     @TransactionalEventListener
+     public void on(ClaimProofAdded e) {
+-        audit.record("CLAIM_PROOF_ADDED sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "CLAIM_PROOF_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                 + " proofs=" + e.proofs());
+@@ -116,7 +130,7 @@ public class SheetAudit {
+ 
+     @TransactionalEventListener
+     public void on(ClaimResettled e) {
+-        audit.record("CLAIM_RESETTLED sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "CLAIM_RESETTLED sheet=" + e.sheetId() + " by=" + e.user()
+                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                 + " old=" + figure(e.old()) + " new=" + figure(e.fresh()));
+@@ -128,7 +142,7 @@ public class SheetAudit {
+ 
+     @TransactionalEventListener
+     public void on(RateChanged e) {
+-        audit.record("RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
+                 + " grade=" + e.grade() + " rate=" + e.rate().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + (e.from() == null ? "" : " from=" + e.from())
+                 + (e.to() == null ? "" : " to=" + e.to()));
+@@ -136,41 +150,47 @@ public class SheetAudit {
+ 
+     @TransactionalEventListener
+     public void on(RoleSet e) {
+-        audit.record("ROLE_SET sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name() + " role=" + e.role());
++        change(e.sheetId(), e.user(), "ROLE_SET sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name() + " role=" + e.role());
+     }
+ 
+     @TransactionalEventListener
+     public void on(SettingChanged e) {
+-        audit.record("SETTING_CHANGED sheet=" + e.sheetId() + " by=" + e.user() + " key=" + e.key() + " value=" + e.value()
++        change(e.sheetId(), e.user(), "SETTING_CHANGED sheet=" + e.sheetId() + " by=" + e.user() + " key=" + e.key() + " value=" + e.value()
+                 + (e.from() == null ? "" : " from=" + e.from()));
+     }
+ 
+     @TransactionalEventListener
+     public void on(PeriodAdded e) {
+-        audit.record("PERIOD_ADDED sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "PERIOD_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+                 + " period=" + e.name() + " from=" + e.from() + " to=" + e.to());
+     }
+ 
+     @TransactionalEventListener
+     public void on(PeriodClosed e) {
+-        audit.record("PERIOD_CLOSED sheet=" + e.sheetId() + " by=" + e.user()
++        change(e.sheetId(), e.user(), "PERIOD_CLOSED sheet=" + e.sheetId() + " by=" + e.user()
+                 + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                 + (e.auto() ? " auto=yes" : ""));
+     }
+ 
+     @TransactionalEventListener
+     public void on(PeriodReopened e) {
+-        audit.record("PERIOD_REOPENED sheet=" + e.sheetId() + " by=" + e.user() + " period=" + e.name());
++        change(e.sheetId(), e.user(), "PERIOD_REOPENED sheet=" + e.sheetId() + " by=" + e.user() + " period=" + e.name());
+     }
+ 
+     @TransactionalEventListener
+     public void on(StatementTaken e) {
+-        audit.record("STATEMENT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
++        change(e.sheetId(), e.user(), "STATEMENT sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                 + " due-total=" + (e.dueTotal() == null ? "n/a"
+                         : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())
+                 + " claims=" + e.claims());
+     }
+ 
++    @TransactionalEventListener
++    public void on(Delegated e) {
++        change(e.sheetId(), e.user(), "DELEGATED sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name()
++                + " from=" + e.from() + " to=" + e.to());
++    }
++
+     @TransactionalEventListener
+     public void on(RollupChanged e) {
+         for (Rollup.PersonFigures p : e.people()) {
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index b88f0f62..2e15a8d4 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -19,6 +19,7 @@ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+@@ -78,7 +79,21 @@ public class AccessController {
+         }
+     }
+ 
+-    public record AccessView(List<RoleView> roles, SettingsView settings) {
++    /** A delegation of the steward role: the user, the steward who delegated, and its dates (yyyy-mm-dd), inclusive. */
++    public record DelegationView(long id, String user, String by, String from, String to) {
++
++        static DelegationView of(Delegation d) {
++            return new DelegationView(d.getId(), d.getUserName(), d.getDelegatedBy(), d.getFromDate().toString(),
++                    d.getToDate().toString());
++        }
++    }
++
++    public record AccessView(List<RoleView> roles, SettingsView settings, List<DelegationView> delegations) {
++    }
++
++    /** A user name and the dates (yyyy-mm-dd) the steward role is delegated to it for; a blank from-date is the sheet's today. */
++    public record DelegateForm(@NotBlank @Size(max = 200) String user, @Pattern(regexp = DATE) String from,
++            @NotBlank @Pattern(regexp = DATE) String to) {
+     }
+ 
+     /** A user name and a role: clerk, steward or viewer. */
+@@ -140,7 +155,20 @@ public class AccessController {
+     public AccessView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+         String sheet = sheetId.trim();
+         return new AccessView(service.roles(sheet).stream().map(RoleView::of).toList(),
+-                settings(sheet));
++                settings(sheet), delegations(sheet));
++    }
++
++    @PostMapping("/delegations")
++    public List<DelegationView> delegate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody DelegateForm form) {
++        String sheet = sheetId.trim();
++        LocalDate from = form.from() == null || form.from().isEmpty() ? service.today(sheet) : LocalDate.parse(form.from());
++        service.delegate(sheet, user.trim(), form.user().trim(), from, LocalDate.parse(form.to()));
++        return delegations(sheet);
++    }
++
++    private List<DelegationView> delegations(String sheet) {
++        return service.delegations(sheet).stream().map(DelegationView::of).toList();
+     }
+ 
+     @PutMapping("/roles")
+@@ -192,6 +220,12 @@ public class AccessController {
+     public void noSuchDate() {
+     }
+ 
++    /** A delegation by anyone but a steward, or with its to-date before its from-date: refused, changing nothing. */
++    @ExceptionHandler(DelegationRefused.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public void delegationRefused() {
++    }
++
+     /** Another user set a role for the same name at the same moment: this one is refused. */
+     @ExceptionHandler(DataIntegrityViolationException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 49085645..e2b39fbf 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -59,16 +59,18 @@ public class AccessService {
+     }
+ 
+     private final SheetRoleRepository roles;
++    private final DelegationRepository delegations;
+     private final SheetRepository sheetRows;
+     private final SheetSettingRepository settingRows;
+     private final SheetService sheets;
+     private final Rollup rollup;
+     private final ApplicationEventPublisher events;
+ 
+-    public AccessService(SheetRoleRepository roles, SheetRepository sheetRows, SheetSettingRepository settingRows,
++    public AccessService(SheetRoleRepository roles, DelegationRepository delegations, SheetRepository sheetRows, SheetSettingRepository settingRows,
+             SheetService sheets, Rollup rollup, ApplicationEventPublisher events) {
+         this.rollup = rollup;
+         this.roles = roles;
++        this.delegations = delegations;
+         this.sheetRows = sheetRows;
+         this.settingRows = settingRows;
+         this.sheets = sheets;
+@@ -81,12 +83,58 @@ public class AccessService {
+         return roles.findBySheetIdOrderByUserName(sheetId);
+     }
+ 
+-    /** The user's role on the sheet: clerk unless one was set. */
++    /**
++     * The role the user acts in on the sheet: steward while the sheet's today is inside a delegation to
++     * them, otherwise the role set (clerk unless one was set).
++     */
+     @Transactional(readOnly = true)
+     public Role roleOf(String sheetId, String user) {
++        return delegator(sheetId, user) != null ? Role.STEWARD : roleSet(sheetId, user);
++    }
++
++    /** The role set for the user on the sheet, whatever is delegated to them: clerk unless one was set. */
++    private Role roleSet(String sheetId, String user) {
+         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
+     }
+ 
++    /** The delegations made on the sheet, in the order they were made. */
++    @Transactional(readOnly = true)
++    public List<Delegation> delegations(String sheetId) {
++        return delegations.findBySheetIdOrderById(sheetId);
++    }
++
++    /**
++     * The steward who delegated the steward role to the user for a range holding the sheet's today (the
++     * latest such delegation); null when the user acts in no delegated role now.
++     */
++    @Transactional(readOnly = true)
++    public String delegator(String sheetId, String user) {
++        List<Delegation> made = delegations.findBySheetIdAndUserNameOrderByIdDesc(sheetId, user);
++        if (made.isEmpty()) {
++            return null;
++        }
++        LocalDate today = sheets.today(sheetId);
++        return made.stream().filter(d -> d.covers(today)).map(Delegation::getDelegatedBy).findFirst().orElse(null);
++    }
++
++    /**
++     * Delegate the steward role to a user name from a from-date to a to-date, inclusive. Only a steward by
++     * the role set (not by a delegation) may delegate, and the to-date may not be before the from-date.
++     */
++    @Transactional
++    public Delegation delegate(String sheetId, String user, String name, LocalDate from, LocalDate to) {
++        sheets.load(sheetId, user);
++        if (roleSet(sheetId, user) != Role.STEWARD) {
++            throw new DelegationRefused("Only a steward can delegate the steward role");
++        }
++        if (to.isBefore(from)) {
++            throw new DelegationRefused("The to-date is before the from-date");
++        }
++        Delegation row = delegations.saveAndFlush(new Delegation(sheetId, name, from, to, user));
++        events.publishEvent(new Delegated(sheetId, user, name, from, to));
++        return row;
++    }
++
+     /** Whether the user is a viewer on the sheet: one who sees everything and can change nothing. */
+     @Transactional(readOnly = true)
+     public boolean isViewer(String sheetId, String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/access/Delegated.java b/src/main/java/net/officefloor/hq/app/access/Delegated.java
+new file mode 100644
+index 00000000..2e3adff0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/access/Delegated.java
+@@ -0,0 +1,7 @@
++package net.officefloor.hq.app.access;
++
++import java.time.LocalDate;
++
++/** A steward delegated the steward role to a user name for a range of dates ({@code DELEGATED}). */
++public record Delegated(String sheetId, String user, String name, LocalDate from, LocalDate to) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/access/Delegation.java b/src/main/java/net/officefloor/hq/app/access/Delegation.java
+new file mode 100644
+index 00000000..6ac3799d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/access/Delegation.java
+@@ -0,0 +1,70 @@
++package net.officefloor.hq.app.access;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** The steward role delegated by a steward to a user name, from a from-date to a to-date inclusive. */
++@Entity
++@Table(name = "delegation")
++public class Delegation {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "user_name", nullable = false)
++    private String userName;
++
++    @Column(name = "from_date", nullable = false)
++    private LocalDate fromDate;
++
++    @Column(name = "to_date", nullable = false)
++    private LocalDate toDate;
++
++    @Column(name = "delegated_by", nullable = false)
++    private String delegatedBy;
++
++    protected Delegation() {
++    }
++
++    public Delegation(String sheetId, String userName, LocalDate fromDate, LocalDate toDate, String delegatedBy) {
++        this.sheetId = sheetId;
++        this.userName = userName;
++        this.fromDate = fromDate;
++        this.toDate = toDate;
++        this.delegatedBy = delegatedBy;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getUserName() {
++        return userName;
++    }
++
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++
++    public LocalDate getToDate() {
++        return toDate;
++    }
++
++    public String getDelegatedBy() {
++        return delegatedBy;
++    }
++
++    /** Whether the date is inside the delegation's range. */
++    public boolean covers(LocalDate date) {
++        return !date.isBefore(fromDate) && !date.isAfter(toDate);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/access/DelegationRefused.java b/src/main/java/net/officefloor/hq/app/access/DelegationRefused.java
+new file mode 100644
+index 00000000..3f2fa35d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/access/DelegationRefused.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.access;
++
++/** A delegation that cannot be made: the one delegating is no steward, or its to-date is before its from-date. */
++public class DelegationRefused extends RuntimeException {
++
++    public DelegationRefused(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/access/DelegationRepository.java b/src/main/java/net/officefloor/hq/app/access/DelegationRepository.java
+new file mode 100644
+index 00000000..e0f7b503
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/access/DelegationRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.access;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface DelegationRepository extends JpaRepository<Delegation, Long> {
++
++    List<Delegation> findBySheetIdOrderById(String sheetId);
++
++    List<Delegation> findBySheetIdAndUserNameOrderByIdDesc(String sheetId, String userName);
++}
+diff --git a/src/main/resources/db/migration/V42__delegation.sql b/src/main/resources/db/migration/V42__delegation.sql
+new file mode 100644
+index 00000000..9a673120
+--- /dev/null
++++ b/src/main/resources/db/migration/V42__delegation.sql
+@@ -0,0 +1,10 @@
++-- A steward's delegation of the steward role to a user name, from a from-date to a to-date inclusive.
++CREATE TABLE delegation (
++    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id     VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name    VARCHAR(200) NOT NULL,
++    from_date    DATE         NOT NULL,
++    to_date      DATE         NOT NULL,
++    delegated_by VARCHAR(200) NOT NULL,
++    CONSTRAINT delegation_dates CHECK (to_date >= from_date)
++);
