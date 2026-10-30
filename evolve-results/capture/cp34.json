@@ -1,0 +1,64 @@
+{
+  "checkpoint": 34,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp34_bulk-open",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Claims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e1adaa2d367f864827e5da74a29f215090112c35",
+  "reset_sha": "",
+  "preagent_sha": "7a53269fb8f79eb62ae6445377bc8d42ac909326",
+  "prev_sha": "7a53269fb8f79eb62ae6445377bc8d42ac909326",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7229586000000001,
+    "input_tokens": 36,
+    "output_tokens": 8773,
+    "cache_read_tokens": 741213,
+    "cache_creation_tokens": 49889,
+    "num_turns": 19,
+    "duration_ms": 226031,
+    "duration_api_ms": 96230,
+    "model": "claude-opus-5-5",
+    "session_id": "275f518a-fa1c-443d-a0f8-7ba7ad39cc71",
+    "stop_reason": "success",
+    "result_text": "Bulk open is working: each claim now has a checkbox, and one button opens all the selected claims and shows how many were opened and how many were refused. `bin/e2e` passes all 4 tests: the bulk open test and the three existing scenarios.\n\n**Server**\n- **New endpoint:** `POST /api/sheets/{sheetId}/claims/bulk-open` in `ClaimController` takes `{claimIds: [...]}` and returns `{opened, refused}`. Duplicate ids are counted once.\n- **`BulkOpenService`** (new): puts the selected claims in list order (people in the order they were added, each person's newest claim first). It then opens each one through the existing `ClaimService.move(..., OPEN)`. Each claim is opened in its own transaction, so a refusal changes nothing and writes no audit record. The rest still go through, and claim numbers are given out in that order. A claim that isn't open-able, is dated in a closed period, or isn't on this sheet counts as refused.\n- **Stored data:** no schema change was needed, because claims already carry a number and a status.\n\n**Front end**\n- **`claims.ts`:** each claim row has a `claim-select` checkbox with a hidden label for screen readers. The selection is passed up to the people screen.\n- **`people.ts`:** this screen keeps the selection and has the `bulk-open` button.\n  - Pressing it clears the previous counts, sends the request, empties the selection, reloads the sheet, then shows `bulk-opened` and `bulk-refused`.\n  - If the request itself fails, a `bulk-open-error` message appears instead.\n  - Loading a sheet clears the selection and any counts.\n\nOne behaviour to know: pressing the button with nothing selected shows 0 opened and 0 refused rather than an error.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7229586000000001,
+        "num_turns": 19,
+        "duration_ms": 226031,
+        "duration_api_ms": 96230,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp34.agent.jsonl",
+  "agent_diff_file": "cp34.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
