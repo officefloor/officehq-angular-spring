@@ -52,6 +52,14 @@ function cents(amount: string): number {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
+        <label for="person-form-grade-from">Grade from</label>
+        <input
+          id="person-form-grade-from"
+          data-testid="person-form-grade-from"
+          type="date"
+          [value]="gradeFrom()"
+          (input)="gradeFrom.set(value($event)); error.set('')"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -181,6 +189,8 @@ export class People {
   protected readonly periods = signal<Period[]>([]);
   protected readonly name = signal('');
   protected readonly grade = signal('A');
+  /** The date an edit's grade applies from; blank: the sheet's today. */
+  protected readonly gradeFrom = signal('');
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private version = 0;
@@ -315,6 +325,7 @@ export class People {
     this.version = p.version;
     this.name.set(p.name);
     this.grade.set(p.grade);
+    this.gradeFrom.set('');
     this.error.set('');
   }
 
@@ -322,6 +333,7 @@ export class People {
     this.editing.set(null);
     this.name.set('');
     this.grade.set('A');
+    this.gradeFrom.set('');
     this.error.set('');
   }
 
@@ -333,6 +345,7 @@ export class People {
     if (!sheet) return;
     const name = this.name().trim();
     const grade = this.grade();
+    const gradeFrom = this.gradeFrom() || null;
     if (!name) {
       this.error.set('Enter a name.');
       return;
@@ -349,7 +362,7 @@ export class People {
       const saved = await firstValueFrom(
         id === null
           ? this.http.post<Person>(base, { name, grade }, { headers })
-          : this.http.put<Person>(`${base}/${id}`, { name, grade, version: this.version }, { headers }),
+          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, version: this.version }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       this.replace(saved);

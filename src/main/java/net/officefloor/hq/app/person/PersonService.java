@@ -61,8 +61,14 @@ public class PersonService {
         return person;
     }
 
+    /**
+     * Save the person's name and record the grade from a date (none: the sheet's today), keeping the
+     * grades already recorded; a grade left as the row showed it (in force on the sheet's today) with no
+     * date records nothing. The edit names the grade in force on the sheet's today after it.
+     */
     @Transactional
-    public Person edit(String sheetId, String user, long personId, Long version, String name, String grade) {
+    public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version != null && version != person.getVersion()) {
@@ -74,9 +80,12 @@ public class PersonService {
         }
         Rollup.Figures before = rollup.figures(sheetId);
         person.setName(trimmed);
-        person.setGrade(grade);
+        LocalDate today = sheets.today(sheetId);
+        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
+        }
         people.flush();
-        events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, grade));
+        events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, person.gradeOn(today)));
         rollup.changed(sheetId, user, before);
         return person;
     }

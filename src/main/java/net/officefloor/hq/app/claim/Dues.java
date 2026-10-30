@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
+import net.officefloor.hq.app.rate.Grades;
 import net.officefloor.hq.app.rate.RateTable;
 
 /** The due figures of claims and the due-total of a person's claims. */
@@ -16,11 +17,11 @@ public final class Dues {
      * {@link #base} figure plus, while overdue, its {@link RateTable#lateCharge late charge}. Null when there
      * is none.
      */
-    public static BigDecimal figure(Claim claim, String grade, RateTable rates) {
+    public static BigDecimal figure(Claim claim, Grades grades, RateTable rates) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        BigDecimal base = base(claim, grade, rates);
+        BigDecimal base = base(claim, grades, rates);
         if (base == null || !overdue(claim, rates)) {
             return base;
         }
@@ -29,12 +30,12 @@ public final class Dues {
 
     /**
      * A claim's figure before any late charge: while bound by a statement, the figure bound then;
-     * otherwise the amount at the rate for its person's grade in force on its date, but at least the
-     * sheet's floor. Null when there is none. A statement binds this figure, never the late charge.
+     * otherwise the amount at the rate in force on its date for its person's grade in force then, but at
+     * least the sheet's floor. Null when there is none. A statement binds this figure, never the late charge.
      */
-    public static BigDecimal base(Claim claim, String grade, RateTable rates) {
+    public static BigDecimal base(Claim claim, Grades grades, RateTable rates) {
         return claim.isStated() ? claim.getStatedDue()
-                : rates.due(claim.getAmount(), grade, claim.getDate());
+                : rates.due(claim.getAmount(), grades.on(claim.getDate()), claim.getDate());
     }
 
     /** Whether the claim is overdue: OPEN, and due by a date before the sheet's today. */
@@ -48,8 +49,8 @@ public final class Dues {
     }
 
     /** The sum of the due figures of the claims given (0.00 with none); a claim with none is skipped. */
-    public static BigDecimal sum(String grade, List<Claim> claims, RateTable rates) {
-        return claims.stream().map(c -> figure(c, grade, rates)).filter(Objects::nonNull)
+    public static BigDecimal sum(Grades grades, List<Claim> claims, RateTable rates) {
+        return claims.stream().map(c -> figure(c, grades, rates)).filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
@@ -69,19 +70,22 @@ public final class Dues {
     /**
      * The sum of the due figures of the claims that count (0.00 with none); a person not on hold.
      */
-    public static BigDecimal total(String grade, List<Claim> claims, RateTable rates) {
-        return total(grade, claims, rates, false);
+    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates) {
+        return total(grades, claims, rates, false);
     }
 
     /**
-     * The sum of the due figures of the claims that count (0.00 with none), see {@link #counts}. Null (n/a) when the grade has
-     * no rate on the sheet's today, unless a claim that counts keeps a figure: then it is the sum of the
-     * figures there are.
+     * The sum of the due figures of the claims that count (0.00 with none), see {@link #counts}. Null (n/a)
+     * when the grade in force on the sheet's today has no rate on it, unless a claim that counts has a
+     * figure not made by that grade (kept, or at the rate for another grade in force on its date): then it
+     * is the sum of the figures there are.
      */
-    public static BigDecimal total(String grade, List<Claim> claims, RateTable rates, boolean held) {
+    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, boolean held) {
         List<Claim> counting = claims.stream().filter(c -> counts(c, held)).toList();
-        boolean shown = rates.current(grade) != null || counting.stream().anyMatch(Dues::kept);
-        return shown ? counting.stream().map(c -> figure(c, grade, rates))
+        String current = grades.on(rates.today());
+        boolean shown = rates.current(current) != null || counting.stream().anyMatch(c -> kept(c)
+                || (!current.equals(grades.on(c.getDate())) && figure(c, grades, rates) != null));
+        return shown ? counting.stream().map(c -> figure(c, grades, rates))
                 .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add) : null;
     }
 }

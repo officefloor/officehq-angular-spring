@@ -94,7 +94,7 @@ public class PeriodService {
         RateTable table = rates.table(sheetId);
         BigDecimal total = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> Dues.counts(c, byId.get(c.getPersonId()).isHeld()) && period.contains(c.getDate()))
-                .map(c -> Dues.figure(c, byId.get(c.getPersonId()).getGrade(), table))
+                .map(c -> Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table))
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);

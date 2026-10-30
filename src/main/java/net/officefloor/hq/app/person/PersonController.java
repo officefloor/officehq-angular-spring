@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.rate.Grades;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.statement.StatementService;
@@ -41,7 +42,7 @@ public class PersonController {
 
     /**
      * A claim as shown: its amount with two decimals, its date, its note, its due: the amount at
-     * the rate for its person's grade in force on its date (null when none is) or, once settled, the due fixed
+     * the rate in force on its date for its person's grade in force then (null when none is) or, once settled, the due fixed
      * then, or while bound by a statement, the figure bound then, its status, its number (null while it has
      * none), who opened it (null while it was never opened), whether a statement binds it, the date it is
      * due by (its date plus the sheet's terms) and whether it is overdue (see {@link Dues#overdue}).
@@ -49,7 +50,7 @@ public class PersonController {
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             Integer number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue) {
 
-        static ClaimView of(Claim claim, String grade, RateTable rates) {
+        static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getNumber(),
                     claim.getOpenedBy(), claim.isStated(), rates.dueBy(claim.getDate()), Dues.overdue(claim, rates));
@@ -57,7 +58,7 @@ public class PersonController {
     }
 
     /**
-     * A person with their claims, newest first, claimed: the sum of the amounts of the claims that
+     * A person with the grade in force on the sheet's today, their claims, newest first, claimed: the sum of the amounts of the claims that
      * count (OPEN and SETTLED, but only SETTLED while on hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
@@ -72,13 +73,13 @@ public class PersonController {
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
                 List<Long> patrons) {
-            String grade = person.getGrade();
+            Grades grade = person::gradeOn;
             boolean held = person.isHeld();
             BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             List<Claim> overdue = Dues.overdue(claims, rates, held);
-            return new PersonView(person.getId(), person.getVersion(), person.getName(), grade,
-                    claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
+            return new PersonView(person.getId(), person.getVersion(), person.getName(),
+                    grade.on(rates.today()), claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
                     person.getRetiredFrom(), held, overdue.size(), money(Dues.sum(grade, overdue, rates)),
@@ -90,9 +91,12 @@ public class PersonController {
         return amount == null ? null : amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
-    /** A person as entered; an edit carries the version its editor loaded (none: no check). */
+    /**
+     * A person as entered; an edit carries the version its editor loaded (none: no check) and the date
+     * its grade applies from (none: the sheet's today). An add's grade applies from the beginning of time.
+     */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, Long version) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom) {
     }
 
     /** A retirement as entered; a date left out takes the sheet's today. */
@@ -138,7 +142,8 @@ public class PersonController {
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
-        return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(), form.grade()));
+        return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(),
+                form.grade(), form.gradeFrom()));
     }
 
     /** Take a statement for the person; answers with the person as bound by it. */

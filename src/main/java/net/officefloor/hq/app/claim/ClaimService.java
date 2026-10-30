@@ -139,7 +139,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             // The due now, its late charge frozen in.
             BigDecimal fixed = owner == null ? (claim.isStated() ? claim.getStatedDue() : null)
-                    : Dues.figure(claim, owner.getGrade(), rates.table(sheetId));
+                    : Dues.figure(claim, owner::gradeOn, rates.table(sheetId));
             access.requireCanSettle(sheetId, user, fixed);
             claim.setSettledDue(fixed);
             due = fixed == null ? "n/a" : fixed.toPlainString();
