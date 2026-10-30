@@ -184,6 +184,9 @@ function csvField(value: string): string {
       <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
       <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
       <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
+      <p>Due aged 0–30 <strong data-testid="rollup-aged-0-30">{{ aged0to30() | figure }}</strong></p>
+      <p>Due aged 31–60 <strong data-testid="rollup-aged-31-60">{{ aged31to60() | figure }}</strong></p>
+      <p>Due aged 61+ <strong data-testid="rollup-aged-61">{{ aged61() | figure }}</strong></p>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
         <label for="person-form-name">Name</label>
         <input
@@ -941,6 +944,19 @@ export class People {
   /** Everyone's open-total added up, not trimmed. */
   protected readonly openTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.openTotal), 0) / 100).toFixed(2),
+  );
+
+  /** Everyone's due aged 0 to 30 days added up, not trimmed. */
+  protected readonly aged0to30 = computed(() =>
+    (this.people().reduce((sum, p) => sum + cents(p.aged0to30), 0) / 100).toFixed(2),
+  );
+  /** Everyone's due aged 31 to 60 days added up, not trimmed. */
+  protected readonly aged31to60 = computed(() =>
+    (this.people().reduce((sum, p) => sum + cents(p.aged31to60), 0) / 100).toFixed(2),
+  );
+  /** Everyone's due aged 61 or more days added up, not trimmed. */
+  protected readonly aged61 = computed(() =>
+    (this.people().reduce((sum, p) => sum + cents(p.aged61), 0) / 100).toFixed(2),
   );
 
   /** Everyone's cut total added up, not trimmed. */

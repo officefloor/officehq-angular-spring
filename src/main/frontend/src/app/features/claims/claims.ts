@@ -172,7 +172,7 @@ export interface PersonWithClaims {
   retirements: Retirement[];
   /** The person's snapshot lines, one per SNAPSHOT written for them, oldest first. */
   snapshots: Snapshot[];
-  /** The person's statement lines, one per statement still standing, oldest first by date. */
+  /** The person's statement lines, one per statement still standing, in the order taken. */
   statementLines: StatementLine[];
   /** Whether the person has any hold, whatever its dates. */
   held: boolean;

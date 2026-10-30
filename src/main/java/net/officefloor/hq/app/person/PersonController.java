@@ -124,7 +124,7 @@ public class PersonController {
      * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
      * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
      * transferred from (null: none), their past retirements, earliest first, their snapshot lines, oldest first, and
-     * their statement lines: one per statement still standing, oldest first by date, and the reason of their flag
+     * their statement lines: one per statement still standing, in the order taken, and the reason of their flag
      * while it is in force on the sheet's today (null otherwise, see {@link Person#flagOn}).
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,

@@ -2,12 +2,11 @@ package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Comparator;
 import java.util.List;
 
 /**
  * A person's statements as shown: how many were taken, the last one's due-total and date (null with none),
- * and every one still standing, oldest first by date (in the order taken on the same date).
+ * and every one still standing, in the order taken.
  */
 public record Statements(int count, BigDecimal lastDueTotal, LocalDate lastDate, List<Line> lines) {
 
@@ -24,7 +23,6 @@ public record Statements(int count, BigDecimal lastDueTotal, LocalDate lastDate,
         }
         Statement last = taken.get(taken.size() - 1);
         List<Line> lines = taken.stream()
-                .sorted(Comparator.comparing(Statement::getTakenOn).thenComparing(Statement::getId))
                 .map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
         return new Statements(taken.size(), last.getDueTotal(), last.getTakenOn(), lines);
     }

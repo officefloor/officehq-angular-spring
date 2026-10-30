@@ -52,7 +52,7 @@ export class Tags {
         const tags = new Set([...c.tags, ...(person.tags ?? [])]);
         for (const t of tags) if (!totals.has(t)) totals.set(t, 0);
         const counts = (c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED') && c.due !== null
-          && !c.deferred && !heldOut(c, person.holds) && !retiredOut(c, person.retiredNow);
+          && !c.deferred && !(c.held && !c.stated && c.status !== 'SETTLED') && !heldOut(c, person.holds) && !retiredOut(c, person.retiredNow);
         if (!counts) continue;
         for (const t of tags) totals.set(t, (totals.get(t) ?? 0) + cents(c.due!));
       }
