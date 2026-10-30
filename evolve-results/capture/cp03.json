@@ -1,0 +1,64 @@
+{
+  "checkpoint": 3,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp03_people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Keep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nKeep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d847b9ddd4a1f98f67593905ec2e7f15dc70d78b",
+  "reset_sha": "",
+  "preagent_sha": "ff602375359de2880fc44665357f470b718c0ea0",
+  "prev_sha": "ff602375359de2880fc44665357f470b718c0ea0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5102018,
+    "input_tokens": 20,
+    "output_tokens": 7818,
+    "cache_read_tokens": 303689,
+    "cache_creation_tokens": 36628,
+    "num_turns": 11,
+    "duration_ms": 134700,
+    "duration_api_ms": 63326,
+    "model": "claude-opus-5-5",
+    "session_id": "090826ba-e66b-42b9-b715-759f7fc4f459",
+    "stop_reason": "success",
+    "result_text": "The sheet now keeps a list of people, and `bin/e2e` passes (1 test, 1 passed).\n\n**What it does**\n- A form adds a person with a name and a grade (A, B or C). An empty or all-spaces name is refused with `person-form-error`, and nothing is saved.\n- Each row shows the person's name and grade, in the order they were added. Each row's edit button (`person-edit-<id>`) fills the same form with that person's values; saving updates the row.\n- The list is re-read from the store every time the sheet is loaded, including when the same id is loaded again.\n\n**Changes**\n- **Stored data:** `V3__person.sql` adds a `person` table, linked to its sheet. The database itself only accepts grades A, B or C.\n- **Server:** a new `person` package with the entity, repository, service and controller. There are three endpoints under `/api/sheets/{sheetId}/people`: list, add and edit. The server also refuses a blank name or a grade other than A, B or C, so the form's check isn't the only one.\n- **Front end:** a new `features/people/people.ts` component, shown on the home screen once a sheet is loaded. `Session` gained a `loads` counter so loading the same sheet id again triggers a fresh read. `styles.css` gained a `.visually-hidden` class, so each edit button can carry the person's name for screen readers.\n\n**Things to know**\n- Names are saved exactly as typed, with no trimming: \" ada \" is stored as \" ada \".\n- I added a cancel button (`person-form-cancel`) that appears while editing. The request didn't ask for it.\n- Nothing is written to the audit file, since neither the request nor the test asks for any audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5102018,
+        "num_turns": 11,
+        "duration_ms": 134700,
+        "duration_api_ms": 63326,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp03.agent.jsonl",
+  "agent_diff_file": "cp03.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
