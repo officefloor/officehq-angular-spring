@@ -1,0 +1,443 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 3e17e5f1..cc681435 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -25,6 +25,8 @@ interface Settings {
+   policyDate: string | null;
+   /** From the sheet's today on this date, a claim opened is numbered within its period; null when blank (off). */
+   periodNumberingFrom: string | null;
++  /** The days after a period's to-date before a change of the sheet's today closes it; null when blank (off). */
++  graceDays: string | null;
+   /** The most a person's due-total comes to, with two decimals; null when there is no cap. */
+   cap: string | null;
+   /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
+@@ -75,7 +77,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ // from its date (blank: 14), and each grade's own terms (blank: the sheet's terms), and the late percent, what an overdue claim's due gains of its figure for
+ // every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
+ // (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
+-// numbered within its period (blank: off), and the cap, the most a person's due-total comes to (blank: no
++// numbered within its period (blank: off), and the grace days, the days after an open period's to-date
++// before a change of the sheet's today closes it (blank: off; not dated), and the cap, the most a person's due-total comes to (blank: no
+ // cap), and the proof threshold, the most due a claim may have to be settled or approved with no proof
+ // (blank: none), and the permission matrix, the roles that may open, settle, void, reassign, close and
+ // reopen, each a comma separated list (blank: the standing rule; not dated). The settings that carry a figure are dated: each is saved from its from-date (blank: the sheet's
+@@ -134,6 +137,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
+       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
+       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
++      <p>Grace days <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
+       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
+       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
+       @for (p of perms; track p.field) {
+@@ -245,6 +249,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           (input)="numberingFromInput.set(value($event)); numberingFromTouched = true; settingsError.set('')"
+           (keydown)="numberingFromTouched = numberingFromTouched || clears($event)"
+         />
++        <label for="setting-grace-days">Grace days: an open period closes once the sheet's today is past its to-date by more than these days (blank: off)</label>
++        <input
++          id="setting-grace-days"
++          inputmode="numeric"
++          data-testid="setting-grace-days"
++          [value]="graceDaysInput()"
++          (input)="graceDaysInput.set(value($event)); graceDaysTouched = true; settingsError.set('')"
++          (keydown)="graceDaysTouched = graceDaysTouched || clears($event)"
++        />
+         <label for="setting-cap">Cap on a person's due-total (blank: no cap)</label>
+         <input
+           id="setting-cap"
+@@ -321,6 +334,8 @@ export class Access {
+   protected readonly policyDateInput = signal('');
+   protected readonly periodNumberingFrom = signal<string | null>(null);
+   protected readonly numberingFromInput = signal('');
++  protected readonly graceDays = signal<string | null>(null);
++  protected readonly graceDaysInput = signal('');
+   protected readonly cap = signal<string | null>(null);
+   protected readonly capInput = signal('');
+   protected readonly proofThreshold = signal<string | null>(null);
+@@ -340,6 +355,7 @@ export class Access {
+   protected latePctTouched = false;
+   protected policyDateTouched = false;
+   protected numberingFromTouched = false;
++  protected graceDaysTouched = false;
+   protected capTouched = false;
+   protected proofThresholdTouched = false;
+   protected readonly settingsError = signal('');
+@@ -354,7 +370,7 @@ export class Access {
+       this.roleUser.set('');
+       this.role.set('');
+       this.roleError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, cap: null, proofThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, cap: null, proofThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -459,6 +475,11 @@ export class Access {
+       this.settingsError.set('Enter a period numbering from date, or leave it blank for off.');
+       return;
+     }
++    const graceDays = this.graceDaysInput().trim();
++    if (this.graceDaysTouched && graceDays !== '' && !DAYS.test(graceDays)) {
++      this.settingsError.set('Enter grace days of 0 or more whole days, or leave them blank for off.');
++      return;
++    }
+     const cap = this.capInput().trim();
+     if (this.capTouched && cap !== '' && !LIMIT.test(cap)) {
+       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank for no cap.');
+@@ -495,6 +516,7 @@ export class Access {
+     if (this.latePctTouched) body.latePct = latePct;
+     if (this.policyDateTouched) body.policyDate = policyDate;
+     if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
++    if (this.graceDaysTouched) body.graceDays = graceDays;
+     if (this.capTouched) body.cap = cap;
+     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
+     for (const p of PERMS) {
+@@ -551,6 +573,9 @@ export class Access {
+     this.periodNumberingFrom.set(settings.periodNumberingFrom);
+     this.numberingFromInput.set(settings.periodNumberingFrom ?? '');
+     this.numberingFromTouched = false;
++    this.graceDays.set(settings.graceDays);
++    this.graceDaysInput.set(settings.graceDays ?? '');
++    this.graceDaysTouched = false;
+     this.cap.set(settings.cap);
+     this.capInput.set(settings.cap ?? '');
+     this.capTouched = false;
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 76bf5667..6f128a17 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -133,7 +133,8 @@ public class SheetAudit {
+     @TransactionalEventListener
+     public void on(PeriodClosed e) {
+         audit.record("PERIOD_CLOSED sheet=" + e.sheetId() + " by=" + e.user()
+-                + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString());
++                + " period=" + e.name() + " total=" + e.total().setScale(2, RoundingMode.HALF_UP).toPlainString()
++                + (e.auto() ? " auto=yes" : ""));
+     }
+ 
+     @TransactionalEventListener
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index 544a2123..b88f0f62 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -44,23 +44,25 @@ public class AccessController {
+      * figure with two decimals, null for none; so is the floor;
+      * the terms are a number of days, and so are the terms of grades A, B and C, null for a grade without
+      * its own (it uses the sheet's); the late percent is a figure with two decimals; the policy date and
+-     * the period numbering from are dates (yyyy-mm-dd), null when blank; the cap is a figure with two
++     * the period numbering from are dates (yyyy-mm-dd), null when blank; the grace days are a number of days, null
++     * when blank (off); the cap is a figure with two
+      * decimals, null for none; so is the proof threshold. Each entry of the permission matrix (open, settle,
+      * void, reassign, close, reopen) is the roles that may take the action as written, comma separated; null
+      * when blank (the standing rule).
+      */
+     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
+-            String termsC, String latePct, String policyDate, String periodNumberingFrom, String cap,
+-            String proofThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
++            String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
++            String cap, String proofThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+             String permClose, String permReopen) {
+ 
+-        static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom) {
++        static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
++                Integer graceDays) {
+             return new SettingsView(text(dated.clerkLimit(today)), dated.floor(today).toPlainString(),
+                     Integer.toString(dated.terms(today)), text(dated.gradeTerms("A", today)),
+                     text(dated.gradeTerms("B", today)), text(dated.gradeTerms("C", today)),
+                     dated.latePct(today).toPlainString(),
+                     policyDate == null ? null : policyDate.toString(),
+-                    periodNumberingFrom == null ? null : periodNumberingFrom.toString(),
++                    periodNumberingFrom == null ? null : periodNumberingFrom.toString(), text(graceDays),
+                     text(dated.cap(today)), text(dated.proofThreshold(today)),
+                     perm(dated, Permission.OPEN, today), perm(dated, Permission.SETTLE, today),
+                     perm(dated, Permission.VOID, today), perm(dated, Permission.REASSIGN, today),
+@@ -89,7 +91,8 @@ public class AccessController {
+      * whole number of days, blank putting back 14; so are a grade's own terms, blank removing them (the
+      * grade then uses the sheet's). The late percent is 0.00 or more with up to two
+      * decimals, blank putting back 0.00. The policy date is a date (yyyy-mm-dd), blank meaning the
+-     * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off. The cap is 0.00
++     * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off. The grace days are a whole number of
++     * days, blank meaning off; not dated. The cap is 0.00
+      * or more with up to two decimals, blank meaning no cap; so is the proof threshold, blank meaning none. Each setting that carries a figure takes a
+      * from-date (yyyy-mm-dd) its value is in force from, blank or left out meaning the sheet's today. Each
+      * entry of the permission matrix is a comma separated list of roles (clerk, steward), blank putting back
+@@ -104,6 +107,7 @@ public class AccessController {
+             @Pattern(regexp = "(\\d{1,10}(\\.\\d{1,2})?)?") String latePct,
+             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String policyDate,
+             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String periodNumberingFrom,
++            @Pattern(regexp = "(\\d{1,5})?") String graceDays,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String cap,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String proofThreshold,
+             @Pattern(regexp = DATE) String clerkLimitFrom,
+@@ -167,13 +171,13 @@ public class AccessController {
+         permissions.put(Permission.CLOSE, form.permClose());
+         permissions.put(Permission.REOPEN, form.permReopen());
+         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
+-                form.periodNumberingFrom(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()), permissions);
++                form.periodNumberingFrom(), form.graceDays(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()), permissions);
+         return settings(sheet);
+     }
+ 
+     private SettingsView settings(String sheet) {
+         return SettingsView.of(service.settings(sheet), service.today(sheet), service.policyDate(sheet),
+-                service.periodNumberingFrom(sheet));
++                service.periodNumberingFrom(sheet), service.graceDays(sheet));
+     }
+ 
+     /** A dated setting's value with its from-date (blank or left out: the sheet's today); null when the value is left out. */
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index b0dacb4e..49085645 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -48,6 +48,8 @@ public class AccessService {
+ 
+     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
+ 
++    public static final String GRACE_DAYS = "grace-days";
++
+     public static final String CAP = DatedSettings.CAP;
+ 
+     public static final String PROOF_THRESHOLD = DatedSettings.PROOF_THRESHOLD;
+@@ -115,6 +117,12 @@ public class AccessService {
+         return sheets.periodNumberingFrom(sheetId);
+     }
+ 
++    /** The sheet's grace days as set; null when blank (off). */
++    @Transactional(readOnly = true)
++    public Integer graceDays(String sheetId) {
++        return sheets.graceDays(sheetId);
++    }
++
+     /** Give a user name a role on the sheet, replacing the one it had. */
+     @Transactional
+     public SheetRole setRole(String sheetId, String user, String name, Role role) {
+@@ -136,8 +144,8 @@ public class AccessService {
+      */
+     @Transactional
+     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
+-            Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, Dated cap,
+-            Dated proofThreshold, Map<Permission, String> permissions) {
++            Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
++            Dated cap, Dated proofThreshold, Map<Permission, String> permissions) {
+         if (clerkLimit != null) {
+             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
+         }
+@@ -162,6 +170,9 @@ public class AccessService {
+             setPeriodNumberingFrom(sheetId, user,
+                     periodNumberingFrom.isEmpty() ? null : LocalDate.parse(periodNumberingFrom));
+         }
++        if (graceDays != null) {
++            setGraceDays(sheetId, user, graceDays.isEmpty() ? null : Integer.valueOf(graceDays));
++        }
+         if (cap != null) {
+             setDated(sheetId, user, CAP, money(cap.value(), null), cap.from(), true);
+         }
+@@ -269,6 +280,19 @@ public class AccessService {
+         return from;
+     }
+ 
++    /**
++     * Save the sheet's grace days; null turns them off. Not dated; it takes effect at the next change of
++     * the sheet's today.
++     */
++    @Transactional
++    public Integer setGraceDays(String sheetId, String user, Integer days) {
++        Sheet sheet = sheets.load(sheetId, user);
++        sheet.setGraceDays(days);
++        sheetRows.saveAndFlush(sheet);
++        events.publishEvent(new SettingChanged(sheetId, user, GRACE_DAYS, days == null ? "" : days.toString(), null));
++        return days;
++    }
++
+     /**
+      * Whether the user may settle a claim of the given due outright: a steward settles anything, a clerk
+      * a due up to the clerk limit in force on the sheet's today (a due of n/a, null, is within any limit). A clerk's settle above it
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodClosed.java b/src/main/java/net/officefloor/hq/app/period/PeriodClosed.java
+index ce798b76..8a049720 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodClosed.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodClosed.java
+@@ -2,6 +2,9 @@ package net.officefloor.hq.app.period;
+ 
+ import java.math.BigDecimal;
+ 
+-/** A period on a sheet was closed, fixing its due-total ({@code PERIOD_CLOSED}). */
+-public record PeriodClosed(String sheetId, String user, String name, BigDecimal total) {
++/**
++ * A period on a sheet was closed, fixing its due-total ({@code PERIOD_CLOSED}); auto when it was closed by a
++ * change of the sheet's today, past its grace days, rather than by hand.
++ */
++public record PeriodClosed(String sheetId, String user, String name, BigDecimal total, boolean auto) {
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index aef33fef..d37bff5a 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.period;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -19,6 +20,8 @@ import net.officefloor.hq.app.rate.RateService;
+ import net.officefloor.hq.app.rate.RateTable;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.sheet.TodayChanged;
++import org.springframework.context.event.EventListener;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -100,6 +103,30 @@ public class PeriodService {
+         if (period.isClosed()) {
+             throw new PeriodRefused("The period is already closed.");
+         }
++        fix(sheetId, user, period, false);
++        return period;
++    }
++
++    /**
++     * When the sheet's today is changed and it has grace days, close every open period whose to-date plus
++     * the grace days is before the new today, in order of their to-dates, each as a close by hand would.
++     */
++    @EventListener
++    @Transactional
++    public void on(TodayChanged e) {
++        Integer grace = sheets.graceDays(e.sheetId());
++        if (grace == null) {
++            return;
++        }
++        sheetRows.lockById(e.sheetId());
++        list(e.sheetId()).stream()
++                .filter(p -> !p.isClosed() && p.getToDate().plusDays(grace).isBefore(e.today()))
++                .sorted(Comparator.comparing(Period::getToDate))
++                .forEach(p -> fix(e.sheetId(), e.user(), p, true));
++    }
++
++    /** Fix the period's due-totals as of the end of its last day and close it. */
++    private void fix(String sheetId, String user, Period period, boolean auto) {
+         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, p -> p));
+         RateTable table = rates.table(sheetId);
+@@ -118,8 +145,7 @@ public class PeriodService {
+         period.close(totals);
+         BigDecimal total = period.getClosedTotal().setScale(2, RoundingMode.HALF_UP);
+         periods.flush();
+-        events.publishEvent(new PeriodClosed(sheetId, user, period.getName(), total));
+-        return period;
++        events.publishEvent(new PeriodClosed(sheetId, user, period.getName(), total, auto));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 6d0b635e..42d944fc 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -46,6 +46,10 @@ public class Sheet {
+     @Column(name = "period_numbering_from")
+     private LocalDate periodNumberingFrom;
+ 
++    /** An open period whose to-date plus these days is before a new today is closed when the today is changed; null: off. */
++    @Column(name = "grace_days")
++    private Integer graceDays;
++
+     protected Sheet() {
+     }
+ 
+@@ -86,4 +90,12 @@ public class Sheet {
+     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
+         this.periodNumberingFrom = periodNumberingFrom;
+     }
++
++    public Integer getGraceDays() {
++        return graceDays;
++    }
++
++    public void setGraceDays(Integer graceDays) {
++        this.graceDays = graceDays;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 8ed7bfd7..6fa9ae89 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
+ import java.time.Clock;
+ import java.time.LocalDate;
+ import net.officefloor.hq.app.rollup.Rollup;
++import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -18,12 +19,15 @@ public class SheetService {
+     private final SheetRepository sheets;
+     private final SheetSettingRepository settings;
+     private final Rollup rollup;
++    private final ApplicationEventPublisher events;
+     private final Clock clock = Clock.systemDefaultZone();
+ 
+-    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup) {
++    public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup,
++            ApplicationEventPublisher events) {
+         this.sheets = sheets;
+         this.settings = settings;
+         this.rollup = rollup;
++        this.events = events;
+     }
+ 
+     public Sheet load(String id, String user) {
+@@ -50,6 +54,11 @@ public class SheetService {
+         return sheets.findById(id).map(Sheet::getPeriodNumberingFrom).orElse(null);
+     }
+ 
++    /** The sheet's grace days as set; null when blank (off). */
++    public Integer graceDays(String id) {
++        return sheets.findById(id).map(Sheet::getGraceDays).orElse(null);
++    }
++
+     /** The sheet's today: the date to use for every decision and default date on the sheet. */
+     public LocalDate today(String id) {
+         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));
+@@ -69,7 +78,8 @@ public class SheetService {
+ 
+     /**
+      * Change the sheet's today, starting the sheet if it was never loaded. The change has no audit
+-     * line of its own, only the figures it moves.
++     * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
++     * days are closed) and then the figures it moves.
+      */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+@@ -77,6 +87,7 @@ public class SheetService {
+         Rollup.Figures before = rollup.figures(id);
+         sheet.setToday(today);
+         Sheet saved = sheets.saveAndFlush(sheet);
++        events.publishEvent(new TodayChanged(id, user, today));
+         rollup.changed(id, user, before);
+         return saved;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/TodayChanged.java b/src/main/java/net/officefloor/hq/app/sheet/TodayChanged.java
+new file mode 100644
+index 00000000..a0a7b4e3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/TodayChanged.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.sheet;
++
++import java.time.LocalDate;
++
++/**
++ * The sheet's today was changed and saved; published inside the change, before the figures it moves are
++ * announced, so what follows from the new today is part of the same change. No audit line of its own.
++ */
++public record TodayChanged(String sheetId, String user, LocalDate today) {
++}
+diff --git a/src/main/resources/db/migration/V39__sheet_grace_days.sql b/src/main/resources/db/migration/V39__sheet_grace_days.sql
+new file mode 100644
+index 00000000..47c9fec9
+--- /dev/null
++++ b/src/main/resources/db/migration/V39__sheet_grace_days.sql
+@@ -0,0 +1,3 @@
++-- The sheet's grace days: when the sheet's today is changed, an open period whose to-date plus these
++-- days is before the new today is closed; null (blank) means off. Not dated.
++ALTER TABLE sheet ADD COLUMN grace_days INT;
