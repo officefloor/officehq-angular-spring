@@ -1,0 +1,64 @@
+{
+  "checkpoint": 154,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp154_classic-summary",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add a classic summary beside the summary: per period, the due-total counting each claim by its\nstatus now (OPEN, SETTLED and PENDING count; a closed period shows the figure fixed when it closed),\nand the sheet's due-total with no trimming (everyone's due-total added up). Both summaries show at\nonce and both must be right.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd a classic summary beside the summary: per period, the due-total counting each claim by its\nstatus now (OPEN, SETTLED and PENDING count; a closed period shows the figure fixed when it closed),\nand the sheet's due-total with no trimming (everyone's due-total added up). Both summaries show at\nonce and both must be right.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "431d89c8573c956327d5fb09c670f37015f6ffcb",
+  "reset_sha": "",
+  "preagent_sha": "16193b399c56dcfec25975e200a02d3a07085d83",
+  "prev_sha": "16193b399c56dcfec25975e200a02d3a07085d83",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.49800180000000005,
+    "input_tokens": 24,
+    "output_tokens": 4813,
+    "cache_read_tokens": 412589,
+    "cache_creation_tokens": 39891,
+    "num_turns": 13,
+    "duration_ms": 308573,
+    "duration_api_ms": 88619,
+    "model": "claude-opus-5-5",
+    "session_id": "6f879bd2-598d-4399-a053-1f954fa242e1",
+    "stop_reason": "success",
+    "result_text": "The classic summary now shows beside the existing summary, and both are on screen at the same time. `bin/e2e` passes all 4 tests in the spec.\n\nIt has two parts:\n- **Per period** (`classic-period-<name>-due-total`): adds up the dues of claims that are OPEN, PENDING or SETTLED right now. The existing period figure instead uses each claim's status at the end of the period's last day. That's why, in the third scenario, period 2026-02 shows 2.29 in the classic summary but 0.00 in the existing one: those claims were opened later, on 2026-03-20. A closed period shows the figure fixed when it closed.\n- **Sheet total** (`classic-due-total`): everyone's due-total added up with no trimming. Retired people are included and a due-total of n/a counts as nothing. In the first test it shows 14.00 while the trimmed rollup total shows 4.00.\n\nAll the changes are in the front end, in `features/periods/periods.ts` and `features/summary/summary.ts`, where the existing summary is already worked out from the data on screen. Nothing changed in the stored data or the server, and no audit records were needed.\n\nTwo choices the request didn't settle, which the tests accept but don't fully pin down:\n- **Claims left out:** the classic period figure leaves out the same claims as the existing one: a claim on hold, an open claim of a person whose retirement date has been reached, and a deferred claim.\n- **Soft-closed periods:** these are treated like closed ones and show their fixed figure, as the existing period figures do. If you only want fully closed periods frozen, that's a one-line change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.49800180000000005,
+        "num_turns": 13,
+        "duration_ms": 308573,
+        "duration_api_ms": 88619,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp154.agent.jsonl",
+  "agent_diff_file": "cp154.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
