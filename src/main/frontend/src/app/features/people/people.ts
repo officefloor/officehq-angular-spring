@@ -168,6 +168,13 @@ function csvField(value: string): string {
           [value]="contact()"
           (input)="contact.set(value($event)); error.set('')"
         />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input
+          id="person-form-tags"
+          data-testid="person-form-tags"
+          [value]="tags()"
+          (input)="tags.set(value($event)); error.set('')"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -345,7 +352,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Excess</th>
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
@@ -376,6 +383,7 @@ function csvField(value: string): string {
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
               <td data-testid="person-claimed">{{ p.claimed }}</td>
               <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
               <td data-testid="person-settled-total">{{ p.settledTotal }}</td>
@@ -580,6 +588,8 @@ export class People {
   protected readonly terms = signal('');
   /** The person's contact; blank: none. */
   protected readonly contact = signal('');
+  /** The person's tags, comma separated; blank: none. */
+  protected readonly tags = signal('');
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private version = 0;
@@ -1077,6 +1087,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set(p.terms === null ? '' : String(p.terms));
     this.contact.set(p.contact ?? '');
+    this.tags.set(p.tags.join(', '));
     this.error.set('');
   }
 
@@ -1087,6 +1098,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set('');
     this.contact.set('');
+    this.tags.set('');
     this.error.set('');
   }
 
@@ -1101,6 +1113,7 @@ export class People {
     const gradeFrom = this.gradeFrom() || null;
     const terms = this.terms().trim();
     const contact = this.contact().trim().toLowerCase();
+    const tags = this.tags();
     if (!name) {
       this.error.set('Enter a name.');
       return;
@@ -1122,8 +1135,8 @@ export class People {
     try {
       const saved = await firstValueFrom(
         id === null
-          ? this.http.post<Person>(base, { name, grade, terms, contact }, { headers })
-          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, terms, contact, version: this.version }, { headers }),
+          ? this.http.post<Person>(base, { name, grade, terms, contact, tags }, { headers })
+          : this.http.put<Person>(`${base}/${id}`, { name, grade, gradeFrom, terms, contact, tags, version: this.version }, { headers }),
       );
       if (this.session.sheet() !== sheet) return;
       this.replace(saved);
@@ -1641,6 +1654,7 @@ export class People {
         this.grade.set(current.grade);
         this.terms.set(current.terms === null ? '' : String(current.terms));
         this.contact.set(current.contact ?? '');
+        this.tags.set(current.tags.join(', '));
       }
     } catch {
       // the error still shows; re-loading the sheet shows the current values

@@ -113,6 +113,7 @@ public class PersonController {
      * transferred from (null: none), and their past retirements, earliest first.
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
+            List<String> tags,
             List<ClaimView> claims,
             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
@@ -129,7 +130,7 @@ public class PersonController {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             List<Claim> overdue = Dues.overdue(claims, grade, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
-                    grade.on(rates.today()), person.getTerms(), person.getContact(), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
+                    grade.on(rates.today()), person.getTerms(), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
                     money(Dues.total(grade, claims, rates, held)), money(Dues.excess(grade, claims, rates, held)),
                     statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
@@ -164,11 +165,12 @@ public class PersonController {
      * A person as entered; an edit carries the version its editor loaded (none: no check) and the date
      * its grade applies from (none: the sheet's today). An add's grade applies from the beginning of time.
      * The person's own terms are a number of days, blank (or none) for none; their contact a text, blank
-     * (or none) for none.
+     * (or none) for none; their tags comma separated text (none: none on an add, as they were on an edit).
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
-            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms, @Size(max = 200) String contact) {
+            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms, @Size(max = 200) String contact,
+            @Size(max = 1000) String tags) {
 
         /** The contact trimmed and lower-cased; null when there is none. */
         String contactKey() {
@@ -241,7 +243,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays(),
-                form.contactKey()), List.of(),
+                form.contactKey(), form.tags()), List.of(),
                 rates.table(sheet), Statements.NONE, List.of(), false);
     }
 
@@ -258,7 +260,7 @@ public class PersonController {
             @Valid @RequestBody PersonForm form) {
         String sheet = sheetId.trim();
         return view(sheet, service.edit(sheet, user.trim(), personId, form.version(), form.name(),
-                form.grade(), form.gradeFrom(), form.termsDays(), form.contactKey()));
+                form.grade(), form.gradeFrom(), form.termsDays(), form.contactKey(), form.tags()));
     }
 
     /** Give the selected people the grade from the date, in list order; answers how many were changed. */

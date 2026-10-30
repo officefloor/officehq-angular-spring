@@ -52,6 +52,9 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    @Column(name = "tags", nullable = false)
+    private String tags = "";
+
     @Column(name = "origin")
     private String origin;
 
@@ -94,7 +97,7 @@ public class Person {
 
     /**
      * The person as they arrive on another sheet: their name, every grade they were given (each from its
-     * date), their terms, contact and aliases, and this sheet as the one they came from; not their holds nor
+     * date), their terms, contact, tags and aliases, and this sheet as the one they came from; not their holds nor
      * retirement.
      */
     public Person arriving(String sheetId) {
@@ -105,6 +108,7 @@ public class Person {
         arrived.aliases.addAll(aliases);
         arrived.terms = terms;
         arrived.contact = contact;
+        arrived.tags = tags;
         arrived.origin = this.sheetId;
         return arrived;
     }
@@ -188,6 +192,15 @@ public class Person {
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     public String getContact() {
         return contact;
+    }
+
+    /** The person's tags, sorted and comma separated ({@code ""} when none; see {@link net.officefloor.hq.app.claim.Tags}). */
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     /** The sheet the person was transferred from; null when they were not transferred here. */

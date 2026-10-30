@@ -116,6 +116,8 @@ export interface PersonWithClaims {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
+  /** The person's tags: trimmed, lower-cased, without repeats, sorted. */
+  tags: string[];
   claims: Claim[];
   /** The amounts of the OPEN, PENDING and SETTLED claims added up, but not unbound OPEN ones dated within a hold. */
   claimed: string;

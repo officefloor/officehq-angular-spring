@@ -135,6 +135,7 @@ public class PersonTransferService {
             Person newcomer = person.arriving(toSheet);
             newcomer.setPosition(people.maxPosition(toSheet) + 1);
             arrived = people.saveAndFlush(newcomer);
+            tags.use(toSheet, arrived.getTags());
         } else {
             // merged as a merge does: their name and aliases become the other's aliases
             arrived = into;

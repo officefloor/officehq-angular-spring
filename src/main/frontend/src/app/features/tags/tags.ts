@@ -10,8 +10,8 @@ function cents(amount: string): number {
 }
 
 // Every tag ever used on the sheet, sorted, each with its due-total: the dues of the claims that count
-// (OPEN, PENDING and SETTLED, not held, retired-out or deferred) carrying it; a claim with two tags
-// counts in both.
+// (OPEN, PENDING and SETTLED, not held, retired-out or deferred) carrying it, or whose person carries it
+// (once, when both do); a claim with two tags counts in both.
 @Component({
   selector: 'app-tags',
   template: `
@@ -45,12 +45,14 @@ export class Tags {
   protected readonly byTag = computed(() => {
     const totals = new Map<string, number>(this.used().map((t) => [t, 0]));
     for (const person of this.people()) {
+      for (const t of person.tags ?? []) if (!totals.has(t)) totals.set(t, 0);
       for (const c of person.claims) {
-        for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
+        const tags = new Set([...c.tags, ...(person.tags ?? [])]);
+        for (const t of tags) if (!totals.has(t)) totals.set(t, 0);
         const counts = (c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED') && c.due !== null
           && !c.deferred && !heldOut(c, person.holds) && !retiredOut(c, person.retiredNow);
         if (!counts) continue;
-        for (const t of c.tags) totals.set(t, (totals.get(t) ?? 0) + cents(c.due!));
+        for (const t of tags) totals.set(t, (totals.get(t) ?? 0) + cents(c.due!));
       }
     }
     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: ((totals.get(tag) ?? 0) / 100).toFixed(2) }));

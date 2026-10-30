@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.claim.Tags;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -33,9 +34,11 @@ public class PersonService {
     private final SheetRepository sheetRows;
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
+    private final Tags tags;
 
     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
-            SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
+            SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events, Tags tags) {
+        this.tags = tags;
         this.patrons = patrons;
         this.sheetRows = sheetRows;
         this.rollup = rollup;
@@ -57,6 +60,14 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, null);
+    }
+
+    /** Add the person, carrying the tags in the comma separated text (see {@link Tags#normalize}; null: none). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            String tagText) {
+        String tagged = Tags.normalize(tagText);
         sheets.load(sheetId, user);
         sheetRows.lockById(sheetId);
         String trimmed = name.trim();
@@ -70,8 +81,10 @@ public class PersonService {
         Person added = new Person(sheetId, trimmed, grade);
         added.setTerms(terms);
         added.setContact(contact);
+        added.setTags(tagged);
         added.setPosition(people.maxPosition(sheetId) + 1);
         Person person = people.saveAndFlush(added);
+        tags.use(sheetId, tagged);
         events.publishEvent(new PersonChanged("PERSON_ADDED", sheetId, user, trimmed, grade,
                 terms == null ? null : terms.toString(), contact));
         rollup.changed(sheetId, user, before);
@@ -88,6 +101,14 @@ public class PersonService {
     @Transactional
     public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, null);
+    }
+
+    /** Edit the person as above, their tags set to those in the comma separated text (see {@link Tags#normalize}; null: as they were). */
+    @Transactional
+    public Person edit(String sheetId, String user, long personId, Long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tagText) {
+        String tagged = tagText == null ? null : Tags.normalize(tagText);
         sheetRows.lockById(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -112,7 +133,13 @@ public class PersonService {
         person.setTerms(terms);
         String contactChange = Objects.equals(contact, person.getContact()) ? null : contact == null ? "" : contact;
         person.setContact(contact);
+        if (tagged != null) {
+            person.setTags(tagged);
+        }
         people.flush();
+        if (tagged != null) {
+            tags.use(sheetId, tagged);
+        }
         events.publishEvent(new PersonChanged("PERSON_EDITED", sheetId, user, trimmed, person.gradeOn(today),
                 termsChange, contactChange));
         rollup.changed(sheetId, user, before);
