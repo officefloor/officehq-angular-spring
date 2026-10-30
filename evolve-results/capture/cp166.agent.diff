@@ -1,0 +1,904 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+new file mode 100644
+index 000000000..4e75f2e80
+--- /dev/null
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -0,0 +1,229 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Component, computed, effect, inject, input, signal } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++import { PersonWithClaims } from '../claims/claims';
++
++/** A person in a crew: its lead or one of its members. */
++export interface CrewPerson {
++  personId: number;
++  name: string;
++}
++
++/** A crew: its lead and its members in the order they were added. */
++export interface Crew {
++  name: string;
++  lead: CrewPerson | null;
++  members: CrewPerson[];
++}
++
++/** Cents in an amount shown with two decimals ("12.50" is 1250). */
++function cents(amount: string): number {
++  return Math.round(Number(amount) * 100);
++}
++
++// The sheet's crews, sorted by name, each with its lead and members and its due-total: the lead's and the members'
++// due-totals as the sheet shows them, added up, a person showing n/a skipped; the form that adds a crew with its
++// lead, and on each crew's row the form that adds a person to it (never its lead, nor anyone in it already).
++@Component({
++  selector: 'app-crews',
++  imports: [FigurePipe],
++  template: `
++    <section aria-label="Crews">
++      <h2>Crews</h2>
++      <ul>
++        @for (c of crews(); track c.name) {
++          <li [attr.data-testid]="'crew-row-' + c.name">
++            <span data-testid="crew-name">{{ c.name }}</span>
++            <span>Lead <span data-testid="crew-lead">{{ c.lead?.name ?? '' }}</span></span>
++            <span>Due total <span data-testid="crew-due-total">{{ (dueTotals().get(c.name) ?? '0.00') | figure }}</span></span>
++            <ul>
++              @for (m of c.members; track m.personId) {
++                <li data-testid="crew-member-line">{{ m.name }}</li>
++              }
++            </ul>
++            <form (submit)="addMember($event, c.name)" [attr.aria-label]="'Add member to crew ' + c.name">
++              <label [for]="'crew-member-select-' + c.name">Person</label>
++              <select
++                [id]="'crew-member-select-' + c.name"
++                data-testid="crew-member-select"
++                (change)="edit(c.name, value($event))"
++              >
++                <option value="" [selected]="draft(c.name).personId === ''">Choose a person</option>
++                @for (person of people(); track person.id) {
++                  <option [value]="'' + person.id" [selected]="draft(c.name).personId === '' + person.id">
++                    {{ person.name }}
++                  </option>
++                }
++              </select>
++              <button type="submit" data-testid="crew-member-add">Add member</button>
++              @if (draft(c.name).error) {
++                <p role="alert" data-testid="crew-error">{{ draft(c.name).error }}</p>
++              }
++            </form>
++          </li>
++        }
++      </ul>
++      <form (submit)="add($event)" aria-label="Add crew">
++        <label for="crew-form-name">Name</label>
++        <input
++          id="crew-form-name"
++          data-testid="crew-form-name"
++          [value]="name()"
++          (input)="name.set(value($event)); error.set('')"
++        />
++        <label for="crew-form-lead">Lead</label>
++        <select id="crew-form-lead" data-testid="crew-form-lead" (change)="lead.set(value($event)); error.set('')">
++          <option value="" [selected]="lead() === ''">Choose a lead</option>
++          @for (person of people(); track person.id) {
++            <option [value]="'' + person.id" [selected]="lead() === '' + person.id">{{ person.name }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="crew-form-submit">Add crew</button>
++        @if (error()) {
++          <p role="alert" data-testid="crew-form-error">{{ error() }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class Crews {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** Everyone on the sheet with their figures: the choices for a lead or member, and their due-totals. */
++  readonly people = input.required<PersonWithClaims[]>();
++
++  protected readonly crews = signal<Crew[]>([]);
++  protected readonly name = signal('');
++  protected readonly lead = signal('');
++  protected readonly error = signal('');
++  /** Per crew, the person chosen to add and why its last add was refused. */
++  protected readonly drafts = signal<Record<string, { personId: string; error: string }>>({});
++  /** Per crew name, its due-total with two decimals: the lead's and members' added up, n/a skipped. */
++  protected readonly dueTotals = computed(() => {
++    const due = new Map(this.people().map((p) => [p.id, p.dueTotal]));
++    return new Map(
++      this.crews().map((c) => {
++        const ids = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
++        const total = ids.reduce((sum, id) => {
++          const d = due.get(id);
++          return d == null ? sum : sum + cents(d);
++        }, 0);
++        return [c.name, (total / 100).toFixed(2)];
++      }),
++    );
++  });
++  /** Each answer is numbered: one older than the last shown is dropped. */
++  private asked = 0;
++  private shown = 0;
++  /** A submit still waiting for its answer: another press meanwhile is ignored. */
++  private busy = false;
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheet();
++      this.session.loads();
++      this.crews.set([]);
++      this.name.set('');
++      this.lead.set('');
++      this.error.set('');
++      this.drafts.set({});
++      if (sheet) void this.reload(sheet);
++    });
++    // a person's name may change, or a person leave: re-read the crews whenever the people change
++    effect(() => {
++      this.people();
++      const sheet = this.session.sheet();
++      if (sheet) void this.reload(sheet);
++    });
++  }
++
++  protected value(e: Event): string {
++    return (e.target as HTMLInputElement | HTMLSelectElement).value;
++  }
++
++  protected draft(crew: string): { personId: string; error: string } {
++    return this.drafts()[crew] ?? { personId: '', error: '' };
++  }
++
++  protected edit(crew: string, personId: string): void {
++    this.drafts.update((all) => ({ ...all, [crew]: { personId, error: '' } }));
++  }
++
++  protected async add(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    this.error.set('');
++    const name = this.name().trim();
++    if (name === '') {
++      this.error.set('Enter a name for the crew.');
++      return;
++    }
++    if (this.lead() === '') {
++      this.error.set('Choose a lead for the crew.');
++      return;
++    }
++    this.busy = true;
++    try {
++      const refusal = await this.post('', { name, leadId: Number(this.lead()) });
++      if (refusal) this.error.set(refusal);
++      else {
++        this.name.set('');
++        this.lead.set('');
++      }
++    } finally {
++      this.busy = false;
++    }
++  }
++
++  protected async addMember(e: Event, crew: string): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    const personId = this.draft(crew).personId;
++    this.edit(crew, personId);
++    let refusal = '';
++    if (personId === '') {
++      refusal = 'Choose a person.';
++    } else {
++      this.busy = true;
++      try {
++        refusal = await this.post('/members', { crew, personId: Number(personId) });
++      } finally {
++        this.busy = false;
++      }
++    }
++    this.drafts.update((all) => ({ ...all, [crew]: refusal ? { personId, error: refusal } : { personId: '', error: '' } }));
++  }
++
++  /** Post a change: '' once made (the crews shown as they now stand), else why it was refused. */
++  private async post(path: string, body: object): Promise<string> {
++    const sheet = this.session.sheet();
++    if (!sheet) return 'Load a sheet first.';
++    const headers = { 'X-User': this.session.user() ?? '' };
++    const n = ++this.asked;
++    try {
++      const crews = await firstValueFrom(
++        this.http.post<Crew[]>(`/api/sheets/${encodeURIComponent(sheet)}/crews${path}`, body, { headers }),
++      );
++      this.show(sheet, n, crews);
++      return '';
++    } catch (err) {
++      const answer = err instanceof HttpErrorResponse ? err : null;
++      return answer?.error?.message ?? 'Could not save the crew.';
++    }
++  }
++
++  private async reload(sheet: string): Promise<void> {
++    const n = ++this.asked;
++    const crews = await firstValueFrom(this.http.get<Crew[]>(`/api/sheets/${encodeURIComponent(sheet)}/crews`));
++    this.show(sheet, n, crews);
++  }
++
++  private show(sheet: string, n: number, crews: Crew[]): void {
++    if (this.session.sheet() !== sheet || n < this.shown) return;
++    this.shown = n;
++    this.crews.set(crews);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 35aa519eb..63b15a81b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -11,6 +11,7 @@ import { Search } from '../search/search';
+ import { Holidays } from '../holidays/holidays';
+ import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
+ import { PersonPlans, PlanList } from '../plans/plans';
++import { Crews } from '../crews/crews';
+ import { Pool, Pools } from '../pools/pools';
+ import { Rates } from '../rates/rates';
+ import { Summary, statusCounts } from '../summary/summary';
+@@ -135,7 +136,7 @@ function csvField(value: string): string {
+ // user can watch people of their own choosing.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
++  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Crews, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
+   template: `
+     <header aria-label="Counters">
+       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
+@@ -160,6 +161,7 @@ function csvField(value: string): string {
+     <app-void-reasons />
+     <app-claim-templates />
+     <app-pools [people]="people()" [(pools)]="pools" />
++    <app-crews [people]="people()" />
+     <app-summary [people]="people()" [periods]="periods()" />
+     <app-tags [people]="people()" />
+     <app-search />
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 7381b2233..4c1815647 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -35,6 +35,8 @@ import net.officefloor.hq.app.person.PersonUnretired;
+ import net.officefloor.hq.app.person.PersonTransferred;
+ import net.officefloor.hq.app.person.PersonWatched;
+ import net.officefloor.hq.app.person.WatcherNotified;
++import net.officefloor.hq.app.crew.CrewAdded;
++import net.officefloor.hq.app.crew.CrewMemberAdded;
+ import net.officefloor.hq.app.pool.PoolAdded;
+ import net.officefloor.hq.app.pool.PoolMemberAdded;
+ import net.officefloor.hq.app.rate.RateChanged;
+@@ -301,6 +303,18 @@ public class SheetAudit {
+                 + (e.from() == null ? "" : " from=" + e.from()) + (e.to() == null ? "" : " to=" + e.to()));
+     }
+ 
++    @TransactionalEventListener
++    public void on(CrewAdded e) {
++        change(e.sheetId(), e.user(), "CREW_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
++                + " lead=" + e.lead());
++    }
++
++    @TransactionalEventListener
++    public void on(CrewMemberAdded e) {
++        change(e.sheetId(), e.user(), "CREW_MEMBER_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " crew="
++                + e.crew() + " name=" + e.name());
++    }
++
+     @TransactionalEventListener
+     public void on(HolidayAdded e) {
+         change(e.sheetId(), e.user(), "HOLIDAY_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " date=" + e.date());
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crew.java b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+new file mode 100644
+index 000000000..ed77db4fb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.crew;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A crew on a sheet: a name, on the sheet at most once, and its lead, a person of the sheet. */
++@Entity
++@Table(name = "crew")
++public class Crew {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "name", nullable = false)
++    private String name;
++
++    @Column(name = "lead_person_id", nullable = false)
++    private Long leadId;
++
++    protected Crew() {
++    }
++
++    public Crew(String sheetId, String name, Long leadId) {
++        this.sheetId = sheetId;
++        this.name = name;
++        this.leadId = leadId;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public Long getLeadId() {
++        return leadId;
++    }
++
++    public void setLeadId(Long leadId) {
++        this.leadId = leadId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewAdded.java b/src/main/java/net/officefloor/hq/app/crew/CrewAdded.java
+new file mode 100644
+index 000000000..5ec923ec8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewAdded.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.crew;
++
++/** A crew was added to a sheet with its lead ({@code CREW_ADDED}). */
++public record CrewAdded(String sheetId, String user, String name, String lead) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewController.java b/src/main/java/net/officefloor/hq/app/crew/CrewController.java
+new file mode 100644
+index 000000000..5e6d106b8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewController.java
+@@ -0,0 +1,77 @@
++package net.officefloor.hq.app.crew;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The crews on a sheet and their members. The signed-in user's name comes in the {@code X-User} header. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/crews")
++@Validated
++public class CrewController {
++
++    /** A crew to add: a name (blank is refused) and its lead, a person of the sheet. */
++    public record CrewForm(@Size(max = 1000) String name, Long leadId) {
++    }
++
++    /** A person of the sheet to add to the named crew. */
++    public record MemberForm(@NotBlank @Size(max = 1000) String crew, Long personId) {
++    }
++
++    public record Refusal(String message) {
++    }
++
++    private final Crews crews;
++
++    public CrewController(Crews crews) {
++        this.crews = crews;
++    }
++
++    @GetMapping
++    public List<Crews.Shown> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return crews.list(sheetId.trim());
++    }
++
++    /** Add a crew; answers with every crew on the sheet. */
++    @PostMapping
++    public List<Crews.Shown> add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody CrewForm form) {
++        String sheet = sheetId.trim();
++        crews.add(sheet, user.trim(), form.name(), form.leadId());
++        return list(sheet);
++    }
++
++    /** Add a member to a crew; answers with every crew on the sheet. */
++    @PostMapping("/members")
++    public List<Crews.Shown> addMember(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody MemberForm form) {
++        String sheet = sheetId.trim();
++        crews.addMember(sheet, user.trim(), form.crew(), form.personId());
++        return list(sheet);
++    }
++
++    @ExceptionHandler(CrewRefused.class)
++    public ResponseEntity<Refusal> refused(CrewRefused e) {
++        return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));
++    }
++
++    /** Another user added the same crew, or the same member, at the same moment: this one is refused. */
++    @ExceptionHandler(DataIntegrityViolationException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public void taken() {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewMember.java b/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
+new file mode 100644
+index 000000000..c44850d2e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.crew;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A person in a crew, at most once, and never the crew's lead. */
++@Entity
++@Table(name = "crew_member")
++public class CrewMember {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "crew_id", nullable = false)
++    private Long crewId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    protected CrewMember() {
++    }
++
++    public CrewMember(Long crewId, Long personId) {
++        this.crewId = crewId;
++        this.personId = personId;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getCrewId() {
++        return crewId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public void setPersonId(Long personId) {
++        this.personId = personId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewMemberAdded.java b/src/main/java/net/officefloor/hq/app/crew/CrewMemberAdded.java
+new file mode 100644
+index 000000000..4c94c1307
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewMemberAdded.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.crew;
++
++/** A person was added to a crew ({@code CREW_MEMBER_ADDED}). */
++public record CrewMemberAdded(String sheetId, String user, String crew, String name) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewMemberRepository.java b/src/main/java/net/officefloor/hq/app/crew/CrewMemberRepository.java
+new file mode 100644
+index 000000000..bdb3cead1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewMemberRepository.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.crew;
++
++import java.util.Collection;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface CrewMemberRepository extends JpaRepository<CrewMember, Long> {
++
++    List<CrewMember> findByCrewIdInOrderByIdAsc(Collection<Long> crewIds);
++
++    List<CrewMember> findByCrewId(Long crewId);
++
++    List<CrewMember> findByPersonId(Long personId);
++
++    boolean existsByCrewIdAndPersonId(Long crewId, Long personId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewRefused.java b/src/main/java/net/officefloor/hq/app/crew/CrewRefused.java
+new file mode 100644
+index 000000000..7d50b2bad
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewRefused.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.crew;
++
++/** A crew, or a member of one, was refused: nothing was written. */
++public class CrewRefused extends RuntimeException {
++
++    public CrewRefused(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewRepository.java b/src/main/java/net/officefloor/hq/app/crew/CrewRepository.java
+new file mode 100644
+index 000000000..b93eab46d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewRepository.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.crew;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface CrewRepository extends JpaRepository<Crew, Long> {
++
++    List<Crew> findBySheetIdOrderByNameAsc(String sheetId);
++
++    List<Crew> findByLeadId(Long leadId);
++
++    Optional<Crew> findBySheetIdAndName(String sheetId, String name);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crews.java b/src/main/java/net/officefloor/hq/app/crew/Crews.java
+new file mode 100644
+index 000000000..222c4efb8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/Crews.java
+@@ -0,0 +1,160 @@
++package net.officefloor.hq.app.crew;
++
++import java.util.List;
++import java.util.Map;
++import java.util.function.Function;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.ApplicationEventPublisher;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The crews on a sheet, sorted by name: each with a unique, non-blank name and a lead, a person of the sheet, and
++ * its members, people of the sheet each in the crew at most once; the lead is never a member of their own crew.
++ */
++@Service
++public class Crews {
++
++    /** The longest a crew's name may be. */
++    static final int NAME_MAX = 100;
++
++    /** A person as shown in a crew. */
++    public record Who(Long personId, String name) {
++    }
++
++    /** A crew as shown: its lead and its members in the order they were added. */
++    public record Shown(String name, Who lead, List<Who> members) {
++    }
++
++    private final CrewRepository crews;
++    private final CrewMemberRepository members;
++    private final PersonRepository people;
++    private final SheetService sheets;
++    private final SheetRepository sheetRows;
++    private final ApplicationEventPublisher events;
++
++    public Crews(CrewRepository crews, CrewMemberRepository members, PersonRepository people, SheetService sheets,
++            SheetRepository sheetRows, ApplicationEventPublisher events) {
++        this.crews = crews;
++        this.members = members;
++        this.people = people;
++        this.sheets = sheets;
++        this.sheetRows = sheetRows;
++        this.events = events;
++    }
++
++    /** The crews on the sheet, sorted by name, each with its lead and members. */
++    @Transactional(readOnly = true)
++    public List<Shown> list(String sheetId) {
++        List<Crew> all = crews.findBySheetIdOrderByNameAsc(sheetId);
++        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .collect(Collectors.toMap(Person::getId, Function.identity()));
++        Map<Long, List<CrewMember>> byCrew = members.findByCrewIdInOrderByIdAsc(all.stream().map(Crew::getId).toList())
++                .stream().collect(Collectors.groupingBy(CrewMember::getCrewId));
++        return all.stream().map(c -> new Shown(c.getName(), who(byId.get(c.getLeadId())),
++                byCrew.getOrDefault(c.getId(), List.of()).stream().map(m -> byId.get(m.getPersonId()))
++                        .filter(p -> p != null).map(Crews::who).toList()))
++                .toList();
++    }
++
++    private static Who who(Person p) {
++        return p == null ? null : new Who(p.getId(), p.getName());
++    }
++
++    /** Add a crew under its name, trimmed, led by a person of the sheet; refused when the name is blank, too long or already a crew's. */
++    @Transactional
++    public void add(String sheetId, String user, String text, Long leadId) {
++        String name = text == null ? "" : text.strip();
++        if (name.isEmpty()) {
++            throw new CrewRefused("Enter a name for the crew.");
++        }
++        if (name.length() > NAME_MAX) {
++            throw new CrewRefused("The crew's name is too long.");
++        }
++        if (leadId == null) {
++            throw new CrewRefused("Choose a lead for the crew.");
++        }
++        sheets.load(sheetId, user);
++        sheetRows.lockById(sheetId);
++        Person lead = people.findByIdAndSheetId(leadId, sheetId)
++                .orElseThrow(() -> new CrewRefused("Choose a lead on this sheet."));
++        if (crews.findBySheetIdAndName(sheetId, name).isPresent()) {
++            throw new CrewRefused("There is already a crew named " + name + ".");
++        }
++        crews.saveAndFlush(new Crew(sheetId, name, lead.getId()));
++        events.publishEvent(new CrewAdded(sheetId, user, name, lead.getName()));
++    }
++
++    /** Add a person of the sheet to the named crew; refused when they lead it or are in it already. */
++    @Transactional
++    public void addMember(String sheetId, String user, String crewName, Long personId) {
++        if (personId == null) {
++            throw new CrewRefused("Choose a person.");
++        }
++        sheetRows.lockById(sheetId);
++        Crew crew = crews.findBySheetIdAndName(sheetId, crewName == null ? "" : crewName.strip())
++                .orElseThrow(() -> new CrewRefused("No such crew on this sheet."));
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new CrewRefused("Choose a person on this sheet."));
++        if (crew.getLeadId().equals(person.getId())) {
++            throw new CrewRefused(person.getName() + " leads the crew.");
++        }
++        if (members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
++            throw new CrewRefused(person.getName() + " is in the crew already.");
++        }
++        members.saveAndFlush(new CrewMember(crew.getId(), person.getId()));
++        events.publishEvent(new CrewMemberAdded(sheetId, user, crew.getName(), person.getName()));
++    }
++
++    /**
++     * The merged person's crews move to the other: crews they led are led by the other, their memberships become the
++     * other's, a membership dropped where the other leads that crew or is in it already.
++     */
++    @Transactional
++    public void merge(long personId, long intoId) {
++        for (Crew crew : crews.findByLeadId(personId)) {
++            crew.setLeadId(intoId);
++            members.deleteAll(members.findByCrewId(crew.getId()).stream()
++                    .filter(m -> m.getPersonId().equals(intoId)).toList());
++        }
++        crews.flush();
++        members.flush();
++        for (CrewMember m : members.findByPersonId(personId)) {
++            Crew crew = crews.findById(m.getCrewId()).orElseThrow();
++            if (crew.getLeadId().equals(intoId) || members.existsByCrewIdAndPersonId(crew.getId(), intoId)) {
++                members.delete(m);
++            } else {
++                m.setPersonId(intoId);
++            }
++            members.flush();
++        }
++    }
++
++    /** The person leaves the sheet: out of every crew, and the crews they led are gone with their members. */
++    @Transactional
++    public void remove(long personId) {
++        members.deleteAll(members.findByPersonId(personId));
++        members.flush();
++        for (Crew crew : crews.findByLeadId(personId)) {
++            members.deleteAll(members.findByCrewId(crew.getId()));
++            members.flush();
++            crews.delete(crew);
++        }
++        crews.flush();
++    }
++
++    /** Copy the sheet's crews to the clone, its people mapped to theirs by id. */
++    @Transactional
++    public void cloneTo(String sheetId, String toSheet, Map<Long, Long> personIds) {
++        for (Crew crew : crews.findBySheetIdOrderByNameAsc(sheetId)) {
++            Crew copy = crews.save(new Crew(toSheet, crew.getName(), personIds.get(crew.getLeadId())));
++            for (CrewMember m : members.findByCrewId(crew.getId())) {
++                members.save(new CrewMember(copy.getId(), personIds.get(m.getPersonId())));
++            }
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index 48584eb3b..52d4ac7dc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -13,6 +13,7 @@ import net.officefloor.hq.app.access.AccessService;
+ import net.officefloor.hq.app.access.Role;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.crew.Crews;
+ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.rollup.Rollup;
+@@ -45,6 +46,7 @@ public class PersonMergeService {
+     private final ClaimRepository claims;
+     private final StatementService statements;
+     private final PoolMemberRepository poolMembers;
++    private final Crews crews;
+     private final AccessService access;
+     private final SheetRepository sheetRows;
+     private final Rollup rollup;
+@@ -52,13 +54,14 @@ public class PersonMergeService {
+ 
+     public PersonMergeService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
+             ClaimRepository claims, StatementService statements, PoolMemberRepository poolMembers,
+-            AccessService access, SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
++            Crews crews, AccessService access, SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
+         this.people = people;
+         this.patrons = patrons;
+         this.watches = watches;
+         this.claims = claims;
+         this.statements = statements;
+         this.poolMembers = poolMembers;
++        this.crews = crews;
+         this.access = access;
+         this.sheetRows = sheetRows;
+         this.rollup = rollup;
+@@ -99,6 +102,7 @@ public class PersonMergeService {
+ 
+         mergePatrons(sheetId, personId, intoId);
+         mergePools(personId, intoId);
++        crews.merge(personId, intoId);
+         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+         statements.carry(sheetId, personId, sheetId, intoId);
+         watches.flush();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index c255a07cd..80c2338f1 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -19,6 +19,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.Tags;
++import net.officefloor.hq.app.crew.Crews;
+ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -54,6 +55,7 @@ public class PersonTransferService {
+     private final Tags tags;
+     private final StatementService statements;
+     private final PoolMemberRepository poolMembers;
++    private final Crews crews;
+     private final AccessService access;
+     private final SheetService sheets;
+     private final SheetRepository sheetRows;
+@@ -62,7 +64,7 @@ public class PersonTransferService {
+ 
+     public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
+             ClaimRepository claims, ClaimService claimService, Tags tags, StatementService statements,
+-            PoolMemberRepository poolMembers, AccessService access, SheetService sheets, SheetRepository sheetRows,
++            PoolMemberRepository poolMembers, Crews crews, AccessService access, SheetService sheets, SheetRepository sheetRows,
+             Rollup rollup, ApplicationEventPublisher events) {
+         this.people = people;
+         this.patrons = patrons;
+@@ -72,6 +74,7 @@ public class PersonTransferService {
+         this.tags = tags;
+         this.statements = statements;
+         this.poolMembers = poolMembers;
++        this.crews = crews;
+         this.access = access;
+         this.sheets = sheets;
+         this.sheetRows = sheetRows;
+@@ -187,6 +190,7 @@ public class PersonTransferService {
+         patrons.deleteAll(patrons.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+         patrons.deleteAll(patrons.findBySheetIdAndPatronIdOrderByIdAsc(sheetId, personId));
+         poolMembers.deleteAll(poolMembers.findByPersonId(personId));
++        crews.remove(personId);
+         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+         statements.carry(sheetId, personId, toSheet, arrived.getId());
+         claims.deleteAll(leaving);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 26555a38c..a9a467357 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -30,6 +30,7 @@ import net.officefloor.hq.app.person.Patron;
+ import net.officefloor.hq.app.person.PatronRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.crew.Crews;
+ import net.officefloor.hq.app.pool.Pool;
+ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.pool.PoolMemberRepository;
+@@ -46,7 +47,7 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * Cloning a sheet to another id. Only a steward of this sheet may, and only to an id never used; anything
+  * else is refused. The clone gets this sheet's today, settings, roles, rates, holidays, void reasons,
+- * templates and tags, its people (grades, terms, contacts, aliases, holds, retirements, patrons), pools,
++ * templates and tags, its people (grades, terms, contacts, aliases, holds, retirements, patrons), pools, crews,
+  * periods (all open) and claims (status, frozen figures, dates, notes, tags, logs and comments). Each claim
+  * that had a number takes the clone's next one, in the order the claims were opened (by the sheet's today
+  * when each was opened, then by the order they were added, person by person in list order). Statements are
+@@ -67,6 +68,7 @@ public class SheetCloneService {
+     private final PatronRepository patrons;
+     private final PoolRepository pools;
+     private final PoolMemberRepository poolMembers;
++    private final Crews crews;
+     private final PeriodRepository periods;
+     private final ClaimRepository claims;
+     private final ClaimService claimService;
+@@ -77,7 +79,7 @@ public class SheetCloneService {
+     public SheetCloneService(SheetRepository sheetRows, SheetSettingRepository settings, SheetRoleRepository roles,
+             RateRepository rates, HolidayRepository holidays, VoidReasonRepository voidReasons,
+             ClaimTemplateRepository templates, SheetTagRepository tags, PersonRepository people,
+-            PatronRepository patrons, PoolRepository pools, PoolMemberRepository poolMembers,
++            PatronRepository patrons, PoolRepository pools, PoolMemberRepository poolMembers, Crews crews,
+             PeriodRepository periods, ClaimRepository claims, ClaimService claimService, AccessService access,
+             Rollup rollup, ApplicationEventPublisher events) {
+         this.sheetRows = sheetRows;
+@@ -92,6 +94,7 @@ public class SheetCloneService {
+         this.patrons = patrons;
+         this.pools = pools;
+         this.poolMembers = poolMembers;
++        this.crews = crews;
+         this.periods = periods;
+         this.claims = claims;
+         this.claimService = claimService;
+@@ -157,6 +160,7 @@ public class SheetCloneService {
+                 poolMembers.save(copy.dated(m.getFrom(), m.getTo()));
+             }
+         }
++        crews.cloneTo(sheetId, toSheet, personIds);
+         sheetRows.flush();
+ 
+         // person by person in list order, each one's claims oldest listed first, so they list as they do here
+diff --git a/src/main/resources/db/migration/V86__crew.sql b/src/main/resources/db/migration/V86__crew.sql
+new file mode 100644
+index 000000000..9c043e525
+--- /dev/null
++++ b/src/main/resources/db/migration/V86__crew.sql
+@@ -0,0 +1,15 @@
++-- The crews on a sheet, each name once, each led by a person of the sheet; and their members: people of the
++-- sheet, each in a crew at most once and never its lead.
++CREATE TABLE crew (
++    id             BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id       VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    name           VARCHAR(100) NOT NULL,
++    lead_person_id BIGINT NOT NULL REFERENCES person (id),
++    CONSTRAINT crew_unique UNIQUE (sheet_id, name)
++);
++CREATE TABLE crew_member (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    crew_id   BIGINT NOT NULL REFERENCES crew (id),
++    person_id BIGINT NOT NULL REFERENCES person (id),
++    CONSTRAINT crew_member_unique UNIQUE (crew_id, person_id)
++);
