@@ -53,7 +53,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note == null ? "" : note));
-        events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on));
+        events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null));
         return personId;
     }
 
@@ -68,7 +68,7 @@ public class ClaimService {
         claims.flush();
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
         events.publishEvent(new ClaimChanged("CLAIM_EDITED", sheetId, user, person, claim.getAmount(),
-                claim.getDate()));
+                claim.getDate(), claim.getNumber()));
         return claim.getPersonId();
     }
 
@@ -84,6 +84,13 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        Integer number = claim.getNumber();
+        if (next == ClaimStatus.OPEN) {
+            number = sheets.nextClaimNumber(sheetId);
+            claim.setNumber(number);
+        } else if (next == ClaimStatus.VOID) {
+            claim.setNumber(null);
+        }
         claim.setStatus(next);
         claims.flush();
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
@@ -93,7 +100,7 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate()));
+        events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number));
         return claim.getPersonId();
     }
 }

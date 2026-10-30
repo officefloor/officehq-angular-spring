@@ -16,6 +16,8 @@ export interface Claim {
   /** The amount at the rate for the person's grade; null when the grade has no rate. */
   due: string | null;
   status: ClaimStatus;
+  /** The number the claim got when opened, the next on the sheet; null while a draft or once voided. */
+  number: number | null;
 }
 
 export interface PersonWithClaims {
@@ -46,6 +48,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ c.due ?? 'n/a' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+          <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           @for (a of actions; track a.action) {
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>

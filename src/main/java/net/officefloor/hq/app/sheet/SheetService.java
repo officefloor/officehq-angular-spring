@@ -35,6 +35,18 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));
     }
 
+    /**
+     * The next claim number on the sheet: 1 for the first, then 2, and so on. Two users taking one
+     * at the same moment wait on each other, so no number is given twice or skipped.
+     */
+    @Transactional
+    public int nextClaimNumber(String id) {
+        if (sheets.bumpClaimNumber(id) != 1) {
+            throw new IllegalStateException("No such sheet " + id);
+        }
+        return sheets.lastClaimNumber(id);
+    }
+
     /** Change the sheet's today, starting the sheet if it was never loaded. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {

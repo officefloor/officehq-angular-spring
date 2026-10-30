@@ -36,13 +36,15 @@ public class PersonController {
 
     /**
      * A claim as shown: its amount with two decimals, its date, its note, its due: the amount at
-     * the rate for its person's grade (null when the grade has no rate), and its status.
+     * the rate for its person's grade (null when the grade has no rate), its status, and its number (null while it has none).
      */
-    public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status) {
+    public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
+            Integer number) {
 
         static ClaimView of(Claim claim, BigDecimal pct) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
-                    money(RateService.due(claim.getAmount(), pct)), claim.getStatus());
+                    money(RateService.due(claim.getAmount(), pct)), claim.getStatus(),
+                    claim.getNumber());
         }
     }
 

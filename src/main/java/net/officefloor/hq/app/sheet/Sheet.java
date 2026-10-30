@@ -21,6 +21,10 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
+    /** The number given to the last claim opened on the sheet; 0 before any is opened. */
+    @Column(name = "last_claim_number", nullable = false)
+    private int lastClaimNumber;
+
     protected Sheet() {
     }
 
