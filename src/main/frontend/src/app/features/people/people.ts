@@ -207,6 +207,23 @@ function csvField(value: string): string {
           <p role="alert" data-testid="paste-error">{{ pasteError() }}</p>
         }
       </form>
+      <form (submit)="importPeople($event)" aria-label="Import people">
+        <label for="import-people">Import people, a line each: name,grade,terms,contact (terms and contact may be left out)</label>
+        <textarea
+          id="import-people"
+          data-testid="import-people"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set('')"
+        ></textarea>
+        <button type="submit" data-testid="import-submit">Import people</button>
+        @if (importAdded() !== null) {
+          <span>Added <strong data-testid="import-added">{{ importAdded() }}</strong></span>
+        }
+        @if (importError()) {
+          <p role="alert" data-testid="import-error">{{ importError() }}</p>
+        }
+      </form>
       <p>
         <input
           id="show-retired"
@@ -517,6 +534,12 @@ export class People {
   protected readonly pasteError = signal('');
   /** A paste still waiting for its answer: another press meanwhile is ignored. */
   private pasting = false;
+  protected readonly importText = signal('');
+  /** How many people the last import added; null while it runs. */
+  protected readonly importAdded = signal<number | null>(null);
+  protected readonly importError = signal('');
+  /** An import still waiting for its answer: another press meanwhile is ignored. */
+  private importing = false;
   /** The refusal of the last action taken on a person's row, shown on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   /** The refusal of the last patron named on a person's row, shown on that row. */
@@ -664,6 +687,9 @@ export class People {
       this.pasteText.set('');
       this.pasteAdded.set(null);
       this.pasteError.set('');
+      this.importText.set('');
+      this.importAdded.set(null);
+      this.importError.set('');
       if (sheet) void this.reload(sheet);
     });
   }
@@ -1022,6 +1048,39 @@ export class People {
       this.pasteError.set(refusal ?? 'Could not add the pasted claims.');
     } finally {
       this.pasting = false;
+    }
+  }
+
+  /** Add a person per pasted line, in order, each as the person form would; one refused line adds none. */
+  protected async importPeople(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.importing) return;
+    this.importAdded.set(null);
+    this.importError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.importing = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ added: number }>(`/api/sheets/${encodeURIComponent(sheet)}/people/import`, { text }, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      await this.reload(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.importText.set('');
+      this.importAdded.set(result.added);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.importError.set(refusal ?? 'Could not import the people.');
+    } finally {
+      this.importing = false;
     }
   }
 

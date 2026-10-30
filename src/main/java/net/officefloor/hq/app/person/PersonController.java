@@ -183,7 +183,16 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
     }
 
+    /** Pasted lines of name,grade,terms,contact, one person per line; terms and contact may be left out. */
+    public record ImportForm(@NotNull @Size(max = 100_000) String text) {
+    }
+
+    /** How many people an import added. */
+    public record ImportResult(int added) {
+    }
+
     private final PersonService service;
+    private final PersonImportService imports;
     private final BulkGradeService bulkGrade;
     private final ClaimService claims;
     private final RateService rates;
@@ -193,8 +202,9 @@ public class PersonController {
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
             RateService rates, StatementService statements, PersonMergeService merges,
-            PersonTransferService transfers) {
+            PersonTransferService transfers, PersonImportService imports) {
         this.service = service;
+        this.imports = imports;
         this.transfers = transfers;
         this.merges = merges;
         this.bulkGrade = bulkGrade;
@@ -224,6 +234,13 @@ public class PersonController {
         return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays(),
                 form.contactKey()), List.of(),
                 rates.table(sheet), Statements.NONE, List.of(), false);
+    }
+
+    /** Add a person per pasted line, in order; one refused line adds none. */
+    @PostMapping("/import")
+    public ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody ImportForm form) {
+        return new ImportResult(imports.importPeople(sheetId.trim(), user.trim(), form.text()));
     }
 
     @PutMapping("/{personId}")
