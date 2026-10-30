@@ -151,6 +151,8 @@ export interface PersonWithClaims {
   openTotal: string;
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
+  /** Whether their name or an alias is another's on a sheet of the sheet's tree; every edit is refused until it is not. */
+  clashing: boolean;
   /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
    * statement, then count in no live total. */
   retiredNow: boolean;

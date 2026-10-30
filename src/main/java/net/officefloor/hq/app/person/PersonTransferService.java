@@ -5,8 +5,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.access.Role;
@@ -95,8 +98,16 @@ public class PersonTransferService {
         }
         List<String> names = new ArrayList<>(person.getAliases());
         names.add(person.getName());
+        // held to the other sheet's tree, which may hold the person themselves
+        Set<String> taken = new HashSet<>();
+        for (Person other : people.findBySheetIdIn(sheets.tree(toSheet))) {
+            if (!other.getId().equals(person.getId())) {
+                taken.add(other.getName().trim().toLowerCase(Locale.ROOT));
+                other.getAliases().forEach(a -> taken.add(a.trim().toLowerCase(Locale.ROOT)));
+            }
+        }
         for (String name : names) {
-            if (people.existsBySheetIdAndNameIgnoreCase(toSheet, name) || people.existsAlias(toSheet, name, null)) {
+            if (taken.contains(name.trim().toLowerCase(Locale.ROOT))) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Name already in use on the other sheet");
             }
         }

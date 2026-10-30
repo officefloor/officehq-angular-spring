@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -27,6 +28,8 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("select count(p) > 0 from Person p join p.aliases a where p.sheetId = :sheetId"
             + " and lower(a) = lower(:alias) and (:id is null or p.id <> :id)")
     boolean existsAlias(@Param("sheetId") String sheetId, @Param("alias") String alias, @Param("id") Long id);
+
+    List<Person> findBySheetIdIn(Collection<String> sheetIds);
 
     boolean existsBySheetIdAndContact(String sheetId, String contact);
 

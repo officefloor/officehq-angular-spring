@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
+import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
@@ -93,8 +94,9 @@ public class ClaimTemplateController {
             @Valid @RequestBody FromTemplateForm form) {
         String sheet = sheetId.trim();
         long id = templates.addClaim(sheet, user.trim(), personId, form.name());
-        return PersonView.of(people.get(sheet, id), claims.forPerson(sheet, id), rates.table(sheet),
-                statements.forPerson(sheet, id), people.patrons(sheet, id));
+        Person person = people.get(sheet, id);
+        return PersonView.of(person, claims.forPerson(sheet, id), rates.table(sheet),
+                statements.forPerson(sheet, id), people.patrons(sheet, id), people.clashing(sheet, person));
     }
 
     @ExceptionHandler(ClaimTemplateRefused.class)

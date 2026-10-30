@@ -80,6 +80,19 @@ public class SheetService {
         return seen.stream().skip(1).toList();
     }
 
+    /**
+     * The ids of the sheets of the sheet's tree, among the sheets that exist: the sheet itself, its ancestors
+     * (its parent, the parent's parent, and so on) and its descendants, each once.
+     */
+    public List<String> tree(String id) {
+        Set<String> seen = new LinkedHashSet<>(List.of(id));
+        for (String up = settings(id).parent(); up != null && sheets.existsById(up) && seen.add(up);
+                up = settings(up).parent()) {
+        }
+        seen.addAll(descendants(id));
+        return List.copyOf(seen);
+    }
+
     /** The sheet's policy date as set; null when blank (the sheet's today is the policy date then). */
     public LocalDate policyDate(String id) {
         return sheets.findById(id).map(Sheet::getPolicyDate).orElse(null);

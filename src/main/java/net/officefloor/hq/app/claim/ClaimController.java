@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
+import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
@@ -344,8 +345,10 @@ public class ClaimController {
     }
 
     private PersonView view(String sheetId, long personId) {
-        return PersonView.of(people.get(sheetId, personId), claims.forPerson(sheetId, personId),
-                rates.table(sheetId), statements.forPerson(sheetId, personId), people.patrons(sheetId, personId));
+        Person person = people.get(sheetId, personId);
+        return PersonView.of(person, claims.forPerson(sheetId, personId),
+                rates.table(sheetId), statements.forPerson(sheetId, personId), people.patrons(sheetId, personId),
+                people.clashing(sheetId, person));
     }
 
     /** A claim due by a date inside a closed period: refused, nothing changed. */

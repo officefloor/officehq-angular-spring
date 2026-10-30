@@ -1,10 +1,14 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -54,7 +58,7 @@ public class PersonService {
         sheets.load(sheetId, user);
         sheetRows.lockById(sheetId);
         String trimmed = name.trim();
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed) || people.existsAlias(sheetId, trimmed, null)) {
+        if (inUse(sheetId, trimmed, null)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
@@ -88,8 +92,8 @@ public class PersonService {
             throw edited();
         }
         String trimmed = name.trim();
-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)
-                || people.existsAlias(sheetId, trimmed, personId)) {
+        if (inUse(sheetId, trimmed, personId)
+                || person.getAliases().stream().anyMatch(alias -> inUse(sheetId, alias, personId))) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
@@ -164,7 +168,8 @@ public class PersonService {
 
     /**
      * Give the person an alias, stored trimmed. A blank alias, or one equal (without regard to case) to any
-     * name or alias on the sheet, is refused. Takes turns with other changes on the sheet.
+     * name or alias on a sheet of the sheet's tree, is
+     * refused. Takes turns with other changes on the sheet.
      */
     @Transactional
     public Person addAlias(String sheetId, String user, long personId, String alias) {
@@ -174,13 +179,66 @@ public class PersonService {
         if (trimmed.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give an alias");
         }
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed) || people.existsAlias(sheetId, trimmed, null)) {
+        if (inUse(sheetId, trimmed, null)) {
             throw nameInUse();
         }
         person.addAlias(trimmed);
         people.flush();
         events.publishEvent(new PersonAliasAdded(sheetId, user, person.getName(), trimmed));
         return person;
+    }
+
+    /**
+     * Whether a person on a sheet of the sheet's tree (see {@link SheetService#tree}), other than the one with
+     * the id (none: any), has the name or alias, compared without regard to case.
+     */
+    @Transactional(readOnly = true)
+    public boolean inUse(String sheetId, String name, Long exceptId) {
+        String key = key(name);
+        return people.findBySheetIdIn(sheets.tree(sheetId)).stream()
+                .filter(p -> !p.getId().equals(exceptId))
+                .anyMatch(p -> names(p).contains(key));
+    }
+
+    /**
+     * The ids of the people on the sheet who clash: whose name or an alias another person on a sheet of the
+     * sheet's tree also has, compared without regard to case. People who clashed before names became unique
+     * across a tree keep their names; each edit of them is refused until they no longer clash.
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> clashing(String sheetId) {
+        Map<String, Set<Long>> holders = new HashMap<>();
+        for (Person p : people.findBySheetIdIn(sheets.tree(sheetId))) {
+            for (String name : names(p)) {
+                holders.computeIfAbsent(name, n -> new HashSet<>()).add(p.getId());
+            }
+        }
+        Set<Long> clashing = new HashSet<>();
+        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (names(p).stream().anyMatch(n -> holders.getOrDefault(n, Set.of()).stream()
+                    .anyMatch(id -> !id.equals(p.getId())))) {
+                clashing.add(p.getId());
+            }
+        }
+        return clashing;
+    }
+
+    /** Whether the person clashes (see {@link #clashing(String)}). */
+    @Transactional(readOnly = true)
+    public boolean clashing(String sheetId, Person person) {
+        return inUse(sheetId, person.getName(), person.getId())
+                || person.getAliases().stream().anyMatch(alias -> inUse(sheetId, alias, person.getId()));
+    }
+
+    private static Set<String> names(Person person) {
+        Set<String> names = new HashSet<>();
+        names.add(key(person.getName()));
+        person.getAliases().forEach(alias -> names.add(key(alias)));
+        return names;
+    }
+
+    private static String key(String name) {
+        return name.trim().toLowerCase(Locale.ROOT);
     }
 
     /** The ids of each person's patrons on the sheet, by person id, in the order they were named. */

@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimComment;
 import net.officefloor.hq.app.claim.ClaimLogLine;
@@ -107,7 +108,8 @@ public class PersonController {
      * and aged0to30, aged31to60 and aged61: the due of their OPEN and PENDING claims that count by the claim's age on the
      * sheet's today (see {@link Dues#aged}), and settledTotal and openTotal: the parts of their uncapped due-total
      * from their SETTLED claims and from their OPEN and PENDING claims (see {@link Dues#settledTotal} and
-     * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared.
+     * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
+     * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}).
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<ClaimView> claims,
@@ -115,11 +117,11 @@ public class PersonController {
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
-            List<String> aliases) {
+            List<String> aliases, boolean clashing) {
 
-        /** The person as shown, given the sheet's rates. */
+        /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
-                List<Long> patrons) {
+                List<Long> patrons, boolean clashing) {
             Grades grade = person::gradeOn;
             Holds held = person.leaves();
             BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held, rates.today())).map(Claim::getAmount)
@@ -139,7 +141,7 @@ public class PersonController {
                     money(Dues.aged(grade, claims, rates, held, 31, 60)),
                     money(Dues.aged(grade, claims, rates, held, 61, Long.MAX_VALUE)),
                     money(Dues.settledTotal(grade, claims, rates, held)),
-                    money(Dues.openTotal(grade, claims, rates, held)), person.getAliases());
+                    money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing);
         }
     }
 
@@ -208,10 +210,11 @@ public class PersonController {
         RateTable table = rates.table(sheet);
         Map<Long, Statements> stated = statements.bySheet(sheet);
         Map<Long, List<Long>> patrons = service.patronsBySheet(sheet);
+        Set<Long> clashing = service.clashing(sheet);
         return service.list(sheet).stream()
                 .map(p -> PersonView.of(p, bySheet.getOrDefault(p.getId(), List.of()), table,
                         stated.getOrDefault(p.getId(), Statements.NONE),
-                        patrons.getOrDefault(p.getId(), List.of()))).toList();
+                        patrons.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()))).toList();
     }
 
     @PostMapping
@@ -220,7 +223,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays(),
                 form.contactKey()), List.of(),
-                rates.table(sheet), Statements.NONE, List.of());
+                rates.table(sheet), Statements.NONE, List.of(), false);
     }
 
     @PutMapping("/{personId}")
@@ -343,7 +346,8 @@ public class PersonController {
     private PersonView view(String sheet, Person person) {
         long personId = person.getId();
         return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
-                statements.forPerson(sheet, personId), service.patrons(sheet, personId));
+                statements.forPerson(sheet, personId), service.patrons(sheet, personId),
+                service.clashing(sheet, person));
     }
 
     /** Another save took the name or contact first: the unique name or contact on the sheet refuses this one. */
