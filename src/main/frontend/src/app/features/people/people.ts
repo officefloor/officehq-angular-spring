@@ -16,6 +16,11 @@ function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
+/** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
 // The people on the active sheet, in the order they were added, each with their claims, and the
 // one form that adds a person or, once a person's editor is opened, edits them. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
@@ -102,6 +107,9 @@ function cents(amount: string): number {
           (change)="showRetired.set(checked($event))"
         />
         <label for="show-retired">Show retired</label>
+      </p>
+      <p>
+        <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
       </p>
       <table>
         <thead>
@@ -506,6 +514,28 @@ export class People {
     } finally {
       this.holding = false;
     }
+  }
+
+  /** Download everyone on the sheet, retired people included, as the store holds them now, as a CSV file. */
+  protected async exportCsv(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const loads = this.session.loads();
+    const people = await firstValueFrom(
+      this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`),
+    );
+    if (this.session.sheet() !== sheet || this.session.loads() !== loads) return;
+    this.people.set(people);
+    const lines = [
+      'name,grade,retired-from,due-total',
+      ...people.map((p) => [p.name, p.grade, p.retiredFrom ?? '', p.dueTotal ?? 'n/a'].map(csvField).join(',')),
+    ];
+    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `people-${sheet}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   /** After a refused stale edit: show the person as the store holds them now, in the row and the form. */
