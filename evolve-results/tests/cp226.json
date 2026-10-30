@@ -1,0 +1,66 @@
+{
+  "checkpoint": 226,
+  "checkpoint_id": "cp226_preview-date",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "9df5fe3ad0e32201594334772b45dfa7eb64c39e",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T16:11:16",
+  "seconds": 209,
+  "build_log_file": "cp226.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp226_preview-date.spec.ts::preview date": true,
+      "cp226_preview-date.spec.ts::preview date scenario 1": true,
+      "cp226_preview-date.spec.ts::preview date scenario 2": true,
+      "cp226_preview-date.spec.ts::preview date scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp226_preview-date.spec.ts::preview date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13291,
+        "failure": ""
+      },
+      {
+        "test_id": "cp226_preview-date.spec.ts::preview date scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26427,
+        "failure": ""
+      },
+      {
+        "test_id": "cp226_preview-date.spec.ts::preview date scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109578,
+        "failure": ""
+      },
+      {
+        "test_id": "cp226_preview-date.spec.ts::preview date scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15369,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

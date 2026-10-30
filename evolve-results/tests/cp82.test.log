@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp82-zqrv4fnf
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp82_settled-and-open-totals.spec.ts:6:7 › settled and open totals › settled and open totals (6.4s)
+  ✓  2 [chromium] › cp82_settled-and-open-totals.spec.ts:113:7 › settled and open totals › settled and open totals scenario 1 (10.5s)
+  ✓  3 [chromium] › cp82_settled-and-open-totals.spec.ts:506:7 › settled and open totals › settled and open totals scenario 2 (42.6s)
+  ✓  4 [chromium] › cp82_settled-and-open-totals.spec.ts:1017:7 › settled and open totals › settled and open totals scenario 3 (1.2m)
+
+  Slow test file: [chromium] › cp82_settled-and-open-totals.spec.ts (2.2m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (2.2m)

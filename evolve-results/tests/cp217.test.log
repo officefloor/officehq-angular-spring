@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp217-7z8z5gsc
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp217_shared-claims.spec.ts:6:7 › shared claims › shared claims (20.9s)
+  ✓  2 [chromium] › cp217_shared-claims.spec.ts:108:7 › shared claims › shared claims scenario 1 (58.1s)
+  ✓  3 [chromium] › cp217_shared-claims.spec.ts:765:7 › shared claims › shared claims scenario 2 (36.7s)
+  ✓  4 [chromium] › cp217_shared-claims.spec.ts:1261:7 › shared claims › shared claims scenario 3 (25.6s)
+
+  Slow test file: [chromium] › cp217_shared-claims.spec.ts (2.4m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (2.4m)

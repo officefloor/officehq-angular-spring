@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp56-0j8hyyh7
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp56_late-per-boundary.spec.ts:6:7 › late per boundary › late per boundary (7.5s)
+  ✓  2 [chromium] › cp56_late-per-boundary.spec.ts:84:7 › late per boundary › late per boundary scenario 1 (12.2s)
+  ✓  3 [chromium] › cp56_late-per-boundary.spec.ts:395:7 › late per boundary › late per boundary scenario 2 (11.9s)
+  ✓  4 [chromium] › cp56_late-per-boundary.spec.ts:674:7 › late per boundary › late per boundary scenario 3 (25.6s)
+
+  Slow test file: [chromium] › cp56_late-per-boundary.spec.ts (57.3s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (58.7s)

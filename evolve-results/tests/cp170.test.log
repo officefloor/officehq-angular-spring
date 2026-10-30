@@ -1,0 +1,2254 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp170-168q6w53
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit -15)
+
+Running 668 tests using 3 workers
+
+  ✓  3 [chromium] › cp01_signin-and-sheet.spec.ts:6:7 › signin and sheet › signin and sheet (5.0s)
+  ✓  1 [chromium] › cp02_sheet-today.spec.ts:6:7 › sheet today › sheet today (5.2s)
+  ✓  2 [chromium] › cp03_people.spec.ts:6:7 › people › people (13.6s)
+  ✓  4 [chromium] › cp04_name-uniqueness.spec.ts:6:7 › name uniqueness › name uniqueness (10.1s)
+  ✓  5 [chromium] › cp05_claims.spec.ts:6:7 › claims › claims (16.4s)
+  ✓  6 [chromium] › cp06_audit.spec.ts:6:7 › audit › audit (11.3s)
+  ✓  7 [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due (15.4s)
+  ✓  8 [chromium] › cp05_claims.spec.ts:34:7 › claims › claims scenario 1 (26.4s)
+  ✓  9 [chromium] › cp06_audit.spec.ts:29:7 › audit › audit scenario 1 (28.8s)
+  ✓  10 [chromium] › cp07_rates-and-due.spec.ts:74:7 › rates and due › rates and due scenario 1 (32.1s)
+  ✓  11 [chromium] › cp05_claims.spec.ts:103:7 › claims › claims scenario 2 (22.0s)
+  ✓  12 [chromium] › cp06_audit.spec.ts:132:7 › audit › audit scenario 2 (23.3s)
+  ✓  13 [chromium] › cp07_rates-and-due.spec.ts:227:7 › rates and due › rates and due scenario 2 (22.1s)
+  ✓  14 [chromium] › cp05_claims.spec.ts:172:7 › claims › claims scenario 3 (22.2s)
+  ✓  15 [chromium] › cp06_audit.spec.ts:238:7 › audit › audit scenario 3 (19.2s)
+  ✓  17 [chromium] › cp08_workflow.spec.ts:6:7 › workflow › workflow (9.8s)
+  ✓  16 [chromium] › cp07_rates-and-due.spec.ts:356:7 › rates and due › rates and due scenario 3 (21.5s)
+  ✓  18 [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering (10.0s)
+  ✓  21 [chromium] › cp10_settle-freezes-due.spec.ts:6:7 › settle freezes due › settle freezes due (8.0s)
+
+[gate attempt 1] no parseable Playwright JSON report (exit -15)
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 2, exit 1)
+
+Running 668 tests using 3 workers
+
+  ✓  1 [chromium] › cp02_sheet-today.spec.ts:6:7 › sheet today › sheet today (9.2s)
+  ✓  3 [chromium] › cp01_signin-and-sheet.spec.ts:6:7 › signin and sheet › signin and sheet (9.2s)
+  ✓  2 [chromium] › cp03_people.spec.ts:6:7 › people › people (17.3s)
+  ✓  4 [chromium] › cp04_name-uniqueness.spec.ts:6:7 › name uniqueness › name uniqueness (12.4s)
+  ✓  5 [chromium] › cp05_claims.spec.ts:6:7 › claims › claims (15.0s)
+  ✓  6 [chromium] › cp06_audit.spec.ts:6:7 › audit › audit (10.1s)
+  ✓  7 [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due (11.6s)
+  ✓  8 [chromium] › cp05_claims.spec.ts:34:7 › claims › claims scenario 1 (23.3s)
+  ✓  9 [chromium] › cp06_audit.spec.ts:29:7 › audit › audit scenario 1 (24.8s)
+  ✓  10 [chromium] › cp07_rates-and-due.spec.ts:74:7 › rates and due › rates and due scenario 1 (31.1s)
+  ✓  11 [chromium] › cp05_claims.spec.ts:103:7 › claims › claims scenario 2 (23.3s)
+  ✓  12 [chromium] › cp06_audit.spec.ts:132:7 › audit › audit scenario 2 (23.3s)
+  ✓  13 [chromium] › cp07_rates-and-due.spec.ts:227:7 › rates and due › rates and due scenario 2 (21.4s)
+  ✓  14 [chromium] › cp05_claims.spec.ts:172:7 › claims › claims scenario 3 (24.2s)
+  ✓  15 [chromium] › cp06_audit.spec.ts:238:7 › audit › audit scenario 3 (25.6s)
+  ✓  17 [chromium] › cp08_workflow.spec.ts:6:7 › workflow › workflow (15.8s)
+  ✓  18 [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering (11.1s)
+  ✓  16 [chromium] › cp07_rates-and-due.spec.ts:356:7 › rates and due › rates and due scenario 3 (28.6s)
+  ✓  21 [chromium] › cp10_settle-freezes-due.spec.ts:6:7 › settle freezes due › settle freezes due (7.7s)
+  ✓  20 [chromium] › cp09_numbering.spec.ts:34:7 › numbering › numbering scenario 1 (23.8s)
+  ✓  19 [chromium] › cp08_workflow.spec.ts:57:7 › workflow › workflow scenario 1 (24.7s)
+  ✓  22 [chromium] › cp10_settle-freezes-due.spec.ts:43:7 › settle freezes due › settle freezes due scenario 1 (17.4s)
+  ✓  24 [chromium] › cp08_workflow.spec.ts:230:7 › workflow › workflow scenario 2 (13.4s)
+  ✓  25 [chromium] › cp10_settle-freezes-due.spec.ts:171:7 › settle freezes due › settle freezes due scenario 2 (13.6s)
+  ✓  23 [chromium] › cp09_numbering.spec.ts:180:7 › numbering › numbering scenario 2 (24.6s)
+  ✓  27 [chromium] › cp10_settle-freezes-due.spec.ts:290:7 › settle freezes due › settle freezes due scenario 3 (23.0s)
+  ✓  26 [chromium] › cp08_workflow.spec.ts:382:7 › workflow › workflow scenario 3 (27.2s)
+  ✓  28 [chromium] › cp09_numbering.spec.ts:328:7 › numbering › numbering scenario 3 (23.7s)
+  ✓  30 [chromium] › cp101_audit-viewer.spec.ts:6:7 › audit viewer › audit viewer (12.0s)
+  ✓  29 [chromium] › cp100_batch-all-or-nothing.spec.ts:6:7 › batch all or nothing › batch all or nothing (17.8s)
+  ✓  31 [chromium] › cp102_aliases.spec.ts:6:7 › aliases › aliases (20.1s)
+  ✓  33 [chromium] › cp100_batch-all-or-nothing.spec.ts:133:7 › batch all or nothing › batch all or nothing scenario 1 (23.5s)
+  ✓  34 [chromium] › cp102_aliases.spec.ts:77:7 › aliases › aliases scenario 1 (18.2s)
+  ✓  35 [chromium] › cp100_batch-all-or-nothing.spec.ts:427:7 › batch all or nothing › batch all or nothing scenario 2 (24.5s)
+  ✓  36 [chromium] › cp102_aliases.spec.ts:422:7 › aliases › aliases scenario 2 (26.3s)
+  ✓  32 [chromium] › cp101_audit-viewer.spec.ts:109:7 › audit viewer › audit viewer scenario 1 (1.0m)
+  ✓  37 [chromium] › cp100_batch-all-or-nothing.spec.ts:773:7 › batch all or nothing › batch all or nothing scenario 3 (25.1s)
+  ✓  40 [chromium] › cp103_claim-templates.spec.ts:6:7 › claim templates › claim templates (12.1s)
+  ✓  39 [chromium] › cp101_audit-viewer.spec.ts:527:7 › audit viewer › audit viewer scenario 2 (30.3s)
+  ✓  38 [chromium] › cp102_aliases.spec.ts:747:7 › aliases › aliases scenario 3 (35.3s)
+  ✓  43 [chromium] › cp104_reassign-renumbers.spec.ts:6:7 › reassign renumbers › reassign renumbers (8.9s)
+  ✓  41 [chromium] › cp103_claim-templates.spec.ts:85:7 › claim templates › claim templates scenario 1 (19.7s)
+  ✓  45 [chromium] › cp103_claim-templates.spec.ts:473:7 › claim templates › claim templates scenario 2 (22.3s)
+  ✓  44 [chromium] › cp104_reassign-renumbers.spec.ts:106:7 › reassign renumbers › reassign renumbers scenario 1 (29.8s)
+  ✓  42 [chromium] › cp101_audit-viewer.spec.ts:858:7 › audit viewer › audit viewer scenario 3 (44.2s)
+  ✓  48 [chromium] › cp105_pools.spec.ts:6:7 › pools › pools (21.9s)
+  ✓  46 [chromium] › cp103_claim-templates.spec.ts:906:7 › claim templates › claim templates scenario 3 (28.6s)
+  ✓  50 [chromium] › cp106_pool-cuts.spec.ts:6:7 › pool cuts › pool cuts (9.1s)
+  ✓  47 [chromium] › cp104_reassign-renumbers.spec.ts:531:7 › reassign renumbers › reassign renumbers scenario 2 (42.2s)
+  ✓  49 [chromium] › cp105_pools.spec.ts:65:7 › pools › pools scenario 1 (31.7s)
+  ✓  51 [chromium] › cp106_pool-cuts.spec.ts:129:7 › pool cuts › pool cuts scenario 1 (28.1s)
+  ✓  52 [chromium] › cp104_reassign-renumbers.spec.ts:730:7 › reassign renumbers › reassign renumbers scenario 3 (27.5s)
+  ✓  55 [chromium] › cp107_merge-people.spec.ts:6:7 › merge people › merge people (17.3s)
+  ✓  54 [chromium] › cp106_pool-cuts.spec.ts:410:7 › pool cuts › pool cuts scenario 2 (26.4s)
+  ✓  53 [chromium] › cp105_pools.spec.ts:461:7 › pools › pools scenario 2 (47.9s)
+  ✓  57 [chromium] › cp106_pool-cuts.spec.ts:841:7 › pool cuts › pool cuts scenario 3 (20.7s)
+  ✓  56 [chromium] › cp107_merge-people.spec.ts:143:7 › merge people › merge people scenario 1 (26.6s)
+  ✓  59 [chromium] › cp108_patron-shares.spec.ts:6:7 › patron shares › patron shares (9.6s)
+  ✓  58 [chromium] › cp105_pools.spec.ts:784:7 › pools › pools scenario 3 (18.1s)
+  ✓  62 [chromium] › cp109_parent-sheet-rates.spec.ts:6:7 › parent sheet rates › parent sheet rates (18.5s)
+  ✓  60 [chromium] › cp107_merge-people.spec.ts:770:7 › merge people › merge people scenario 2 (34.5s)
+  ✓  61 [chromium] › cp108_patron-shares.spec.ts:90:7 › patron shares › patron shares scenario 1 (34.8s)
+  ✓  63 [chromium] › cp109_parent-sheet-rates.spec.ts:151:7 › parent sheet rates › parent sheet rates scenario 1 (23.1s)
+  ✓  64 [chromium] › cp107_merge-people.spec.ts:1335:7 › merge people › merge people scenario 3 (26.1s)
+  ✓  67 [chromium] › cp11_rates-effective-dated.spec.ts:6:7 › rates effective dated › rates effective dated (4.8s)
+  ✓  65 [chromium] › cp108_patron-shares.spec.ts:488:7 › patron shares › patron shares scenario 2 (32.0s)
+  ✓  68 [chromium] › cp11_rates-effective-dated.spec.ts:70:7 › rates effective dated › rates effective dated scenario 1 (12.2s)
+  ✓  66 [chromium] › cp109_parent-sheet-rates.spec.ts:552:7 › parent sheet rates › parent sheet rates scenario 2 (51.2s)
+  ✓  70 [chromium] › cp11_rates-effective-dated.spec.ts:242:7 › rates effective dated › rates effective dated scenario 2 (26.7s)
+  ✘  71 [chromium] › cp109_parent-sheet-rates.spec.ts:910:7 › parent sheet rates › parent sheet rates scenario 3 (24.4s)
+  ✓  72 [chromium] › cp11_rates-effective-dated.spec.ts:420:7 › rates effective dated › rates effective dated scenario 3 (21.4s)
+  ✓  69 [chromium] › cp108_patron-shares.spec.ts:796:7 › patron shares › patron shares scenario 3 (1.1m)
+  ✓  74 [chromium] › cp110_consolidated-figures.spec.ts:6:7 › consolidated figures › consolidated figures (19.4s)
+  ✘  73 [chromium] › cp111_transfer-person.spec.ts:6:7 › transfer person › transfer person (34.0s)
+  ✓  75 [chromium] › cp112_uniqueness-across-tree.spec.ts:6:7 › uniqueness across tree › uniqueness across tree (29.2s)
+  ✓  76 [chromium] › cp110_consolidated-figures.spec.ts:129:7 › consolidated figures › consolidated figures scenario 1 (25.5s)
+  ✓  79 [chromium] › cp110_consolidated-figures.spec.ts:417:7 › consolidated figures › consolidated figures scenario 2 (24.1s)
+  ✓  77 [chromium] › cp111_transfer-person.spec.ts:174:7 › transfer person › transfer person scenario 1 (33.2s)
+  ✘  78 [chromium] › cp112_uniqueness-across-tree.spec.ts:72:7 › uniqueness across tree › uniqueness across tree scenario 1 (44.6s)
+  ✓  80 [chromium] › cp110_consolidated-figures.spec.ts:723:7 › consolidated figures › consolidated figures scenario 3 (19.4s)
+  ✓  81 [chromium] › cp111_transfer-person.spec.ts:504:7 › transfer person › transfer person scenario 2 (25.6s)
+  ✓  83 [chromium] › cp113_import-people.spec.ts:6:7 › import people › import people (17.5s)
+  ✓  82 [chromium] › cp112_uniqueness-across-tree.spec.ts:532:7 › uniqueness across tree › uniqueness across tree scenario 2 (20.3s)
+  ✘  84 [chromium] › cp111_transfer-person.spec.ts:894:7 › transfer person › transfer person scenario 3 (28.1s)
+  ✓  85 [chromium] › cp113_import-people.spec.ts:89:7 › import people › import people scenario 1 (27.4s)
+  ✓  87 [chromium] › cp114_delete-and-restore-draft.spec.ts:6:7 › delete and restore draft › delete and restore draft (18.9s)
+  ✓  86 [chromium] › cp112_uniqueness-across-tree.spec.ts:811:7 › uniqueness across tree › uniqueness across tree scenario 3 (36.7s)
+  ✓  90 [chromium] › cp115_nested-pools.spec.ts:6:7 › nested pools › nested pools (23.7s)
+  ✓  88 [chromium] › cp113_import-people.spec.ts:529:7 › import people › import people scenario 2 (36.7s)
+  ✓  89 [chromium] › cp114_delete-and-restore-draft.spec.ts:143:7 › delete and restore draft › delete and restore draft scenario 1 (30.2s)
+  ✓  92 [chromium] › cp113_import-people.spec.ts:893:7 › import people › import people scenario 3 (28.7s)
+  ✓  94 [chromium] › cp116_import-upserts.spec.ts:6:7 › import upserts › import upserts (8.9s)
+  ✓  93 [chromium] › cp114_delete-and-restore-draft.spec.ts:586:7 › delete and restore draft › delete and restore draft scenario 2 (43.0s)
+  ✓  95 [chromium] › cp116_import-upserts.spec.ts:87:7 › import upserts › import upserts scenario 1 (20.9s)
+  ✓  91 [chromium] › cp115_nested-pools.spec.ts:114:7 › nested pools › nested pools scenario 1 (1.0m)
+  ✘  96 [chromium] › cp114_delete-and-restore-draft.spec.ts:1004:7 › delete and restore draft › delete and restore draft scenario 3 (30.1s)
+  ✓  97 [chromium] › cp116_import-upserts.spec.ts:379:7 › import upserts › import upserts scenario 2 (35.6s)
+  ✓  99 [chromium] › cp117_list-positions.spec.ts:6:7 › list positions › list positions (15.3s)
+  ✘  98 [chromium] › cp115_nested-pools.spec.ts:543:7 › nested pools › nested pools scenario 2 (48.4s)
+  ✓  101 [chromium] › cp117_list-positions.spec.ts:72:7 › list positions › list positions scenario 1 (28.9s)
+  ✓  100 [chromium] › cp116_import-upserts.spec.ts:690:7 › import upserts › import upserts scenario 3 (32.5s)
+  ✓  102 [chromium] › cp115_nested-pools.spec.ts:856:7 › nested pools › nested pools scenario 3 (32.2s)
+  ✓  104 [chromium] › cp118_import-rates.spec.ts:6:7 › import rates › import rates (17.0s)
+  ✓  105 [chromium] › cp119_cut-totals.spec.ts:6:7 › cut totals › cut totals (10.7s)
+  ✓  106 [chromium] › cp118_import-rates.spec.ts:90:7 › import rates › import rates scenario 1 (23.2s)
+  ✓  107 [chromium] › cp119_cut-totals.spec.ts:152:7 › cut totals › cut totals scenario 1 (32.6s)
+  ✘  108 [chromium] › cp118_import-rates.spec.ts:433:7 › import rates › import rates scenario 2 (35.7s)
+  ✓  103 [chromium] › cp117_list-positions.spec.ts:545:7 › list positions › list positions scenario 2 (1.4m)
+  ✓  109 [chromium] › cp119_cut-totals.spec.ts:524:7 › cut totals › cut totals scenario 2 (27.3s)
+  ✓  110 [chromium] › cp118_import-rates.spec.ts:870:7 › import rates › import rates scenario 3 (22.5s)
+  ✓  113 [chromium] › cp12_half-even.spec.ts:6:7 › half even › half even (4.7s)
+  ✓  112 [chromium] › cp119_cut-totals.spec.ts:960:7 › cut totals › cut totals scenario 3 (20.9s)
+  ✘  111 [chromium] › cp117_list-positions.spec.ts:898:7 › list positions › list positions scenario 3 (24.8s)
+  ✓  115 [chromium] › cp120_hold-pauses-cuts.spec.ts:6:7 › hold pauses cuts › hold pauses cuts (7.2s)
+  ✓  116 [chromium] › cp121_history-follows.spec.ts:6:7 › history follows › history follows (8.1s)
+  ✓  114 [chromium] › cp12_half-even.spec.ts:26:7 › half even › half even scenario 1 (14.4s)
+  ✓  119 [chromium] › cp12_half-even.spec.ts:156:7 › half even › half even scenario 2 (16.2s)
+  ✓  117 [chromium] › cp120_hold-pauses-cuts.spec.ts:100:7 › hold pauses cuts › hold pauses cuts scenario 1 (22.2s)
+  ✘  118 [chromium] › cp121_history-follows.spec.ts:82:7 › history follows › history follows scenario 1 (26.1s)
+  ✓  120 [chromium] › cp12_half-even.spec.ts:336:7 › half even › half even scenario 3 (14.4s)
+  ✓  123 [chromium] › cp122_pool-membership-dated.spec.ts:6:7 › pool membership dated › pool membership dated (10.1s)
+  ✓  121 [chromium] › cp120_hold-pauses-cuts.spec.ts:666:7 › hold pauses cuts › hold pauses cuts scenario 2 (31.5s)
+  ✓  125 [chromium] › cp120_hold-pauses-cuts.spec.ts:929:7 › hold pauses cuts › hold pauses cuts scenario 3 (24.2s)
+  ✓  124 [chromium] › cp122_pool-membership-dated.spec.ts:83:7 › pool membership dated › pool membership dated scenario 1 (37.2s)
+  ✓  126 [chromium] › cp123_bulk-retire.spec.ts:6:7 › bulk retire › bulk retire (10.7s)
+  ✓  122 [chromium] › cp121_history-follows.spec.ts:548:7 › history follows › history follows scenario 2 (1.1m)
+  ✓  127 [chromium] › cp122_pool-membership-dated.spec.ts:345:7 › pool membership dated › pool membership dated scenario 2 (20.0s)
+  ✓  129 [chromium] › cp121_history-follows.spec.ts:1215:7 › history follows › history follows scenario 3 (27.5s)
+  ✓  128 [chromium] › cp123_bulk-retire.spec.ts:120:7 › bulk retire › bulk retire scenario 1 (39.6s)
+  ✓  131 [chromium] › cp124_retired-share-reallocates.spec.ts:6:7 › retired share reallocates › retired share reallocates (9.3s)
+  ✓  130 [chromium] › cp122_pool-membership-dated.spec.ts:629:7 › pool membership dated › pool membership dated scenario 3 (35.7s)
+  ✓  134 [chromium] › cp125_unretire.spec.ts:6:7 › unretire › unretire (21.1s)
+  ✓  132 [chromium] › cp123_bulk-retire.spec.ts:387:7 › bulk retire › bulk retire scenario 2 (43.8s)
+  ✓  133 [chromium] › cp124_retired-share-reallocates.spec.ts:97:7 › retired share reallocates › retired share reallocates scenario 1 (56.0s)
+  ✓  135 [chromium] › cp125_unretire.spec.ts:154:7 › unretire › unretire scenario 1 (30.5s)
+  ✓  136 [chromium] › cp123_bulk-retire.spec.ts:690:7 › bulk retire › bulk retire scenario 3 (40.5s)
+  ✓  138 [chromium] › cp125_unretire.spec.ts:538:7 › unretire › unretire scenario 2 (31.3s)
+  ✓  137 [chromium] › cp124_retired-share-reallocates.spec.ts:567:7 › retired share reallocates › retired share reallocates scenario 2 (34.2s)
+  ✓  139 [chromium] › cp126_clone-sheet.spec.ts:6:7 › clone sheet › clone sheet (25.1s)
+  ✘  141 [chromium] › cp124_retired-share-reallocates.spec.ts:898:7 › retired share reallocates › retired share reallocates scenario 3 (26.9s)
+  ✓  140 [chromium] › cp125_unretire.spec.ts:1294:7 › unretire › unretire scenario 3 (30.4s)
+  ✓  142 [chromium] › cp126_clone-sheet.spec.ts:260:7 › clone sheet › clone sheet scenario 1 (16.2s)
+  ✓  143 [chromium] › cp127_my-figures.spec.ts:6:7 › my figures › my figures (7.3s)
+  ✓  144 [chromium] › cp128_transfer-merges.spec.ts:6:7 › transfer merges › transfer merges (6.8s)
+  ✓  146 [chromium] › cp127_my-figures.spec.ts:100:7 › my figures › my figures scenario 1 (17.3s)
+  ✓  147 [chromium] › cp128_transfer-merges.spec.ts:91:7 › transfer merges › transfer merges scenario 1 (17.6s)
+  ✘  145 [chromium] › cp126_clone-sheet.spec.ts:567:7 › clone sheet › clone sheet scenario 2 (24.8s)
+  ✓  149 [chromium] › cp128_transfer-merges.spec.ts:385:7 › transfer merges › transfer merges scenario 2 (26.1s)
+  ✓  150 [chromium] › cp126_clone-sheet.spec.ts:948:7 › clone sheet › clone sheet scenario 3 (23.4s)
+  ✓  152 [chromium] › cp129_export-claims.spec.ts:6:7 › export claims › export claims (5.5s)
+  ✓  148 [chromium] › cp127_my-figures.spec.ts:451:7 › my figures › my figures scenario 2 (38.5s)
+  ✘  151 [chromium] › cp128_transfer-merges.spec.ts:764:7 › transfer merges › transfer merges scenario 3 (30.6s)
+  ✓  153 [chromium] › cp129_export-claims.spec.ts:28:7 › export claims › export claims scenario 1 (27.4s)
+  ✓  154 [chromium] › cp127_my-figures.spec.ts:910:7 › my figures › my figures scenario 3 (22.3s)
+  ✓  157 [chromium] › cp130_period-comparison.spec.ts:6:7 › period comparison › period comparison (4.1s)
+  ✓  155 [chromium] › cp13_four-eyes.spec.ts:6:7 › four eyes › four eyes (7.9s)
+  ✓  159 [chromium] › cp13_four-eyes.spec.ts:43:7 › four eyes › four eyes scenario 1 (10.4s)
+  ✓  156 [chromium] › cp129_export-claims.spec.ts:539:7 › export claims › export claims scenario 2 (22.9s)
+  ✓  160 [chromium] › cp13_four-eyes.spec.ts:184:7 › four eyes › four eyes scenario 2 (14.2s)
+  ✓  162 [chromium] › cp13_four-eyes.spec.ts:354:7 › four eyes › four eyes scenario 3 (8.4s)
+  ✓  158 [chromium] › cp130_period-comparison.spec.ts:106:7 › period comparison › period comparison scenario 1 (41.4s)
+  ✓  161 [chromium] › cp129_export-claims.spec.ts:1050:7 › export claims › export claims scenario 3 (27.8s)
+  ✓  163 [chromium] › cp131_plans.spec.ts:6:7 › plans › plans (14.5s)
+  ✓  165 [chromium] › cp132_tree-numbering.spec.ts:6:7 › tree numbering › tree numbering (10.6s)
+  ✓  166 [chromium] › cp131_plans.spec.ts:136:7 › plans › plans scenario 1 (26.2s)
+  ✓  167 [chromium] › cp132_tree-numbering.spec.ts:107:7 › tree numbering › tree numbering scenario 1 (20.0s)
+  ✘  164 [chromium] › cp130_period-comparison.spec.ts:444:7 › period comparison › period comparison scenario 2 (45.8s)
+  ✓  169 [chromium] › cp132_tree-numbering.spec.ts:612:7 › tree numbering › tree numbering scenario 2 (18.4s)
+  ✘  168 [chromium] › cp131_plans.spec.ts:566:7 › plans › plans scenario 2 (29.2s)
+  ✘  170 [chromium] › cp130_period-comparison.spec.ts:964:7 › period comparison › period comparison scenario 3 (29.3s)
+  ✓  173 [chromium] › cp133_person-tags.spec.ts:6:7 › person tags › person tags (13.6s)
+  ✘  171 [chromium] › cp132_tree-numbering.spec.ts:944:7 › tree numbering › tree numbering scenario 3 (39.8s)
+  ✓  172 [chromium] › cp131_plans.spec.ts:1101:7 › plans › plans scenario 3 (37.8s)
+  ✓  176 [chromium] › cp135_export-pools.spec.ts:6:7 › export pools › export pools (6.4s)
+  ✓  175 [chromium] › cp134_sorting.spec.ts:6:7 › sorting › sorting (18.3s)
+  ✓  174 [chromium] › cp133_person-tags.spec.ts:67:7 › person tags › person tags scenario 1 (34.2s)
+  ✘  178 [chromium] › cp134_sorting.spec.ts:98:7 › sorting › sorting scenario 1 (36.4s)
+  ✓  177 [chromium] › cp135_export-pools.spec.ts:24:7 › export pools › export pools scenario 1 (43.8s)
+  ✓  179 [chromium] › cp133_person-tags.spec.ts:551:7 › person tags › person tags scenario 2 (50.8s)
+  ✓  181 [chromium] › cp134_sorting.spec.ts:559:7 › sorting › sorting scenario 2 (30.7s)
+  ✘  180 [chromium] › cp135_export-pools.spec.ts:433:7 › export pools › export pools scenario 2 (34.8s)
+  ✓  183 [chromium] › cp134_sorting.spec.ts:804:7 › sorting › sorting scenario 3 (24.1s)
+  ✓  182 [chromium] › cp133_person-tags.spec.ts:1063:7 › person tags › person tags scenario 3 (41.3s)
+  ✓  184 [chromium] › cp135_export-pools.spec.ts:960:7 › export pools › export pools scenario 3 (28.8s)
+  ✓  185 [chromium] › cp136_bindings-follow.spec.ts:6:7 › bindings follow › bindings follow (15.3s)
+  ✓  187 [chromium] › cp138_inline-grade.spec.ts:6:7 › inline grade › inline grade (15.2s)
+  ✓  186 [chromium] › cp137_claim-lines.spec.ts:6:7 › claim lines › claim lines (29.3s)
+  ✓  188 [chromium] › cp136_bindings-follow.spec.ts:101:7 › bindings follow › bindings follow scenario 1 (28.2s)
+  ✓  189 [chromium] › cp138_inline-grade.spec.ts:81:7 › inline grade › inline grade scenario 1 (34.2s)
+  ✓  190 [chromium] › cp137_claim-lines.spec.ts:86:7 › claim lines › claim lines scenario 1 (25.6s)
+  ✓  193 [chromium] › cp137_claim-lines.spec.ts:611:7 › claim lines › claim lines scenario 2 (25.7s)
+  ✓  191 [chromium] › cp136_bindings-follow.spec.ts:664:7 › bindings follow › bindings follow scenario 2 (51.1s)
+  ✘  192 [chromium] › cp138_inline-grade.spec.ts:433:7 › inline grade › inline grade scenario 2 (35.3s)
+  ✓  194 [chromium] › cp137_claim-lines.spec.ts:1121:7 › claim lines › claim lines scenario 3 (26.4s)
+  ✓  196 [chromium] › cp138_inline-grade.spec.ts:935:7 › inline grade › inline grade scenario 3 (24.3s)
+  ✓  197 [chromium] › cp139_tree-audit.spec.ts:6:7 › tree audit › tree audit (7.4s)
+  ✓  198 [chromium] › cp14_edit-conflict.spec.ts:6:7 › edit conflict › edit conflict (6.6s)
+  ✓  195 [chromium] › cp136_bindings-follow.spec.ts:1110:7 › bindings follow › bindings follow scenario 3 (33.6s)
+  ✓  201 [chromium] › cp140_remainder-to-smallest.spec.ts:6:7 › remainder to smallest › remainder to smallest (8.1s)
+  ✓  200 [chromium] › cp14_edit-conflict.spec.ts:34:7 › edit conflict › edit conflict scenario 1 (19.5s)
+  ✓  199 [chromium] › cp139_tree-audit.spec.ts:74:7 › tree audit › tree audit scenario 1 (26.6s)
+  ✓  202 [chromium] › cp140_remainder-to-smallest.spec.ts:102:7 › remainder to smallest › remainder to smallest scenario 1 (22.0s)
+  ✓  203 [chromium] › cp14_edit-conflict.spec.ts:192:7 › edit conflict › edit conflict scenario 2 (12.7s)
+  ✓  204 [chromium] › cp139_tree-audit.spec.ts:372:7 › tree audit › tree audit scenario 2 (22.4s)
+  ✓  206 [chromium] › cp14_edit-conflict.spec.ts:367:7 › edit conflict › edit conflict scenario 3 (15.5s)
+  ✓  205 [chromium] › cp140_remainder-to-smallest.spec.ts:480:7 › remainder to smallest › remainder to smallest scenario 2 (19.7s)
+  ✓  207 [chromium] › cp139_tree-audit.spec.ts:1096:7 › tree audit › tree audit scenario 3 (15.9s)
+  ✓  210 [chromium] › cp142_plan-preview.spec.ts:6:7 › plan preview › plan preview (4.6s)
+  ✓  208 [chromium] › cp141_monthly-plans.spec.ts:6:7 › monthly plans › monthly plans (17.3s)
+  ✘  209 [chromium] › cp140_remainder-to-smallest.spec.ts:836:7 › remainder to smallest › remainder to smallest scenario 3 (23.9s)
+  ✓  213 [chromium] › cp143_fiscal-year.spec.ts:6:7 › fiscal year › fiscal year (11.3s)
+  ✓  211 [chromium] › cp142_plan-preview.spec.ts:81:7 › plan preview › plan preview scenario 1 (23.4s)
+  ✓  212 [chromium] › cp141_monthly-plans.spec.ts:74:7 › monthly plans › monthly plans scenario 1 (29.3s)
+  ✘  215 [chromium] › cp142_plan-preview.spec.ts:398:7 › plan preview › plan preview scenario 2 (29.4s)
+  ✓  214 [chromium] › cp143_fiscal-year.spec.ts:141:7 › fiscal year › fiscal year scenario 1 (32.8s)
+  ✓  216 [chromium] › cp141_monthly-plans.spec.ts:752:7 › monthly plans › monthly plans scenario 2 (32.4s)
+  ✓  217 [chromium] › cp142_plan-preview.spec.ts:821:7 › plan preview › plan preview scenario 3 (28.5s)
+  ✓  219 [chromium] › cp141_monthly-plans.spec.ts:1010:7 › monthly plans › monthly plans scenario 3 (33.1s)
+  ✓  218 [chromium] › cp143_fiscal-year.spec.ts:492:7 › fiscal year › fiscal year scenario 2 (44.2s)
+  ✓  220 [chromium] › cp144_numbering-per-fiscal-year.spec.ts:6:7 › numbering per fiscal year › numbering per fiscal year (16.2s)
+  ✓  221 [chromium] › cp145_bulk-redate.spec.ts:6:7 › bulk redate › bulk redate (10.1s)
+  ✓  224 [chromium] › cp145_bulk-redate.spec.ts:98:7 › bulk redate › bulk redate scenario 1 (21.0s)
+  ✓  222 [chromium] › cp143_fiscal-year.spec.ts:804:7 › fiscal year › fiscal year scenario 3 (31.2s)
+  ✓  223 [chromium] › cp144_numbering-per-fiscal-year.spec.ts:151:7 › numbering per fiscal year › numbering per fiscal year scenario 1 (35.1s)
+  ✓  226 [chromium] › cp146_over-threshold-alert.spec.ts:6:7 › over threshold alert › over threshold alert (11.2s)
+  ✓  225 [chromium] › cp145_bulk-redate.spec.ts:505:7 › bulk redate › bulk redate scenario 2 (27.4s)
+  ✓  227 [chromium] › cp144_numbering-per-fiscal-year.spec.ts:585:7 › numbering per fiscal year › numbering per fiscal year scenario 2 (29.8s)
+  ✓  228 [chromium] › cp146_over-threshold-alert.spec.ts:103:7 › over threshold alert › over threshold alert scenario 1 (27.8s)
+  ✓  229 [chromium] › cp145_bulk-redate.spec.ts:870:7 › bulk redate › bulk redate scenario 3 (26.1s)
+  ✓  232 [chromium] › cp147_snapshot-lines.spec.ts:6:7 › snapshot lines › snapshot lines (6.3s)
+  ✓  230 [chromium] › cp144_numbering-per-fiscal-year.spec.ts:1318:7 › numbering per fiscal year › numbering per fiscal year scenario 3 (29.2s)
+  ✓  231 [chromium] › cp146_over-threshold-alert.spec.ts:707:7 › over threshold alert › over threshold alert scenario 2 (27.5s)
+  ✓  234 [chromium] › cp148_claimed-without-corrections.spec.ts:6:7 › claimed without corrections › claimed without corrections (8.9s)
+  ✓  233 [chromium] › cp147_snapshot-lines.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 (28.8s)
+  ✓  235 [chromium] › cp146_over-threshold-alert.spec.ts:1285:7 › over threshold alert › over threshold alert scenario 3 (31.6s)
+  ✓  236 [chromium] › cp148_claimed-without-corrections.spec.ts:86:7 › claimed without corrections › claimed without corrections scenario 1 (27.9s)
+  ✓  238 [chromium] › cp149_period-claim-cap.spec.ts:6:7 › period claim cap › period claim cap (12.1s)
+  ✘  237 [chromium] › cp147_snapshot-lines.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 (28.7s)
+  ✓  240 [chromium] › cp149_period-claim-cap.spec.ts:89:7 › period claim cap › period claim cap scenario 1 (28.4s)
+  ✓  241 [chromium] › cp147_snapshot-lines.spec.ts:1160:7 › snapshot lines › snapshot lines scenario 3 (27.8s)
+  ✓  239 [chromium] › cp148_claimed-without-corrections.spec.ts:582:7 › claimed without corrections › claimed without corrections scenario 2 (46.1s)
+  ✓  243 [chromium] › cp15_statements.spec.ts:6:7 › statements › statements (9.3s)
+  ✓  242 [chromium] › cp149_period-claim-cap.spec.ts:425:7 › period claim cap › period claim cap scenario 2 (23.4s)
+  ✓  245 [chromium] › cp15_statements.spec.ts:106:7 › statements › statements scenario 1 (17.9s)
+  ✓  244 [chromium] › cp148_claimed-without-corrections.spec.ts:879:7 › claimed without corrections › claimed without corrections scenario 3 (28.0s)
+  ✓  248 [chromium] › cp150_tree-search.spec.ts:6:7 › tree search › tree search (10.8s)
+  ✓  247 [chromium] › cp15_statements.spec.ts:346:7 › statements › statements scenario 2 (18.2s)
+  ✓  246 [chromium] › cp149_period-claim-cap.spec.ts:912:7 › period claim cap › period claim cap scenario 3 (33.4s)
+  ✓  250 [chromium] › cp15_statements.spec.ts:526:7 › statements › statements scenario 3 (11.7s)
+  ✓  251 [chromium] › cp151_rounding-mode.spec.ts:6:7 › rounding mode › rounding mode (12.1s)
+  ✓  252 [chromium] › cp152_imported-claims-open.spec.ts:6:7 › imported claims open › imported claims open (13.5s)
+  ✘  249 [chromium] › cp150_tree-search.spec.ts:57:7 › tree search › tree search scenario 1 (47.8s)
+  ✓  253 [chromium] › cp151_rounding-mode.spec.ts:110:7 › rounding mode › rounding mode scenario 1 (27.4s)
+  ✓  254 [chromium] › cp152_imported-claims-open.spec.ts:120:7 › imported claims open › imported claims open scenario 1 (30.1s)
+  ✓  255 [chromium] › cp151_rounding-mode.spec.ts:589:7 › rounding mode › rounding mode scenario 2 (28.8s)
+  ✘  256 [chromium] › cp150_tree-search.spec.ts:422:7 › tree search › tree search scenario 2 (29.0s)
+  ✓  257 [chromium] › cp152_imported-claims-open.spec.ts:690:7 › imported claims open › imported claims open scenario 2 (21.5s)
+  ✓  259 [chromium] › cp152_imported-claims-open.spec.ts:1197:7 › imported claims open › imported claims open scenario 3 (27.9s)
+  ✓  258 [chromium] › cp151_rounding-mode.spec.ts:917:7 › rounding mode › rounding mode scenario 3 (30.4s)
+  ✓  260 [chromium] › cp150_tree-search.spec.ts:883:7 › tree search › tree search scenario 3 (29.3s)
+  ✓  261 [chromium] › cp153_rate-versions.spec.ts:6:7 › rate versions › rate versions (16.7s)
+  ✓  262 [chromium] › cp154_classic-summary.spec.ts:6:7 › classic summary › classic summary (18.4s)
+  ✓  263 [chromium] › cp155_review-state.spec.ts:6:7 › review state › review state (26.1s)
+  ✘  264 [chromium] › cp153_rate-versions.spec.ts:101:7 › rate versions › rate versions scenario 1 (34.2s)
+  ✓  265 [chromium] › cp154_classic-summary.spec.ts:167:7 › classic summary › classic summary scenario 1 (42.1s)
+  ✓  266 [chromium] › cp155_review-state.spec.ts:182:7 › review state › review state scenario 1 (37.7s)
+  ✓  269 [chromium] › cp155_review-state.spec.ts:731:7 › review state › review state scenario 2 (20.2s)
+  ✓  267 [chromium] › cp153_rate-versions.spec.ts:443:7 › rate versions › rate versions scenario 2 (37.2s)
+  ✓  268 [chromium] › cp154_classic-summary.spec.ts:706:7 › classic summary › classic summary scenario 2 (39.4s)
+  ✓  270 [chromium] › cp155_review-state.spec.ts:1140:7 › review state › review state scenario 3 (21.0s)
+  ✓  273 [chromium] › cp156_forward-only-rates.spec.ts:6:7 › forward only rates › forward only rates (11.8s)
+  ✓  271 [chromium] › cp153_rate-versions.spec.ts:784:7 › rate versions › rate versions scenario 3 (40.7s)
+  ✓  272 [chromium] › cp154_classic-summary.spec.ts:1103:7 › classic summary › classic summary scenario 3 (35.0s)
+  ✓  275 [chromium] › cp157_user-locale.spec.ts:6:7 › user locale › user locale (14.7s)
+  ✓  276 [chromium] › cp158_column-chooser.spec.ts:6:7 › column chooser › column chooser (16.9s)
+  ✘  277 [chromium] › cp157_user-locale.spec.ts:126:7 › user locale › user locale scenario 1 (16.3s)
+  ✓  278 [chromium] › cp158_column-chooser.spec.ts:117:7 › column chooser › column chooser scenario 1 (26.4s)
+  ✓  274 [chromium] › cp156_forward-only-rates.spec.ts:120:7 › forward only rates › forward only rates scenario 1 (1.2m)
+  ✓  279 [chromium] › cp157_user-locale.spec.ts:647:7 › user locale › user locale scenario 2 (48.8s)
+  ✘  280 [chromium] › cp158_column-chooser.spec.ts:581:7 › column chooser › column chooser scenario 2 (36.9s)
+  ✘  281 [chromium] › cp156_forward-only-rates.spec.ts:760:7 › forward only rates › forward only rates scenario 2 (38.3s)
+  ✘  282 [chromium] › cp157_user-locale.spec.ts:1018:7 › user locale › user locale scenario 3 (28.0s)
+  ✘  283 [chromium] › cp158_column-chooser.spec.ts:961:7 › column chooser › column chooser scenario 3 (26.1s)
+  ✓  285 [chromium] › cp159_carried-figures.spec.ts:6:7 › carried figures › carried figures (8.6s)
+  ✓  286 [chromium] › cp16_rollup-audit.spec.ts:6:7 › rollup audit › rollup audit (7.9s)
+  ✓  284 [chromium] › cp156_forward-only-rates.spec.ts:1221:7 › forward only rates › forward only rates scenario 3 (20.3s)
+  ✓  288 [chromium] › cp16_rollup-audit.spec.ts:81:7 › rollup audit › rollup audit scenario 1 (15.0s)
+  ✓  289 [chromium] › cp160_frozen-carried-and-as-of-tree.spec.ts:6:7 › frozen carried and as of tree › frozen carried and as of tree (14.4s)
+  ✓  290 [chromium] › cp16_rollup-audit.spec.ts:271:7 › rollup audit › rollup audit scenario 2 (11.2s)
+  ✓  291 [chromium] › cp160_frozen-carried-and-as-of-tree.spec.ts:156:7 › frozen carried and as of tree › frozen carried and as of tree scenario 1 (26.1s)
+  ✓  292 [chromium] › cp16_rollup-audit.spec.ts:447:7 › rollup audit › rollup audit scenario 3 (17.4s)
+  ✓  294 [chromium] › cp161_as-of-exports.spec.ts:6:7 › as of exports › as of exports (7.9s)
+  ✓  287 [chromium] › cp159_carried-figures.spec.ts:168:7 › carried figures › carried figures scenario 1 (53.7s)
+  ✓  296 [chromium] › cp159_carried-figures.spec.ts:537:7 › carried figures › carried figures scenario 2 (17.4s)
+  ✘  293 [chromium] › cp160_frozen-carried-and-as-of-tree.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 (34.9s)
+  ✘  295 [chromium] › cp161_as-of-exports.spec.ts:35:7 › as of exports › as of exports scenario 1 (30.4s)
+  ✓  298 [chromium] › cp160_frozen-carried-and-as-of-tree.spec.ts:965:7 › frozen carried and as of tree › frozen carried and as of tree scenario 3 (27.4s)
+  ✓  297 [chromium] › cp159_carried-figures.spec.ts:993:7 › carried figures › carried figures scenario 3 (35.7s)
+  ✓  301 [chromium] › cp163_statement-lines.spec.ts:6:7 › statement lines › statement lines (4.8s)
+  ✓  300 [chromium] › cp162_claim-timeline.spec.ts:6:7 › claim timeline › claim timeline (7.6s)
+  ✘  299 [chromium] › cp161_as-of-exports.spec.ts:432:7 › as of exports › as of exports scenario 2 (28.7s)
+  ✓  303 [chromium] › cp162_claim-timeline.spec.ts:59:7 › claim timeline › claim timeline scenario 1 (17.5s)
+  ✓  302 [chromium] › cp163_statement-lines.spec.ts:67:7 › statement lines › statement lines scenario 1 (24.1s)
+  ✘  304 [chromium] › cp161_as-of-exports.spec.ts:836:7 › as of exports › as of exports scenario 3 (35.9s)
+  ✓  305 [chromium] › cp162_claim-timeline.spec.ts:482:7 › claim timeline › claim timeline scenario 2 (29.2s)
+  ✓  307 [chromium] › cp164_correction-limit.spec.ts:6:7 › correction limit › correction limit (15.4s)
+  ✓  306 [chromium] › cp163_statement-lines.spec.ts:632:7 › statement lines › statement lines scenario 2 (38.1s)
+  ✓  308 [chromium] › cp162_claim-timeline.spec.ts:1035:7 › claim timeline › claim timeline scenario 3 (30.5s)
+  ✓  310 [chromium] › cp163_statement-lines.spec.ts:1312:7 › statement lines › statement lines scenario 3 (24.5s)
+  ✓  309 [chromium] › cp164_correction-limit.spec.ts:78:7 › correction limit › correction limit scenario 1 (29.4s)
+  ✓  311 [chromium] › cp165_escalate.spec.ts:6:7 › escalate › escalate (18.1s)
+  ✓  312 [chromium] › cp166_crews.spec.ts:6:7 › crews › crews (17.0s)
+  ✓  314 [chromium] › cp165_escalate.spec.ts:65:7 › escalate › escalate scenario 1 (23.0s)
+  ✓  315 [chromium] › cp166_crews.spec.ts:107:7 › crews › crews scenario 1 (20.8s)
+  ✓  316 [chromium] › cp165_escalate.spec.ts:511:7 › escalate › escalate scenario 2 (29.3s)
+  ✘  313 [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 (1.2m)
+  ✓  317 [chromium] › cp166_crews.spec.ts:426:7 › crews › crews scenario 2 (37.0s)
+  ✓  318 [chromium] › cp165_escalate.spec.ts:888:7 › escalate › escalate scenario 3 (23.2s)
+  ✓  321 [chromium] › cp167_crew-lead-total.spec.ts:6:7 › crew lead total › crew lead total (9.2s)
+  ✓  319 [chromium] › cp166_crews.spec.ts:765:7 › crews › crews scenario 3 (26.7s)
+  ✓  320 [chromium] › cp164_correction-limit.spec.ts:1244:7 › correction limit › correction limit scenario 3 (31.1s)
+  ✓  323 [chromium] › cp168_crews-are-pools.spec.ts:6:7 › crews are pools › crews are pools (12.1s)
+  ✓  324 [chromium] › cp169_person-terms-dated.spec.ts:6:7 › person terms dated › person terms dated (9.3s)
+  ✓  322 [chromium] › cp167_crew-lead-total.spec.ts:137:7 › crew lead total › crew lead total scenario 1 (28.2s)
+  ✓  325 [chromium] › cp168_crews-are-pools.spec.ts:99:7 › crews are pools › crews are pools scenario 1 (19.2s)
+  ✓  327 [chromium] › cp167_crew-lead-total.spec.ts:566:7 › crew lead total › crew lead total scenario 2 (23.8s)
+  ✓  326 [chromium] › cp169_person-terms-dated.spec.ts:99:7 › person terms dated › person terms dated scenario 1 (42.1s)
+  ✓  328 [chromium] › cp168_crews-are-pools.spec.ts:621:7 › crews are pools › crews are pools scenario 2 (32.6s)
+  ✓  329 [chromium] › cp167_crew-lead-total.spec.ts:928:7 › crew lead total › crew lead total scenario 3 (27.4s)
+  ✘  330 [chromium] › cp169_person-terms-dated.spec.ts:522:7 › person terms dated › person terms dated scenario 2 (27.1s)
+  ✓  332 [chromium] › cp17_periods.spec.ts:6:7 › periods › periods (10.4s)
+  ✓  333 [chromium] › cp17_periods.spec.ts:52:7 › periods › periods scenario 1 (11.8s)
+  ✘  331 [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 (39.4s)
+  ✓  335 [chromium] › cp17_periods.spec.ts:217:7 › periods › periods scenario 2 (13.9s)
+  ✓  336 [chromium] › cp170_rate-calendar.spec.ts:6:7 › rate calendar › rate calendar (6.0s)
+  ✘  334 [chromium] › cp169_person-terms-dated.spec.ts:903:7 › person terms dated › person terms dated scenario 3 (36.2s)
+  ✓  337 [chromium] › cp17_periods.spec.ts:380:7 › periods › periods scenario 3 (16.0s)
+  ✓  339 [chromium] › cp18_close-period.spec.ts:6:7 › close period › close period (9.6s)
+  ✓  340 [chromium] › cp19_quick-add.spec.ts:6:7 › quick add › quick add (7.9s)
+  ✓  338 [chromium] › cp170_rate-calendar.spec.ts:108:7 › rate calendar › rate calendar scenario 1 (28.8s)
+  ✓  341 [chromium] › cp18_close-period.spec.ts:70:7 › close period › close period scenario 1 (11.0s)
+  ✓  342 [chromium] › cp19_quick-add.spec.ts:48:7 › quick add › quick add scenario 1 (11.5s)
+  ✓  344 [chromium] › cp18_close-period.spec.ts:226:7 › close period › close period scenario 2 (13.1s)
+  ✓  345 [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2 (12.8s)
+  ✓  343 [chromium] › cp170_rate-calendar.spec.ts:421:7 › rate calendar › rate calendar scenario 2 (26.1s)
+  ✓  346 [chromium] › cp18_close-period.spec.ts:416:7 › close period › close period scenario 3 (13.1s)
+  ✓  349 [chromium] › cp20_open-claims-immutable.spec.ts:6:7 › open claims immutable › open claims immutable (2.4s)
+  ✓  347 [chromium] › cp19_quick-add.spec.ts:406:7 › quick add › quick add scenario 3 (15.3s)
+  ✓  351 [chromium] › cp21_retire.spec.ts:6:7 › retire › retire (5.8s)
+  ✓  350 [chromium] › cp20_open-claims-immutable.spec.ts:45:7 › open claims immutable › open claims immutable scenario 1 (15.6s)
+  ✓  348 [chromium] › cp170_rate-calendar.spec.ts:879:7 › rate calendar › rate calendar scenario 3 (22.3s)
+  ✓  352 [chromium] › cp21_retire.spec.ts:57:7 › retire › retire scenario 1 (14.3s)
+  ✓  354 [chromium] › cp22_hold.spec.ts:6:7 › hold › hold (5.9s)
+  ✓  353 [chromium] › cp20_open-claims-immutable.spec.ts:306:7 › open claims immutable › open claims immutable scenario 2 (10.6s)
+  ✓  355 [chromium] › cp21_retire.spec.ts:178:7 › retire › retire scenario 2 (15.1s)
+  ✓  356 [chromium] › cp22_hold.spec.ts:63:7 › hold › hold scenario 1 (16.2s)
+  ✓  357 [chromium] › cp20_open-claims-immutable.spec.ts:471:7 › open claims immutable › open claims immutable scenario 3 (19.6s)
+  ✓  359 [chromium] › cp22_hold.spec.ts:251:7 › hold › hold scenario 2 (13.1s)
+  ✓  358 [chromium] › cp21_retire.spec.ts:367:7 › retire › retire scenario 3 (20.1s)
+  ✓  360 [chromium] › cp23_roles-and-clerk-limit.spec.ts:6:7 › roles and clerk limit › roles and clerk limit (14.1s)
+  ✓  362 [chromium] › cp24_floor.spec.ts:6:7 › floor › floor (10.6s)
+  ✓  361 [chromium] › cp22_hold.spec.ts:422:7 › hold › hold scenario 3 (21.2s)
+  ✓  363 [chromium] › cp23_roles-and-clerk-limit.spec.ts:72:7 › roles and clerk limit › roles and clerk limit scenario 1 (14.0s)
+  ✓  365 [chromium] › cp25_due-by-and-overdue.spec.ts:6:7 › due by and overdue › due by and overdue (9.3s)
+  ✓  364 [chromium] › cp24_floor.spec.ts:98:7 › floor › floor scenario 1 (20.4s)
+  ✓  366 [chromium] › cp23_roles-and-clerk-limit.spec.ts:224:7 › roles and clerk limit › roles and clerk limit scenario 2 (17.4s)
+  ✓  367 [chromium] › cp25_due-by-and-overdue.spec.ts:86:7 › due by and overdue › due by and overdue scenario 1 (18.8s)
+  ✓  368 [chromium] › cp24_floor.spec.ts:260:7 › floor › floor scenario 2 (19.4s)
+  ✓  369 [chromium] › cp23_roles-and-clerk-limit.spec.ts:393:7 › roles and clerk limit › roles and clerk limit scenario 3 (16.6s)
+  ✓  372 [chromium] › cp26_late-charge.spec.ts:6:7 › late charge › late charge (7.1s)
+  ✓  370 [chromium] › cp25_due-by-and-overdue.spec.ts:309:7 › due by and overdue › due by and overdue scenario 2 (17.7s)
+  ✓  371 [chromium] › cp24_floor.spec.ts:421:7 › floor › floor scenario 3 (20.2s)
+  ✓  373 [chromium] › cp26_late-charge.spec.ts:87:7 › late charge › late charge scenario 1 (15.9s)
+  ✓  375 [chromium] › cp27_patrons-and-backing.spec.ts:6:7 › patrons and backing › patrons and backing (12.2s)
+  ✓  374 [chromium] › cp25_due-by-and-overdue.spec.ts:469:7 › due by and overdue › due by and overdue scenario 3 (25.8s)
+  ✓  378 [chromium] › cp28_grade-dated.spec.ts:6:7 › grade dated › grade dated (5.6s)
+  ✓  376 [chromium] › cp26_late-charge.spec.ts:287:7 › late charge › late charge scenario 2 (22.2s)
+  ✓  377 [chromium] › cp27_patrons-and-backing.spec.ts:74:7 › patrons and backing › patrons and backing scenario 1 (18.3s)
+  ✓  379 [chromium] › cp28_grade-dated.spec.ts:66:7 › grade dated › grade dated scenario 1 (17.3s)
+  ✓  380 [chromium] › cp26_late-charge.spec.ts:451:7 › late charge › late charge scenario 3 (18.3s)
+  ✓  381 [chromium] › cp27_patrons-and-backing.spec.ts:267:7 › patrons and backing › patrons and backing scenario 2 (14.9s)
+  ✓  383 [chromium] › cp29_reopen-period.spec.ts:6:7 › reopen period › reopen period (9.4s)
+  ✓  382 [chromium] › cp28_grade-dated.spec.ts:231:7 › grade dated › grade dated scenario 2 (15.8s)
+  ✓  384 [chromium] › cp27_patrons-and-backing.spec.ts:450:7 › patrons and backing › patrons and backing scenario 3 (19.3s)
+  ✓  386 [chromium] › cp28_grade-dated.spec.ts:430:7 › grade dated › grade dated scenario 3 (14.1s)
+  ✓  385 [chromium] › cp29_reopen-period.spec.ts:76:7 › reopen period › reopen period scenario 1 (16.5s)
+  ✓  388 [chromium] › cp31_summary.spec.ts:6:7 › summary › summary (4.8s)
+  ✓  387 [chromium] › cp30_corrections.spec.ts:6:7 › corrections › corrections (11.4s)
+  ✓  389 [chromium] › cp29_reopen-period.spec.ts:243:7 › reopen period › reopen period scenario 2 (8.4s)
+  ✓  391 [chromium] › cp30_corrections.spec.ts:65:7 › corrections › corrections scenario 1 (13.1s)
+  ✓  392 [chromium] › cp29_reopen-period.spec.ts:390:7 › reopen period › reopen period scenario 3 (11.4s)
+  ✓  390 [chromium] › cp31_summary.spec.ts:51:7 › summary › summary scenario 1 (16.2s)
+  ✓  394 [chromium] › cp32_rounding-policy-date.spec.ts:6:7 › rounding policy date › rounding policy date (12.2s)
+  ✓  395 [chromium] › cp31_summary.spec.ts:250:7 › summary › summary scenario 2 (19.5s)
+  ✓  393 [chromium] › cp30_corrections.spec.ts:278:7 › corrections › corrections scenario 2 (22.9s)
+  ✓  396 [chromium] › cp32_rounding-policy-date.spec.ts:121:7 › rounding policy date › rounding policy date scenario 1 (20.7s)
+  ✓  398 [chromium] › cp30_corrections.spec.ts:492:7 › corrections › corrections scenario 3 (21.4s)
+  ✓  397 [chromium] › cp31_summary.spec.ts:459:7 › summary › summary scenario 3 (22.6s)
+  ✓  400 [chromium] › cp33_export-people.spec.ts:6:7 › export people › export people (4.5s)
+  ✓  401 [chromium] › cp34_bulk-open.spec.ts:6:7 › bulk open › bulk open (6.0s)
+  ✓  399 [chromium] › cp32_rounding-policy-date.spec.ts:404:7 › rounding policy date › rounding policy date scenario 2 (22.3s)
+  ✓  402 [chromium] › cp33_export-people.spec.ts:22:7 › export people › export people scenario 1 (14.4s)
+  ✓  403 [chromium] › cp34_bulk-open.spec.ts:58:7 › bulk open › bulk open scenario 1 (15.2s)
+  ✓  404 [chromium] › cp32_rounding-policy-date.spec.ts:617:7 › rounding policy date › rounding policy date scenario 3 (12.9s)
+  ✓  407 [chromium] › cp35_numbering-per-period.spec.ts:6:7 › numbering per period › numbering per period (8.1s)
+  ✓  405 [chromium] › cp33_export-people.spec.ts:252:7 › export people › export people scenario 2 (16.4s)
+  ✓  406 [chromium] › cp34_bulk-open.spec.ts:289:7 › bulk open › bulk open scenario 2 (15.9s)
+  ✓  408 [chromium] › cp35_numbering-per-period.spec.ts:77:7 › numbering per period › numbering per period scenario 1 (16.0s)
+  ✓  409 [chromium] › cp33_export-people.spec.ts:463:7 › export people › export people scenario 3 (14.8s)
+  ✓  410 [chromium] › cp34_bulk-open.spec.ts:479:7 › bulk open › bulk open scenario 3 (21.6s)
+  ✓  412 [chromium] › cp36_approvals.spec.ts:6:7 › approvals › approvals (19.6s)
+  ✓  411 [chromium] › cp35_numbering-per-period.spec.ts:371:7 › numbering per period › numbering per period scenario 2 (24.1s)
+  ✓  413 [chromium] › cp37_reassign-claim.spec.ts:6:7 › reassign claim › reassign claim (15.1s)
+  ✓  416 [chromium] › cp37_reassign-claim.spec.ts:76:7 › reassign claim › reassign claim scenario 1 (15.0s)
+  ✓  415 [chromium] › cp35_numbering-per-period.spec.ts:625:7 › numbering per period › numbering per period scenario 3 (15.6s)
+  ✓  414 [chromium] › cp36_approvals.spec.ts:99:7 › approvals › approvals scenario 1 (20.9s)
+  ✓  418 [chromium] › cp38_terms-per-grade.spec.ts:6:7 › terms per grade › terms per grade (6.0s)
+  ✓  417 [chromium] › cp37_reassign-claim.spec.ts:287:7 › reassign claim › reassign claim scenario 2 (18.3s)
+  ✓  419 [chromium] › cp36_approvals.spec.ts:338:7 › approvals › approvals scenario 2 (23.1s)
+  ✓  420 [chromium] › cp38_terms-per-grade.spec.ts:61:7 › terms per grade › terms per grade scenario 1 (19.2s)
+  ✓  422 [chromium] › cp36_approvals.spec.ts:631:7 › approvals › approvals scenario 3 (14.6s)
+  ✓  421 [chromium] › cp37_reassign-claim.spec.ts:516:7 › reassign claim › reassign claim scenario 3 (21.4s)
+  ✓  424 [chromium] › cp39_claim-log.spec.ts:6:7 › claim log › claim log (5.9s)
+  ✓  423 [chromium] › cp38_terms-per-grade.spec.ts:281:7 › terms per grade › terms per grade scenario 2 (20.6s)
+  ✓  425 [chromium] › cp40_hold-interval.spec.ts:6:7 › hold interval › hold interval (8.3s)
+  ✓  428 [chromium] › cp40_hold-interval.spec.ts:90:7 › hold interval › hold interval scenario 1 (10.8s)
+  ✓  426 [chromium] › cp39_claim-log.spec.ts:31:7 › claim log › claim log scenario 1 (14.0s)
+  ✓  427 [chromium] › cp38_terms-per-grade.spec.ts:555:7 › terms per grade › terms per grade scenario 3 (18.1s)
+  ✓  431 [chromium] › cp41_header-counters.spec.ts:6:7 › header counters › header counters (8.0s)
+  ✓  430 [chromium] › cp39_claim-log.spec.ts:331:7 › claim log › claim log scenario 2 (13.1s)
+  ✓  429 [chromium] › cp40_hold-interval.spec.ts:389:7 › hold interval › hold interval scenario 2 (21.0s)
+  ✓  433 [chromium] › cp39_claim-log.spec.ts:526:7 › claim log › claim log scenario 3 (8.1s)
+  ✓  432 [chromium] › cp41_header-counters.spec.ts:110:7 › header counters › header counters scenario 1 (12.8s)
+  ✓  435 [chromium] › cp42_rate-end-dates.spec.ts:6:7 › rate end dates › rate end dates (7.6s)
+  ✓  434 [chromium] › cp40_hold-interval.spec.ts:638:7 › hold interval › hold interval scenario 3 (11.4s)
+  ✓  436 [chromium] › cp41_header-counters.spec.ts:370:7 › header counters › header counters scenario 2 (14.2s)
+  ✓  438 [chromium] › cp43_cap.spec.ts:6:7 › cap › cap (8.4s)
+  ✓  437 [chromium] › cp42_rate-end-dates.spec.ts:81:7 › rate end dates › rate end dates scenario 1 (13.7s)
+  ✓  439 [chromium] › cp41_header-counters.spec.ts:641:7 › header counters › header counters scenario 3 (11.8s)
+  ✓  440 [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1 (14.3s)
+  ✓  442 [chromium] › cp44_rollup-overdue.spec.ts:6:7 › rollup overdue › rollup overdue (8.4s)
+  ✓  441 [chromium] › cp42_rate-end-dates.spec.ts:343:7 › rate end dates › rate end dates scenario 2 (23.1s)
+  ✓  443 [chromium] › cp43_cap.spec.ts:355:7 › cap › cap scenario 2 (18.5s)
+  ✓  444 [chromium] › cp44_rollup-overdue.spec.ts:78:7 › rollup overdue › rollup overdue scenario 1 (14.8s)
+  ✓  445 [chromium] › cp42_rate-end-dates.spec.ts:651:7 › rate end dates › rate end dates scenario 3 (16.0s)
+  ✓  447 [chromium] › cp44_rollup-overdue.spec.ts:273:7 › rollup overdue › rollup overdue scenario 2 (13.1s)
+  ✓  446 [chromium] › cp43_cap.spec.ts:649:7 › cap › cap scenario 3 (17.3s)
+  ✓  448 [chromium] › cp45_bulk-settle.spec.ts:6:7 › bulk settle › bulk settle (11.4s)
+  ✓  449 [chromium] › cp44_rollup-overdue.spec.ts:546:7 › rollup overdue › rollup overdue scenario 3 (11.6s)
+  ✓  450 [chromium] › cp46_re-settle.spec.ts:6:7 › re settle › re settle (11.7s)
+  ✓  452 [chromium] › cp47_person-period-figures.spec.ts:6:7 › person period figures › person period figures (6.6s)
+  ✓  451 [chromium] › cp45_bulk-settle.spec.ts:104:7 › bulk settle › bulk settle scenario 1 (16.7s)
+  ✓  453 [chromium] › cp46_re-settle.spec.ts:112:7 › re settle › re settle scenario 1 (12.8s)
+  ✓  455 [chromium] › cp45_bulk-settle.spec.ts:373:7 › bulk settle › bulk settle scenario 2 (13.1s)
+  ✓  454 [chromium] › cp47_person-period-figures.spec.ts:122:7 › person period figures › person period figures scenario 1 (17.5s)
+  ✓  456 [chromium] › cp46_re-settle.spec.ts:387:7 › re settle › re settle scenario 2 (18.0s)
+  ✓  457 [chromium] › cp45_bulk-settle.spec.ts:550:7 › bulk settle › bulk settle scenario 3 (21.3s)
+  ✓  458 [chromium] › cp47_person-period-figures.spec.ts:464:7 › person period figures › person period figures scenario 2 (21.3s)
+  ✓  459 [chromium] › cp46_re-settle.spec.ts:653:7 › re settle › re settle scenario 3 (23.9s)
+  ✓  461 [chromium] › cp47_person-period-figures.spec.ts:728:7 › person period figures › person period figures scenario 3 (22.3s)
+  ✓  460 [chromium] › cp48_dated-settings.spec.ts:6:7 › dated settings › dated settings (25.4s)
+  ✓  462 [chromium] › cp49_paste-claims.spec.ts:6:7 › paste claims › paste claims (24.3s)
+  ✓  463 [chromium] › cp50_deferred-claims.spec.ts:6:7 › deferred claims › deferred claims (15.5s)
+  ✓  464 [chromium] › cp48_dated-settings.spec.ts:135:7 › dated settings › dated settings scenario 1 (16.5s)
+  ✓  466 [chromium] › cp50_deferred-claims.spec.ts:138:7 › deferred claims › deferred claims scenario 1 (16.8s)
+  ✓  465 [chromium] › cp49_paste-claims.spec.ts:87:7 › paste claims › paste claims scenario 1 (21.2s)
+  ✓  467 [chromium] › cp48_dated-settings.spec.ts:421:7 › dated settings › dated settings scenario 2 (18.2s)
+  ✓  468 [chromium] › cp50_deferred-claims.spec.ts:377:7 › deferred claims › deferred claims scenario 2 (22.3s)
+  ✓  470 [chromium] › cp48_dated-settings.spec.ts:709:7 › dated settings › dated settings scenario 3 (17.8s)
+  ✓  469 [chromium] › cp49_paste-claims.spec.ts:371:7 › paste claims › paste claims scenario 2 (23.5s)
+  ✓  472 [chromium] › cp51_proofs.spec.ts:6:7 › proofs › proofs (17.7s)
+  ✓  471 [chromium] › cp50_deferred-claims.spec.ts:721:7 › deferred claims › deferred claims scenario 3 (20.0s)
+  ✓  473 [chromium] › cp49_paste-claims.spec.ts:715:7 › paste claims › paste claims scenario 3 (19.4s)
+  ✓  475 [chromium] › cp52_period-status-as-of-end.spec.ts:6:7 › period status as of end › period status as of end (10.9s)
+  ✓  474 [chromium] › cp51_proofs.spec.ts:87:7 › proofs › proofs scenario 1 (19.2s)
+  ✓  477 [chromium] › cp52_period-status-as-of-end.spec.ts:127:7 › period status as of end › period status as of end scenario 1 (31.7s)
+  ✓  478 [chromium] › cp51_proofs.spec.ts:298:7 › proofs › proofs scenario 2 (32.1s)
+  ✓  476 [chromium] › cp53_permission-matrix.spec.ts:6:7 › permission matrix › permission matrix (57.3s)
+  ✓  479 [chromium] › cp52_period-status-as-of-end.spec.ts:488:7 › period status as of end › period status as of end scenario 2 (24.0s)
+  ✓  480 [chromium] › cp51_proofs.spec.ts:717:7 › proofs › proofs scenario 3 (25.3s)
+  ✓  481 [chromium] › cp53_permission-matrix.spec.ts:97:7 › permission matrix › permission matrix scenario 1 (19.5s)
+  ✓  482 [chromium] › cp52_period-status-as-of-end.spec.ts:805:7 › period status as of end › period status as of end scenario 3 (23.6s)
+  ✓  485 [chromium] › cp55_auto-close.spec.ts:6:7 › auto close › auto close (7.6s)
+  ✓  484 [chromium] › cp53_permission-matrix.spec.ts:349:7 › permission matrix › permission matrix scenario 2 (26.7s)
+  ✓  483 [chromium] › cp54_viewer-role.spec.ts:6:7 › viewer role › viewer role (40.8s)
+  ✓  486 [chromium] › cp55_auto-close.spec.ts:102:7 › auto close › auto close scenario 1 (22.5s)
+  ✓  488 [chromium] › cp54_viewer-role.spec.ts:78:7 › viewer role › viewer role scenario 1 (13.3s)
+  ✓  490 [chromium] › cp54_viewer-role.spec.ts:297:7 › viewer role › viewer role scenario 2 (13.7s)
+  ✓  491 [chromium] › cp54_viewer-role.spec.ts:639:7 › viewer role › viewer role scenario 3 (12.4s)
+  ✓  489 [chromium] › cp55_auto-close.spec.ts:377:7 › auto close › auto close scenario 2 (39.7s)
+  ✓  487 [chromium] › cp53_permission-matrix.spec.ts:696:7 › permission matrix › permission matrix scenario 3 (54.5s)
+  ✓  492 [chromium] › cp56_late-per-boundary.spec.ts:6:7 › late per boundary › late per boundary (11.9s)
+  ✓  494 [chromium] › cp57_split-claim.spec.ts:6:7 › split claim › split claim (23.1s)
+  ✓  495 [chromium] › cp56_late-per-boundary.spec.ts:86:7 › late per boundary › late per boundary scenario 1 (23.0s)
+  ✓  493 [chromium] › cp55_auto-close.spec.ts:624:7 › auto close › auto close scenario 3 (38.8s)
+  ✓  496 [chromium] › cp57_split-claim.spec.ts:159:7 › split claim › split claim scenario 1 (25.6s)
+  ✓  498 [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify (17.2s)
+  ✓  497 [chromium] › cp56_late-per-boundary.spec.ts:405:7 › late per boundary › late per boundary scenario 2 (31.4s)
+  ✓  499 [chromium] › cp57_split-claim.spec.ts:484:7 › split claim › split claim scenario 2 (25.1s)
+  ✓  500 [chromium] › cp58_watch-and-notify.spec.ts:96:7 › watch and notify › watch and notify scenario 1 (19.4s)
+  ✓  502 [chromium] › cp57_split-claim.spec.ts:772:7 › split claim › split claim scenario 3 (20.5s)
+  ✓  503 [chromium] › cp58_watch-and-notify.spec.ts:360:7 › watch and notify › watch and notify scenario 2 (21.7s)
+  ✓  501 [chromium] › cp56_late-per-boundary.spec.ts:689:7 › late per boundary › late per boundary scenario 3 (38.0s)
+  ✓  504 [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates (12.7s)
+  ✓  506 [chromium] › cp60_trimmed-totals.spec.ts:6:7 › trimmed totals › trimmed totals (13.0s)
+  ✓  505 [chromium] › cp58_watch-and-notify.spec.ts:717:7 › watch and notify › watch and notify scenario 3 (19.9s)
+  ✓  507 [chromium] › cp59_period-templates.spec.ts:106:7 › period templates › period templates scenario 1 (16.3s)
+  ✓  509 [chromium] › cp61_delegation.spec.ts:6:7 › delegation › delegation (15.3s)
+  ✓  508 [chromium] › cp60_trimmed-totals.spec.ts:179:7 › trimmed totals › trimmed totals scenario 1 (23.1s)
+  ✓  510 [chromium] › cp59_period-templates.spec.ts:338:7 › period templates › period templates scenario 2 (19.7s)
+  ✓  511 [chromium] › cp61_delegation.spec.ts:77:7 › delegation › delegation scenario 1 (16.3s)
+  ✓  512 [chromium] › cp60_trimmed-totals.spec.ts:387:7 › trimmed totals › trimmed totals scenario 2 (18.3s)
+  ✓  513 [chromium] › cp59_period-templates.spec.ts:659:7 › period templates › period templates scenario 3 (15.9s)
+  ✓  514 [chromium] › cp61_delegation.spec.ts:426:7 › delegation › delegation scenario 2 (12.0s)
+  ✓  517 [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 (13.2s)
+  ✓  515 [chromium] › cp60_trimmed-totals.spec.ts:718:7 › trimmed totals › trimmed totals scenario 3 (20.8s)
+  ✓  518 [chromium] › cp63_person-terms.spec.ts:6:7 › person terms › person terms (7.7s)
+  ✓  519 [chromium] › cp64_floor-after-late.spec.ts:6:7 › floor after late › floor after late (7.3s)
+  ✓  520 [chromium] › cp63_person-terms.spec.ts:84:7 › person terms › person terms scenario 1 (13.3s)
+  ✓  516 [chromium] › cp62_archive-sheet.spec.ts:6:7 › archive sheet › archive sheet (37.9s)
+  ✓  522 [chromium] › cp63_person-terms.spec.ts:362:7 › person terms › person terms scenario 2 (22.1s)
+  ✓  523 [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 (19.8s)
+  ✓  521 [chromium] › cp64_floor-after-late.spec.ts:101:7 › floor after late › floor after late scenario 1 (48.0s)
+  ✓  524 [chromium] › cp63_person-terms.spec.ts:749:7 › person terms › person terms scenario 3 (14.6s)
+  ✓  525 [chromium] › cp62_archive-sheet.spec.ts:371:7 › archive sheet › archive sheet scenario 2 (15.0s)
+  ✓  527 [chromium] › cp65_void-settled.spec.ts:6:7 › void settled › void settled (19.0s)
+  ✓  526 [chromium] › cp64_floor-after-late.spec.ts:391:7 › floor after late › floor after late scenario 2 (35.8s)
+  ✓  528 [chromium] › cp62_archive-sheet.spec.ts:664:7 › archive sheet › archive sheet scenario 3 (39.1s)
+  ✓  531 [chromium] › cp66_redate-claim.spec.ts:6:7 › redate claim › redate claim (16.6s)
+  ✓  530 [chromium] › cp64_floor-after-late.spec.ts:703:7 › floor after late › floor after late scenario 3 (26.5s)
+  ✓  529 [chromium] › cp65_void-settled.spec.ts:99:7 › void settled › void settled scenario 1 (46.8s)
+  ✓  533 [chromium] › cp67_active-people.spec.ts:6:7 › active people › active people (14.9s)
+  ✓  535 [chromium] › cp67_active-people.spec.ts:121:7 › active people › active people scenario 1 (29.6s)
+  ✓  534 [chromium] › cp65_void-settled.spec.ts:361:7 › void settled › void settled scenario 2 (49.0s)
+  ✓  532 [chromium] › cp66_redate-claim.spec.ts:117:7 › redate claim › redate claim scenario 1 (1.0m)
+  ✓  536 [chromium] › cp67_active-people.spec.ts:526:7 › active people › active people scenario 2 (17.3s)
+  ✓  538 [chromium] › cp66_redate-claim.spec.ts:296:7 › redate claim › redate claim scenario 2 (22.1s)
+  ✓  537 [chromium] › cp65_void-settled.spec.ts:593:7 › void settled › void settled scenario 3 (28.2s)
+  ✓  539 [chromium] › cp67_active-people.spec.ts:812:7 › active people › active people scenario 3 (22.9s)
+  ✓  541 [chromium] › cp68_backing-recent-settled.spec.ts:6:7 › backing recent settled › backing recent settled (7.9s)
+  ✓  540 [chromium] › cp66_redate-claim.spec.ts:602:7 › redate claim › redate claim scenario 3 (19.9s)
+  ✓  542 [chromium] › cp69_claim-lock.spec.ts:6:7 › claim lock › claim lock (23.9s)
+  ✓  543 [chromium] › cp68_backing-recent-settled.spec.ts:98:7 › backing recent settled › backing recent settled scenario 1 (27.5s)
+  ✓  544 [chromium] › cp70_soft-close.spec.ts:6:7 › soft close › soft close (20.1s)
+  ✓  545 [chromium] › cp69_claim-lock.spec.ts:68:7 › claim lock › claim lock scenario 1 (28.3s)
+  ✓  546 [chromium] › cp68_backing-recent-settled.spec.ts:428:7 › backing recent settled › backing recent settled scenario 2 (28.5s)
+  ✓  547 [chromium] › cp70_soft-close.spec.ts:111:7 › soft close › soft close scenario 1 (33.5s)
+  ✓  548 [chromium] › cp69_claim-lock.spec.ts:396:7 › claim lock › claim lock scenario 2 (32.9s)
+  ✓  549 [chromium] › cp68_backing-recent-settled.spec.ts:723:7 › backing recent settled › backing recent settled scenario 3 (28.4s)
+  ✓  550 [chromium] › cp70_soft-close.spec.ts:383:7 › soft close › soft close scenario 2 (32.0s)
+  ✓  551 [chromium] › cp69_claim-lock.spec.ts:778:7 › claim lock › claim lock scenario 3 (18.6s)
+  ✓  552 [chromium] › cp71_cancel-statement.spec.ts:6:7 › cancel statement › cancel statement (17.8s)
+  ✓  554 [chromium] › cp72_retired-leave-totals.spec.ts:6:7 › retired leave totals › retired leave totals (10.3s)
+  ✓  555 [chromium] › cp71_cancel-statement.spec.ts:105:7 › cancel statement › cancel statement scenario 1 (16.7s)
+  ✓  556 [chromium] › cp72_retired-leave-totals.spec.ts:149:7 › retired leave totals › retired leave totals scenario 1 (20.3s)
+  ✓  553 [chromium] › cp70_soft-close.spec.ts:732:7 › soft close › soft close scenario 3 (35.4s)
+  ✓  557 [chromium] › cp71_cancel-statement.spec.ts:332:7 › cancel statement › cancel statement scenario 2 (22.7s)
+  ✓  559 [chromium] › cp73_statement-as-of.spec.ts:6:7 › statement as of › statement as of (20.0s)
+  ✓  560 [chromium] › cp71_cancel-statement.spec.ts:697:7 › cancel statement › cancel statement scenario 3 (28.3s)
+  ✓  561 [chromium] › cp73_statement-as-of.spec.ts:246:7 › statement as of › statement as of scenario 1 (24.0s)
+  ✓  558 [chromium] › cp72_retired-leave-totals.spec.ts:421:7 › retired leave totals › retired leave totals scenario 2 (47.5s)
+  ✓  562 [chromium] › cp74_as-of-view.spec.ts:6:7 › as of view › as of view (29.8s)
+  ✓  563 [chromium] › cp73_statement-as-of.spec.ts:457:7 › statement as of › statement as of scenario 2 (26.9s)
+  ✓  564 [chromium] › cp72_retired-leave-totals.spec.ts:622:7 › retired leave totals › retired leave totals scenario 3 (26.9s)
+  ✓  567 [chromium] › cp75_bulk-grade.spec.ts:6:7 › bulk grade › bulk grade (12.4s)
+  ✓  566 [chromium] › cp73_statement-as-of.spec.ts:837:7 › statement as of › statement as of scenario 3 (29.3s)
+  ✓  565 [chromium] › cp74_as-of-view.spec.ts:277:7 › as of view › as of view scenario 1 (36.9s)
+  ✓  568 [chromium] › cp75_bulk-grade.spec.ts:101:7 › bulk grade › bulk grade scenario 1 (21.4s)
+  ✓  569 [chromium] › cp76_snapshots.spec.ts:6:7 › snapshots › snapshots (11.6s)
+  ✓  570 [chromium] › cp74_as-of-view.spec.ts:702:7 › as of view › as of view scenario 2 (27.0s)
+  ✓  571 [chromium] › cp75_bulk-grade.spec.ts:366:7 › bulk grade › bulk grade scenario 2 (35.1s)
+  ✓  572 [chromium] › cp76_snapshots.spec.ts:87:7 › snapshots › snapshots scenario 1 (31.1s)
+  ✓  575 [chromium] › cp76_snapshots.spec.ts:408:7 › snapshots › snapshots scenario 2 (21.8s)
+  ✓  573 [chromium] › cp74_as-of-view.spec.ts:1056:7 › as of view › as of view scenario 3 (31.7s)
+  ✓  574 [chromium] › cp75_bulk-grade.spec.ts:686:7 › bulk grade › bulk grade scenario 3 (24.8s)
+  ✓  578 [chromium] › cp78_age-buckets.spec.ts:6:7 › age buckets › age buckets (8.6s)
+  ✓  577 [chromium] › cp77_note-required.spec.ts:6:7 › note required › note required (14.6s)
+  ✓  576 [chromium] › cp76_snapshots.spec.ts:798:7 › snapshots › snapshots scenario 3 (21.0s)
+  ✓  581 [chromium] › cp79_entry-date.spec.ts:6:7 › entry date › entry date (13.8s)
+  ✓  580 [chromium] › cp77_note-required.spec.ts:72:7 › note required › note required scenario 1 (25.2s)
+  ✓  583 [chromium] › cp77_note-required.spec.ts:454:7 › note required › note required scenario 2 (13.4s)
+  ✓  579 [chromium] › cp78_age-buckets.spec.ts:84:7 › age buckets › age buckets scenario 1 (57.1s)
+  ✓  584 [chromium] › cp77_note-required.spec.ts:687:7 › note required › note required scenario 3 (25.5s)
+  ✓  582 [chromium] › cp79_entry-date.spec.ts:99:7 › entry date › entry date scenario 1 (52.8s)
+  ✓  586 [chromium] › cp80_period-by-due-by.spec.ts:6:7 › period by due by › period by due by (15.3s)
+  ✓  585 [chromium] › cp78_age-buckets.spec.ts:606:7 › age buckets › age buckets scenario 2 (30.8s)
+  ✓  587 [chromium] › cp79_entry-date.spec.ts:362:7 › entry date › entry date scenario 2 (26.3s)
+  ✓  589 [chromium] › cp78_age-buckets.spec.ts:877:7 › age buckets › age buckets scenario 3 (22.2s)
+  ✓  588 [chromium] › cp80_period-by-due-by.spec.ts:164:7 › period by due by › period by due by scenario 1 (31.6s)
+  ✓  591 [chromium] › cp81_remind.spec.ts:6:7 › remind › remind (27.8s)
+  ✓  590 [chromium] › cp79_entry-date.spec.ts:707:7 › entry date › entry date scenario 3 (35.1s)
+  ✓  592 [chromium] › cp80_period-by-due-by.spec.ts:710:7 › period by due by › period by due by scenario 2 (29.9s)
+  ✓  594 [chromium] › cp82_settled-and-open-totals.spec.ts:6:7 › settled and open totals › settled and open totals (15.3s)
+  ✓  593 [chromium] › cp81_remind.spec.ts:68:7 › remind › remind scenario 1 (31.5s)
+  ✓  595 [chromium] › cp80_period-by-due-by.spec.ts:1121:7 › period by due by › period by due by scenario 3 (37.9s)
+  ✓  596 [chromium] › cp82_settled-and-open-totals.spec.ts:113:7 › settled and open totals › settled and open totals scenario 1 (29.6s)
+  ✓  597 [chromium] › cp81_remind.spec.ts:379:7 › remind › remind scenario 2 (19.0s)
+  ✓  598 [chromium] › cp83_holidays.spec.ts:6:7 › holidays › holidays (9.7s)
+  ✓  600 [chromium] › cp81_remind.spec.ts:752:7 › remind › remind scenario 3 (19.4s)
+  ✓  599 [chromium] › cp82_settled-and-open-totals.spec.ts:507:7 › settled and open totals › settled and open totals scenario 2 (24.1s)
+  ✓  602 [chromium] › cp84_business-day-terms.spec.ts:6:7 › business day terms › business day terms (6.1s)
+  ✓  601 [chromium] › cp83_holidays.spec.ts:91:7 › holidays › holidays scenario 1 (29.8s)
+  ✓  605 [chromium] › cp83_holidays.spec.ts:616:7 › holidays › holidays scenario 2 (22.2s)
+  ✓  603 [chromium] › cp82_settled-and-open-totals.spec.ts:1032:7 › settled and open totals › settled and open totals scenario 3 (54.8s)
+  ✓  604 [chromium] › cp84_business-day-terms.spec.ts:127:7 › business day terms › business day terms scenario 1 (52.4s)
+  ✓  606 [chromium] › cp83_holidays.spec.ts:1078:7 › holidays › holidays scenario 3 (29.2s)
+  ✓  607 [chromium] › cp85_grace-per-grade.spec.ts:6:7 › grace per grade › grace per grade (13.6s)
+  ✓  608 [chromium] › cp84_business-day-terms.spec.ts:493:7 › business day terms › business day terms scenario 2 (20.8s)
+  ✓  609 [chromium] › cp86_inline-amount.spec.ts:6:7 › inline amount › inline amount (19.6s)
+  ✓  610 [chromium] › cp85_grace-per-grade.spec.ts:137:7 › grace per grade › grace per grade scenario 1 (27.2s)
+  ✓  611 [chromium] › cp84_business-day-terms.spec.ts:889:7 › business day terms › business day terms scenario 3 (18.9s)
+  ✓  612 [chromium] › cp86_inline-amount.spec.ts:75:7 › inline amount › inline amount scenario 1 (18.6s)
+  ✓  614 [chromium] › cp87_external-reference.spec.ts:6:7 › external reference › external reference (11.8s)
+  ✓  613 [chromium] › cp85_grace-per-grade.spec.ts:451:7 › grace per grade › grace per grade scenario 2 (27.0s)
+  ✓  616 [chromium] › cp87_external-reference.spec.ts:86:7 › external reference › external reference scenario 1 (20.7s)
+  ✓  617 [chromium] › cp85_grace-per-grade.spec.ts:932:7 › grace per grade › grace per grade scenario 3 (23.2s)
+  ✓  619 [chromium] › cp88_compound-late-charge.spec.ts:6:7 › compound late charge › compound late charge (7.4s)
+  ✓  615 [chromium] › cp86_inline-amount.spec.ts:369:7 › inline amount › inline amount scenario 2 (52.4s)
+  ✓  618 [chromium] › cp87_external-reference.spec.ts:376:7 › external reference › external reference scenario 2 (27.6s)
+  ✓  621 [chromium] › cp86_inline-amount.spec.ts:666:7 › inline amount › inline amount scenario 3 (30.6s)
+  ✓  622 [chromium] › cp87_external-reference.spec.ts:804:7 › external reference › external reference scenario 3 (29.9s)
+  ✓  620 [chromium] › cp88_compound-late-charge.spec.ts:98:7 › compound late charge › compound late charge scenario 1 (38.1s)
+  ✓  623 [chromium] › cp89_claim-tags.spec.ts:6:7 › claim tags › claim tags (10.2s)
+  ✓  624 [chromium] › cp90_void-reasons.spec.ts:6:7 › void reasons › void reasons (19.2s)
+  ✓  626 [chromium] › cp89_claim-tags.spec.ts:105:7 › claim tags › claim tags scenario 1 (26.8s)
+  ✓  627 [chromium] › cp90_void-reasons.spec.ts:101:7 › void reasons › void reasons scenario 1 (34.3s)
+  ✓  628 [chromium] › cp89_claim-tags.spec.ts:371:7 › claim tags › claim tags scenario 2 (24.4s)
+  ✓  625 [chromium] › cp88_compound-late-charge.spec.ts:593:7 › compound late charge › compound late charge scenario 2 (1.0m)
+  ✓  630 [chromium] › cp89_claim-tags.spec.ts:715:7 › claim tags › claim tags scenario 3 (15.2s)
+  ✓  629 [chromium] › cp90_void-reasons.spec.ts:338:7 › void reasons › void reasons scenario 2 (24.5s)
+  ✓  632 [chromium] › cp91_claim-comments.spec.ts:6:7 › claim comments › claim comments (14.3s)
+  ✓  633 [chromium] › cp90_void-reasons.spec.ts:684:7 › void reasons › void reasons scenario 3 (20.1s)
+  ✓  634 [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 (19.7s)
+  ✓  635 [chromium] › cp92_four-eyes-editor.spec.ts:6:7 › four eyes editor › four eyes editor (20.0s)
+  ✓  631 [chromium] › cp88_compound-late-charge.spec.ts:967:7 › compound late charge › compound late charge scenario 3 (59.8s)
+  ✓  636 [chromium] › cp91_claim-comments.spec.ts:344:7 › claim comments › claim comments scenario 2 (19.8s)
+  ✓  638 [chromium] › cp93_bulk-reassign.spec.ts:6:7 › bulk reassign › bulk reassign (7.8s)
+  ✓  637 [chromium] › cp92_four-eyes-editor.spec.ts:78:7 › four eyes editor › four eyes editor scenario 1 (21.7s)
+  ✓  640 [chromium] › cp93_bulk-reassign.spec.ts:99:7 › bulk reassign › bulk reassign scenario 1 (17.9s)
+  ✓  639 [chromium] › cp91_claim-comments.spec.ts:816:7 › claim comments › claim comments scenario 3 (24.4s)
+  ✓  642 [chromium] › cp93_bulk-reassign.spec.ts:380:7 › bulk reassign › bulk reassign scenario 2 (14.5s)
+  ✓  641 [chromium] › cp92_four-eyes-editor.spec.ts:439:7 › four eyes editor › four eyes editor scenario 2 (26.0s)
+  ✓  643 [chromium] › cp94_proof-threshold-per-grade.spec.ts:6:7 › proof threshold per grade › proof threshold per grade (18.2s)
+  ✓  644 [chromium] › cp93_bulk-reassign.spec.ts:711:7 › bulk reassign › bulk reassign scenario 3 (20.9s)
+  ✓  645 [chromium] › cp92_four-eyes-editor.spec.ts:910:7 › four eyes editor › four eyes editor scenario 3 (23.1s)
+  ✓  648 [chromium] › cp96_holidays-redate.spec.ts:6:7 › holidays redate › holidays redate (6.5s)
+  ✓  647 [chromium] › cp95_rate-preview.spec.ts:6:7 › rate preview › rate preview (11.3s)
+  ✓  646 [chromium] › cp94_proof-threshold-per-grade.spec.ts:87:7 › proof threshold per grade › proof threshold per grade scenario 1 (24.7s)
+  ✓  649 [chromium] › cp96_holidays-redate.spec.ts:100:7 › holidays redate › holidays redate scenario 1 (17.1s)
+  ✓  650 [chromium] › cp95_rate-preview.spec.ts:83:7 › rate preview › rate preview scenario 1 (20.9s)
+  ✓  651 [chromium] › cp94_proof-threshold-per-grade.spec.ts:600:7 › proof threshold per grade › proof threshold per grade scenario 2 (24.7s)
+  ✓  652 [chromium] › cp96_holidays-redate.spec.ts:568:7 › holidays redate › holidays redate scenario 2 (13.2s)
+  ✓  654 [chromium] › cp94_proof-threshold-per-grade.spec.ts:922:7 › proof threshold per grade › proof threshold per grade scenario 3 (20.9s)
+  ✓  656 [chromium] › cp97_monthly-totals.spec.ts:6:7 › monthly totals › monthly totals (8.4s)
+  ✓  653 [chromium] › cp95_rate-preview.spec.ts:537:7 › rate preview › rate preview scenario 2 (39.8s)
+  ✓  655 [chromium] › cp96_holidays-redate.spec.ts:898:7 › holidays redate › holidays redate scenario 3 (34.9s)
+  ✓  657 [chromium] › cp97_monthly-totals.spec.ts:99:7 › monthly totals › monthly totals scenario 1 (19.2s)
+  ✓  659 [chromium] › cp98_settle-batches.spec.ts:6:7 › settle batches › settle batches (13.6s)
+  ✓  658 [chromium] › cp95_rate-preview.spec.ts:837:7 › rate preview › rate preview scenario 3 (30.7s)
+  ✓  661 [chromium] › cp98_settle-batches.spec.ts:107:7 › settle batches › settle batches scenario 1 (18.8s)
+  ✓  660 [chromium] › cp97_monthly-totals.spec.ts:542:7 › monthly totals › monthly totals scenario 2 (22.9s)
+  ✓  662 [chromium] › cp99_person-contact.spec.ts:6:7 › person contact › person contact (16.0s)
+  ✓  664 [chromium] › cp97_monthly-totals.spec.ts:738:7 › monthly totals › monthly totals scenario 3 (16.1s)
+  ✓  665 [chromium] › cp99_person-contact.spec.ts:57:7 › person contact › person contact scenario 1 (24.3s)
+  ✓  663 [chromium] › cp98_settle-batches.spec.ts:421:7 › settle batches › settle batches scenario 2 (37.9s)
+  ✓  667 [chromium] › cp98_settle-batches.spec.ts:776:7 › settle batches › settle batches scenario 3 (13.3s)
+  ✓  666 [chromium] › cp99_person-contact.spec.ts:816:7 › person contact › person contact scenario 2 (17.3s)
+  ✓  668 [chromium] › cp99_person-contact.spec.ts:1248:7 › person contact › person contact scenario 3 (14.3s)
+
+
+  1) [chromium] › cp109_parent-sheet-rates.spec.ts:910:7 › parent sheet rates › parent sheet rates scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"12.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+
+
+      1012 |     await expect(pg_uma.getByTestId("header-due-total")).toHaveText("0.00");
+      1013 |     await expect(pg_uma.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 1014 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1015 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      1016 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      1017 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp109_parent-sheet-rates.spec.ts:1014:56
+
+  2) [chromium] › cp111_transfer-person.spec.ts:6:7 › transfer person › transfer person ────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-172').getByTestId('person-aliases')
+    Expected string: [32m"Ada"[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-172').getByTestId('person-aliases')[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <td data-testid="person-aliases"></td>[22m
+    [2m  -   unexpected value ""[22m
+
+
+      144 |     await expect(pg_vic.getByTestId("claim-row-" + c_tom_0).getByTestId("claim-status")).toHaveText("OPEN");
+      145 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-name")).toHaveText("Ada");
+    > 146 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-aliases")).toHaveText("Ada");
+          |                                                                                           ^
+      147 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
+      148 |     await expect(pg_vic.getByTestId("person-row-" + p_ben_2).getByTestId("person-name")).toHaveText("Ben");
+      149 |     await expect(pg_vic.getByTestId("person-row-" + p_ben_2).getByTestId("person-aliases")).toHaveText("Benny");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp111_transfer-person.spec.ts:146:91
+
+  3) [chromium] › cp111_transfer-person.spec.ts:894:7 › transfer person › transfer person scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      987 |     await expect(pg_wes.getByTestId("header-due-total")).toHaveText("0.00");
+      988 |     await expect(pg_wes.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 989 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      990 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      991 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      992 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp111_transfer-person.spec.ts:989:56
+
+  4) [chromium] › cp112_uniqueness-across-tree.spec.ts:72:7 › uniqueness across tree › uniqueness across tree scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"7.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+
+
+      249 |     await expect(pg_vic.getByTestId("header-due-total")).toHaveText("0.00");
+      250 |     await expect(pg_vic.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 251 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      252 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      253 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      254 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp112_uniqueness-across-tree.spec.ts:251:56
+
+  5) [chromium] › cp114_delete-and-restore-draft.spec.ts:1004:7 › delete and restore draft › delete and restore draft scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"10.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+
+
+      1114 |     await expect(pg_uma.getByTestId("header-due-total")).toHaveText("0.00");
+      1115 |     await expect(pg_uma.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 1116 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1117 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      1118 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      1119 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp114_delete-and-restore-draft.spec.ts:1116:56
+
+  6) [chromium] › cp115_nested-pools.spec.ts:543:7 › nested pools › nested pools scenario 2 ────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"12.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+
+
+      663 |     await expect(pg_uma.getByTestId("header-due-total")).toHaveText("0.00");
+      664 |     await expect(pg_uma.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 665 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      666 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      667 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      668 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp115_nested-pools.spec.ts:665:56
+
+  7) [chromium] › cp117_list-positions.spec.ts:898:7 › list positions › list positions scenario 3 ──
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"33.33"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+
+
+      1004 |     await expect(pg_uma.getByTestId("header-due-total")).toHaveText("0.00");
+      1005 |     await expect(pg_uma.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 1006 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1007 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      1008 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      1009 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp117_list-positions.spec.ts:1006:56
+
+  8) [chromium] › cp118_import-rates.spec.ts:433:7 › import rates › import rates scenario 2 ────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"12.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+
+
+      566 |     await expect(pg_vic.getByTestId("header-due-total")).toHaveText("0.00");
+      567 |     await expect(pg_vic.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 568 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      569 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      570 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      571 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp118_import-rates.spec.ts:568:56
+
+  9) [chromium] › cp121_history-follows.spec.ts:82:7 › history follows › history follows scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"20.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+
+
+      236 |     await expect(pg_uma.getByTestId("header-due-total")).toHaveText("0.00");
+      237 |     await expect(pg_uma.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 238 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      239 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      240 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      241 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp121_history-follows.spec.ts:238:56
+
+  10) [chromium] › cp124_retired-share-reallocates.spec.ts:898:7 › retired share reallocates › retired share reallocates scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"33.33"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+
+
+      1022 |     await expect(pg_wes.getByTestId("header-due-total")).toHaveText("0.00");
+      1023 |     await expect(pg_wes.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 1024 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1025 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      1026 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      1027 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp124_retired-share-reallocates.spec.ts:1024:56
+
+  11) [chromium] › cp126_clone-sheet.spec.ts:567:7 › clone sheet › clone sheet scenario 2 ──────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"10.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+
+
+      686 |     await expect(pg_vic.getByTestId("header-due-total")).toHaveText("0.00");
+      687 |     await expect(pg_vic.getByTestId("header-overdue-total")).toHaveText("0.00");
+    > 688 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      689 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      690 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      691 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp126_clone-sheet.spec.ts:688:56
+
+  12) [chromium] › cp128_transfer-merges.spec.ts:764:7 › transfer merges › transfer merges scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      892 |     await expect(pg_uma.getByTestId("my-due-total")).toHaveText("");
+      893 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+    > 894 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      895 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      896 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      897 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp128_transfer-merges.spec.ts:894:56
+
+  13) [chromium] › cp130_period-comparison.spec.ts:444:7 › period comparison › period comparison scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"12.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+
+
+      628 |     await expect(pg_wes.getByTestId("my-due-total")).toHaveText("");
+      629 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+    > 630 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      631 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      632 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      633 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp130_period-comparison.spec.ts:630:56
+
+  14) [chromium] › cp130_period-comparison.spec.ts:964:7 › period comparison › period comparison scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"33.33"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+
+
+      1096 |     await expect(pg_uma.getByTestId("my-due-total")).toHaveText("");
+      1097 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+    > 1098 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1099 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      1100 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      1101 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp130_period-comparison.spec.ts:1098:56
+
+  15) [chromium] › cp131_plans.spec.ts:566:7 › plans › plans scenario 2 ────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"20.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+
+
+      716 |     await expect(pg_vic.getByTestId("my-due-total")).toHaveText("");
+      717 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+    > 718 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      719 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      720 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      721 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp131_plans.spec.ts:718:56
+
+  16) [chromium] › cp132_tree-numbering.spec.ts:944:7 › tree numbering › tree numbering scenario 3 ─
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"10.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+
+
+      1093 |     await expect(pg_wes.getByTestId("my-due-total")).toHaveText("");
+      1094 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+    > 1095 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1096 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      1097 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      1098 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp132_tree-numbering.spec.ts:1095:56
+
+  17) [chromium] › cp134_sorting.spec.ts:98:7 › sorting › sorting scenario 1 ───────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      240 |     await expect(pg_uma.getByTestId("my-due-total")).toHaveText("");
+      241 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+    > 242 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      243 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      244 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      245 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp134_sorting.spec.ts:242:56
+
+  18) [chromium] › cp135_export-pools.spec.ts:433:7 › export pools › export pools scenario 2 ───────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"12.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+
+
+      576 |     await expect(pg_uma.getByTestId("my-due-total")).toHaveText("");
+      577 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+    > 578 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      579 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      580 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      581 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp135_export-pools.spec.ts:578:56
+
+  19) [chromium] › cp138_inline-grade.spec.ts:433:7 › inline grade › inline grade scenario 2 ───────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"7.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+
+
+      589 |     await expect(pg_wes.getByTestId("my-due-total")).toHaveText("");
+      590 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+    > 591 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      592 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      593 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      594 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp138_inline-grade.spec.ts:591:56
+
+  20) [chromium] › cp140_remainder-to-smallest.spec.ts:836:7 › remainder to smallest › remainder to smallest scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"7.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+
+
+      959 |     await expect(pg_uma.getByTestId("my-due-total")).toHaveText("");
+      960 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+    > 961 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      962 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      963 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      964 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp140_remainder-to-smallest.spec.ts:961:56
+
+  21) [chromium] › cp142_plan-preview.spec.ts:398:7 › plan preview › plan preview scenario 2 ───────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"33.33"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+
+
+      563 |     await expect(pg_uma.getByTestId("my-due-total")).toHaveText("");
+      564 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+    > 565 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      566 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      567 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      568 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp142_plan-preview.spec.ts:565:56
+
+  22) [chromium] › cp147_snapshot-lines.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ─
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      746 |     await expect(pg_vic.getByTestId("my-due-total")).toHaveText("");
+      747 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+    > 748 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      749 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      750 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      751 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp147_snapshot-lines.spec.ts:748:56
+
+  23) [chromium] › cp150_tree-search.spec.ts:57:7 › tree search › tree search scenario 1 ───────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      207 |     await expect(pg_vic.getByTestId("my-due-total")).toHaveText("");
+      208 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+    > 209 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      210 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      211 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      212 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp150_tree-search.spec.ts:209:56
+
+  24) [chromium] › cp150_tree-search.spec.ts:422:7 › tree search › tree search scenario 2 ──────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"12.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+
+
+      557 |     await expect(pg_uma.getByTestId("my-due-total")).toHaveText("");
+      558 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+    > 559 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      560 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      561 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      562 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp150_tree-search.spec.ts:559:56
+
+  25) [chromium] › cp153_rate-versions.spec.ts:101:7 › rate versions › rate versions scenario 1 ────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"33.33"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+
+
+      226 |     await expect(pg_vic.getByTestId("my-due-total")).toHaveText("");
+      227 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+    > 228 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      229 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      230 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      231 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp153_rate-versions.spec.ts:228:56
+
+  26) [chromium] › cp156_forward-only-rates.spec.ts:760:7 › forward only rates › forward only rates scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      933 |     await expect(pg_uma.getByTestId("my-due-total")).toHaveText("");
+      934 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+    > 935 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      936 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      937 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      938 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp156_forward-only-rates.spec.ts:935:56
+
+  27) [chromium] › cp157_user-locale.spec.ts:126:7 › user locale › user locale scenario 1 ──────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-756').getByTestId('person-claimed')
+    Expected string: [32m"0.00"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-756').getByTestId('person-claimed')[22m
+
+
+      155 |     expect(await ui.statement(pg_uma, p_ada)).toBe(true);
+      156 |     await ui.refresh(pg_uma);
+    > 157 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+          |                                                                                           ^
+      158 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+      159 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_1).getByTestId("claim-due")).toHaveText("6.67");
+      160 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_1).getByTestId("claim-status")).toHaveText("DRAFT");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp157_user-locale.spec.ts:157:91
+
+  28) [chromium] › cp157_user-locale.spec.ts:1018:7 › user locale › user locale scenario 3 ─────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"33.33"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">33.33</td>[22m
+    [2m  -   unexpected value "33.33"[22m
+
+
+      1144 |     await expect(pg_wes.getByTestId("my-due-total")).toHaveText("");
+      1145 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+    > 1146 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1147 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      1148 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      1149 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp157_user-locale.spec.ts:1146:56
+
+  29) [chromium] › cp158_column-chooser.spec.ts:581:7 › column chooser › column chooser scenario 2 ─
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"10.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+
+
+      721 |     await expect(pg_vic.getByTestId("my-due-total")).toHaveText("");
+      722 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+    > 723 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      724 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      725 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      726 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp158_column-chooser.spec.ts:723:56
+
+  30) [chromium] › cp158_column-chooser.spec.ts:961:7 › column chooser › column chooser scenario 3 ─
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"10.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">10.00</td>[22m
+    [2m  -   unexpected value "10.00"[22m
+
+
+      1099 |     await expect(pg_wes.getByTestId("my-due-total")).toHaveText("");
+      1100 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+    > 1101 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1102 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      1103 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      1104 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp158_column-chooser.spec.ts:1101:56
+
+  31) [chromium] › cp160_frozen-carried-and-as-of-tree.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"7.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+
+
+      751 |     await expect(pg_vic.getByTestId("my-due-total")).toHaveText("");
+      752 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+    > 753 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      754 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      755 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      756 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp160_frozen-carried-and-as-of-tree.spec.ts:753:56
+
+  32) [chromium] › cp161_as-of-exports.spec.ts:35:7 › as of exports › as of exports scenario 1 ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      178 |     await expect(pg_vic.getByTestId("my-due-total")).toHaveText("");
+      179 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+    > 180 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      181 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      182 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      183 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp161_as-of-exports.spec.ts:180:56
+
+  33) [chromium] › cp161_as-of-exports.spec.ts:432:7 › as of exports › as of exports scenario 2 ────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"20.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+
+
+      564 |     await expect(pg_vic.getByTestId("my-due-total")).toHaveText("");
+      565 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+    > 566 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      567 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      568 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      569 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp161_as-of-exports.spec.ts:566:56
+
+  34) [chromium] › cp161_as-of-exports.spec.ts:836:7 › as of exports › as of exports scenario 3 ────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"20.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">20.00</td>[22m
+    [2m  -   unexpected value "20.00"[22m
+
+
+      1066 |     await expect(pg_wes.getByTestId("my-due-total")).toHaveText("");
+      1067 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+    > 1068 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1069 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      1070 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      1071 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp161_as-of-exports.spec.ts:1068:56
+
+  35) [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      915 |     await expect(pg_wes.getByTestId("my-due-total")).toHaveText("");
+      916 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+    > 917 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      918 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      919 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      920 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp164_correction-limit.spec.ts:917:56
+
+  36) [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"7.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+
+
+      1452 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+      1453 |     await expect(pg_uma.getByTestId("my-crew-due-total")).toHaveText("");
+    > 1454 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1455 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      1456 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      1457 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp168_crews-are-pools.spec.ts:1454:56
+
+  37) [chromium] › cp169_person-terms-dated.spec.ts:522:7 › person terms dated › person terms dated scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"7.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+
+
+      670 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+      671 |     await expect(pg_vic.getByTestId("my-crew-due-total")).toHaveText("");
+    > 672 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      673 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      674 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      675 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp169_person-terms-dated.spec.ts:672:56
+
+  38) [chromium] › cp169_person-terms-dated.spec.ts:903:7 › person terms dated › person terms dated scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"12.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+
+
+      1115 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+      1116 |     await expect(pg_vic.getByTestId("my-crew-due-total")).toHaveText("");
+    > 1117 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1118 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      1119 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      1120 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp169_person-terms-dated.spec.ts:1117:56
+
+  Slow test file: [chromium] › cp88_compound-late-charge.spec.ts (2.8m)
+  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (2.6m)
+  Slow test file: [chromium] › cp117_list-positions.spec.ts (2.6m)
+  Slow test file: [chromium] › cp101_audit-viewer.spec.ts (2.5m)
+  Slow test file: [chromium] › cp108_patron-shares.spec.ts (2.4m)
+  Consider splitting slow test files to speed up parallel execution
+  38 failed
+    [chromium] › cp109_parent-sheet-rates.spec.ts:910:7 › parent sheet rates › parent sheet rates scenario 3 
+    [chromium] › cp111_transfer-person.spec.ts:6:7 › transfer person › transfer person ─────────────
+    [chromium] › cp111_transfer-person.spec.ts:894:7 › transfer person › transfer person scenario 3 
+    [chromium] › cp112_uniqueness-across-tree.spec.ts:72:7 › uniqueness across tree › uniqueness across tree scenario 1 
+    [chromium] › cp114_delete-and-restore-draft.spec.ts:1004:7 › delete and restore draft › delete and restore draft scenario 3 
+    [chromium] › cp115_nested-pools.spec.ts:543:7 › nested pools › nested pools scenario 2 ─────────
+    [chromium] › cp117_list-positions.spec.ts:898:7 › list positions › list positions scenario 3 ───
+    [chromium] › cp118_import-rates.spec.ts:433:7 › import rates › import rates scenario 2 ─────────
+    [chromium] › cp121_history-follows.spec.ts:82:7 › history follows › history follows scenario 1 ─
+    [chromium] › cp124_retired-share-reallocates.spec.ts:898:7 › retired share reallocates › retired share reallocates scenario 3 
+    [chromium] › cp126_clone-sheet.spec.ts:567:7 › clone sheet › clone sheet scenario 2 ────────────
+    [chromium] › cp128_transfer-merges.spec.ts:764:7 › transfer merges › transfer merges scenario 3 
+    [chromium] › cp130_period-comparison.spec.ts:444:7 › period comparison › period comparison scenario 2 
+    [chromium] › cp130_period-comparison.spec.ts:964:7 › period comparison › period comparison scenario 3 
+    [chromium] › cp131_plans.spec.ts:566:7 › plans › plans scenario 2 ──────────────────────────────
+    [chromium] › cp132_tree-numbering.spec.ts:944:7 › tree numbering › tree numbering scenario 3 ───
+    [chromium] › cp134_sorting.spec.ts:98:7 › sorting › sorting scenario 1 ─────────────────────────
+    [chromium] › cp135_export-pools.spec.ts:433:7 › export pools › export pools scenario 2 ─────────
+    [chromium] › cp138_inline-grade.spec.ts:433:7 › inline grade › inline grade scenario 2 ─────────
+    [chromium] › cp140_remainder-to-smallest.spec.ts:836:7 › remainder to smallest › remainder to smallest scenario 3 
+    [chromium] › cp142_plan-preview.spec.ts:398:7 › plan preview › plan preview scenario 2 ─────────
+    [chromium] › cp147_snapshot-lines.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ───
+    [chromium] › cp150_tree-search.spec.ts:57:7 › tree search › tree search scenario 1 ─────────────
+    [chromium] › cp150_tree-search.spec.ts:422:7 › tree search › tree search scenario 2 ────────────
+    [chromium] › cp153_rate-versions.spec.ts:101:7 › rate versions › rate versions scenario 1 ──────
+    [chromium] › cp156_forward-only-rates.spec.ts:760:7 › forward only rates › forward only rates scenario 2 
+    [chromium] › cp157_user-locale.spec.ts:126:7 › user locale › user locale scenario 1 ────────────
+    [chromium] › cp157_user-locale.spec.ts:1018:7 › user locale › user locale scenario 3 ───────────
+    [chromium] › cp158_column-chooser.spec.ts:581:7 › column chooser › column chooser scenario 2 ───
+    [chromium] › cp158_column-chooser.spec.ts:961:7 › column chooser › column chooser scenario 3 ───
+    [chromium] › cp160_frozen-carried-and-as-of-tree.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 
+    [chromium] › cp161_as-of-exports.spec.ts:35:7 › as of exports › as of exports scenario 1 ───────
+    [chromium] › cp161_as-of-exports.spec.ts:432:7 › as of exports › as of exports scenario 2 ──────
+    [chromium] › cp161_as-of-exports.spec.ts:836:7 › as of exports › as of exports scenario 3 ──────
+    [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+    [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 
+    [chromium] › cp169_person-terms-dated.spec.ts:522:7 › person terms dated › person terms dated scenario 2 
+    [chromium] › cp169_person-terms-dated.spec.ts:903:7 › person terms dated › person terms dated scenario 3 
+  630 passed (1.4h)

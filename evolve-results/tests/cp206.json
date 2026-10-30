@@ -1,0 +1,66 @@
+{
+  "checkpoint": 206,
+  "checkpoint_id": "cp206_restricted-role",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "11bec14c0715667512792728aec506d653ad7a97",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T11:08:12",
+  "seconds": 217,
+  "build_log_file": "cp206.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp206_restricted-role.spec.ts::restricted role": true,
+      "cp206_restricted-role.spec.ts::restricted role scenario 1": true,
+      "cp206_restricted-role.spec.ts::restricted role scenario 2": true,
+      "cp206_restricted-role.spec.ts::restricted role scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp206_restricted-role.spec.ts::restricted role",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15820,
+        "failure": ""
+      },
+      {
+        "test_id": "cp206_restricted-role.spec.ts::restricted role scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 55631,
+        "failure": ""
+      },
+      {
+        "test_id": "cp206_restricted-role.spec.ts::restricted role scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28539,
+        "failure": ""
+      },
+      {
+        "test_id": "cp206_restricted-role.spec.ts::restricted role scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 64656,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

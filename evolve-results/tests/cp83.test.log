@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp83-bead8rpb
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp83_holidays.spec.ts:6:7 › holidays › holidays (8.4s)
+  ✓  2 [chromium] › cp83_holidays.spec.ts:95:7 › holidays › holidays scenario 1 (21.7s)
+  ✓  3 [chromium] › cp83_holidays.spec.ts:595:7 › holidays › holidays scenario 2 (42.6s)
+  ✓  4 [chromium] › cp83_holidays.spec.ts:1057:7 › holidays › holidays scenario 3 (15.0s)
+
+  Slow test file: [chromium] › cp83_holidays.spec.ts (1.5m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.5m)

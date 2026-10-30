@@ -1,0 +1,66 @@
+{
+  "checkpoint": 203,
+  "checkpoint_id": "cp203_plan-pause",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "6f2a6d1e2459b490b6d36911088e6f4476131e3e",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T10:59:31",
+  "seconds": 174,
+  "build_log_file": "cp203.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp203_plan-pause.spec.ts::plan pause": true,
+      "cp203_plan-pause.spec.ts::plan pause scenario 1": true,
+      "cp203_plan-pause.spec.ts::plan pause scenario 2": true,
+      "cp203_plan-pause.spec.ts::plan pause scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp203_plan-pause.spec.ts::plan pause",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12950,
+        "failure": ""
+      },
+      {
+        "test_id": "cp203_plan-pause.spec.ts::plan pause scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 47890,
+        "failure": ""
+      },
+      {
+        "test_id": "cp203_plan-pause.spec.ts::plan pause scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 54292,
+        "failure": ""
+      },
+      {
+        "test_id": "cp203_plan-pause.spec.ts::plan pause scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18994,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

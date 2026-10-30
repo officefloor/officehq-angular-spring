@@ -1,0 +1,66 @@
+{
+  "checkpoint": 159,
+  "checkpoint_id": "cp159_carried-figures",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "27dc6e3d6abfd84e52d627a7d8e20f8869b65867",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-29T20:40:33",
+  "seconds": 229,
+  "build_log_file": "cp159.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp159_carried-figures.spec.ts::carried figures": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 1": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 2": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17051,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 79839,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14507,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25166,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

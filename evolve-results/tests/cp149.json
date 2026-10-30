@@ -1,0 +1,66 @@
+{
+  "checkpoint": 149,
+  "checkpoint_id": "cp149_period-claim-cap",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "3490b69830e5276ac676063b6dd7992119fffb8d",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-29T18:30:30",
+  "seconds": 162,
+  "build_log_file": "cp149.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp149_period-claim-cap.spec.ts::period claim cap": true,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 1": true,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 2": true,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20580,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25337,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20545,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19687,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

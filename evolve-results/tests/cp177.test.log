@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp177-d2pb6k0n
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp177_proof-kinds.spec.ts:6:7 › proof kinds › proof kinds (10.0s)
+  ✓  2 [chromium] › cp177_proof-kinds.spec.ts:76:7 › proof kinds › proof kinds scenario 1 (54.2s)
+  ✓  3 [chromium] › cp177_proof-kinds.spec.ts:570:7 › proof kinds › proof kinds scenario 2 (25.4s)
+  ✓  4 [chromium] › cp177_proof-kinds.spec.ts:1006:7 › proof kinds › proof kinds scenario 3 (24.9s)
+
+  Slow test file: [chromium] › cp177_proof-kinds.spec.ts (1.9m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (2.0m)

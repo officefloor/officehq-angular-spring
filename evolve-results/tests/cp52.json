@@ -1,0 +1,96 @@
+{
+  "checkpoint": 52,
+  "checkpoint_id": "cp52_period-status-as-of-end",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "20b5817d1a28da0060becdc630b2a04d1c3383b3",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-27T02:51:00",
+  "seconds": 93,
+  "build_log_file": "cp52.test.log",
+  "replaced_tests": [
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 2",
+    "cp21_retire.spec.ts::retire scenario 3",
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 3",
+    "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 3",
+    "cp26_late-charge.spec.ts::late charge scenario 3",
+    "cp28_grade-dated.spec.ts::grade dated scenario 3",
+    "cp30_corrections.spec.ts::corrections scenario 1",
+    "cp30_corrections.spec.ts::corrections scenario 3",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+    "cp33_export-people.spec.ts::export people scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp36_approvals.spec.ts::approvals scenario 2",
+    "cp37_reassign-claim.spec.ts::reassign claim scenario 1",
+    "cp39_claim-log.spec.ts::claim log scenario 3",
+    "cp40_hold-interval.spec.ts::hold interval scenario 2",
+    "cp41_header-counters.spec.ts::header counters scenario 2",
+    "cp42_rate-end-dates.spec.ts::rate end dates scenario 2",
+    "cp42_rate-end-dates.spec.ts::rate end dates scenario 3",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp44_rollup-overdue.spec.ts::rollup overdue scenario 3",
+    "cp45_bulk-settle.spec.ts::bulk settle",
+    "cp46_re-settle.spec.ts::re settle",
+    "cp46_re-settle.spec.ts::re settle scenario 1",
+    "cp47_person-period-figures.spec.ts::person period figures scenario 3",
+    "cp48_dated-settings.spec.ts::dated settings scenario 2",
+    "cp50_deferred-claims.spec.ts::deferred claims",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 3",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp52_period-status-as-of-end.spec.ts::period status as of end": true,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 1": true,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2": true,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10112,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13687,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8611,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9851,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp164-rglcrukm
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp164_correction-limit.spec.ts:6:7 › correction limit › correction limit (16.8s)
+  ✓  2 [chromium] › cp164_correction-limit.spec.ts:78:7 › correction limit › correction limit scenario 1 (1.0m)
+  ✘  3 [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 (1.7m)
+  ✓  4 [chromium] › cp164_correction-limit.spec.ts:1244:7 › correction limit › correction limit scenario 3 (31.3s)
+
+
+  1) [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"5.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">5.00</td>[22m
+    [2m  -   unexpected value "5.00"[22m
+
+
+      915 |     await expect(pg_wes.getByTestId("my-due-total")).toHaveText("");
+      916 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
+    > 917 |     await expect(pg_wes.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      918 |     await expect(pg_wes.getByTestId("rate-current-B")).toHaveText("n/a");
+      919 |     await expect(pg_wes.getByTestId("rate-current-C")).toHaveText("n/a");
+      920 |     await expect(pg_wes.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp164_correction-limit.spec.ts:917:56
+
+  1 failed
+    [chromium] › cp164_correction-limit.spec.ts:769:7 › correction limit › correction limit scenario 2 
+  3 passed (3.6m)

@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp52-v44udks1
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp52_period-status-as-of-end.spec.ts:6:7 › period status as of end › period status as of end (10.1s)
+  ✓  2 [chromium] › cp52_period-status-as-of-end.spec.ts:126:7 › period status as of end › period status as of end scenario 1 (13.7s)
+  ✓  3 [chromium] › cp52_period-status-as-of-end.spec.ts:498:7 › period status as of end › period status as of end scenario 2 (8.6s)
+  ✓  4 [chromium] › cp52_period-status-as-of-end.spec.ts:812:7 › period status as of end › period status as of end scenario 3 (9.9s)
+
+  Slow test file: [chromium] › cp52_period-status-as-of-end.spec.ts (42.3s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (44.7s)

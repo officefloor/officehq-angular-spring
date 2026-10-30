@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp68-mvkhlem7
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp68_backing-recent-settled.spec.ts:6:7 › backing recent settled › backing recent settled (6.8s)
+  ✓  2 [chromium] › cp68_backing-recent-settled.spec.ts:96:7 › backing recent settled › backing recent settled scenario 1 (9.0s)
+  ✓  3 [chromium] › cp68_backing-recent-settled.spec.ts:421:7 › backing recent settled › backing recent settled scenario 2 (13.7s)
+  ✓  4 [chromium] › cp68_backing-recent-settled.spec.ts:717:7 › backing recent settled › backing recent settled scenario 3 (7.1s)
+
+  Slow test file: [chromium] › cp68_backing-recent-settled.spec.ts (36.6s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (38.3s)

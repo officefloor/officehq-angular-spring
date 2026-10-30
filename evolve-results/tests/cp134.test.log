@@ -1,0 +1,39 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp134-h1b0p9b9
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp134_sorting.spec.ts:6:7 › sorting › sorting (7.0s)
+  ✓  2 [chromium] › cp134_sorting.spec.ts:98:7 › sorting › sorting scenario 1 (47.7s)
+  ✓  3 [chromium] › cp134_sorting.spec.ts:556:7 › sorting › sorting scenario 2 (23.2s)
+  ✘  4 [chromium] › cp134_sorting.spec.ts:801:7 › sorting › sorting scenario 3 (8.9s)
+
+
+  1) [chromium] › cp134_sorting.spec.ts:801:7 › sorting › sorting scenario 3 ───────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      891 |     await ui.refresh(pg_wes);
+      892 |     expect(await ui.transfer(pg_wes, p_cam, `${sheet}-t`)).toBe(true);
+    > 893 |     expect(await ui.statementAsOf(pg_wes, p_ada, "2026-02-25")).toBe(false);
+          |                                                                 ^
+      894 |     expect(await ui.statement(pg_wes, p_ada)).toBe(true);
+      895 |     expect(await ui.editClaim(pg_wes, c_ada_1, {"amount": "20.00"})).toBe(true);
+      896 |     const c_ada_2 = ui.must(await ui.claimFromTemplate(pg_wes, p_ada, "T1"));
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp134_sorting.spec.ts:893:65
+
+  Slow test file: [chromium] › cp134_sorting.spec.ts (1.4m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp134_sorting.spec.ts:801:7 › sorting › sorting scenario 3 ────────────────────────
+  3 passed (1.5m)

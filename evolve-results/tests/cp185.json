@@ -1,0 +1,66 @@
+{
+  "checkpoint": 185,
+  "checkpoint_id": "cp185_partial-settle",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "c560888957b4c6a8f262ff6031c8a1842899b0ea",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T02:27:36",
+  "seconds": 240,
+  "build_log_file": "cp185.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp185_partial-settle.spec.ts::partial settle": true,
+      "cp185_partial-settle.spec.ts::partial settle scenario 1": true,
+      "cp185_partial-settle.spec.ts::partial settle scenario 2": true,
+      "cp185_partial-settle.spec.ts::partial settle scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp185_partial-settle.spec.ts::partial settle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20010,
+        "failure": ""
+      },
+      {
+        "test_id": "cp185_partial-settle.spec.ts::partial settle scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 40584,
+        "failure": ""
+      },
+      {
+        "test_id": "cp185_partial-settle.spec.ts::partial settle scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22571,
+        "failure": ""
+      },
+      {
+        "test_id": "cp185_partial-settle.spec.ts::partial settle scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 57819,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

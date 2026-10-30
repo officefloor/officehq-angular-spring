@@ -1,0 +1,83 @@
+{
+  "checkpoint": 68,
+  "checkpoint_id": "cp68_backing-recent-settled",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "4971c49efd1a434df618f07cf251c7c3f6fed3ac",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-27T03:48:33",
+  "seconds": 73,
+  "build_log_file": "cp68.test.log",
+  "replaced_tests": [
+    "cp27_patrons-and-backing.spec.ts::patrons and backing",
+    "cp29_reopen-period.spec.ts::reopen period scenario 1",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+    "cp39_claim-log.spec.ts::claim log scenario 2",
+    "cp43_cap.spec.ts::cap",
+    "cp45_bulk-settle.spec.ts::bulk settle scenario 2",
+    "cp47_person-period-figures.spec.ts::person period figures scenario 2",
+    "cp47_person-period-figures.spec.ts::person period figures scenario 3",
+    "cp49_paste-claims.spec.ts::paste claims scenario 3",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 1",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 2",
+    "cp54_viewer-role.spec.ts::viewer role scenario 3",
+    "cp58_watch-and-notify.spec.ts::watch and notify scenario 2",
+    "cp59_period-templates.spec.ts::period templates scenario 2",
+    "cp60_trimmed-totals.spec.ts::trimmed totals scenario 3",
+    "cp61_delegation.spec.ts::delegation scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp68_backing-recent-settled.spec.ts::backing recent settled": true,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 1": true,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2": true,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6811,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8984,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13720,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7052,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

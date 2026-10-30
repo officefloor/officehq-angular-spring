@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp25-2958ou3b
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp25_due-by-and-overdue.spec.ts:6:7 › due by and overdue › due by and overdue (5.0s)
+  ✓  2 [chromium] › cp25_due-by-and-overdue.spec.ts:84:7 › due by and overdue › due by and overdue scenario 1 (8.2s)
+  ✓  3 [chromium] › cp25_due-by-and-overdue.spec.ts:300:7 › due by and overdue › due by and overdue scenario 2 (21.9s)
+  ✓  4 [chromium] › cp25_due-by-and-overdue.spec.ts:453:7 › due by and overdue › due by and overdue scenario 3 (19.8s)
+
+  Slow test file: [chromium] › cp25_due-by-and-overdue.spec.ts (54.9s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (56.2s)

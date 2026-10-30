@@ -1,0 +1,66 @@
+{
+  "checkpoint": 218,
+  "checkpoint_id": "cp218_review-assignment",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "f881de211a19de10bf446820b4979bf502616d31",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T13:43:20",
+  "seconds": 141,
+  "build_log_file": "cp218.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp218_review-assignment.spec.ts::review assignment": true,
+      "cp218_review-assignment.spec.ts::review assignment scenario 1": true,
+      "cp218_review-assignment.spec.ts::review assignment scenario 2": true,
+      "cp218_review-assignment.spec.ts::review assignment scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19519,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31890,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21303,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23635,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

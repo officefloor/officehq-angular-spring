@@ -1,0 +1,66 @@
+{
+  "checkpoint": 145,
+  "checkpoint_id": "cp145_bulk-redate",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "ace3fb5d97733edf25229b52bae7187c0405e503",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-29T18:20:46",
+  "seconds": 140,
+  "build_log_file": "cp145.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp145_bulk-redate.spec.ts::bulk redate": true,
+      "cp145_bulk-redate.spec.ts::bulk redate scenario 1": true,
+      "cp145_bulk-redate.spec.ts::bulk redate scenario 2": true,
+      "cp145_bulk-redate.spec.ts::bulk redate scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp145_bulk-redate.spec.ts::bulk redate",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9860,
+        "failure": ""
+      },
+      {
+        "test_id": "cp145_bulk-redate.spec.ts::bulk redate scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 42057,
+        "failure": ""
+      },
+      {
+        "test_id": "cp145_bulk-redate.spec.ts::bulk redate scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19274,
+        "failure": ""
+      },
+      {
+        "test_id": "cp145_bulk-redate.spec.ts::bulk redate scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16537,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

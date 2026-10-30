@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp168-xd0y4ike
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp168_crews-are-pools.spec.ts:6:7 › crews are pools › crews are pools (14.4s)
+  ✓  2 [chromium] › cp168_crews-are-pools.spec.ts:99:7 › crews are pools › crews are pools scenario 1 (19.6s)
+  ✓  3 [chromium] › cp168_crews-are-pools.spec.ts:621:7 › crews are pools › crews are pools scenario 2 (58.5s)
+  ✘  4 [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 (1.2m)
+
+
+  1) [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"7.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+
+
+      1452 |     await expect(pg_uma.getByTestId("my-overdue-total")).toHaveText("");
+      1453 |     await expect(pg_uma.getByTestId("my-crew-due-total")).toHaveText("");
+    > 1454 |     await expect(pg_uma.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1455 |     await expect(pg_uma.getByTestId("rate-current-B")).toHaveText("n/a");
+      1456 |     await expect(pg_uma.getByTestId("rate-current-C")).toHaveText("n/a");
+      1457 |     await expect(pg_uma.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp168_crews-are-pools.spec.ts:1454:56
+
+  Slow test file: [chromium] › cp168_crews-are-pools.spec.ts (2.7m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp168_crews-are-pools.spec.ts:1320:7 › crews are pools › crews are pools scenario 3 
+  3 passed (2.8m)

@@ -1,0 +1,78 @@
+{
+  "checkpoint": 176,
+  "checkpoint_id": "cp176_statement-binds-late-charge",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "eb0b9e7485a91a7d985f19dcadc9735c6b421f7d",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T00:23:57",
+  "seconds": 192,
+  "build_log_file": "cp176.test.log",
+  "replaced_tests": [
+    "cp161_as-of-exports.spec.ts::as of exports scenario 3",
+    "cp174_late-charge-waiver.spec.ts::late charge waiver",
+    "cp24_floor.spec.ts::floor",
+    "cp26_late-charge.spec.ts::late charge",
+    "cp40_hold-interval.spec.ts::hold interval scenario 3",
+    "cp46_re-settle.spec.ts::re settle",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp56_late-per-boundary.spec.ts::late per boundary",
+    "cp64_floor-after-late.spec.ts::floor after late",
+    "cp84_business-day-terms.spec.ts::business day terms scenario 2",
+    "cp88_compound-late-charge.spec.ts::compound late charge"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp176_statement-binds-late-charge.spec.ts::statement binds late charge": true,
+      "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 1": true,
+      "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 2": true,
+      "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp176_statement-binds-late-charge.spec.ts::statement binds late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11126,
+        "failure": ""
+      },
+      {
+        "test_id": "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 55157,
+        "failure": ""
+      },
+      {
+        "test_id": "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 58885,
+        "failure": ""
+      },
+      {
+        "test_id": "cp176_statement-binds-late-charge.spec.ts::statement binds late charge scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22344,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

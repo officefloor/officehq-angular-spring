@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp242-a6txxd87
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp242_person-timeline.spec.ts:6:7 › person timeline › person timeline (8.4s)
+  ✓  2 [chromium] › cp242_person-timeline.spec.ts:47:7 › person timeline › person timeline scenario 1 (24.9s)
+  ✘  3 [chromium] › cp242_person-timeline.spec.ts:534:7 › person timeline › person timeline scenario 2 (32.3s)
+  ✓  4 [chromium] › cp242_person-timeline.spec.ts:1322:7 › person timeline › person timeline scenario 3 (58.6s)
+
+
+  1) [chromium] › cp242_person-timeline.spec.ts:534:7 › person timeline › person timeline scenario 2 
+
+    Error: the screen refused this action (its error element appeared)
+
+       at ../support/ui.ts:25
+
+      23 |  *  lands on the arranging line rather than on a later assertion. */
+      24 | export function must(id: string | null): string {
+    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
+         |                          ^
+      26 |   return id;
+      27 | }
+      28 |
+
+        at Object.must (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:25:26)
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp242_person-timeline.spec.ts:633:24
+
+  1 failed
+    [chromium] › cp242_person-timeline.spec.ts:534:7 › person timeline › person timeline scenario 2 
+  3 passed (2.1m)

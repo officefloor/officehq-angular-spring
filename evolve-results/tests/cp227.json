@@ -1,0 +1,66 @@
+{
+  "checkpoint": 227,
+  "checkpoint_id": "cp227_preview-exports",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "a89a5861fa237cd4fc8606461664e9f178c427c1",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T16:14:45",
+  "seconds": 160,
+  "build_log_file": "cp227.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp227_preview-exports.spec.ts::preview exports": true,
+      "cp227_preview-exports.spec.ts::preview exports scenario 1": true,
+      "cp227_preview-exports.spec.ts::preview exports scenario 2": true,
+      "cp227_preview-exports.spec.ts::preview exports scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp227_preview-exports.spec.ts::preview exports",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5865,
+        "failure": ""
+      },
+      {
+        "test_id": "cp227_preview-exports.spec.ts::preview exports scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25996,
+        "failure": ""
+      },
+      {
+        "test_id": "cp227_preview-exports.spec.ts::preview exports scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 32861,
+        "failure": ""
+      },
+      {
+        "test_id": "cp227_preview-exports.spec.ts::preview exports scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 53787,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

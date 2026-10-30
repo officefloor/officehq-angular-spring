@@ -1,0 +1,91 @@
+{
+  "checkpoint": 72,
+  "checkpoint_id": "cp72_retired-leave-totals",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "eb83584e54ec250746a0d8562f0209f03c35ed98",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-27T04:28:39",
+  "seconds": 99,
+  "build_log_file": "cp72.test.log",
+  "replaced_tests": [
+    "cp21_retire.spec.ts::retire",
+    "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 1",
+    "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 3",
+    "cp28_grade-dated.spec.ts::grade dated scenario 2",
+    "cp29_reopen-period.spec.ts::reopen period scenario 3",
+    "cp31_summary.spec.ts::summary scenario 2",
+    "cp38_terms-per-grade.spec.ts::terms per grade scenario 1",
+    "cp39_claim-log.spec.ts::claim log scenario 1",
+    "cp40_hold-interval.spec.ts::hold interval scenario 3",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp44_rollup-overdue.spec.ts::rollup overdue scenario 3",
+    "cp46_re-settle.spec.ts::re settle scenario 3",
+    "cp49_paste-claims.spec.ts::paste claims",
+    "cp49_paste-claims.spec.ts::paste claims scenario 3",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 1",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 1",
+    "cp55_auto-close.spec.ts::auto close scenario 1",
+    "cp61_delegation.spec.ts::delegation scenario 1",
+    "cp64_floor-after-late.spec.ts::floor after late scenario 2",
+    "cp66_redate-claim.spec.ts::redate claim scenario 1",
+    "cp67_active-people.spec.ts::active people",
+    "cp67_active-people.spec.ts::active people scenario 2",
+    "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp72_retired-leave-totals.spec.ts::retired leave totals": true,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 1": true,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 2": true,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6415,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11964,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33310,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12214,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

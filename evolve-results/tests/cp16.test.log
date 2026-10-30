@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp16-_ag0p4lx
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp16_rollup-audit.spec.ts:6:7 › rollup audit › rollup audit (6.6s)
+  ✓  2 [chromium] › cp16_rollup-audit.spec.ts:79:7 › rollup audit › rollup audit scenario 1 (6.8s)
+  ✓  3 [chromium] › cp16_rollup-audit.spec.ts:261:7 › rollup audit › rollup audit scenario 2 (5.7s)
+  ✓  4 [chromium] › cp16_rollup-audit.spec.ts:425:7 › rollup audit › rollup audit scenario 3 (5.3s)
+
+  Slow test file: [chromium] › cp16_rollup-audit.spec.ts (24.4s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (25.6s)

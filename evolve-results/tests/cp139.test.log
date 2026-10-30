@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp139-q1k6f6n0
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp139_tree-audit.spec.ts:6:7 › tree audit › tree audit (16.4s)
+  ✓  2 [chromium] › cp139_tree-audit.spec.ts:74:7 › tree audit › tree audit scenario 1 (32.3s)
+  ✓  3 [chromium] › cp139_tree-audit.spec.ts:372:7 › tree audit › tree audit scenario 2 (1.0m)
+  ✓  4 [chromium] › cp139_tree-audit.spec.ts:1076:7 › tree audit › tree audit scenario 3 (49.2s)
+
+  Slow test file: [chromium] › cp139_tree-audit.spec.ts (2.7m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (2.8m)

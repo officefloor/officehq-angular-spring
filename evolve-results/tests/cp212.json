@@ -1,0 +1,68 @@
+{
+  "checkpoint": 212,
+  "checkpoint_id": "cp212_score-without-corrections",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "0a5e9963188ee30863bdf1050f363ac5781a3b5f",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T13:26:28",
+  "seconds": 130,
+  "build_log_file": "cp212.test.log",
+  "replaced_tests": [
+    "cp209_score.spec.ts::score"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp212_score-without-corrections.spec.ts::score without corrections": true,
+      "cp212_score-without-corrections.spec.ts::score without corrections scenario 1": true,
+      "cp212_score-without-corrections.spec.ts::score without corrections scenario 2": true,
+      "cp212_score-without-corrections.spec.ts::score without corrections scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp212_score-without-corrections.spec.ts::score without corrections",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9487,
+        "failure": ""
+      },
+      {
+        "test_id": "cp212_score-without-corrections.spec.ts::score without corrections scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19105,
+        "failure": ""
+      },
+      {
+        "test_id": "cp212_score-without-corrections.spec.ts::score without corrections scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14988,
+        "failure": ""
+      },
+      {
+        "test_id": "cp212_score-without-corrections.spec.ts::score without corrections scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30616,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp132-od4hpou2
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp132_tree-numbering.spec.ts:6:7 › tree numbering › tree numbering (8.5s)
+  ✓  2 [chromium] › cp132_tree-numbering.spec.ts:107:7 › tree numbering › tree numbering scenario 1 (46.2s)
+  ✓  3 [chromium] › cp132_tree-numbering.spec.ts:612:7 › tree numbering › tree numbering scenario 2 (17.9s)
+  ✓  4 [chromium] › cp132_tree-numbering.spec.ts:944:7 › tree numbering › tree numbering scenario 3 (32.5s)
+
+  Slow test file: [chromium] › cp132_tree-numbering.spec.ts (1.8m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.8m)

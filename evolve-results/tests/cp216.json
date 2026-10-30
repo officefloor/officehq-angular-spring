@@ -1,0 +1,71 @@
+{
+  "checkpoint": 216,
+  "checkpoint_id": "cp216_cuts-frozen-at-close",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "9925349555d487dd1524782546f4c08edbfd1aed",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T13:36:36",
+  "seconds": 193,
+  "build_log_file": "cp216.test.log",
+  "replaced_tests": [
+    "cp187_cut-history.spec.ts::cut history",
+    "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2",
+    "cp201_consolidated-grades.spec.ts::consolidated grades scenario 3",
+    "cp213_parent-plans.spec.ts::parent plans scenario 3"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close": true,
+      "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 1": true,
+      "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 2": true,
+      "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6966,
+        "failure": ""
+      },
+      {
+        "test_id": "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22039,
+        "failure": ""
+      },
+      {
+        "test_id": "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 60835,
+        "failure": ""
+      },
+      {
+        "test_id": "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 52321,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

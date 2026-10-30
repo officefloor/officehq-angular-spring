@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp232-f4ry5j59
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp232_grade-merge-retroactive.spec.ts:6:7 › grade merge retroactive › grade merge retroactive (13.5s)
+  ✓  2 [chromium] › cp232_grade-merge-retroactive.spec.ts:114:7 › grade merge retroactive › grade merge retroactive scenario 1 (27.5s)
+  ✓  3 [chromium] › cp232_grade-merge-retroactive.spec.ts:636:7 › grade merge retroactive › grade merge retroactive scenario 2 (43.6s)
+  ✓  4 [chromium] › cp232_grade-merge-retroactive.spec.ts:1029:7 › grade merge retroactive › grade merge retroactive scenario 3 (27.0s)
+
+  Slow test file: [chromium] › cp232_grade-merge-retroactive.spec.ts (1.9m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.9m)

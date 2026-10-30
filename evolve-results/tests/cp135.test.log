@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp135-0fnoz58x
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp135_export-pools.spec.ts:6:7 › export pools › export pools (7.1s)
+  ✓  2 [chromium] › cp135_export-pools.spec.ts:24:7 › export pools › export pools scenario 1 (36.0s)
+  ✓  3 [chromium] › cp135_export-pools.spec.ts:425:7 › export pools › export pools scenario 2 (57.1s)
+  ✓  4 [chromium] › cp135_export-pools.spec.ts:952:7 › export pools › export pools scenario 3 (14.8s)
+
+  Slow test file: [chromium] › cp135_export-pools.spec.ts (1.9m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (2.0m)

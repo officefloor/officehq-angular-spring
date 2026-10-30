@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp247-hp5_ez5s
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp247_reject-reason-required.spec.ts:6:7 › reject reason required › reject reason required (9.2s)
+  ✓  2 [chromium] › cp247_reject-reason-required.spec.ts:39:7 › reject reason required › reject reason required scenario 1 (16.1s)
+  ✓  3 [chromium] › cp247_reject-reason-required.spec.ts:510:7 › reject reason required › reject reason required scenario 2 (30.0s)
+  ✓  4 [chromium] › cp247_reject-reason-required.spec.ts:885:7 › reject reason required › reject reason required scenario 3 (40.6s)
+
+  Slow test file: [chromium] › cp247_reject-reason-required.spec.ts (1.6m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.6m)

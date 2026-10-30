@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp61-gchic_o3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp61_delegation.spec.ts:6:7 › delegation › delegation (8.0s)
+  ✓  2 [chromium] › cp61_delegation.spec.ts:76:7 › delegation › delegation scenario 1 (15.9s)
+  ✓  3 [chromium] › cp61_delegation.spec.ts:429:7 › delegation › delegation scenario 2 (9.8s)
+  ✓  4 [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 (19.1s)
+
+  Slow test file: [chromium] › cp61_delegation.spec.ts (52.8s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (54.3s)

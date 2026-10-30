@@ -1,0 +1,71 @@
+{
+  "checkpoint": 228,
+  "checkpoint_id": "cp228_rollover-soft-closes",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "555d51e3d220d85627f427216a66739b5bdc4fef",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T16:17:26",
+  "seconds": 125,
+  "build_log_file": "cp228.test.log",
+  "replaced_tests": [
+    "cp207_year-end-rollover.spec.ts::year end rollover",
+    "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+    "cp219_rollover-undo.spec.ts::rollover undo",
+    "cp219_rollover-undo.spec.ts::rollover undo scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes": true,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 1": true,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 2": true,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13021,
+        "failure": ""
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25771,
+        "failure": ""
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16927,
+        "failure": ""
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26000,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

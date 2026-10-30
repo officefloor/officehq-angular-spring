@@ -1,0 +1,66 @@
+{
+  "checkpoint": 175,
+  "checkpoint_id": "cp175_transfer-undo",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "856531e53ff12e6bdfa06546b13e22a2d1f55ec6",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T00:20:50",
+  "seconds": 187,
+  "build_log_file": "cp175.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp175_transfer-undo.spec.ts::transfer undo": true,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 1": true,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 2": true,
+      "cp175_transfer-undo.spec.ts::transfer undo scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9937,
+        "failure": ""
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 54085,
+        "failure": ""
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30242,
+        "failure": ""
+      },
+      {
+        "test_id": "cp175_transfer-undo.spec.ts::transfer undo scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 44255,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 219,
+  "checkpoint_id": "cp219_rollover-undo",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "6e67e11ae7f104085cc04d599903c5f1a0c2fee7",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T13:45:41",
+  "seconds": 145,
+  "build_log_file": "cp219.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp219_rollover-undo.spec.ts::rollover undo": true,
+      "cp219_rollover-undo.spec.ts::rollover undo scenario 1": true,
+      "cp219_rollover-undo.spec.ts::rollover undo scenario 2": true,
+      "cp219_rollover-undo.spec.ts::rollover undo scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp219_rollover-undo.spec.ts::rollover undo",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11755,
+        "failure": ""
+      },
+      {
+        "test_id": "cp219_rollover-undo.spec.ts::rollover undo scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 43111,
+        "failure": ""
+      },
+      {
+        "test_id": "cp219_rollover-undo.spec.ts::rollover undo scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23450,
+        "failure": ""
+      },
+      {
+        "test_id": "cp219_rollover-undo.spec.ts::rollover undo scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27461,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

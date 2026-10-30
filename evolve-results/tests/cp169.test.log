@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp169-7ghzv6ui
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp169_person-terms-dated.spec.ts:6:7 › person terms dated › person terms dated (12.5s)
+  ✓  2 [chromium] › cp169_person-terms-dated.spec.ts:99:7 › person terms dated › person terms dated scenario 1 (40.3s)
+  ✘  3 [chromium] › cp169_person-terms-dated.spec.ts:522:7 › person terms dated › person terms dated scenario 2 (54.8s)
+  ✘  4 [chromium] › cp169_person-terms-dated.spec.ts:903:7 › person terms dated › person terms dated scenario 3 (1.2m)
+
+
+  1) [chromium] › cp169_person-terms-dated.spec.ts:522:7 › person terms dated › person terms dated scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"7.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">7.50</td>[22m
+    [2m  -   unexpected value "7.50"[22m
+
+
+      670 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+      671 |     await expect(pg_vic.getByTestId("my-crew-due-total")).toHaveText("");
+    > 672 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+          |                                                        ^
+      673 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      674 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      675 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp169_person-terms-dated.spec.ts:672:56
+
+  2) [chromium] › cp169_person-terms-dated.spec.ts:903:7 › person terms dated › person terms dated scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-A')
+    Expected string: [32m"n/a"[39m
+    Received string: [31m"12.50"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-A')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-A">12.50</td>[22m
+    [2m  -   unexpected value "12.50"[22m
+
+
+      1115 |     await expect(pg_vic.getByTestId("my-overdue-total")).toHaveText("");
+      1116 |     await expect(pg_vic.getByTestId("my-crew-due-total")).toHaveText("");
+    > 1117 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("n/a");
+           |                                                        ^
+      1118 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("n/a");
+      1119 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("n/a");
+      1120 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp169_person-terms-dated.spec.ts:1117:56
+
+  2 failed
+    [chromium] › cp169_person-terms-dated.spec.ts:522:7 › person terms dated › person terms dated scenario 2 
+    [chromium] › cp169_person-terms-dated.spec.ts:903:7 › person terms dated › person terms dated scenario 3 
+  2 passed (3.1m)

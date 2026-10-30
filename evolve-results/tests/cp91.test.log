@@ -1,0 +1,19 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp91-unuo99al
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp91_claim-comments.spec.ts:6:7 › claim comments › claim comments (8.3s)
+  ✓  2 [chromium] › cp91_claim-comments.spec.ts:50:7 › claim comments › claim comments scenario 1 (8.1s)
+  ✓  3 [chromium] › cp91_claim-comments.spec.ts:344:7 › claim comments › claim comments scenario 2 (9.1s)
+  ✓  4 [chromium] › cp91_claim-comments.spec.ts:816:7 › claim comments › claim comments scenario 3 (15.4s)
+
+  Slow test file: [chromium] › cp91_claim-comments.spec.ts (41.0s)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (42.7s)

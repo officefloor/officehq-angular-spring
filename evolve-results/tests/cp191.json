@@ -1,0 +1,66 @@
+{
+  "checkpoint": 191,
+  "checkpoint_id": "cp191_clerk-limit-per-grade",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 1,
+  "branch": "evolve/202610271-as/just-solve/chain1",
+  "commit_sha": "28d833dc8b3a03212828fdda23654f8da13490b3",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-30T04:33:51",
+  "seconds": 190,
+  "build_log_file": "cp191.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade": true,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 1": true,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2": true,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20691,
+        "failure": ""
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 59343,
+        "failure": ""
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20887,
+        "failure": ""
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21871,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
