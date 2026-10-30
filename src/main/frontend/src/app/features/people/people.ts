@@ -226,6 +226,9 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-statement" (click)="statement(p)">
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-unstate" (click)="unstate(p)">
+                  Cancel last statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 <label [for]="'person-retire-date-' + p.id">Retire {{ p.name }} from</label>
                 <input
                   #retireDate
@@ -707,6 +710,34 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.personError.set({ id: p.id, message: 'Could not take the statement.' });
+    } finally {
+      this.stating = false;
+    }
+  }
+
+  /** Cancel the person's last statement (a steward only): the claims it bound are live again. */
+  protected async unstate(p: Person): Promise<void> {
+    if (this.stating) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.stating = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.delete<Person>(`/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/statement`, {
+          headers,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: 'Could not cancel the statement: only a steward can, and only a statement that was taken.',
+      });
     } finally {
       this.stating = false;
     }

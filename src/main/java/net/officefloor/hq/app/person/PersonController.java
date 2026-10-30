@@ -25,6 +25,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -188,6 +189,15 @@ public class PersonController {
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user) {
         String sheet = sheetId.trim();
         statements.take(sheet, user.trim(), personId);
+        return view(sheet, service.get(sheet, personId));
+    }
+
+    /** Cancel the person's last statement; answers with the person as they are without it. */
+    @DeleteMapping("/{personId}/statement")
+    public PersonView unstate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        statements.cancel(sheet, user.trim(), personId);
         return view(sheet, service.get(sheet, personId));
     }
 

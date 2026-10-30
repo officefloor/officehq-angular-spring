@@ -25,6 +25,7 @@ import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
 import net.officefloor.hq.app.sheet.SheetArchived;
+import net.officefloor.hq.app.statement.StatementCancelled;
 import net.officefloor.hq.app.statement.StatementTaken;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -199,6 +200,13 @@ public class SheetAudit {
                 + " due-total=" + (e.dueTotal() == null ? "n/a"
                         : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())
                 + " claims=" + e.claims());
+    }
+
+    @TransactionalEventListener
+    public void on(StatementCancelled e) {
+        change(e.sheetId(), e.user(), "STATEMENT_CANCELLED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
+                + " due-total=" + (e.dueTotal() == null ? "n/a"
+                        : e.dueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString()));
     }
 
     @TransactionalEventListener

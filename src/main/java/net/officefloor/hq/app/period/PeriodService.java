@@ -164,8 +164,8 @@ public class PeriodService {
     }
 
     /**
-     * When the sheet's today is changed and it has grace days, close every open period whose to-date plus
-     * the grace days is before the new today, in order of their to-dates, each as a close by hand would.
+     * When the sheet's today is changed and it has grace days, close every open period (neither closed nor
+     * soft-closed) whose to-date plus the grace days is before the new today, in order of their to-dates, each as a close by hand would.
      */
     @EventListener
     @Transactional
@@ -176,7 +176,7 @@ public class PeriodService {
         }
         sheetRows.lockById(e.sheetId());
         list(e.sheetId()).stream()
-                .filter(p -> !p.isClosed() && p.getToDate().plusDays(grace).isBefore(e.today()))
+                .filter(p -> !p.isFixed() && p.getToDate().plusDays(grace).isBefore(e.today()))
                 .sorted(Comparator.comparing(Period::getToDate))
                 .forEach(p -> fix(e.sheetId(), e.user(), p, true, false));
     }
