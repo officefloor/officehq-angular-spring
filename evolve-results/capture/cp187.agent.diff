@@ -1,0 +1,224 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index ffadec6a6..5dd959414 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -21,6 +21,14 @@ export interface PoolMember {
+   retired: boolean;
+   /** Two decimals; null in an unbalanced pool, when the sheet has no pot or when every member is retired. */
+   cut: string | null;
++  /** The member's cut at the end of each period whose to-date is on or before the sheet's today, in period order. */
++  periodCuts: PeriodCut[];
++}
++
++/** A member's cut as the sheet stood at the end of the period: two decimals, null when they had none then. */
++export interface PeriodCut {
++  period: string;
++  cut: string | null;
+ }
+ 
+ /**
+@@ -59,6 +67,7 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
+ // today is left out of its pool's total share, balance and cuts.
+ // A person can be in several pools, each at most once; a pool is a member of at most one pool, and then its pot is
+ // its cut there, while a pool that is a member of none has the sheet's pot.
++// For every period ended by the sheet's today, each member shows their cut as the sheet stood at the period's end.
+ // Every crew is listed as a pool too: its members come from the crew, so it has no form to add one.
+ @Component({
+   selector: 'app-pools',
+@@ -78,6 +87,12 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
+                   <span data-testid="pool-member-name">{{ m.name }}</span>
+                   <span>Share <span data-testid="pool-share">{{ m.share | figure }}</span></span>
+                   <span>Cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span></span>
++                  @for (c of m.periodCuts; track c.period) {
++                    <span>
++                      Cut in {{ c.period }}
++                      <span [attr.data-testid]="'pool-cut-' + c.period">{{ (c.cut ?? '') | figure }}</span>
++                    </span>
++                  }
+                   @if (m.retired) {
+                     <span>(retired)</span>
+                   }
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+index 6bbccabf3..4a6a8c980 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+@@ -130,7 +130,9 @@ public class SheetPasts {
+     }
+ 
+     private void put(String sheetId, LocalDate date) {
+-        List<LocalDate> today = jdbc.queryForList("SELECT today FROM sheet WHERE id = ?", LocalDate.class, sheetId);
++        // take the sheet's lock first, as every change does, so a change under way is waited for, not deadlocked on
++        List<LocalDate> today = jdbc.queryForList("SELECT today FROM sheet WHERE id = ? FOR UPDATE", LocalDate.class,
++                sheetId);
+         if (today.isEmpty()) {
+             return;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 69bf6c1da..4a2dc9a0a 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.pool;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.time.format.DateTimeParseException;
+ import java.util.List;
+@@ -41,20 +42,31 @@ public class PoolController {
+ 
+     /**
+      * A member of a pool: a person (pool null) or a pool (personId null); the share with two decimals, and so the
+-     * cut, null when the member has none.
++     * cut, null when the member has none; their cut at the end of each period ended by the sheet's today.
+      */
+-    public record MemberView(Long personId, String pool, String name, String share, boolean retired, String cut) {
++    public record MemberView(Long personId, String pool, String name, String share, boolean retired, String cut,
++            List<PeriodCutView> periodCuts) {
++    }
++
++    /** A member's cut at the end of the named period, null when they had none then. */
++    public record PeriodCutView(String period, String cut) {
+     }
+ 
+     /** A pool on the sheet; its total share with two decimals; whether it is a crew's, its members the crew's. */
+     public record PoolView(String name, List<MemberView> members, String total, boolean balanced, boolean crew) {
+ 
+-        static PoolView of(Pools.Shown p) {
++        static PoolView of(Pools.Shown p, List<Pools.Then> history) {
+             return new PoolView(p.name(), p.members().stream()
+                     .map(m -> new MemberView(m.personId(), m.pool(), m.name(), m.share().toPlainString(), m.retired(),
+-                            m.cut() == null ? null : m.cut().toPlainString())).toList(),
++                            text(m.cut()), history.stream()
++                                    .map(t -> new PeriodCutView(t.period(), text(t.cut(p.name(), m)))).toList()))
++                    .toList(),
+                     p.total().toPlainString(), p.balanced(), p.crew());
+         }
++
++        private static String text(BigDecimal figure) {
++            return figure == null ? null : figure.toPlainString();
++        }
+     }
+ 
+     public record Refusal(String message) {
+@@ -68,13 +80,19 @@ public class PoolController {
+ 
+     @GetMapping
+     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+-        return pools.list(sheetId.trim()).stream().map(PoolView::of).toList();
++        String sheet = sheetId.trim();
++        List<Pools.Shown> shown = pools.list(sheet);
++        List<Pools.Then> history = pools.history(sheet);
++        return shown.stream().map(p -> PoolView.of(p, history)).toList();
+     }
+ 
+     /** The pools on the sheet in the order they were added, each with its members in the order they were added. */
+     @GetMapping(params = "order=added")
+     public List<PoolView> listAsAdded(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+-        return pools.list(sheetId.trim(), true).stream().map(PoolView::of).toList();
++        String sheet = sheetId.trim();
++        List<Pools.Shown> shown = pools.list(sheet, true);
++        List<Pools.Then> history = pools.history(sheet);
++        return shown.stream().map(p -> PoolView.of(p, history)).toList();
+     }
+ 
+     /** Add a pool; answers with every pool on the sheet. */
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pools.java b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+index 6f1bed11e..370d83a40 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/Pools.java
++++ b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+@@ -14,10 +14,14 @@ import java.util.Set;
+ import java.util.function.Function;
+ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
++import jakarta.persistence.EntityManager;
++import net.officefloor.hq.app.asof.SheetPasts;
+ import net.officefloor.hq.app.crew.Crew;
+ import net.officefloor.hq.app.crew.CrewMember;
+ import net.officefloor.hq.app.crew.CrewMemberRepository;
+ import net.officefloor.hq.app.crew.CrewRepository;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -44,6 +48,9 @@ import org.springframework.transaction.annotation.Transactional;
+  * Every crew is also a pool under its name, listed with the stored pools: its lead and then its members, undated, at
+  * equal shares of 100.00 (each rounded half to even, the remainder on the lead), cut from the sheet's pot like any
+  * pool. Its members come from the crew, so none can be added to it here, and a pool cannot take a crew's name.
++ * For every period whose to-date is on or before the sheet's today, each member has the cut they had as the sheet
++ * stood at the end of that period (its pools, members, pot and holds then, that day as its today); none when they
++ * had none then.
+  */
+ @Service
+ public class Pools {
+@@ -70,6 +77,18 @@ public class Pools {
+     public record Shown(String name, List<Member> members, BigDecimal total, boolean balanced, boolean crew) {
+     }
+ 
++    /** The pools as they stood at the end of a period: its name and the pools then. */
++    public record Then(String period, List<Shown> pools) {
++
++        /** The member's cut in the pool then; null when the pool or the member was not there, or had none. */
++        public BigDecimal cut(String pool, Member member) {
++            return pools.stream().filter(p -> p.name().equals(pool)).flatMap(p -> p.members().stream())
++                    .filter(m -> Objects.equals(m.personId(), member.personId())
++                            && Objects.equals(m.pool(), member.pool()))
++                    .map(Member::cut).filter(Objects::nonNull).findFirst().orElse(null);
++        }
++    }
++
+     private final PoolRepository pools;
+     private final PoolMemberRepository members;
+     private final PersonRepository people;
+@@ -78,10 +97,16 @@ public class Pools {
+     private final ApplicationEventPublisher events;
+     private final CrewRepository crews;
+     private final CrewMemberRepository crewMembers;
++    private final PeriodRepository periods;
++    private final SheetPasts pasts;
++    private final EntityManager entities;
+ 
+     public Pools(PoolRepository pools, PoolMemberRepository members, PersonRepository people, SheetService sheets,
+             SheetRepository sheetRows, ApplicationEventPublisher events, CrewRepository crews,
+-            CrewMemberRepository crewMembers) {
++            CrewMemberRepository crewMembers, PeriodRepository periods, SheetPasts pasts, EntityManager entities) {
++        this.periods = periods;
++        this.pasts = pasts;
++        this.entities = entities;
+         this.crews = crews;
+         this.crewMembers = crewMembers;
+         this.pools = pools;
+@@ -125,6 +150,32 @@ public class Pools {
+         return asAdded ? listed.toList() : listed.sorted(Comparator.comparing(Shown::name)).toList();
+     }
+ 
++    /**
++     * The pools as they stood at the end of each period whose to-date is on or before the sheet's today, in the
++     * order of the periods. Not in a transaction of its own: each period is read in its own rolled-back one.
++     */
++    public List<Then> history(String sheetId) {
++        LocalDate today = sheets.today(sheetId);
++        List<Period> ended = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
++                .filter(p -> !p.getToDate().isAfter(today)).toList();
++        List<Then> result = new ArrayList<>();
++        for (Period period : ended) {
++            if (period.getToDate().equals(today)) {
++                result.add(new Then(period.getName(), list(sheetId)));
++                continue;
++            }
++            List<Shown> then = pasts.asOf(sheetId, period.getToDate(), () -> {
++                // the store now holds the sheet as it was: drop anything read before it was put there
++                entities.clear();
++                List<Shown> read = list(sheetId);
++                entities.clear();
++                return read;
++            });
++            result.add(new Then(period.getName(), then));
++        }
++        return result;
++    }
++
+     /** The sheet's crews, in the order they were added, each as a pool of its lead and members at equal shares. */
+     private List<Shown> crewPools(String sheetId, Map<Long, Person> byId, BigDecimal pot, Set<Long> held) {
+         List<Crew> all = crews.findBySheetIdOrderByNameAsc(sheetId).stream()

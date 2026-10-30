@@ -1,0 +1,64 @@
+{
+  "checkpoint": 187,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp187_cut-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "09bc382d485a44d8bb25b5c22fd48bbe12e86707",
+  "reset_sha": "",
+  "preagent_sha": "27c03cc245b6d0c8cf7586f718f54e8390479cfc",
+  "prev_sha": "27c03cc245b6d0c8cf7586f718f54e8390479cfc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1808946000000002,
+    "input_tokens": 46,
+    "output_tokens": 14435,
+    "cache_read_tokens": 1256613,
+    "cache_creation_tokens": 80086,
+    "num_turns": 23,
+    "duration_ms": 672426,
+    "duration_api_ms": 146002,
+    "model": "claude-opus-5-5",
+    "session_id": "6d3e259e-38ea-438d-bd06-1ae20564293e",
+    "stop_reason": "success",
+    "result_text": "Each pool member's line now shows their cut for every period that ended on or before the sheet's today, as the cut stood at the end of that period. The cell is empty when the member had no cut then. `bin/e2e` passes all 4 tests, twice in a row, and the server log shows no errors or deadlocks.\n\n**How it works:** the app already saves a copy of the whole sheet each time its today moves on (`SheetPasts`), which is how the existing \"as of a date\" view works. For each period that has ended, the server loads the copy from the period's last day and works out the pools from it in a transaction that is always rolled back. That gives the pool, its members, the pot and the holds as they were then. A period ending exactly on today uses the live sheet.\n\n- **Server:**\n  - `Pools.java`: a new `history(sheetId)` returns the pools for each ended period.\n  - `PoolController.java`: each member in the pools response now carries a `periodCuts` list of `{period, cut}`. Nothing in the stored data changed, so there is no migration.\n- **Front end:** `pools.ts` shows a `pool-cut-<period name>` cell on each member's line, one per ended period.\n\n**One change outside the pools code you should know about:** the first full run failed because closing a period deadlocked against a pools reload that was building one of these past views. I changed `SheetPasts.java` so a past view locks the sheet's row first, the same way changes already do. A change in progress is now waited for (up to the existing 10-second lock timeout) instead of deadlocking. This also affects the existing as-of view.\n\n**Cost to watch:** every pools load now rebuilds the sheet once per ended period. That is quick with the test data, but a sheet with many ended periods will be slower to load. If that matters, the past results could be cached, since a saved copy of the sheet never changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1808946000000002,
+        "num_turns": 23,
+        "duration_ms": 672426,
+        "duration_api_ms": 146002,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp187.agent.jsonl",
+  "agent_diff_file": "cp187.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
