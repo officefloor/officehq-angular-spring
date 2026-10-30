@@ -263,7 +263,7 @@ export class Rates {
     });
   }
 
-  /** Per grade, the rate in force on the date; with none, the parent sheet's, then its parent's. */
+  /** Per grade, the rate in force on the date; with none, the parent sheet's, then its parent's, then a clone's source sheet's. */
   private inForceOn(date: string): Record<string, string> {
     const found: Record<string, string> = {};
     for (const level of [this.rates(), ...this.inherited()]) {

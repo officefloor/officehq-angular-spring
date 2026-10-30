@@ -14,12 +14,14 @@ import net.officefloor.hq.app.sheet.DatedSettings;
  * percent in force on each 30-day boundary past its due-by, the cap in force on the sheet's today) and its policy date (null: the sheet's today): which rate is in force for a grade on a date, the live due it
  * makes of an amount, the late charge an overdue figure gains, how a claim's figures round, and the most a
  * person's due-total comes to. A grade with no rate in force on a date takes the rate of the parent sheet's
- * rates on that date, then the parent's parent, up to three levels up ({@code ancestors}, nearest first).
+ * rates on that date, then the parent's parent, up to three levels up; then, for a sheet that was cloned, the
+ * sheet it was cloned from and so on up its parents and source ({@code ancestors}, nearest first, see
+ * {@link ParentRates}).
  */
 public record RateTable(List<Rate> rates, LocalDate today, DatedSettings settings, LocalDate policyDate,
         List<List<Rate>> ancestors) {
 
-    /** How many levels of parent sheets a grade's rate is looked for in. */
+    /** How many levels of parent sheets a grade's rate is looked for in, from a sheet or from a source sheet. */
     public static final int ANCESTOR_LEVELS = 3;
 
     /** A sheet's rates with no parent sheet to fall back on. */
@@ -34,7 +36,8 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
      * The percent in force for the grade on the date: the rate whose from-date is the latest one on
      * or before it, a rate with no from-date applying from the beginning of time; null when none does,
      * or when that rate's to-date is before the date (it has ended, and no later rate is in force). When
-     * this sheet has none in force, the parent sheet's, then its parent's, up to three levels up.
+     * this sheet has none in force, the parent sheet's, then its parent's, up to three levels up, then the
+     * source sheet's of a clone.
      */
     public BigDecimal on(String grade, LocalDate date) {
         return on(grade, date, null);
@@ -47,7 +50,7 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
      */
     public BigDecimal on(String grade, LocalDate date, Long claimId) {
         BigDecimal pct = on(rates, grade, date, claimId);
-        for (int i = 0; pct == null && i < ancestors.size() && i < ANCESTOR_LEVELS; i++) {
+        for (int i = 0; pct == null && i < ancestors.size(); i++) {
             pct = on(ancestors.get(i), grade, date, claimId);
         }
         return pct;
@@ -67,7 +70,7 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
             return false;
         }
         boolean ended = latest(rates, grade, date).isPresent();
-        for (int i = 0; !ended && i < ancestors.size() && i < ANCESTOR_LEVELS; i++) {
+        for (int i = 0; !ended && i < ancestors.size(); i++) {
             ended = latest(ancestors.get(i), grade, date).isPresent();
         }
         return ended;

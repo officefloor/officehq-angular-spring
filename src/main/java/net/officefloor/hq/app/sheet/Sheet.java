@@ -62,6 +62,10 @@ public class Sheet {
     @Column(name = "archived", nullable = false)
     private boolean archived;
 
+    /** The sheet this one was cloned from; null when it was not cloned. */
+    @Column(name = "cloned_from")
+    private String clonedFrom;
+
     protected Sheet() {
     }
 
@@ -73,7 +77,7 @@ public class Sheet {
 
     /**
      * The sheet as copied to a clone under another id: its creator, today, policy date, period numbering from,
-     * entry date and grace days; no claim number or settle batch taken yet, and not archived.
+     * entry date and grace days; no claim number or settle batch taken yet, not archived, and cloned from this one.
      */
     public Sheet cloned(String id) {
         Sheet copy = new Sheet(id, createdBy, today);
@@ -81,6 +85,7 @@ public class Sheet {
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.entryDate = entryDate;
         copy.graceDays = graceDays;
+        copy.clonedFrom = this.id;
         return copy;
     }
 
@@ -134,6 +139,10 @@ public class Sheet {
 
     public int getLastSettleBatch() {
         return lastSettleBatch;
+    }
+
+    public String getClonedFrom() {
+        return clonedFrom;
     }
 
     public boolean isArchived() {
