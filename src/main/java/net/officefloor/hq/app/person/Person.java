@@ -75,6 +75,9 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    @Column(name = "approver")
+    private String approver;
+
     @Column(name = "list_position", nullable = false)
     private int position;
 
@@ -140,6 +143,7 @@ public class Person {
         copy.retiredFrom = retiredFrom;
         copy.flagReason = flagReason;
         copy.flagUntil = flagUntil;
+        copy.approver = approver;
         holds.forEach(h -> copy.holds.add(new HoldSpan(h.getFromDate(), h.getToDate())));
         retirements.forEach(r -> copy.retirements.add(new RetirementSpan(r.getFromDate(), r.getToDate())));
         return copy;
@@ -302,6 +306,15 @@ public class Person {
     public void flag(String reason, LocalDate until) {
         this.flagReason = reason;
         this.flagUntil = until;
+    }
+
+    /** The user who may approve or reject the person's PENDING claims as a steward may; null when none. */
+    public String getApprover() {
+        return approver;
+    }
+
+    public void setApprover(String approver) {
+        this.approver = approver;
     }
 
     /** The reason of the person's flag while it is in force on the sheet's today (on or before its until date); null otherwise. */

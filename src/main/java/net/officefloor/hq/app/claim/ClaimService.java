@@ -38,7 +38,7 @@ import org.springframework.web.server.ResponseStatusException;
  * and no claim dated after its person's retirement date can be added or edited to that date. A clerk
  * settling a claim whose due is above the sheet's clerk limit leaves it PENDING instead; a steward settles
  * anything, and approves a PENDING claim (settling it, its due fixed then) or rejects it with a reason
- * (back to OPEN); neither the user who opened a claim nor the one who last edited it can settle or approve it. A steward re-settles a SETTLED claim,
+ * (back to OPEN), as may the user named as the person's approver; neither the user who opened a claim nor the one who last edited it can settle or approve it. A steward re-settles a SETTLED claim,
  * fixing its due again at the figure it would have today as an OPEN claim bound by no statement. A claim
  * with a negative amount is a correction: it is added or edited only when it names, by number, a SETTLED
  * claim of the same person, and only a correction names one. A claim whose due is above the sheet's proof
@@ -923,7 +923,7 @@ public class ClaimService {
 
     /**
      * Approve a PENDING claim, settling it with its due fixed now (its live figure, late charge frozen in).
-     * Only a steward approves, never the user who opened the claim or last edited it; a claim not PENDING or due by a date inside a
+     * Only a steward or the person's approver approves, never the user who opened the claim or last edited it; a claim not PENDING or due by a date inside a
      * closed period is refused and nothing changes. Returns the person it belongs to.
      */
     @Transactional
@@ -984,7 +984,7 @@ public class ClaimService {
 
     /**
      * Reject a PENDING claim with a reason, putting it back to OPEN (still bound by the last statement if
-     * that statement counted it). Only a steward rejects; a claim not PENDING or due by a date inside a closed
+     * that statement counted it). Only a steward or the person's approver rejects; a claim not PENDING or due by a date inside a closed
      * period is refused and nothing changes. Returns the person it belongs to.
      */
     @Transactional
@@ -1054,15 +1054,17 @@ public class ClaimService {
         return new long[] { from.getId(), to.getId() };
     }
 
-    /** The PENDING claim a steward is to approve or reject; refused for anyone else or any other claim. */
+    /** The PENDING claim a steward, or the person's approver, is to approve or reject; refused for anyone else or any other claim. */
     private Claim pending(String sheetId, String user, long claimId, String action, String done) {
         Claim claim = claim(sheetId, claimId);
         if (claim.getStatus() != ClaimStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be " + done + "; only a PENDING one can");
         }
-        if (access.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can " + action + " a claim");
+        if (access.roleOf(sheetId, user) != Role.STEWARD && !people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .map(p -> user.equals(p.getApprover())).orElse(false)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a steward or the person's approver can " + action + " a claim");
         }
         return claim;
     }

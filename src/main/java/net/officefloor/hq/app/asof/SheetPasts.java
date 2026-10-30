@@ -61,6 +61,7 @@ public class SheetPasts {
             new Scope("PERIOD", "sheet_id = ?"),
             new Scope("PERIOD_PERSON_TOTAL", "period_id IN (SELECT id FROM period WHERE sheet_id = ?)"),
             new Scope("PERIOD_PERSON_CARRIED", "period_id IN (SELECT id FROM period WHERE sheet_id = ?)"),
+            new Scope("PERIOD_PERSON_OPENING", "period_id IN (SELECT id FROM period WHERE sheet_id = ?)"),
             new Scope("STATEMENT", "sheet_id = ?"),
             new Scope("SHEET_TAG", "sheet_id = ?"),
             new Scope("SHEET_VOID_REASON", "sheet_id = ?"),

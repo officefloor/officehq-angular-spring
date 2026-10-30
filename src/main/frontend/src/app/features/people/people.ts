@@ -488,7 +488,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
             @if (columnShown('statement-count')) {<th scope="col">Statements</th>}@if (columnShown('stated-total')) {<th scope="col">Last stated total</th>}@if (columnShown('statement-date')) {<th scope="col">Last statement</th>}
             @if (columnShown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columnShown('hold')) {<th scope="col">On hold</th>}
             @if (columnShown('overdue-count')) {<th scope="col">Overdue</th>}@if (columnShown('overdue-total')) {<th scope="col">Overdue total</th>}
@@ -517,6 +517,7 @@ function csvField(value: string): string {
                 <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
               }
               <td data-testid="person-flag-shown">{{ p.flag ?? '' }}</td>
+              <td data-testid="person-approver">{{ p.approver ?? '' }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -694,6 +695,17 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-flag" (click)="flag(p, flagReason, flagUntil)">
                   Flag<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'person-approver-input-' + p.id">Approver for {{ p.name }}</label>
+                <input
+                  #approverInput
+                  type="text"
+                  [id]="'person-approver-input-' + p.id"
+                  data-testid="person-approver-input"
+                  (input)="clearError(p)"
+                />
+                <button type="button" data-testid="person-approver-save" (click)="setApprover(p, approverInput)">
+                  Set approver<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 <label [for]="'person-inline-grade-' + p.id">Grade for {{ p.name }}</label>
                 <select
                   #inlineGrade
@@ -846,6 +858,8 @@ export class People {
   private aliasing = false;
   /** A flag still waiting for its answer: another press meanwhile is ignored. */
   private flagging = false;
+  /** An approver still waiting for its answer: another press meanwhile is ignored. */
+  private approving = false;
   /** A merge still waiting for its answer: another press meanwhile is ignored. */
   private merging = false;
   /** A move still waiting for its answer: another press meanwhile is ignored. */
@@ -1918,6 +1932,39 @@ export class People {
       this.personError.set({ id: p.id, message: 'Could not flag the person: only a steward can.' });
     } finally {
       this.flagging = false;
+    }
+  }
+
+  /** Give the person the typed user name as their approver; a blank name is refused. */
+  protected async setApprover(p: Person, input: HTMLInputElement): Promise<void> {
+    if (this.approving) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const user = input.value.trim();
+    if (!user) {
+      this.personError.set({ id: p.id, message: 'Enter a user name for the approver.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.approving = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/approver`,
+          { user },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+      input.value = '';
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({ id: p.id, message: 'Could not set the approver.' });
+    } finally {
+      this.approving = false;
     }
   }
 

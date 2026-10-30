@@ -314,6 +314,24 @@ public class PersonService {
     }
 
     /**
+     * Give the person an approver: a user name, stored trimmed, who may approve or reject their PENDING claims
+     * as a steward may. A blank name is refused. Takes turns with other changes on the sheet.
+     */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long personId, String approver) {
+        sheetRows.lockById(sheetId);
+        Person person = get(sheetId, personId);
+        String trimmed = approver == null ? "" : approver.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give a user name");
+        }
+        person.setApprover(trimmed);
+        people.flush();
+        events.publishEvent(new ApproverSet(sheetId, user, person.getName(), trimmed));
+        return person;
+    }
+
+    /**
      * The person on the sheet whose name or an alias is the given one, compared without regard to case.
      */
     @Transactional(readOnly = true)

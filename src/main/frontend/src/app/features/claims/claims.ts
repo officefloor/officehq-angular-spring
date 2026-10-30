@@ -205,6 +205,8 @@ export interface PersonWithClaims {
   origin: string | null;
   /** The reason of their flag while it is in force on the sheet's today; null otherwise. */
   flag: string | null;
+  /** The user who may approve or reject their PENDING claims as a steward may; null when none. */
+  approver: string | null;
   /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
    * statement, then count in no live total. */
   retiredNow: boolean;
