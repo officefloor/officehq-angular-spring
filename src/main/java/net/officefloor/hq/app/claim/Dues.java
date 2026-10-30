@@ -18,7 +18,7 @@ public final class Dues {
     /**
      * A claim's due: once settled, the due fixed then (its late charge frozen in); a correction, its
      * {@link #base} figure (no floor, no late charge); otherwise the greater of the floor in force on its date
-     * and its {@link #base} figure plus, while overdue, its {@link RateTable#lateCharge late charge} on that
+     * and its {@link #base} figure plus, while overdue and not waived, its {@link RateTable#lateCharge late charge} on that
      * figure. Null when there is none.
      */
     public static BigDecimal figure(Claim claim, Grades grades, RateTable rates) {
@@ -29,7 +29,7 @@ public final class Dues {
         if (base == null || claim.isCorrection()) {
             return base;
         }
-        BigDecimal due = overdue(claim, grades, rates)
+        BigDecimal due = overdue(claim, grades, rates) && !claim.isWaived()
                 ? base.add(rates.lateCharge(base, graceBy(claim, grades, rates), claim.getRoundsBy()))
                 : base;
         return rates.floored(due, claim.getDate());
@@ -60,7 +60,7 @@ public final class Dues {
 
     /**
      * The figure the claim would have today as an OPEN claim bound by no statement: its rate figure plus the
-     * late charge it has today on that figure when its due-by plus its grace has passed, but at least the floor in force on
+     * late charge it has today on that figure (none once waived) when its due-by plus its grace has passed, but at least the floor in force on
      * its date; a correction has neither floor nor late charge. Null when there is none. Re-settling a claim
      * fixes its due at this figure.
      */
@@ -70,7 +70,7 @@ public final class Dues {
             return base;
         }
         LocalDate graceBy = graceBy(claim, grades, rates);
-        BigDecimal due = graceBy.isBefore(rates.today())
+        BigDecimal due = graceBy.isBefore(rates.today()) && !claim.isWaived()
                 ? base.add(rates.lateCharge(base, graceBy, claim.getRoundsBy()))
                 : base;
         return rates.floored(due, claim.getDate());

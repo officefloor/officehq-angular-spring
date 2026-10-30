@@ -129,6 +129,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** How many proofs the claim has; it starts at 0. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -219,6 +223,7 @@ public class Claim {
         arrived.deferredUntil = deferredUntil;
         arrived.remindedOn = remindedOn;
         arrived.escalated = escalated;
+        arrived.waived = waived;
         arrived.reviewOn = reviewOn;
         arrived.proofs = proofs;
         arrived.splitFrom = splitFrom;
@@ -324,6 +329,14 @@ public class Claim {
 
     public void setReviewOn(LocalDate reviewOn) {
         this.reviewOn = reviewOn;
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    public void setWaived(boolean waived) {
+        this.waived = waived;
     }
 
     public boolean isEscalated() {

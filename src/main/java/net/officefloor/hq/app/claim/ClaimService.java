@@ -695,6 +695,34 @@ public class ClaimService {
     }
 
     /**
+     * A steward waives an OPEN or PENDING claim's late charge: it bears none from then on, whatever its
+     * overdue state. Anyone else, a claim in any other status, or one already waived is refused and nothing
+     * changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long waive(String sheetId, String user, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can waive a claim's late charge");
+        }
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be waived; only an OPEN or PENDING one can");
+        }
+        if (claim.isWaived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge is already waived");
+        }
+        Rollup.Figures before = rollup.figures(sheetId);
+        claim.setWaived(true);
+        claims.flush();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new ClaimWaived(sheetId, user, person, claim.getAmount(), claim.getDate(),
+                claim.getShownNumber()));
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
+    }
+
+    /**
      * Remind an OPEN or PENDING claim: it takes the sheet's today as its reminded date. A claim can be
      * reminded once per sheet's today; a claim in any other status, or one already reminded on the sheet's
      * today, is refused and nothing changes. A reminder changes no figure, so a claim due by a date inside a

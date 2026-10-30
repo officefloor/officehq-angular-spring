@@ -331,6 +331,14 @@ public class ClaimController {
         return view(sheet, claims.split(sheet, user.trim(), claimId, new BigDecimal(form.amount())));
     }
 
+    /** A steward waives an OPEN or PENDING claim's late charge. */
+    @PostMapping("/claims/{claimId}/waive")
+    public PersonView waive(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.waive(sheet, user.trim(), claimId));
+    }
+
     /** Remind an OPEN or PENDING claim, once per sheet's today. */
     @PostMapping("/claims/{claimId}/remind")
     public PersonView remind(@PathVariable @NotBlank @Size(max = 100) String sheetId,

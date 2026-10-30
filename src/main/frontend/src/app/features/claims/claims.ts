@@ -58,6 +58,8 @@ export interface Claim {
   lateEntry: boolean;
   /** Whether the claim is REVIEW and its review day plus the sheet's review SLA is before the sheet's today. */
   reviewLate: boolean;
+  /** Whether a steward waived the claim's late charge: it then bears none, whatever its overdue state. */
+  waived: boolean;
   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
   remindedOn: string | null;
   /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
@@ -244,6 +246,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ c.reviewLate ? 'yes' : 'no' }}</span></span>
+          <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+          <button type="button" data-testid="claim-waive" (click)="waive(c)">
+            Waive late charge<span class="visually-hidden"> of claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <button type="button" data-testid="claim-remind" (click)="remind(c)">
             Remind<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
@@ -679,6 +685,30 @@ export class Claims implements OnInit {
       const refusal =
         err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be split by that amount.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** A steward waives an OPEN or PENDING claim's late charge; a refusal shows on the claim's row. */
+  protected async waive(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/waive`, {}, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The claim\'s late charge cannot be waived.' });
     } finally {
       this.busy = false;
     }
