@@ -107,7 +107,7 @@ public class PersonService {
     }
 
     /**
-     * Put the person on hold or take them off it, moving the figures their OPEN claims count in. Asking
+     * Put the person on hold or take them off it, moving the figures their OPEN and PENDING claims count in. Asking
      * for the state they are already in changes nothing. Takes turns with claim changes on the sheet.
      */
     @Transactional

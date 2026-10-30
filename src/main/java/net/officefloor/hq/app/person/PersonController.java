@@ -61,7 +61,7 @@ public class PersonController {
 
     /**
      * A person with the grade in force on the sheet's today, their claims, newest first, claimed: the sum of the amounts of the claims that
-     * count (OPEN and SETTLED, but only SETTLED while on hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
+     * count (OPEN, PENDING and SETTLED, but only SETTLED while on hold, see {@link Dues#counts}), dueTotal: the sum of the due figures of the claims that count (see
      * {@link Dues#total}), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
      * the date they are retired from (null when not), whether they are on hold, and how many of the claims

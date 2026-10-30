@@ -225,17 +225,16 @@ public class AccessService {
     }
 
     /**
-     * Refuse a settle by a clerk of a claim whose due is above the clerk limit. A due of n/a (null)
-     * is within any limit; a steward settles anything.
+     * Whether the user may settle a claim of the given due outright: a steward settles anything, a clerk
+     * a due up to the clerk limit (a due of n/a, null, is within any limit). A clerk's settle above it
+     * leaves the claim PENDING for a steward.
      */
     @Transactional(readOnly = true)
-    public void requireCanSettle(String sheetId, String user, BigDecimal due) {
+    public boolean canSettle(String sheetId, String user, BigDecimal due) {
         if (due == null) {
-            return;
+            return true;
         }
         BigDecimal limit = clerkLimit(sheetId);
-        if (limit != null && due.compareTo(limit) > 0 && roleOf(sheetId, user) == Role.CLERK) {
-            throw new OverClerkLimit(due, limit);
-        }
+        return limit == null || due.compareTo(limit) <= 0 || roleOf(sheetId, user) != Role.CLERK;
     }
 }

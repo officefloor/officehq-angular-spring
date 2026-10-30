@@ -3,7 +3,10 @@ package net.officefloor.hq.app.access;
 import java.util.Arrays;
 import java.util.Optional;
 
-/** What a user may do on a sheet: a clerk settles only within the clerk limit, a steward settles anything. */
+/**
+ * What a user may do on a sheet: a clerk settles only within the clerk limit (above it the claim goes
+ * PENDING), a steward settles anything and approves or rejects a PENDING claim.
+ */
 public enum Role {
     CLERK, STEWARD;
 

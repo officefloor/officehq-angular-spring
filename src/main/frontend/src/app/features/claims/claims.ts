@@ -4,10 +4,13 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOf } from '../periods/periods';
 
-/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/**
+ * DRAFT when added, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
+ * until a steward approves it (SETTLED) or rejects it (OPEN again). A DRAFT, OPEN or PENDING claim can be VOID.
+ */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
-export type ClaimAction = 'open' | 'settle' | 'void';
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
 
 export interface Claim {
   id: number;
@@ -25,7 +28,7 @@ export interface Claim {
   stated: boolean;
   /** The claim's date plus the sheet's terms. */
   dueBy: string;
-  /** Whether the claim is OPEN and its due-by is before the sheet's today. */
+  /** Whether the claim is OPEN or PENDING and its due-by is before the sheet's today. */
   overdue: boolean;
   /** For a correction (a negative amount), the number of the settled claim it corrects, as shown (3, P1-1); null otherwise. */
   corrects: string | null;
@@ -38,7 +41,7 @@ export interface PersonWithClaims {
   name: string;
   grade: string;
   claims: Claim[];
-  /** The amounts of the OPEN and SETTLED claims added up; only the SETTLED ones while on hold. */
+  /** The amounts of the OPEN, PENDING and SETTLED claims added up; only the SETTLED ones while on hold. */
   claimed: string;
   /** Claimed at the rate for the person's grade; null when the grade has no rate. */
   dueTotal: string | null;
@@ -52,7 +55,7 @@ export interface PersonWithClaims {
   retired: boolean;
   /** The date the person is retired from; no claim dated after it can be added. Null when not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: their OPEN claims then count in no live total. */
+  /** Whether the person is on hold: their OPEN and PENDING claims then count in no live total. */
   held: boolean;
   /** How many of the claims that count are overdue. */
   overdueCount: number;
@@ -67,7 +70,7 @@ const NUMBER = /^([1-9]\d{0,8}|.{1,100}-[1-9]\d{0,8})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
-// opened, edits it. Each claim can be opened, settled or voided. A saved or moved claim answers with
+// opened, edits it. Each claim can be opened, settled, approved, rejected (with a reason) or voided. A saved or moved claim answers with
 // the person, which is handed up as `saved`. Each claim can be selected, to be opened together with
 // the others selected.
 @Component({
@@ -96,6 +99,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ c.overdue ? 'yes' : 'no' }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input
+            [id]="'claim-reject-reason-' + c.id"
+            data-testid="claim-reject-reason"
+            [value]="rejectReasons()[c.id] ?? ''"
+            (input)="setRejectReason(c.id, value($event))"
+          />
           @for (a of actions; track a.action) {
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
@@ -173,17 +183,26 @@ export class Claims {
   protected readonly error = signal('');
   /** The refusal of the last action taken on a claim's row, shown on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  /** The reason typed for rejecting each claim, by claim id. */
+  protected readonly rejectReasons = signal<Record<number, string>>({});
   /** A submit or action still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
+    { action: 'approve', label: 'Approve' },
+    { action: 'reject', label: 'Reject' },
     { action: 'void', label: 'Void' },
   ];
 
   /** The name of the period whose dates contain the claim's date; '' when none does. */
   protected periodName(c: Claim): string {
     return periodOf(this.periods(), c.date)?.name ?? '';
+  }
+
+  protected setRejectReason(id: number, reason: string): void {
+    this.rejectReasons.update((all) => ({ ...all, [id]: reason }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
   }
 
   protected fid(field: string): string {
@@ -267,28 +286,37 @@ export class Claims {
     }
   }
 
-  /** Open, settle or void a claim; a change its status does not allow is refused on its row. */
+  /**
+   * Open, settle, approve, reject or void a claim; a change its status does not allow is refused on its
+   * row, as is a reject without a reason.
+   */
   protected async move(c: Claim, action: ClaimAction): Promise<void> {
     if (this.busy) return;
     this.claimError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
+    const reason = (this.rejectReasons()[c.id] ?? '').trim();
+    if (action === 'reject' && reason === '') {
+      this.claimError.set({ id: c.id, message: 'Enter a reason to reject the claim.' });
+      return;
+    }
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
       const person = await firstValueFrom(
         this.http.post<PersonWithClaims>(
           `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`,
-          null,
+          action === 'reject' ? { reason } : null,
           { headers },
         ),
       );
       if (this.session.sheet() !== sheet) return;
+      if (action === 'reject') this.rejectReasons.update((all) => ({ ...all, [c.id]: '' }));
       this.saved.emit(person);
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
       if (err instanceof HttpErrorResponse && err.status === 403) {
-        this.claimError.set({ id: c.id, message: 'You opened this claim, so another user must settle it.' });
+        this.claimError.set({ id: c.id, message: `You opened this claim, so another user must ${action} it.` });
         return;
       }
       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
@@ -299,4 +327,10 @@ export class Claims {
   }
 }
 
-const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
+const PAST: Record<ClaimAction, string> = {
+  open: 'opened',
+  settle: 'settled',
+  approve: 'approved',
+  reject: 'rejected',
+  void: 'voided',
+};

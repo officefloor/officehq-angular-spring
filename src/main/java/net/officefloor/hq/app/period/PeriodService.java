@@ -82,8 +82,8 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing its due-total: the due figures of the claims that count (OPEN and SETTLED,
-     * but not the OPEN claims of a person on hold) dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
+     * Close a period, fixing its due-total: the due figures of the claims that count (OPEN, PENDING and SETTLED,
+     * but not the OPEN or PENDING claims of a person on hold) dated inside it, added up. Refused when it is already closed. Takes turns with claim changes on the
      * sheet, so the total fixed is the one the claims had at that moment.
      */
     @Transactional

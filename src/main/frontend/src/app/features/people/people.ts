@@ -24,7 +24,7 @@ function csvField(value: string): string {
 // The people on the active sheet, in the order they were added, each with their claims, and the
 // one form that adds a person or, once a person's editor is opened, edits them. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
-// can be put on hold and released; while held, their OPEN claims count in no total. A person can name
+// can be put on hold and released; while held, their OPEN and PENDING claims count in no total. A person can name
 // others on the sheet as their patrons; their backing is their patrons' due-totals added up.
 @Component({
   selector: 'app-people',

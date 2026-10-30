@@ -28,15 +28,16 @@ function cents(amount: string): number {
 }
 
 /** Per period id, the dues of the claims that count whose date falls in it, added up, or once closed the
- * due-total fixed then; the OPEN claims of a person on hold count in none. */
+ * due-total fixed then; the OPEN and PENDING claims of a person on hold count in none. */
 export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
   const totals: Record<number, number> = {};
   for (const p of periods) totals[p.id] = 0;
   const closed = new Map(periods.filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
   for (const person of people) {
     for (const c of person.claims) {
-      if ((c.status !== 'OPEN' && c.status !== 'SETTLED') || c.due === null) continue;
-      if (person.held && c.status === 'OPEN') continue;
+      const unpaid = c.status === 'OPEN' || c.status === 'PENDING';
+      if ((!unpaid && c.status !== 'SETTLED') || c.due === null) continue;
+      if (person.held && unpaid) continue;
       const period = periodOf(periods, c.date);
       if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
     }
@@ -47,7 +48,7 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
 }
 
 // The sheet's periods, earliest first, each with its due-total: the dues of the claims that count
-// (OPEN and SETTLED) whose date falls in it, or once closed the due-total fixed then; and the form that
+// (OPEN, PENDING and SETTLED) whose date falls in it, or once closed the due-total fixed then; and the form that
 // adds one. No two periods share a name or a date.
 @Component({
   selector: 'app-periods',

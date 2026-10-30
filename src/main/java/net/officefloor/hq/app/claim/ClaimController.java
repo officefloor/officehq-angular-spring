@@ -9,7 +9,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
-import net.officefloor.hq.app.access.OverClerkLimit;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
@@ -31,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * A person's claims. Adding or editing a claim answers with the person it belongs to, carrying
- * their claims and claimed; so does opening, settling or voiding one. Opening a selection of claims
+ * their claims and claimed; so does opening, settling, approving, rejecting or voiding one. Opening a selection of claims
  * together answers how many were opened and how many refused. The signed-in user's name comes in the {@code X-User} header.
  */
 @RestController
@@ -54,6 +53,10 @@ public class ClaimController {
 
     /** The claims selected to be opened together. */
     public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
+    }
+
+    /** Why a PENDING claim is rejected. */
+    public record RejectForm(@NotBlank @Size(max = 200) String reason) {
     }
 
     public record Refusal(String message) {
@@ -124,6 +127,23 @@ public class ClaimController {
         return move(sheetId, claimId, user, ClaimStatus.SETTLED);
     }
 
+    /** A steward approves a PENDING claim, settling it. */
+    @PostMapping("/claims/{claimId}/approve")
+    public PersonView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.approve(sheet, user.trim(), claimId));
+    }
+
+    /** A steward rejects a PENDING claim with a reason, putting it back to OPEN. */
+    @PostMapping("/claims/{claimId}/reject")
+    public PersonView reject(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody RejectForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.reject(sheet, user.trim(), claimId, form.reason().trim()));
+    }
+
     @PostMapping("/claims/{claimId}/void")
     public PersonView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
@@ -143,12 +163,6 @@ public class ClaimController {
     /** A claim dated inside a closed period: refused, nothing changed. */
     @ExceptionHandler(ClosedPeriodRefused.class)
     public ResponseEntity<Refusal> closed(ClosedPeriodRefused e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));
-    }
-
-    /** A clerk settling a claim whose due is above the clerk limit: refused, nothing changed. */
-    @ExceptionHandler(OverClerkLimit.class)
-    public ResponseEntity<Refusal> overLimit(OverClerkLimit e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));
     }
 

@@ -103,7 +103,7 @@ public class Person {
         this.retiredFrom = retiredFrom;
     }
 
-    /** Whether the person is on hold: their OPEN claims then count in no live total. */
+    /** Whether the person is on hold: their OPEN and PENDING claims then count in no live total. */
     public boolean isHeld() {
         return held;
     }

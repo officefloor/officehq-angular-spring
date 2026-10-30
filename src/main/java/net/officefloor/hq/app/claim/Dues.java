@@ -30,14 +30,15 @@ public final class Dues {
     }
 
     /**
-     * A claim's figure before any late charge: while bound by a statement, the figure bound then;
+     * A claim's figure before any late charge: while bound by a statement (and not PENDING, which is
+     * never bound), the figure bound then;
      * otherwise the amount at the rate in force on its date for its person's grade in force then, but at
      * least the sheet's floor; a correction has no floor and no late charge. Rounded by the date the claim's
      * rounding goes by, see {@link RateTable#rounding}. Null when there is none. A
      * statement binds this figure, never the late charge.
      */
     public static BigDecimal base(Claim claim, Grades grades, RateTable rates) {
-        if (claim.isStated()) {
+        if (bound(claim)) {
             return claim.getStatedDue();
         }
         String grade = grades.on(claim.getDate());
@@ -46,9 +47,14 @@ public final class Dues {
                 : rates.due(claim.getAmount(), grade, claim.getDate());
     }
 
-    /** Whether the claim is overdue: OPEN, and due by a date before the sheet's today. */
+    /** Whether a statement binds the claim's figure: it is stated and not PENDING. */
+    public static boolean bound(Claim claim) {
+        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+    }
+
+    /** Whether the claim is overdue: OPEN or PENDING, and due by a date before the sheet's today. */
     public static boolean overdue(Claim claim, RateTable rates) {
-        return claim.getStatus() == ClaimStatus.OPEN && rates.dueBy(claim.getDate()).isBefore(rates.today());
+        return claim.getStatus().unpaid() && rates.dueBy(claim.getDate()).isBefore(rates.today());
     }
 
     /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */
@@ -64,15 +70,15 @@ public final class Dues {
 
     /** Whether the claim's figure is kept whatever the rates: fixed by settling or bound by a statement. */
     private static boolean kept(Claim claim) {
-        return claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null);
+        return claim.getSettledDue() != null || (bound(claim) && claim.getStatedDue() != null);
     }
 
     /**
-     * Whether the claim counts in the live totals: OPEN and SETTLED claims do, except that the OPEN
-     * claims of a person on hold count in none.
+     * Whether the claim counts in the live totals: OPEN, PENDING and SETTLED claims do, except that the
+     * OPEN and PENDING claims of a person on hold count in none.
      */
     public static boolean counts(Claim claim, boolean held) {
-        return claim.getStatus().counts() && !(held && claim.getStatus() == ClaimStatus.OPEN);
+        return claim.getStatus().counts() && !(held && claim.getStatus().unpaid());
     }
 
     /**
