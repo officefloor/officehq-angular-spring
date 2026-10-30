@@ -1,0 +1,122 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 4e75f2e80..70b950c93 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, computed, effect, inject, input, signal } from '@angular/core';
++import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
+ import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+@@ -23,6 +23,24 @@ function cents(amount: string): number {
+   return Math.round(Number(amount) * 100);
+ }
+ 
++/**
++ * Per crew name, its due-total in cents: the lead's and the members' due-totals as the sheet shows them, added up,
++ * a person showing n/a skipped.
++ */
++export function crewDueCents(crews: Crew[], people: PersonWithClaims[]): Map<string, number> {
++  const due = new Map(people.map((p) => [p.id, p.dueTotal]));
++  return new Map(
++    crews.map((c) => {
++      const ids = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
++      const total = ids.reduce((sum, id) => {
++        const d = due.get(id);
++        return d == null ? sum : sum + cents(d);
++      }, 0);
++      return [c.name, total];
++    }),
++  );
++}
++
+ // The sheet's crews, sorted by name, each with its lead and members and its due-total: the lead's and the members'
+ // due-totals as the sheet shows them, added up, a person showing n/a skipped; the form that adds a crew with its
+ // lead, and on each crew's row the form that adds a person to it (never its lead, nor anyone in it already).
+@@ -95,26 +113,20 @@ export class Crews {
+   /** Everyone on the sheet with their figures: the choices for a lead or member, and their due-totals. */
+   readonly people = input.required<PersonWithClaims[]>();
+ 
+-  protected readonly crews = signal<Crew[]>([]);
++  /** The sheet's crews as last read, shared with the page (for the signed-in user's crew total). */
++  readonly crews = model<Crew[]>([]);
+   protected readonly name = signal('');
+   protected readonly lead = signal('');
+   protected readonly error = signal('');
+   /** Per crew, the person chosen to add and why its last add was refused. */
+   protected readonly drafts = signal<Record<string, { personId: string; error: string }>>({});
+   /** Per crew name, its due-total with two decimals: the lead's and members' added up, n/a skipped. */
+-  protected readonly dueTotals = computed(() => {
+-    const due = new Map(this.people().map((p) => [p.id, p.dueTotal]));
+-    return new Map(
+-      this.crews().map((c) => {
+-        const ids = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
+-        const total = ids.reduce((sum, id) => {
+-          const d = due.get(id);
+-          return d == null ? sum : sum + cents(d);
+-        }, 0);
+-        return [c.name, (total / 100).toFixed(2)];
+-      }),
+-    );
+-  });
++  protected readonly dueTotals = computed(
++    () =>
++      new Map(
++        [...crewDueCents(this.crews(), this.people())].map(([name, total]) => [name, (total / 100).toFixed(2)]),
++      ),
++  );
+   /** Each answer is numbered: one older than the last shown is dropped. */
+   private asked = 0;
+   private shown = 0;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 63b15a81b..20bf135d6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -11,7 +11,7 @@ import { Search } from '../search/search';
+ import { Holidays } from '../holidays/holidays';
+ import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
+ import { PersonPlans, PlanList } from '../plans/plans';
+-import { Crews } from '../crews/crews';
++import { Crew, Crews, crewDueCents } from '../crews/crews';
+ import { Pool, Pools } from '../pools/pools';
+ import { Rates } from '../rates/rates';
+ import { Summary, statusCounts } from '../summary/summary';
+@@ -147,6 +147,7 @@ function csvField(value: string): string {
+       <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+       <p>My due total <strong data-testid="my-due-total">{{ (me() === null ? '' : (me()!.dueTotal ?? 'n/a')) | figure }}</strong></p>
+       <p>My overdue total <strong data-testid="my-overdue-total">{{ (me()?.overdueTotal ?? '') | figure }}</strong></p>
++      <p>My crew due total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+     </header>
+     <section aria-label="Consolidated figures">
+       <h2>Consolidated over this sheet and its descendants</h2>
+@@ -161,7 +162,7 @@ function csvField(value: string): string {
+     <app-void-reasons />
+     <app-claim-templates />
+     <app-pools [people]="people()" [(pools)]="pools" />
+-    <app-crews [people]="people()" />
++    <app-crews [people]="people()" [(crews)]="crews" />
+     <app-summary [people]="people()" [periods]="periods()" />
+     <app-tags [people]="people()" />
+     <app-search />
+@@ -903,6 +904,20 @@ export class People {
+     const key = nameKey(user);
+     return this.people().find((p) => [p.name, ...(p.aliases ?? [])].some((n) => nameKey(n) === key)) ?? null;
+   });
++  /** The sheet's crews, as the crews panel last read them. */
++  protected readonly crews = signal<Crew[]>([]);
++  /**
++   * The due-totals of the crews led by the person with the signed-in user's name, added up, with two decimals; ''
++   * when that person leads no crew, or there is no such person.
++   */
++  protected readonly myCrewDueTotal = computed(() => {
++    const me = this.me();
++    if (me === null) return '';
++    const led = this.crews().filter((c) => c.lead?.personId === me.id);
++    if (led.length === 0) return '';
++    const totals = crewDueCents(led, this.people());
++    return ([...totals.values()].reduce((sum, t) => sum + t, 0) / 100).toFixed(2);
++  });
+   /** Everyone's overdue-total added up, trimmed (see {@link trimmedSum}). */
+   protected readonly overdueTotal = computed(() => (overdueTotalOf(this.people()) / 100).toFixed(2));
+   /**
