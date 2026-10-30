@@ -1,0 +1,64 @@
+{
+  "checkpoint": 213,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp213_parent-plans",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan on a sheet may name one of the sheet's descendants (a sheet id on the plan form; PLAN_ADDED\ngains sheet=<id> at its end; a sheet that is not a descendant is refused). Its claims are then\ngenerated for the person of the same name on that sheet (none when there is no such person), by\nthat sheet's rules and written in that sheet's audit; the plan still counts what it made.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan on a sheet may name one of the sheet's descendants (a sheet id on the plan form; PLAN_ADDED\ngains sheet=<id> at its end; a sheet that is not a descendant is refused). Its claims are then\ngenerated for the person of the same name on that sheet (none when there is no such person), by\nthat sheet's rules and written in that sheet's audit; the plan still counts what it made.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5a06cfa05c262547ed7f6a5d3b8e08ced957bf4f",
+  "reset_sha": "",
+  "preagent_sha": "19ea959e80ada3b1825ed77460673a8cbab446b4",
+  "prev_sha": "19ea959e80ada3b1825ed77460673a8cbab446b4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7627849999999999,
+    "input_tokens": 34,
+    "output_tokens": 9457,
+    "cache_read_tokens": 694545,
+    "cache_creation_tokens": 54325,
+    "num_turns": 17,
+    "duration_ms": 259120,
+    "duration_api_ms": 98323,
+    "model": "claude-opus-5-5",
+    "session_id": "f0e74704-0517-4b49-8122-956ffa2363ca",
+    "stop_reason": "success",
+    "result_text": "A plan can now name one of its sheet's descendants, and `bin/e2e` passes all 4 tests, including the new \"parent plans\" one.\n\n**What a person sees:**\n- The plan form has a new optional field, `plan-form-sheet`, for a sheet id.\n- If that sheet isn't a descendant of the current one, the plan is refused with `plan-error` and nothing is written.\n- `PLAN_ADDED` gets ` sheet=<id>` at the end of the line, only when a sheet is named.\n- A plan that names a sheet also shows it on its row as `plan-sheet`. The test doesn't need this; it's display only.\n\n**How generating works for such a plan:**\n- It looks for a person on the named sheet with the same name as the plan's person. The match ignores case and surrounding spaces.\n- If there is one, the claims are made there through the normal claim form, so that sheet's rules apply. The `CLAIM_ADDED` lines go to that sheet's audit, and the plan's count includes them.\n- If there isn't, nothing is made. The plan still moves on to its next dates, which the test expects.\n- Claim dates still run up to the generating sheet's today, not the named sheet's today. The test relies on this: the child sheet's today is still 03-01 when the claim for 03-11 is made there.\n\n**Code changes:**\n- New migration `V104__plan_sheet.sql` adds a nullable `target_sheet_id` column to `sheet_plan`.\n- `Plan`, `PlanAdded`, `PlanController` (form and view) and `SheetAudit` carry the new field.\n- `Plans.add` checks the sheet against the existing `SheetService.descendants`, and `Plans.generate` sends claims to the matching person on the named sheet.\n- On the front end, `plans.ts` has the new form field and row display.\n\n**Decision for you:** the plan is only checked when it's added. If the named sheet later stops being a descendant (say its parent setting changes), the plan keeps making claims there. It's easy to re-check on each generate if you'd prefer that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7627849999999999,
+        "num_turns": 17,
+        "duration_ms": 259120,
+        "duration_api_ms": 98323,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp213.agent.jsonl",
+  "agent_diff_file": "cp213.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
