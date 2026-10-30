@@ -494,7 +494,7 @@ export class Claims {
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
       if (err instanceof HttpErrorResponse && err.status === 403) {
-        this.claimError.set({ id: c.id, message: `You opened this claim, so another user must ${action} it.` });
+        this.claimError.set({ id: c.id, message: err.error?.message || `You opened this claim, so another user must ${action} it.` });
         return;
       }
       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;

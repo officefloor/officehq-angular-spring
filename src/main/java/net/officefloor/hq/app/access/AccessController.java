@@ -79,8 +79,8 @@ public class AccessController {
     public record AccessView(List<RoleView> roles, SettingsView settings) {
     }
 
-    /** A user name and a role: clerk or steward. */
-    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward") String role) {
+    /** A user name and a role: clerk, steward or viewer. */
+    public record RoleForm(@NotBlank @Size(max = 200) String user, @NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
     }
 
     /**

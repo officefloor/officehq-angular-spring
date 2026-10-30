@@ -85,6 +85,12 @@ public class AccessService {
         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
     }
 
+    /** Whether the user is a viewer on the sheet: one who sees everything and can change nothing. */
+    @Transactional(readOnly = true)
+    public boolean isViewer(String sheetId, String user) {
+        return roleOf(sheetId, user) == Role.VIEWER;
+    }
+
     /** The sheet's dated settings, with the sheet's today to read the values in force now. */
     @Transactional(readOnly = true)
     public DatedSettings settings(String sheetId) {

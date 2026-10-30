@@ -43,7 +43,7 @@ interface AccessView {
   settings: Settings;
 }
 
-const ROLES = ['clerk', 'steward'];
+const ROLES = ['clerk', 'steward', 'viewer'];
 const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
 const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
@@ -87,7 +87,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   template: `
     <section aria-label="Roles">
       <h2>Roles</h2>
-      <p>Anyone without a role is a clerk.</p>
+      <p>Anyone without a role is a clerk. A viewer sees everything and can change nothing.</p>
       <ul aria-label="Roles set">
         @for (r of roles(); track r.user) {
           <li [attr.data-testid]="'role-row-' + r.user">
@@ -104,7 +104,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="roleUser()"
           (input)="roleUser.set(value($event)); roleError.set('')"
         />
-        <label for="role-form-role">Role (clerk or steward)</label>
+        <label for="role-form-role">Role (clerk, steward or viewer)</label>
         <input
           id="role-form-role"
           data-testid="role-form-role"
@@ -394,7 +394,7 @@ export class Access {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.roleError.set('Enter a role: clerk or steward.');
+      this.roleError.set('Enter a role: clerk, steward or viewer.');
       return;
     }
     const headers = { 'X-User': this.session.user() ?? '' };

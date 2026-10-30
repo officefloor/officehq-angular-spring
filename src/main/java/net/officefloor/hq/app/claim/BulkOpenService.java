@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.claim;
 
 import java.util.Set;
+import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,13 +19,18 @@ public class BulkOpenService {
 
     private final ClaimService claims;
     private final SelectedClaims selected;
+    private final AccessService access;
 
-    public BulkOpenService(ClaimService claims, SelectedClaims selected) {
+    public BulkOpenService(ClaimService claims, SelectedClaims selected, AccessService access) {
+        this.access = access;
         this.claims = claims;
         this.selected = selected;
     }
 
     public Result open(String sheetId, String user, Set<Long> claimIds) {
+        if (access.isViewer(sheetId, user)) {
+            return new Result(0, claimIds.size()); // a viewer changes nothing: every one refused
+        }
         int opened = 0;
         for (Claim c : selected.inListOrder(sheetId, claimIds)) {
             try {
