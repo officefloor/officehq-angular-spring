@@ -112,6 +112,10 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /** The claim's external reference, unique on its sheet without regard to case; null when it has none. */
+    @Column(name = "ref")
+    private String ref;
+
     /** Whether the claim was added while a soft-closed period contained its due-by. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -307,6 +311,14 @@ public class Claim {
 
     public void setSplitFrom(String splitFrom) {
         this.splitFrom = splitFrom;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    public void setRef(String ref) {
+        this.ref = ref;
     }
 
     public boolean isLateEntry() {

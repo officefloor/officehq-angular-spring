@@ -51,6 +51,8 @@ export interface Claim {
   lateEntry: boolean;
   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
   remindedOn: string | null;
+  /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
+  ref: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
@@ -156,6 +158,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Due <span data-testid="claim-due">{{ c.due ?? 'n/a' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
@@ -300,6 +303,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set('')"
       />
+      <label [for]="fid('ref')">External reference</label>
+      <input
+        [id]="fid('ref')"
+        data-testid="claim-form-ref"
+        [disabled]="locking()"
+        [value]="ref()"
+        (input)="ref.set(value($event)); error.set('')"
+      />
       <button type="submit" data-testid="claim-form-submit" [disabled]="locking()">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -326,6 +337,7 @@ export class Claims implements OnInit {
   protected readonly date = signal('');
   protected readonly note = signal('');
   protected readonly corrects = signal('');
+  protected readonly ref = signal('');
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
   /** An edit button waiting for its claim's lock: the form is held until the answer comes. */
@@ -691,6 +703,7 @@ export class Claims implements OnInit {
     this.date.set(c.date);
     this.note.set(c.note);
     this.corrects.set(c.corrects ?? '');
+    this.ref.set(c.ref ?? '');
     this.error.set('');
   }
 
@@ -720,6 +733,7 @@ export class Claims implements OnInit {
     this.date.set('');
     this.note.set('');
     this.corrects.set('');
+    this.ref.set('');
     this.error.set('');
   }
 
@@ -733,6 +747,7 @@ export class Claims implements OnInit {
     const date = this.date().trim();
     const note = this.note();
     const corrects = this.corrects().trim();
+    const ref = this.ref().trim();
     if (!AMOUNT.test(amount)) {
       this.error.set('Enter an amount with up to two decimals; a negative amount is a correction.');
       return;
@@ -747,7 +762,8 @@ export class Claims implements OnInit {
     }
     const id = this.editing();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const body = { amount, date: date === '' ? null : date, note, corrects: corrects === '' ? null : corrects };
+    const body = { amount, date: date === '' ? null : date, note, corrects: corrects === '' ? null : corrects,
+      ref: ref === '' ? null : ref };
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {

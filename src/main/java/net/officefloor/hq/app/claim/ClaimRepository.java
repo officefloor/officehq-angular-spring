@@ -23,6 +23,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query(value = "update claim set listed = next value for claim_listed_seq where id = :id", nativeQuery = true)
     void relist(@Param("id") Long id);
 
+    /** Whether a claim on the sheet carries the reference, compared without regard to case. */
+    boolean existsBySheetIdAndRefIgnoreCase(String sheetId, String ref);
+
+    /** Whether a claim on the sheet other than the one given carries the reference, compared without regard to case. */
+    boolean existsBySheetIdAndRefIgnoreCaseAndIdNot(String sheetId, String ref, Long id);
+
     /** The sheet's claims an editor holds locked. */
     List<Claim> findBySheetIdAndLockedByIsNotNull(String sheetId);
 

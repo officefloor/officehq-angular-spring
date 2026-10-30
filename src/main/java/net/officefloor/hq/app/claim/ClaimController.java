@@ -40,10 +40,11 @@ public class ClaimController {
 
     /**
      * An amount with up to two decimals, negative for a correction, which names the number of the claim
-     * it corrects; a blank date takes the sheet's today.
+     * it corrects; a blank date takes the sheet's today; a blank external reference is none.
      */
     public record ClaimForm(@NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount,
-            LocalDate date, @Size(max = 500) String note, @Pattern(regexp = "[1-9]\\d{0,8}|.{1,100}-[1-9]\\d{0,8}") String corrects) {
+            LocalDate date, @Size(max = 500) String note, @Pattern(regexp = "[1-9]\\d{0,8}|.{1,100}-[1-9]\\d{0,8}") String corrects,
+            @Size(max = 100) String ref) {
     }
 
     /** A quick-add: a person's name and a claim's amount. */
@@ -55,7 +56,7 @@ public class ClaimController {
     public record AmountForm(@NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount) {
     }
 
-    /** Pasted lines of name,amount,date,note, one claim per line. */
+    /** Pasted lines of name,amount,date,note, one claim per line; a note may end in " #<reference>". */
     public record PasteForm(@NotNull @Size(max = 100_000) String text) {
     }
 
@@ -117,7 +118,7 @@ public class ClaimController {
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
         long id = claims.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.date(), form.note(),
-                form.corrects());
+                form.corrects(), form.ref());
         return view(sheet, id);
     }
 
@@ -143,7 +144,7 @@ public class ClaimController {
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
         long id = claims.edit(sheet, user.trim(), claimId, new BigDecimal(form.amount()), form.date(), form.note(),
-                form.corrects());
+                form.corrects(), form.ref());
         return view(sheet, id);
     }
 

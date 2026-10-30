@@ -99,6 +99,18 @@ public class ClaimService {
     @Transactional
     public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        return add(sheetId, user, personId, amount, date, note, corrects, null);
+    }
+
+    /**
+     * Add a claim as {@link #add(String, String, long, BigDecimal, LocalDate, String, String)} does, carrying an
+     * external reference (surrounding spaces removed; blank: none), refused when a claim on the sheet already
+     * carries it, compared without regard to case. Returns the person it belongs to.
+     */
+    @Transactional
+    public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref) {
+        String reference = requireFreeRef(sheetId, ref, null);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.claimDate(sheetId);
@@ -113,9 +125,11 @@ public class ClaimService {
         claim.setCorrectsDate(correctsDate);
         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy).isPresent());
         claim.setDueBy(dueBy);
+        claim.setRef(reference);
         log(sheetId, user, claim, person);
         claims.saveAndFlush(claim);
-        events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
+        events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null,
+                null, null, reference));
         if (claim.isLateEntry()) {
             events.publishEvent(new ClaimChanged("LATE_ENTRY", sheetId, user, person.getName(), amount, on, null, null));
         }
@@ -127,14 +141,16 @@ public class ClaimService {
      * Edit a claim's amount, date and note; only a DRAFT can be edited (an open claim is voided and
      * added again instead), and an edit is refused when a closed period contains its due-by (which an edit
      * leaves as it was fixed), or
-     * when the date it is left with is after its person's retirement date.
-     * Returns the person it belongs to.
+     * when the date it is left with is after its person's retirement date, or when its external reference
+     * (surrounding spaces removed; blank: none) is carried by another claim on the sheet, compared without
+     * regard to case. Returns the person it belongs to.
      */
     @Transactional
     public long edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        String reference = requireFreeRef(sheetId, ref, claimId);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         periods.requireOpen(sheetId, claim.getDueBy());
         if (claim.getStatus() != ClaimStatus.DRAFT) {
@@ -150,6 +166,7 @@ public class ClaimService {
         claim.setCorrectsDate(correctsDate);
         claim.setDate(on);
         claim.setNote(note == null ? "" : note);
+        claim.setRef(reference);
         claim.setLockedBy(null);
         claims.flush();
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
@@ -166,7 +183,22 @@ public class ClaimService {
     @Transactional
     public long editAmount(String sheetId, String user, long claimId, BigDecimal amount) {
         Claim claim = claim(sheetId, claimId);
-        return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects());
+        return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects(),
+                claim.getRef());
+    }
+
+    /**
+     * An external reference with its surrounding spaces removed, or null when blank; refused when a claim on
+     * the sheet other than {@code claimId} (null: any claim) carries it, compared without regard to case.
+     */
+    String requireFreeRef(String sheetId, String ref, Long claimId) {
+        String reference = ref == null || ref.isBlank() ? null : ref.strip();
+        if (reference != null && (claimId == null ? claims.existsBySheetIdAndRefIgnoreCase(sheetId, reference)
+                : claims.existsBySheetIdAndRefIgnoreCaseAndIdNot(sheetId, reference, claimId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The reference \"" + reference + "\" is already used on the sheet");
+        }
+        return reference;
     }
 
     /**

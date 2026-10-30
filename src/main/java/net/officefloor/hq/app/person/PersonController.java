@@ -54,12 +54,12 @@ public class PersonController {
      * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
      * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}),
      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
-     * whether it was added while its period was soft-closed, and the last sheet's today it was reminded on (null when never).
+     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), and its external reference (null when none).
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
-            String lockedBy, boolean lateEntry, LocalDate remindedOn) {
+            String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
@@ -68,7 +68,7 @@ public class PersonController {
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
                     Dues.deferred(claim, rates.today()),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn());
+                    claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef());
         }
     }
 

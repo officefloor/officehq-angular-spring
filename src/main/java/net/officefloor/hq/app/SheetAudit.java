@@ -101,7 +101,8 @@ public class SheetAudit {
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + (e.due() == null ? "" : " due=" + e.due())
                 + (e.reason() == null ? "" : " reason=" + e.reason())
-                + (e.reversed() == null ? "" : " reversed=" + e.reversed()));
+                + (e.reversed() == null ? "" : " reversed=" + e.reversed())
+                + (e.ref() == null ? "" : " ref=" + e.ref()));
     }
 
     @TransactionalEventListener

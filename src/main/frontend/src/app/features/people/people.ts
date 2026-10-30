@@ -128,7 +128,7 @@ function csvField(value: string): string {
         }
       </form>
       <form (submit)="pasteClaims($event)" aria-label="Paste claims">
-        <label for="paste-claims">Paste claims, a line each: name,amount,date,note</label>
+        <label for="paste-claims">Paste claims, a line each: name,amount,date,note (a note may end in " #reference")</label>
         <textarea
           id="paste-claims"
           data-testid="paste-claims"
