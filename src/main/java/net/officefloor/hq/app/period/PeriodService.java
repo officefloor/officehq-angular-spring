@@ -32,7 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The periods on a sheet, earliest first: none share a name (case ignored) or a date. A closed period
- * keeps the due-total it had when closed, and no claim dated inside it can change.
+ * keeps the due-total it had when closed, and no claim due by a date inside it can change.
  */
 @Service
 public class PeriodService {
@@ -118,7 +118,7 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims dated inside it that counted (OPEN, PENDING and SETTLED,
+     * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims due by a date inside it that counted (OPEN, PENDING and SETTLED,
      * but not an unbound OPEN claim dated within a hold of its person, nor a deferred one) at the end of its last day,
      * see {@link Dues#countsAsOf}, added up per person. A soft-closed period is closed with its figures fixed
      * afresh. Refused when it is already closed, or for a role the sheet's
@@ -141,7 +141,7 @@ public class PeriodService {
     }
 
     /**
-     * Soft-close an open period: its figures are fixed as a close fixes them, but claims dated inside it can
+     * Soft-close an open period: its figures are fixed as a close fixes them, but claims due by a date inside it can
      * still be added, edited, opened, settled and voided. Refused when it is already closed or soft-closed, or
      * for a role the sheet's permission matrix does not allow to close.
      */
@@ -189,7 +189,7 @@ public class PeriodService {
         Map<Long, BigDecimal> totals = new HashMap<>();
         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
         claims.findBySheetIdOrderByIdDesc(sheetId).stream()
-                .filter(c -> period.contains(c.getDate())
+                .filter(c -> period.contains(c.getDueBy())
                         && Dues.countsAsOf(c, byId.get(c.getPersonId()).leaves(), table.today(), period.getToDate()))
                 .forEach(c -> {
                     BigDecimal due = Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table);
@@ -206,7 +206,7 @@ public class PeriodService {
 
     /**
      * Reopen a closed or soft-closed period: its due-total is live again, the current figures of the claims
-     * dated inside it. Refused unless the sheet's permission matrix allows the user's role (a steward, unless
+     * due by a date inside it. Refused unless the sheet's permission matrix allows the user's role (a steward, unless
      * set), and when the period is neither closed nor soft-closed.
      */
     @Transactional
@@ -239,7 +239,7 @@ public class PeriodService {
     }
 
     /**
-     * Refuse a change to a claim dated on any of the dates when a closed period contains it. Holds the
+     * Refuse a change to a claim due by any of the dates when a closed period contains it. Holds the
      * sheet's lock until the transaction ends, so a period cannot close while the change is made.
      */
     @Transactional

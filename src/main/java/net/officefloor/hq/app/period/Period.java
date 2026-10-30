@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * A period on a sheet: a name unique on the sheet, and a from and to date, both inclusive. Once closed or
- * soft-closed, its due-total is the one fixed then; claims dated inside a soft-closed one can still change.
+ * soft-closed, its due-total is the one fixed then; claims due by a date inside a soft-closed one can still change.
  */
 @Entity
 @Table(name = "period")
@@ -43,7 +43,7 @@ public class Period {
     @Column(name = "closed", nullable = false)
     private boolean closed;
 
-    /** Whether the period is soft-closed: its figures are fixed, but claims dated inside it can still change. */
+    /** Whether the period is soft-closed: its figures are fixed, but claims due by a date inside it can still change. */
     @Column(name = "soft_closed", nullable = false)
     private boolean softClosed;
 
@@ -116,7 +116,7 @@ public class Period {
 
     /**
      * Close the period, or soft-close it, fixing each person's due-total for it and its own, their sum. A
-     * soft-closed period still takes changes to the claims dated inside it.
+     * soft-closed period still takes changes to the claims due by a date inside it.
      */
     public void close(Map<Long, BigDecimal> personTotals, boolean soft) {
         this.closed = !soft;

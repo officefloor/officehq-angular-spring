@@ -105,7 +105,7 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
-    /** Whether the claim was added while a soft-closed period contained its date. */
+    /** Whether the claim was added while a soft-closed period contained its due-by. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 

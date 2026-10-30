@@ -271,7 +271,7 @@ public class ClaimController {
                 rates.table(sheetId), statements.forPerson(sheetId, personId), people.patrons(sheetId, personId));
     }
 
-    /** A claim dated inside a closed period: refused, nothing changed. */
+    /** A claim due by a date inside a closed period: refused, nothing changed. */
     @ExceptionHandler(ClosedPeriodRefused.class)
     public ResponseEntity<Refusal> closed(ClosedPeriodRefused e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));

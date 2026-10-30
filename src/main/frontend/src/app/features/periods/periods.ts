@@ -11,7 +11,7 @@ export interface Period {
   from: string;
   to: string;
   closed: boolean;
-  /** Whether the period is soft-closed: its figures are fixed, but claims dated inside it can still change. */
+  /** Whether the period is soft-closed: its figures are fixed, but claims due by a date inside it can still change. */
   softClosed: boolean;
   /** The due-total fixed when the period was closed or soft-closed; null while it is open. */
   closedTotal: string | null;
@@ -44,7 +44,7 @@ export function statusAsOf(c: Claim, day: string): ClaimStatus | undefined {
   return status;
 }
 
-/** Per period id, the person's due-total for it: the dues as shown now of their claims dated in it that counted
+/** Per period id, the person's due-total for it: the dues as shown now of their claims due by a date in it that counted
  * (OPEN, PENDING or SETTLED) at the end of its last day, added up, or once closed or soft-closed the figure fixed then (0.00
  * for a person added later); an unbound OPEN claim dated within a hold of its person counts in none, nor does an
  * unbound OPEN or PENDING claim of a person whose retirement date the sheet's today has reached, nor does
@@ -54,7 +54,7 @@ export function personPeriodTotals(periods: Period[], person: PersonWithClaims):
   for (const p of periods) totals[p.id] = 0;
   for (const c of person.claims) {
     if (c.due === null || heldOut(c, person.holds) || retiredOut(c, person.retiredNow) || c.deferred) continue;
-    const period = periodOf(periods, c.date);
+    const period = periodOf(periods, c.dueBy);
     if (!period || isFixed(period)) continue;
     const status = statusAsOf(c, period.to);
     if (status === 'OPEN' || status === 'PENDING' || status === 'SETTLED') totals[period.id] += cents(c.due);

@@ -334,9 +334,9 @@ export class Claims implements OnInit {
     { action: 'void', label: 'Void' },
   ];
 
-  /** The name of the period whose dates contain the claim's date; '' when none does. */
+  /** The name of the period whose dates contain the claim's due-by; '' when none does. */
   protected periodName(c: Claim): string {
-    return periodOf(this.periods(), c.date)?.name ?? '';
+    return periodOf(this.periods(), c.dueBy)?.name ?? '';
   }
 
   protected setRejectReason(id: number, reason: string): void {
@@ -545,7 +545,7 @@ export class Claims implements OnInit {
   /** Why the claim's editor cannot be opened, as far as the screen knows; null when it may be. */
   private editRefusal(c: Claim): string | null {
     if (c.status !== 'DRAFT') return `A ${c.status} claim cannot be edited; void it and add a new one.`;
-    const period = periodOf(this.periods(), c.date);
+    const period = periodOf(this.periods(), c.dueBy);
     if (period?.closed) return `The claim is in the closed period ${period.name}, so it cannot be edited.`;
     if (c.lockedBy !== null && c.lockedBy !== this.session.user()) return `${c.lockedBy} is editing this claim.`;
     return null;
