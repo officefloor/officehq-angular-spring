@@ -391,7 +391,7 @@ public class ClaimController {
         Person person = people.get(sheetId, personId);
         return PersonView.of(person, claims.forPerson(sheetId, personId),
                 rates.table(sheetId), statements.forPerson(sheetId, personId), people.patrons(sheetId, personId),
-                people.clashing(sheetId, person));
+                people.clashing(sheetId, person), people.snapshots(sheetId, personId));
     }
 
     /** A claim due by a date inside a closed period: refused, nothing changed. */

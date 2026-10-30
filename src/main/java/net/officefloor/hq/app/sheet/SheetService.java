@@ -6,6 +6,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -190,7 +191,7 @@ public class SheetService {
         Sheet sheet = load(id, user);
         Rollup.Figures before = rollup.figures(id);
         if (!today.equals(sheet.getToday())) {
-            events.publishEvent(new DaySnapshot(id, user, sheet.getToday(), List.copyOf(before.people().values())));
+            events.publishEvent(new DaySnapshot(id, user, sheet.getToday(), new LinkedHashMap<>(before.people())));
             dayEnds.record(id, sheet.getToday());
             pasts.record(id, sheet.getToday());
         }

@@ -92,6 +92,12 @@ export interface ClaimLogLine {
   due: string | null;
 }
 
+/** A snapshot line of a person: the day being left and their due-total on it as shown ('n/a': none). */
+export interface Snapshot {
+  day: string;
+  dueTotal: string;
+}
+
 /** A past retirement of a person: from the date they were retired from to the day they were unretired. */
 export interface Retirement {
   from: string;
@@ -146,6 +152,8 @@ export interface PersonWithClaims {
   retiredFrom: string | null;
   /** The person's past retirements, earliest first: no claim dated after the from and before the to of one can be added. */
   retirements: Retirement[];
+  /** The person's snapshot lines, one per SNAPSHOT written for them, oldest first. */
+  snapshots: Snapshot[];
   /** Whether the person has any hold, whatever its dates. */
   held: boolean;
   /** The person's holds, earliest first: their OPEN claims dated within one, unless bound by a statement,

@@ -35,10 +35,13 @@ public class PersonService {
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
     private final Tags tags;
+    private final PersonSnapshotRepository snapshots;
 
     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
-            SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events, Tags tags) {
+            SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events, Tags tags,
+            PersonSnapshotRepository snapshots) {
         this.tags = tags;
+        this.snapshots = snapshots;
         this.patrons = patrons;
         this.sheetRows = sheetRows;
         this.rollup = rollup;
@@ -334,6 +337,19 @@ public class PersonService {
     public Map<Long, List<Long>> patronsBySheet(String sheetId) {
         return patrons.findBySheetIdOrderByIdAsc(sheetId).stream().collect(Collectors.groupingBy(
                 Patron::getPersonId, Collectors.mapping(Patron::getPatronId, Collectors.toList())));
+    }
+
+    /** Each person's snapshot lines on the sheet, by person id, oldest first. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<PersonSnapshot>> snapshotsBySheet(String sheetId) {
+        return snapshots.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(PersonSnapshot::getPersonId));
+    }
+
+    /** The person's snapshot lines, oldest first. */
+    @Transactional(readOnly = true)
+    public List<PersonSnapshot> snapshots(String sheetId, long personId) {
+        return snapshots.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
     }
 
     /** The ids of the person's patrons, in the order they were named. */

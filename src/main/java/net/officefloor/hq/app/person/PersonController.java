@@ -120,7 +120,7 @@ public class PersonController {
      * from their SETTLED claims and from their OPEN and PENDING claims (see {@link Dues#settledTotal} and
      * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
      * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
-     * transferred from (null: none), and their past retirements, earliest first.
+     * transferred from (null: none), their past retirements, earliest first, and their snapshot lines, oldest first.
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<String> tags,
@@ -129,11 +129,12 @@ public class PersonController {
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
-            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
+            List<SnapshotView> snapshots) {
 
         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
-                List<Long> patrons, boolean clashing) {
+                List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots) {
             Grades grade = person::gradeOn;
             Holds held = person.leaves();
             BigDecimal claimed = claims.stream().filter(c -> Dues.counts(c, held, rates.today())).map(Claim::getAmount)
@@ -155,12 +156,17 @@ public class PersonController {
                     money(Dues.settledTotal(grade, claims, rates, held)),
                     money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing,
                     person.getOrigin(), person.getRetirements().stream()
-                            .map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList());
+                            .map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+                    snapshots.stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList());
         }
     }
 
     /** A past retirement of a person: from the date they were retired from to the day they were unretired. */
     public record RetirementView(LocalDate from, LocalDate to) {
+    }
+
+    /** A snapshot line of a person: the day being left and their due-total on it as shown ('n/a': none). */
+    public record SnapshotView(LocalDate day, String dueTotal) {
     }
 
     /** A hold on a person: from a date to a date (null: open-ended). */
@@ -242,10 +248,12 @@ public class PersonController {
         Map<Long, Statements> stated = statements.bySheet(sheet);
         Map<Long, List<Long>> patrons = service.patronsBySheet(sheet);
         Set<Long> clashing = service.clashing(sheet);
+        Map<Long, List<PersonSnapshot>> snapshots = service.snapshotsBySheet(sheet);
         return service.list(sheet).stream()
                 .map(p -> PersonView.of(p, bySheet.getOrDefault(p.getId(), List.of()), table,
                         stated.getOrDefault(p.getId(), Statements.NONE),
-                        patrons.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()))).toList();
+                        patrons.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()),
+                        snapshots.getOrDefault(p.getId(), List.of()))).toList();
     }
 
     @PostMapping
@@ -254,7 +262,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         return PersonView.of(service.add(sheet, user.trim(), form.name(), form.grade(), form.termsDays(),
                 form.contactKey(), form.tags()), List.of(),
-                rates.table(sheet), Statements.NONE, List.of(), false);
+                rates.table(sheet), Statements.NONE, List.of(), false, List.of());
     }
 
     /** Update or add a person per pasted line, in order; one refused line imports none. */
@@ -413,7 +421,7 @@ public class PersonController {
         long personId = person.getId();
         return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
                 statements.forPerson(sheet, personId), service.patrons(sheet, personId),
-                service.clashing(sheet, person));
+                service.clashing(sheet, person), service.snapshots(sheet, personId));
     }
 
     /** Another save took the name or contact first: the unique name or contact on the sheet refuses this one. */

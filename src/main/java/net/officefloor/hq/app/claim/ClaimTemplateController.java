@@ -96,7 +96,8 @@ public class ClaimTemplateController {
         long id = templates.addClaim(sheet, user.trim(), personId, form.name());
         Person person = people.get(sheet, id);
         return PersonView.of(person, claims.forPerson(sheet, id), rates.table(sheet),
-                statements.forPerson(sheet, id), people.patrons(sheet, id), people.clashing(sheet, person));
+                statements.forPerson(sheet, id), people.patrons(sheet, id), people.clashing(sheet, person),
+                people.snapshots(sheet, id));
     }
 
     @ExceptionHandler(ClaimTemplateRefused.class)
