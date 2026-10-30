@@ -182,6 +182,7 @@ function csvField(value: string): string {
       <p>My overdue total <strong data-testid="my-overdue-total">{{ (me()?.overdueTotal ?? '') | figure }}</strong></p>
       <p>My crew due total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
       <p>My reviews <strong data-testid="my-reviews-count">{{ myReviewsCount() }}</strong></p>
+      <p>Watched due total <strong data-testid="watched-due-total">{{ watchedDueTotal() | figure }}</strong></p>
     </header>
     <section aria-label="Steward dashboard">
       <h2>Steward dashboard</h2>
@@ -1110,6 +1111,17 @@ export class People {
     if (led.length === 0) return '';
     const totals = crewDueCents(led, this.people());
     return ([...totals.values()].reduce((sum, t) => sum + t, 0) / 100).toFixed(2);
+  });
+  /**
+   * The due-totals of the people the signed-in user watches, as the sheet shows them, added up, with two decimals;
+   * a person showing n/a skipped, 0.00 when watching no one.
+   */
+  protected readonly watchedDueTotal = computed(() => {
+    const watched = this.watched();
+    const total = this.people()
+      .flatMap((p) => (watched.has(p.id) && p.dueTotal !== null ? [cents(p.dueTotal)] : []))
+      .reduce((sum, c) => sum + c, 0);
+    return (total / 100).toFixed(2);
   });
   /** Everyone's overdue-total added up, trimmed (see {@link trimmedSum}). */
   protected readonly overdueTotal = computed(() => (overdueTotalOf(this.people()) / 100).toFixed(2));
