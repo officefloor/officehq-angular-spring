@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, effect, inject, input, model, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PersonWithClaims } from '../claims/claims';
@@ -123,7 +123,8 @@ export class Pools {
   /** Everyone on the sheet, retired people included: the choices for a member, re-read as they change. */
   readonly people = input.required<PersonWithClaims[]>();
 
-  protected readonly pools = signal<Pool[]>([]);
+  /** The pools as shown, shared with the sheet's people, whose cut totals add up their cuts. */
+  readonly pools = model<Pool[]>([]);
   protected readonly name = signal('');
   protected readonly error = signal('');
   protected readonly drafts = signal<Record<string, Draft>>({});

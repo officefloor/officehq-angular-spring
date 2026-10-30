@@ -9,7 +9,7 @@ import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Audit } from '../audit/audit';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, personPeriodTotals } from '../periods/periods';
-import { Pools } from '../pools/pools';
+import { Pool, Pools } from '../pools/pools';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
 import { Tags } from '../tags/tags';
@@ -105,7 +105,7 @@ function csvField(value: string): string {
     <app-holidays />
     <app-void-reasons />
     <app-claim-templates />
-    <app-pools [people]="people()" />
+    <app-pools [people]="people()" [(pools)]="pools" />
     <app-summary [people]="people()" [periods]="periods()" />
     <app-tags [people]="people()" />
     <app-audit />
@@ -117,6 +117,7 @@ function csvField(value: string): string {
       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
       <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
         <label for="person-form-name">Name</label>
         <input
@@ -316,7 +317,7 @@ function csvField(value: string): string {
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Active</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Cut total</th>
             @for (pd of periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
             }
@@ -361,6 +362,7 @@ function csvField(value: string): string {
               <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+              <td data-testid="person-cut-total">{{ ((personCuts().get(p.id) ?? 0) / 100).toFixed(2) }}</td>
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodTotals().get(p.id)?.[pd.id] }}</td>
               }
@@ -512,6 +514,17 @@ export class People {
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
   protected readonly periods = signal<Period[]>([]);
+  protected readonly pools = signal<Pool[]>([]);
+  /** Per person id, in cents, their cuts across every pool they are a member of; a pool showing no cut adds nothing. */
+  protected readonly personCuts = computed(() => {
+    const cuts = new Map<number, number>();
+    for (const pool of this.pools()) {
+      for (const m of pool.members) {
+        if (m.personId !== null && m.cut !== null) cuts.set(m.personId, (cuts.get(m.personId) ?? 0) + cents(m.cut));
+      }
+    }
+    return cuts;
+  });
   /** Per person id, their due-total for each period on the sheet, by period id. */
   protected readonly periodTotals = computed(
     () => new Map(this.people().map((p) => [p.id, personPeriodTotals(this.periods(), p)])),
@@ -621,6 +634,11 @@ export class People {
   /** Everyone's open-total added up, not trimmed. */
   protected readonly openTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.openTotal), 0) / 100).toFixed(2),
+  );
+
+  /** Everyone's cut total added up, not trimmed. */
+  protected readonly cutTotal = computed(() =>
+    (this.people().reduce((sum, p) => sum + (this.personCuts().get(p.id) ?? 0), 0) / 100).toFixed(2),
   );
 
   /** Each person's patrons, each as their name and share, sorted by name and comma separated, and their
