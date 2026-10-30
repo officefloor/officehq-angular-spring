@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.ClaimProofAdded;
 import net.officefloor.hq.app.claim.ClaimReassigned;
 import net.officefloor.hq.app.claim.ClaimRedated;
 import net.officefloor.hq.app.claim.ClaimReminded;
+import net.officefloor.hq.app.claim.ClaimEscalated;
 import net.officefloor.hq.app.claim.ClaimSplit;
 import net.officefloor.hq.app.claim.ClaimResettled;
 import net.officefloor.hq.app.claim.TemplateSaved;
@@ -187,6 +188,13 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(ClaimReminded e) {
         change(e.sheetId(), e.user(), "REMIND sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number()));
+    }
+
+    @TransactionalEventListener
+    public void on(ClaimEscalated e) {
+        change(e.sheetId(), e.user(), "ESCALATE sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number()));
     }

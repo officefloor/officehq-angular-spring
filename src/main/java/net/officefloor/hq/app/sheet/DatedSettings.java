@@ -42,6 +42,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** A person whose due-total goes above it is alerted; not dated. */
     public static final String ALERT_THRESHOLD = "alert-threshold";
 
+    /** A claim reminded at least this many days after its previous reminder is escalated; not dated. */
+    public static final String ESCALATE_AFTER = "escalate-after";
+
     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
     public static final String PARENT = "parent";
 
@@ -180,6 +183,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's alert threshold (not dated: it holds on every date); null when it is off. */
     public BigDecimal alertThreshold() {
         return on(ALERT_THRESHOLD, LocalDate.MAX).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The sheet's escalation gap in days (not dated: it holds on every date); null when it is off. */
+    public Integer escalateAfter() {
+        return on(ESCALATE_AFTER, LocalDate.MAX).map(Integer::valueOf).orElse(null);
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in (not dated); 1 when none is set. */

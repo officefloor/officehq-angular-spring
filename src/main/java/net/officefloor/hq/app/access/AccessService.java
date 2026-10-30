@@ -84,6 +84,8 @@ public class AccessService {
 
     public static final String PARENT = DatedSettings.PARENT;
 
+    public static final String ESCALATE_AFTER = DatedSettings.ESCALATE_AFTER;
+
     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
 
     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
@@ -263,7 +265,7 @@ public class AccessService {
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
-            String alertThreshold, Dated rounding, Dated reviewThreshold) {
+            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter) {
         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
@@ -337,6 +339,9 @@ public class AccessService {
         if (alertThreshold != null) {
             setAlertThreshold(sheetId, user, money(alertThreshold, null));
         }
+        if (escalateAfter != null) {
+            setEscalateAfter(sheetId, user, days(escalateAfter, null));
+        }
         if (parent != null) {
             setParent(sheetId, user, parent.isEmpty() ? null : parent);
         }
@@ -392,6 +397,15 @@ public class AccessService {
     @Transactional
     public void setAlertThreshold(String sheetId, String user, String threshold) {
         setUndated(sheetId, user, ALERT_THRESHOLD, threshold);
+    }
+
+    /**
+     * Record the sheet's escalation gap, a number of days (null: off). Not dated: the value holds from the
+     * beginning of time, replacing the one it had.
+     */
+    @Transactional
+    public void setEscalateAfter(String sheetId, String user, String days) {
+        setUndated(sheetId, user, ESCALATE_AFTER, days);
     }
 
     /** Record an undated setting as written (null: none), replacing the one it had. */

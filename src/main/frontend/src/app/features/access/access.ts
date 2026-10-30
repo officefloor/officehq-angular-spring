@@ -34,6 +34,8 @@ interface Settings {
   pot: string | null;
   /** A person whose due-total goes above it is alerted (two decimals); null when blank (off). Not dated. */
   alertThreshold: string | null;
+  /** A claim reminded at least this many days after its previous reminder is escalated; null when blank (off). Not dated. */
+  escalateAfter: string | null;
   /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; null when none. Not dated. */
   parent: string | null;
   /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
@@ -231,6 +233,7 @@ const ROUNDING = /^(half-up|half-even)$/;
       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
       <p>Pot <strong data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</strong></p>
       <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
+      <p>Escalate after (days) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</strong></p>
@@ -420,6 +423,15 @@ const ROUNDING = /^(half-up|half-even)$/;
           (input)="alertThresholdInput.set(value($event)); alertThresholdTouched = true; settingsError.set('')"
           (keydown)="alertThresholdTouched = alertThresholdTouched || clears($event)"
         />
+        <label for="setting-escalate-after">Escalate a claim reminded at least this many days after its previous reminder (blank: off)</label>
+        <input
+          id="setting-escalate-after"
+          inputmode="numeric"
+          data-testid="setting-escalate-after"
+          [value]="escalateAfterInput()"
+          (input)="escalateAfterInput.set(value($event)); escalateAfterTouched = true; settingsError.set('')"
+          (keydown)="escalateAfterTouched = escalateAfterTouched || clears($event)"
+        />
         <label for="setting-parent">Parent sheet id: its rates are used for a grade with none in force (blank: none)</label>
         <input
           id="setting-parent"
@@ -585,6 +597,8 @@ export class Access {
   protected readonly potInput = signal('');
   protected readonly alertThreshold = signal<string | null>(null);
   protected readonly alertThresholdInput = signal('');
+  protected readonly escalateAfter = signal<string | null>(null);
+  protected readonly escalateAfterInput = signal('');
   protected readonly parent = signal<string | null>(null);
   protected readonly parentInput = signal('');
   protected readonly fiscalStartMonth = signal('1');
@@ -622,6 +636,7 @@ export class Access {
   protected entryDateTouched = false;
   protected potTouched = false;
   protected alertThresholdTouched = false;
+  protected escalateAfterTouched = false;
   protected parentTouched = false;
   protected fiscalStartMonthTouched = false;
   protected capTouched = false;
@@ -646,7 +661,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -832,6 +847,11 @@ export class Access {
       this.settingsError.set('Enter an alert threshold of 0.00 or more, with up to two decimals, or leave it blank for off.');
       return;
     }
+    const escalateAfter = this.escalateAfterInput().trim();
+    if (this.escalateAfterTouched && escalateAfter !== '' && !DAYS.test(escalateAfter)) {
+      this.settingsError.set('Enter an escalation gap as a whole number of days, or leave it blank for off.');
+      return;
+    }
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     if (this.fiscalStartMonthTouched && fiscalStartMonth !== '' && !MONTH.test(fiscalStartMonth)) {
       this.settingsError.set('Enter a fiscal year start month from 1 to 12, or leave it blank for 1.');
@@ -899,6 +919,7 @@ export class Access {
     if (this.entryDateTouched) body.entryDate = entryDate;
     if (this.potTouched) body.pot = pot;
     if (this.alertThresholdTouched) body.alertThreshold = alertThreshold;
+    if (this.escalateAfterTouched) body.escalateAfter = escalateAfter;
     if (this.parentTouched) body.parent = this.parentInput().trim();
     if (this.fiscalStartMonthTouched) body.fiscalStartMonth = fiscalStartMonth === '' ? '' : String(Number(fiscalStartMonth));
     if (this.capTouched) body.cap = cap;
@@ -984,6 +1005,9 @@ export class Access {
     this.alertThreshold.set(settings.alertThreshold);
     this.alertThresholdInput.set(settings.alertThreshold ?? '');
     this.alertThresholdTouched = false;
+    this.escalateAfter.set(settings.escalateAfter);
+    this.escalateAfterInput.set(settings.escalateAfter ?? '');
+    this.escalateAfterTouched = false;
     this.parent.set(settings.parent);
     this.parentInput.set(settings.parent ?? '');
     this.parentTouched = false;

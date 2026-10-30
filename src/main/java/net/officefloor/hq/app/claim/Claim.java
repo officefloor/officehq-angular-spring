@@ -121,6 +121,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether a reminder ever escalated the claim; a claim is escalated at most once. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** How many proofs the claim has; it starts at 0. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -210,6 +214,7 @@ public class Claim {
         arrived.terms = terms;
         arrived.deferredUntil = deferredUntil;
         arrived.remindedOn = remindedOn;
+        arrived.escalated = escalated;
         arrived.proofs = proofs;
         arrived.splitFrom = splitFrom;
         arrived.tags = tags;
@@ -306,6 +311,14 @@ public class Claim {
 
     public void setRemindedOn(LocalDate remindedOn) {
         this.remindedOn = remindedOn;
+    }
+
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    public void setEscalated(boolean escalated) {
+        this.escalated = escalated;
     }
 
     public int getProofs() {

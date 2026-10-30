@@ -695,7 +695,9 @@ public class ClaimService {
      * Remind an OPEN or PENDING claim: it takes the sheet's today as its reminded date. A claim can be
      * reminded once per sheet's today; a claim in any other status, or one already reminded on the sheet's
      * today, is refused and nothing changes. A reminder changes no figure, so a claim due by a date inside a
-     * closed period can still be reminded. Returns the person it belongs to.
+     * closed period can still be reminded. When the sheet has an escalation gap and the claim's previous
+     * reminder was at least that many days before the sheet's today, the claim is escalated too (once per
+     * claim ever). Returns the person it belongs to.
      */
     @Transactional
     public long remind(String sheetId, String user, long claimId) {
@@ -709,11 +711,22 @@ public class ClaimService {
         if (today.equals(claim.getRemindedOn())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim was already reminded today (" + today + ")");
         }
+        LocalDate previous = claim.getRemindedOn();
+        Integer gap = sheets.settings(sheetId).escalateAfter();
+        boolean escalate = gap != null && previous != null && !claim.isEscalated()
+                && !previous.plusDays(gap).isAfter(today);
         claim.setRemindedOn(today);
+        if (escalate) {
+            claim.setEscalated(true);
+        }
         claims.flush();
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
         events.publishEvent(new ClaimReminded(sheetId, user, person, claim.getAmount(), claim.getDate(),
                 claim.getShownNumber()));
+        if (escalate) {
+            events.publishEvent(new ClaimEscalated(sheetId, user, person, claim.getAmount(), claim.getDate(),
+                    claim.getShownNumber()));
+        }
         return claim.getPersonId();
     }
 
