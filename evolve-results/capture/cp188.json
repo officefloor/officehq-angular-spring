@@ -1,0 +1,68 @@
+{
+  "checkpoint": 188,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp188_clone-source-rates",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    126
+  ],
+  "replaced_tests": [
+    "cp126_clone-sheet.spec.ts::clone sheet"
+  ],
+  "request": {
+    "spec": "When a grade has no rate in force on a date on a sheet nor on its parents, a sheet that was\ncloned uses the rate of the sheet it was cloned from (and so on up that sheet's parents and\nsource).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a grade has no rate in force on a date on a sheet nor on its parents, a sheet that was\ncloned uses the rate of the sheet it was cloned from (and so on up that sheet's parents and\nsource).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c1b1d12f78d97ee307291438cdb346190062bffe",
+  "reset_sha": "",
+  "preagent_sha": "09953605d863086f526b86c8c1c97bdd1d254c0b",
+  "prev_sha": "09953605d863086f526b86c8c1c97bdd1d254c0b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7016128,
+    "input_tokens": 38,
+    "output_tokens": 7771,
+    "cache_read_tokens": 796764,
+    "cache_creation_tokens": 48336,
+    "num_turns": 20,
+    "duration_ms": 267614,
+    "duration_api_ms": 78401,
+    "model": "claude-opus-5-5",
+    "session_id": "d14902bf-48b5-4a7b-b868-276c6e4b147f",
+    "stop_reason": "success",
+    "result_text": "A cloned sheet now uses the rates of the sheet it was cloned from. If a grade has no rate in force on a date on the sheet or on any of its parents, the app checks the source sheet next, then that sheet's parents and its own source, and so on. `bin/e2e` passes all 4 tests.\n\n**What changed:**\n- **Stored data:** a new migration, `V99__sheet_cloned_from.sql`, adds a `cloned_from` column to `sheet`. `Sheet.cloned()` fills it in with the original sheet's id. Sheets cloned before this change have no source recorded, so they don't get this fallback.\n- **Rate lookup (`rate/ParentRates.java`):** the lookup order is:\n  1. the sheet's own rates\n  2. its parents, up to three levels as before\n  3. its source sheet\n  4. the source's parents (up to three levels)\n  5. the source's own source, and so on\n\n  Each sheet is checked at most once, so a loop of parents or sources can't repeat forever. Because every rate calculation (person and claim dues, rollups, day-ends, rate previews and the screen's current rates) goes through this one lookup, they all pick up the fallback.\n- **`rate/RateTable.java`:** I removed its own three-level cap, since `ParentRates` now sets the limits. Otherwise the source sheet's rates would have been cut off.\n- **Front end:** no logic change. It already goes through whatever levels the server returns. I only updated one comment in `rates.ts`, after the passing run.\n\n**Decision for you:** the request didn't say how deep the source chain should go, so it has no depth limit, and each parent chain along it is still capped at three levels. If you want a fixed limit on how many clone generations are followed, it's a small change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7016128,
+        "num_turns": 20,
+        "duration_ms": 267614,
+        "duration_api_ms": 78401,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp188.agent.jsonl",
+  "agent_diff_file": "cp188.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

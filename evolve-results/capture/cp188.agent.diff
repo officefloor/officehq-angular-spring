@@ -1,0 +1,190 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 92a54299c..e3869d6a3 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -263,7 +263,7 @@ export class Rates {
+     });
+   }
+ 
+-  /** Per grade, the rate in force on the date; with none, the parent sheet's, then its parent's. */
++  /** Per grade, the rate in force on the date; with none, the parent sheet's, then its parent's, then a clone's source sheet's. */
+   private inForceOn(date: string): Record<string, string> {
+     const found: Record<string, string> = {};
+     for (const level of [this.rates(), ...this.inherited()]) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/ParentRates.java b/src/main/java/net/officefloor/hq/app/rate/ParentRates.java
+index 980d0d314..1e0cad7f4 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/ParentRates.java
++++ b/src/main/java/net/officefloor/hq/app/rate/ParentRates.java
+@@ -5,38 +5,62 @@ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.sheet.DatedSettings;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetSettingRepository;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+- * The rates of a sheet's parent sheets, nearest first, up to {@link RateTable#ANCESTOR_LEVELS} levels up:
+- * a grade with no rate in force on the sheet takes the first of them that has one. Reads the store directly,
+- * within the caller's own transaction.
++ * The rates of a sheet's parent sheets, nearest first, up to {@link RateTable#ANCESTOR_LEVELS} levels up; then,
++ * for a sheet that was cloned, the rates of the sheet it was cloned from, its parents (up to three levels) and
++ * its own source, and so on: a grade with no rate in force on the sheet takes the first of them that has one.
++ * Each sheet is looked in once. Reads the store directly, within the caller's own transaction.
+  */
+ @Service
+ public class ParentRates {
+ 
+     private final SheetSettingRepository settings;
++    private final SheetRepository sheets;
+     private final RateRepository rates;
+ 
+-    public ParentRates(SheetSettingRepository settings, RateRepository rates) {
++    public ParentRates(SheetSettingRepository settings, SheetRepository sheets, RateRepository rates) {
+         this.settings = settings;
++        this.sheets = sheets;
+         this.rates = rates;
+     }
+ 
+-    /** The rates of the sheet's parent, its parent's parent, and so on up to three levels. */
++    /** The rates of the sheet's parent, its parent's parent, and so on up to three levels, then its source's. */
+     public List<List<Rate>> of(String sheetId) {
+-        return from(sheetId, new DatedSettings(settings.findBySheetId(sheetId)).parent());
++        return from(sheetId, parentOf(sheetId));
+     }
+ 
+-    /** The rates of the parent given (null: none), then its own parents, for the sheet given. */
++    /** The rates of the parent given (null: none), then its own parents, then the source sheets', for the sheet given. */
+     public List<List<Rate>> from(String sheetId, String parent) {
+         List<List<Rate>> found = new ArrayList<>();
+         Set<String> seen = new HashSet<>(List.of(sheetId));
+-        while (parent != null && found.size() < RateTable.ANCESTOR_LEVELS && seen.add(parent)) {
+-            found.add(rates.findBySheetId(parent));
+-            parent = new DatedSettings(settings.findBySheetId(parent)).parent();
++        climb(parent, found, seen);
++        String source = sourceOf(sheetId);
++        while (source != null && seen.add(source)) {
++            found.add(rates.findBySheetId(source));
++            climb(parentOf(source), found, seen);
++            source = sourceOf(source);
+         }
+         return found;
+     }
++
++    /** Add the rates of the parent given and its own parents, up to three levels. */
++    private void climb(String parent, List<List<Rate>> found, Set<String> seen) {
++        for (int level = 0; parent != null && level < RateTable.ANCESTOR_LEVELS && seen.add(parent); level++) {
++            found.add(rates.findBySheetId(parent));
++            parent = parentOf(parent);
++        }
++    }
++
++    private String parentOf(String sheetId) {
++        return new DatedSettings(settings.findBySheetId(sheetId)).parent();
++    }
++
++    private String sourceOf(String sheetId) {
++        return sheets.findById(sheetId).map(Sheet::getClonedFrom).orElse(null);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateTable.java b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+index b29ea32c9..7ca1a2008 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateTable.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+@@ -14,12 +14,14 @@ import net.officefloor.hq.app.sheet.DatedSettings;
+  * percent in force on each 30-day boundary past its due-by, the cap in force on the sheet's today) and its policy date (null: the sheet's today): which rate is in force for a grade on a date, the live due it
+  * makes of an amount, the late charge an overdue figure gains, how a claim's figures round, and the most a
+  * person's due-total comes to. A grade with no rate in force on a date takes the rate of the parent sheet's
+- * rates on that date, then the parent's parent, up to three levels up ({@code ancestors}, nearest first).
++ * rates on that date, then the parent's parent, up to three levels up; then, for a sheet that was cloned, the
++ * sheet it was cloned from and so on up its parents and source ({@code ancestors}, nearest first, see
++ * {@link ParentRates}).
+  */
+ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings settings, LocalDate policyDate,
+         List<List<Rate>> ancestors) {
+ 
+-    /** How many levels of parent sheets a grade's rate is looked for in. */
++    /** How many levels of parent sheets a grade's rate is looked for in, from a sheet or from a source sheet. */
+     public static final int ANCESTOR_LEVELS = 3;
+ 
+     /** A sheet's rates with no parent sheet to fall back on. */
+@@ -34,7 +36,8 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
+      * The percent in force for the grade on the date: the rate whose from-date is the latest one on
+      * or before it, a rate with no from-date applying from the beginning of time; null when none does,
+      * or when that rate's to-date is before the date (it has ended, and no later rate is in force). When
+-     * this sheet has none in force, the parent sheet's, then its parent's, up to three levels up.
++     * this sheet has none in force, the parent sheet's, then its parent's, up to three levels up, then the
++     * source sheet's of a clone.
+      */
+     public BigDecimal on(String grade, LocalDate date) {
+         return on(grade, date, null);
+@@ -47,7 +50,7 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
+      */
+     public BigDecimal on(String grade, LocalDate date, Long claimId) {
+         BigDecimal pct = on(rates, grade, date, claimId);
+-        for (int i = 0; pct == null && i < ancestors.size() && i < ANCESTOR_LEVELS; i++) {
++        for (int i = 0; pct == null && i < ancestors.size(); i++) {
+             pct = on(ancestors.get(i), grade, date, claimId);
+         }
+         return pct;
+@@ -67,7 +70,7 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
+             return false;
+         }
+         boolean ended = latest(rates, grade, date).isPresent();
+-        for (int i = 0; !ended && i < ancestors.size() && i < ANCESTOR_LEVELS; i++) {
++        for (int i = 0; !ended && i < ancestors.size(); i++) {
+             ended = latest(ancestors.get(i), grade, date).isPresent();
+         }
+         return ended;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index d3bee4492..b3917968c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -62,6 +62,10 @@ public class Sheet {
+     @Column(name = "archived", nullable = false)
+     private boolean archived;
+ 
++    /** The sheet this one was cloned from; null when it was not cloned. */
++    @Column(name = "cloned_from")
++    private String clonedFrom;
++
+     protected Sheet() {
+     }
+ 
+@@ -73,7 +77,7 @@ public class Sheet {
+ 
+     /**
+      * The sheet as copied to a clone under another id: its creator, today, policy date, period numbering from,
+-     * entry date and grace days; no claim number or settle batch taken yet, and not archived.
++     * entry date and grace days; no claim number or settle batch taken yet, not archived, and cloned from this one.
+      */
+     public Sheet cloned(String id) {
+         Sheet copy = new Sheet(id, createdBy, today);
+@@ -81,6 +85,7 @@ public class Sheet {
+         copy.periodNumberingFrom = periodNumberingFrom;
+         copy.entryDate = entryDate;
+         copy.graceDays = graceDays;
++        copy.clonedFrom = this.id;
+         return copy;
+     }
+ 
+@@ -136,6 +141,10 @@ public class Sheet {
+         return lastSettleBatch;
+     }
+ 
++    public String getClonedFrom() {
++        return clonedFrom;
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/resources/db/migration/V99__sheet_cloned_from.sql b/src/main/resources/db/migration/V99__sheet_cloned_from.sql
+new file mode 100644
+index 000000000..c68d1acd8
+--- /dev/null
++++ b/src/main/resources/db/migration/V99__sheet_cloned_from.sql
+@@ -0,0 +1,2 @@
++-- The sheet a sheet was cloned from: a grade with no rate in force on it nor on its parents takes that sheet's.
++ALTER TABLE sheet ADD COLUMN cloned_from VARCHAR(100);
