@@ -1,0 +1,271 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 201d9540c..9a83b2e79 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -811,7 +811,7 @@ function csvField(value: string): string {
+                 <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)">
+                   Undo transfer<span class="visually-hidden"> of {{ p.name }}</span>
+                 </button>
+-                <app-person-plans [personId]="p.id" [name]="p.name" />
++                <app-person-plans [personId]="p.id" [name]="p.name" (amountChanged)="planAmountChanged()" />
+               </td>
+               <td><app-claims
+                   [person]="p"
+@@ -1333,6 +1333,12 @@ export class People {
+     }
+   }
+ 
++  /** Show the DRAFT claims a plan's amount change edited. */
++  protected async planAmountChanged(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (sheet) await this.reload(sheet);
++  }
++
+   /** Make the claims every plan on the sheet is due up to its today, then show them and how many were made. */
+   protected async generatePlans(): Promise<void> {
+     if (this.generating) return;
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 8cbb8e310..8bc57ab83 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
++import { Component, Injectable, computed, effect, inject, input, output, signal } from '@angular/core';
+ import { FigurePipe } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+@@ -301,6 +301,8 @@ export class PersonPlans {
+ 
+   readonly personId = input.required<number>();
+   readonly name = input('');
++  /** A plan's amount was changed, editing the DRAFT claims it generated. */
++  readonly amountChanged = output<void>();
+ 
+   protected readonly plans = computed(() => this.list.plans().filter((p) => p.personId === this.personId()));
+   protected readonly amount = signal('');
+@@ -340,7 +342,10 @@ export class PersonPlans {
+     this.rowErrors.update((errors) => ({ ...errors, [planId]: '' }));
+     const refusal = await this.list.changeAmount(planId, this.newAmounts()[planId] ?? '');
+     this.rowErrors.update((errors) => ({ ...errors, [planId]: refusal }));
+-    if (!refusal) this.newAmounts.update((amounts) => ({ ...amounts, [planId]: '' }));
++    if (!refusal) {
++      this.newAmounts.update((amounts) => ({ ...amounts, [planId]: '' }));
++      this.amountChanged.emit();
++    }
+   }
+ 
+   protected value(e: Event): string {
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+index 4c42420e4..6473bb158 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+@@ -77,7 +77,8 @@ public class SheetPasts {
+             new Scope("SHEET_NOTE", "sheet_id = ?"),
+             new Scope("SHEET_PLAN", "sheet_id = ?"),
+             new Scope("SHEET_PLAN_CLAIM", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"),
+-            new Scope("SHEET_PLAN_PAUSE", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"));
++            new Scope("SHEET_PLAN_PAUSE", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"),
++            new Scope("SHEET_PLAN_CHANGE", "plan_id IN (SELECT id FROM sheet_plan WHERE sheet_id = ?)"));
+ 
+     /** The sheet's own columns that stay as they are: its key, who started it and its today. */
+     private static final List<String> SHEET_KEPT = List.of("ID", "CREATED_BY", "TODAY");
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 32a5e0528..393ae8ca4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -141,7 +141,7 @@ public class ClaimService {
+      * person's own terms, the terms of the grade they have that day and the sheet's are each looked up on that day.
+      */
+     @Transactional
+-    Claim addClaim(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
++    public Claim addClaim(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+             String corrects, String ref, String tagText) {
+         String tagged = Tags.normalize(tagText);
+         String reference = requireFreeRef(sheetId, ref, null);
+@@ -1092,7 +1092,8 @@ public class ClaimService {
+         if (share.scale() > 2 || share.compareTo(BigDecimal.ZERO) <= 0) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A share is a percent with two decimals, more than 0.00");
+         }
+-        Claim claim = claim(sheetId, claimId);
++        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                 || claim.getStatus() == ClaimStatus.DELETED) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot be shared");
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanClaim.java b/src/main/java/net/officefloor/hq/app/plan/PlanClaim.java
+index 5dd3898ab..c04e6f513 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanClaim.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanClaim.java
+@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.time.LocalDate;
+ 
+-/** A plan date a claim was made for: each plan date has at most one. */
++/** A plan date a claim was made for, and the claim: each plan date has at most one. */
+ @Entity
+ @Table(name = "sheet_plan_claim")
+ public class PlanClaim {
+@@ -23,12 +23,16 @@ public class PlanClaim {
+     @Column(name = "on_date", nullable = false)
+     private LocalDate on;
+ 
++    @Column(name = "claim_id")
++    private Long claimId;
++
+     protected PlanClaim() {
+     }
+ 
+-    public PlanClaim(Long planId, LocalDate on) {
++    public PlanClaim(Long planId, LocalDate on, Long claimId) {
+         this.planId = planId;
+         this.on = on;
++        this.claimId = claimId;
+     }
+ 
+     public Long getPlanId() {
+@@ -38,4 +42,9 @@ public class PlanClaim {
+     public LocalDate getOn() {
+         return on;
+     }
++
++    /** The claim made for the plan date (null when it was made before it was kept). */
++    public Long getClaimId() {
++        return claimId;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java b/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java
+index 39555c98e..6fd5fa18b 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.plan;
+ 
+ import java.time.LocalDate;
++import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface PlanClaimRepository extends JpaRepository<PlanClaim, Long> {
+@@ -8,4 +9,6 @@ public interface PlanClaimRepository extends JpaRepository<PlanClaim, Long> {
+     boolean existsByPlanIdAndOn(Long planId, LocalDate on);
+ 
+     long countByPlanId(Long planId);
++
++    List<PlanClaim> findByPlanIdOrderByIdAsc(Long planId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plans.java b/src/main/java/net/officefloor/hq/app/plan/Plans.java
+index 52add0e02..c221556e0 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plans.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plans.java
+@@ -5,7 +5,9 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
+ import net.officefloor.hq.app.access.AccessService;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -37,6 +39,7 @@ public class Plans {
+     private final PlanChangeRepository changes;
+     private final PersonRepository people;
+     private final ClaimService claims;
++    private final ClaimRepository claimRows;
+     private final SheetService sheets;
+     private final SheetRepository sheetRows;
+     private final ApplicationEventPublisher events;
+@@ -44,7 +47,7 @@ public class Plans {
+     private final AccessService access;
+ 
+     public Plans(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses,
+-            PlanChangeRepository changes, PersonRepository people, ClaimService claims,
++            PlanChangeRepository changes, PersonRepository people, ClaimService claims, ClaimRepository claimRows,
+             SheetService sheets, SheetRepository sheetRows, ApplicationEventPublisher events,
+             PlatformTransactionManager transactions, AccessService access) {
+         this.access = access;
+@@ -54,6 +57,7 @@ public class Plans {
+         this.changes = changes;
+         this.people = people;
+         this.claims = claims;
++        this.claimRows = claimRows;
+         this.sheets = sheets;
+         this.sheetRows = sheetRows;
+         this.events = events;
+@@ -85,20 +89,43 @@ public class Plans {
+     }
+ 
+     /**
+-     * Change the plan's amount on the sheet's today: the claims generated from then on are made for it, those already
+-     * generated keep theirs.
++     * Change the plan's amount on the sheet's today: the claims generated from then on are made for it, and those
++     * already generated that are still DRAFT are edited to it, each as the claim form edits a claim's amount and in
++     * its own change (one the form refuses keeps its amount); those in any other status keep theirs.
+      */
+-    @Transactional
+     public void changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+-        sheets.load(sheetId, user);
+-        sheetRows.lockById(sheetId);
+-        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
+-        plan.changeAmount(amount);
+-        plans.saveAndFlush(plan);
+-        changes.saveAndFlush(new PlanChange(planId, sheets.today(sheetId), amount));
+-        String name = people.findByIdAndSheetId(plan.getPersonId(), sheetId).map(Person::getName).orElse("");
+-        events.publishEvent(new PlanChanged(sheetId, user, name, plan.getStart(), amount));
++        Plan plan = transaction.execute(status -> {
++            sheets.load(sheetId, user);
++            sheetRows.lockById(sheetId);
++            Plan changed = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
++            changed.changeAmount(amount);
++            plans.saveAndFlush(changed);
++            changes.saveAndFlush(new PlanChange(planId, sheets.today(sheetId), amount));
++            String name = people.findByIdAndSheetId(changed.getPersonId(), sheetId).map(Person::getName).orElse("");
++            events.publishEvent(new PlanChanged(sheetId, user, name, changed.getStart(), amount));
++            return changed;
++        });
++        String target = plan.getTargetSheetId() == null ? sheetId : plan.getTargetSheetId();
++        for (PlanClaim claim : made.findByPlanIdOrderByIdAsc(planId)) {
++            if (claim.getClaimId() != null) {
++                editDraft(target, user, claim.getClaimId(), amount);
++            }
++        }
++    }
++
++    /** Edit the plan's claim on the sheet to the amount in its own change, when it is still a DRAFT. */
++    private void editDraft(String sheetId, String user, long claimId, BigDecimal amount) {
++        try {
++            transaction.executeWithoutResult(status -> {
++                sheetRows.lockById(sheetId);
++                claimRows.findByIdAndSheetId(claimId, sheetId)
++                        .filter(c -> c.getStatus() == ClaimStatus.DRAFT)
++                        .ifPresent(c -> claims.editAmount(sheetId, user, claimId, amount));
++            });
++        } catch (RuntimeException refused) {
++            // refused by the claim form's rules: nothing written, the claim keeps its amount
++        }
+     }
+ 
+     /**
+@@ -208,8 +235,9 @@ public class Plans {
+                 if (made.existsByPlanIdAndOn(plan.getId(), on)) {
+                     return false;
+                 }
+-                claims.add(sheetId, user, personId, plan.getAmount(), on, "");
+-                made.saveAndFlush(new PlanClaim(plan.getId(), on));
++                long claimId = claims.addClaim(sheetId, user, personId, plan.getAmount(), on, "", null, null, null)
++                        .getId();
++                made.saveAndFlush(new PlanClaim(plan.getId(), on, claimId));
+                 return true;
+             }));
+         } catch (RuntimeException refused) {
+diff --git a/src/main/resources/db/migration/V109__plan_claim_id.sql b/src/main/resources/db/migration/V109__plan_claim_id.sql
+new file mode 100644
+index 000000000..d3388e4fe
+--- /dev/null
++++ b/src/main/resources/db/migration/V109__plan_claim_id.sql
+@@ -0,0 +1,3 @@
++-- The claim a plan date was made as, so a change of the plan's amount can reach the claims it generated that are
++-- still DRAFT (null for the plan dates generated before it was kept).
++ALTER TABLE sheet_plan_claim ADD COLUMN claim_id BIGINT;
