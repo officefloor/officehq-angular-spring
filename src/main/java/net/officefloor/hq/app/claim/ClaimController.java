@@ -139,12 +139,14 @@ public class ClaimController {
     private final StatementService statements;
     private final Tags tags;
     private final SettleAsOfService settleAsOf;
+    private final DuplicateClaims duplicates;
 
     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
             BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
             BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags,
-            SettleAsOfService settleAsOf) {
+            SettleAsOfService settleAsOf, DuplicateClaims duplicates) {
         this.settleAsOf = settleAsOf;
+        this.duplicates = duplicates;
         this.bulkReassign = bulkReassign;
         this.bulkRedate = bulkRedate;
         this.bulkVoid = bulkVoid;
@@ -163,6 +165,12 @@ public class ClaimController {
     @GetMapping("/tags")
     public List<String> tags(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         return tags.used(sheetId.trim());
+    }
+
+    /** The sheet's duplicate claims (see {@link DuplicateClaims#find}). */
+    @GetMapping("/claims/duplicates")
+    public List<DuplicateClaims.Duplicate> duplicates(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return duplicates.find(sheetId.trim());
     }
 
     @PostMapping("/people/{personId}/claims")
