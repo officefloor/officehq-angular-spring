@@ -92,6 +92,9 @@ public class ClaimController {
     }
 
     /** The new date of a claim being re-dated. */
+    public record BulkRedateForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull LocalDate date) {
+    }
+
     public record RedateForm(@NotNull LocalDate date) {
     }
 
@@ -121,15 +124,17 @@ public class ClaimController {
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
     private final BulkReassignService bulkReassign;
+    private final BulkRedateService bulkRedate;
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
     private final Tags tags;
 
     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
-            BulkSettleService bulkSettle, BulkReassignService bulkReassign, PersonService people, RateService rates,
-            StatementService statements, Tags tags) {
+            BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
+            PersonService people, RateService rates, StatementService statements, Tags tags) {
         this.bulkReassign = bulkReassign;
+        this.bulkRedate = bulkRedate;
         this.tags = tags;
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
@@ -241,6 +246,13 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkReassignForm form) {
         return bulkReassign.reassign(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()),
                 form.personId());
+    }
+
+    /** Re-date the selected claims in list order; answers how many were re-dated and how many refused. */
+    @PostMapping("/claims/bulk-redate")
+    public BulkRedateService.Result redateAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkRedateForm form) {
+        return bulkRedate.redate(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.claimIds()), form.date());
     }
 
     @PostMapping("/claims/{claimId}/settle")
