@@ -15,54 +15,63 @@ public final class Dues {
     }
 
     /**
-     * A claim's due: once settled, the due fixed then (its late charge frozen in); otherwise its
-     * {@link #base} figure plus, while overdue, its {@link RateTable#lateCharge late charge}. Null when there
-     * is none.
+     * A claim's due: once settled, the due fixed then (its late charge frozen in); a correction, its
+     * {@link #base} figure (no floor, no late charge); otherwise the greater of the floor in force on its date
+     * and its {@link #base} figure plus, while overdue, its {@link RateTable#lateCharge late charge} on that
+     * figure. Null when there is none.
      */
     public static BigDecimal figure(Claim claim, Grades grades, RateTable rates) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
         BigDecimal base = base(claim, grades, rates);
-        if (base == null || claim.isCorrection() || !overdue(claim, rates)) {
+        if (base == null || claim.isCorrection()) {
             return base;
         }
-        return base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()));
+        BigDecimal due = overdue(claim, rates)
+                ? base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()))
+                : base;
+        return rates.floored(due, claim.getDate());
     }
 
     /**
-     * A claim's figure before any late charge: while bound by a statement (and not PENDING, which is
-     * never bound), the figure bound then;
-     * otherwise the amount at the rate in force on its date for its person's grade in force then, but at
-     * least the sheet's floor; a correction has no floor and no late charge. Rounded by the date the claim's
-     * rounding goes by, see {@link RateTable#rounding}. Null when there is none. A
-     * statement binds this figure, never the late charge.
+     * A claim's figure before any late charge or floor: while bound by a statement (and not PENDING, which is
+     * never bound), the figure bound then; otherwise its {@link #rateFigure rate figure}. Null when there is
+     * none. A statement binds this figure, never the late charge or the floor.
      */
     public static BigDecimal base(Claim claim, Grades grades, RateTable rates) {
         if (bound(claim)) {
             return claim.getStatedDue();
         }
-        String grade = grades.on(claim.getDate());
-        return claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()),
-                rates.rounding(claim.getRoundsBy()))
-                : rates.due(claim.getAmount(), grade, claim.getDate());
+        return rateFigure(claim, grades, rates);
     }
 
     /**
-     * The figure the claim would have today as an OPEN claim bound by no statement: the amount at the rate
-     * in force on its date for its person's grade then (at least the sheet's floor, a correction having none),
-     * plus the late charge it has today when its due-by has passed (a correction having none). Null when
-     * there is none. Re-settling a claim fixes its due at this figure.
+     * The amount at the rate in force on the claim's date for its person's grade in force then, rounded by
+     * its date (a correction by the date its rounding goes by), see {@link RateTable#rounding}; no floor. Null when no rate is.
+     */
+    private static BigDecimal rateFigure(Claim claim, Grades grades, RateTable rates) {
+        String grade = grades.on(claim.getDate());
+        return claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()),
+                rates.rounding(claim.getRoundsBy()))
+                : rates.figure(claim.getAmount(), grade, claim.getDate());
+    }
+
+    /**
+     * The figure the claim would have today as an OPEN claim bound by no statement: its rate figure plus the
+     * late charge it has today on that figure when its due-by has passed, but at least the floor in force on
+     * its date; a correction has neither floor nor late charge. Null when there is none. Re-settling a claim
+     * fixes its due at this figure.
      */
     public static BigDecimal asOpen(Claim claim, Grades grades, RateTable rates) {
-        String grade = grades.on(claim.getDate());
-        BigDecimal base = claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()),
-                rates.rounding(claim.getRoundsBy()))
-                : rates.due(claim.getAmount(), grade, claim.getDate());
-        if (base == null || claim.isCorrection() || !claim.getDueBy().isBefore(rates.today())) {
+        BigDecimal base = rateFigure(claim, grades, rates);
+        if (base == null || claim.isCorrection()) {
             return base;
         }
-        return base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()));
+        BigDecimal due = claim.getDueBy().isBefore(rates.today())
+                ? base.add(rates.lateCharge(base, claim.getDueBy(), claim.getRoundsBy()))
+                : base;
+        return rates.floored(due, claim.getDate());
     }
 
     /** Whether a statement binds the claim's figure: it is stated and not PENDING. */

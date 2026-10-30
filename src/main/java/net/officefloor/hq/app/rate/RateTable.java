@@ -78,11 +78,15 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
     }
 
     /**
-     * The live due of an amount dated on the date for the grade: the amount at the rate in force then,
-     * rounded by the date, but at least the floor in force on the date; null when no rate is.
+     * The rate figure of an amount dated on the date for the grade: the amount at the rate in force then,
+     * rounded by the date, with no floor; null when no rate is.
      */
-    public BigDecimal due(BigDecimal amount, String grade, LocalDate date) {
-        BigDecimal due = RateService.due(amount, on(grade, date), rounding(date));
+    public BigDecimal figure(BigDecimal amount, String grade, LocalDate date) {
+        return RateService.due(amount, on(grade, date), rounding(date));
+    }
+
+    /** A live due held up to the floor in force on the date: the greater of the two; null when the due is. */
+    public BigDecimal floored(BigDecimal due, LocalDate date) {
         BigDecimal floor = settings.floor(date);
         return due == null || floor == null || due.compareTo(floor) >= 0 ? due : floor;
     }
