@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -240,6 +240,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">
             Add proof<span class="visually-hidden"> to claim {{ c.amount }} {{ c.date }}</span>
           </button>
+          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)">
+            Timeline<span class="visually-hidden"> of claim {{ c.amount }} {{ c.date }}</span>
+          </button>
+          @if (timelineErrors()[c.id]; as message) {
+            <p role="alert" data-testid="claim-timeline-error">{{ message }}</p>
+          }
+          <ol aria-label="Timeline">
+            @for (l of timelines()[c.id] ?? []; track $index) {
+              <li data-testid="claim-timeline-line">{{ l }}</li>
+            }
+          </ol>
           <ol aria-label="Status log">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
@@ -506,6 +517,12 @@ export class Claims implements OnInit {
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The id of the person chosen to reassign each claim to, by claim id. */
   protected readonly reassignTo = signal<Record<number, string>>({});
+  /** The audit lines shown for each claim's timeline, newest first, by claim id. */
+  protected readonly timelines = signal<Record<number, string[]>>({});
+  /** Why a claim's timeline could not be read, by claim id. */
+  protected readonly timelineErrors = signal<Record<number, string>>({});
+  /** Bumped on every timeline press and reload, so only the latest press's answer is shown. */
+  private timelineShows = 0;
   /** The other people on the sheet, whom this person's claims can be reassigned to. */
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.person().id));
   /** A submit or action still waiting for its answer: another press meanwhile is ignored. */
@@ -838,6 +855,35 @@ export class Claims implements OnInit {
   }
 
   /** An editor the signed-in user left open on one of the person's claims is open again once the sheet is re-read. */
+  constructor() {
+    // A shown timeline belongs to the data it was read with: it goes once the person or the sheet is re-read.
+    effect(() => {
+      this.person();
+      this.session.sheet();
+      this.session.loads();
+      this.timelineShows++;
+      this.timelines.set({});
+      this.timelineErrors.set({});
+    });
+  }
+
+  /** List the audit lines about the claim, newest first, as the audit file holds them. */
+  protected async showTimeline(c: Claim): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const show = ++this.timelineShows;
+    this.timelines.update((all) => ({ ...all, [c.id]: [] }));
+    this.timelineErrors.update((all) => ({ ...all, [c.id]: '' }));
+    try {
+      const lines = await firstValueFrom(
+        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit/claims/${c.id}`),
+      );
+      if (show === this.timelineShows) this.timelines.update((all) => ({ ...all, [c.id]: lines }));
+    } catch {
+      if (show === this.timelineShows) this.timelineErrors.update((all) => ({ ...all, [c.id]: 'Could not read the claim\'s timeline.' }));
+    }
+  }
+
   ngOnInit(): void {
     const mine = this.person().claims.find((c) => c.status === 'DRAFT' && c.lockedBy !== null && c.lockedBy === this.session.user());
     if (mine) this.fill(mine);

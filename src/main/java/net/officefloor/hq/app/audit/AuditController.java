@@ -2,6 +2,7 @@ package net.officefloor.hq.app.audit;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -9,22 +10,28 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The audit viewer: the audit lines of a sheet exactly as the audit file holds them, newest first. Given a
  * name, only the lines about that person: those carrying {@code name=} or {@code person=} that name, compared
  * as names are (case and surrounding spaces ignored); the sheet's descendants' lines about them follow (each
  * sheet's newest first, the sheets in id order), then, when that person was transferred here, the sheet they
- * came from's lines about them, newest first. It reads the file; it records nothing.
+ * came from's lines about them, newest first. A claim's timeline is the sheet's lines about that claim, newest
+ * first: those carrying its number, or for a claim with no number those carrying no number that name its
+ * person, amount and date together. It reads the file; it records nothing.
  */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/audit")
@@ -37,9 +44,11 @@ public class AuditController {
     private final Audit audit;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final ClaimRepository claims;
 
-    public AuditController(Audit audit, PersonRepository people, SheetService sheets) {
+    public AuditController(Audit audit, PersonRepository people, SheetService sheets, ClaimRepository claims) {
         this.audit = audit;
+        this.claims = claims;
         this.people = people;
         this.sheets = sheets;
     }
@@ -60,6 +69,28 @@ public class AuditController {
         return lines;
     }
 
+    /** A claim's timeline: the sheet's lines about it, newest first. */
+    @GetMapping("/claims/{claimId}")
+    public List<String> timeline(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long claimId) {
+        String sheet = sheetId.trim();
+        Claim claim = claims.findByIdAndSheetId(claimId, sheet)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        String number = claim.getShownNumber();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheet).map(Person::getName).orElse("")
+                .strip().toLowerCase(Locale.ROOT);
+        String amount = claim.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString();
+        String date = String.valueOf(claim.getDate());
+        List<String> lines = new ArrayList<>(audit.lines().stream()
+                .filter(l -> carries(l, "sheet", sheet, false))
+                .filter(l -> number != null
+                        ? carries(l, "number", number, false)
+                        : !has(l, "number") && carries(l, "person", person, true)
+                                && carries(l, "amount", amount, false) && carries(l, "date", date, false))
+                .toList());
+        Collections.reverse(lines);
+        return lines;
+    }
+
     /** The sheet's lines, newest first; given a name (lower-cased), only those about that person. */
     private static List<String> about(List<String> all, String sheet, String who) {
         List<String> lines = new ArrayList<>(all.stream()
@@ -68,6 +99,16 @@ public class AuditController {
                 .toList());
         Collections.reverse(lines);
         return lines;
+    }
+
+    private static boolean has(String line, String key) {
+        Matcher m = FIELD.matcher(line);
+        while (m.find()) {
+            if (m.group(1).equals(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean carries(String line, String key, String value, boolean asName) {
