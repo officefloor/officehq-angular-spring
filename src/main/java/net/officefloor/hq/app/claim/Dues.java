@@ -283,11 +283,13 @@ public final class Dues {
     }
 
     /**
-     * A person's score: their {@link #settledTotal settled figures} divided by 100, minus 5 for every
+     * A person's score: their {@link #settledTotal settled figures}, leaving out corrections (only SETTLED
+     * claims that correct nothing count), divided by 100, minus 5 for every
      * {@link #overdue overdue claim that counts}, rounded half to even to a whole number.
      */
     public static BigDecimal score(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
-        return settledTotal(grades, claims, rates, holds).movePointLeft(2)
+        List<Claim> uncorrecting = claims.stream().filter(c -> c.getCorrects() == null).toList();
+        return settledTotal(grades, uncorrecting, rates, holds).movePointLeft(2)
                 .subtract(BigDecimal.valueOf(5L * overdue(claims, grades, rates, holds).size()))
                 .setScale(0, RoundingMode.HALF_EVEN);
     }
