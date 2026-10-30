@@ -115,6 +115,22 @@ public class PeriodController {
         return views(sheet, service.generateFiscalYear(sheet, user.trim(), form.year()));
     }
 
+    /** A fiscal year to roll over, by the calendar year its first day falls in. */
+    public record RolloverForm(@NotNull @Min(1) @Max(9998) Integer year) {
+    }
+
+    /** How many periods the rollover made, and the sheet's periods as they now stand. */
+    public record RolloverResult(int made, List<PeriodView> periods) {
+    }
+
+    @PostMapping("/rollover")
+    public RolloverResult rollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody RolloverForm form) {
+        String sheet = sheetId.trim();
+        int made = service.rollover(sheet, user.trim(), form.year()).size();
+        return new RolloverResult(made, views(sheet, service.list(sheet)));
+    }
+
     /** A calendar year: its four quarterly periods. */
     public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
     }

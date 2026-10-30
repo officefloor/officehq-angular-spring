@@ -173,6 +173,77 @@ public class PeriodService {
     }
 
     /**
+     * Roll the fiscal year whose first day falls in the given calendar year over into the next: generate the next
+     * fiscal year's twelve periods exactly as {@link #generateFiscalYear} does, then add each person's open figure
+     * at the end of the old year's last period to their carried figure for the new year's first period, as an
+     * opening balance. The open figure is the due of their claims that count (see {@link Dues#countsAsOf}) due by a
+     * date inside a period of the old year and still OPEN or PENDING at the end of that last period, by the status
+     * log; a person whose figure is 0.00 gets none. Refused unless the user is a steward, and when the old year has
+     * no periods on the sheet. Returns the periods made, earliest first.
+     */
+    @Transactional
+    public List<Period> rollover(String sheetId, String user, int year) {
+        sheets.load(sheetId, user);
+        sheetRows.lockById(sheetId);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodRefused("Only a steward may roll the year over.");
+        }
+        int startMonth = fiscalStartMonth(sheetId);
+        String fy = "FY" + year;
+        List<Period> old = list(sheetId).stream()
+                .filter(p -> fiscalYear(p.getFromDate(), startMonth).equals(fy))
+                .toList();
+        if (old.isEmpty()) {
+            throw new PeriodRefused(fy + " has no periods on this sheet.");
+        }
+        LocalDate yearEnd = old.stream().map(Period::getToDate).max(Comparator.naturalOrder()).orElseThrow();
+        Map<Long, BigDecimal> open = openAt(sheetId, old, yearEnd);
+        List<Period> made = generateFiscalYear(sheetId, user, year + 1);
+        LocalDate newStart = YearMonth.of(year + 1, startMonth).atDay(1);
+        Period first = list(sheetId).stream().filter(p -> p.contains(newStart)).findFirst()
+                .orElseThrow(() -> new PeriodRefused("The new fiscal year's first period overlaps another period."));
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> {
+            BigDecimal amount = open.get(person.getId());
+            if (amount == null || amount.signum() == 0) {
+                return;
+            }
+            first.addOpening(person.getId(), amount);
+            events.publishEvent(new OpeningSet(sheetId, user, person.getName(), first.getName(), amount));
+        });
+        periods.flush();
+        events.publishEvent(new RolledOver(sheetId, user, fy, made.size()));
+        return made;
+    }
+
+    /**
+     * Per person id, the due of their claims that count due by a date inside one of {@code within} and still OPEN or
+     * PENDING at the end of {@code end}, by the status log, added up.
+     */
+    private Map<Long, BigDecimal> openAt(String sheetId, List<Period> within, LocalDate end) {
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, p -> p));
+        RateTable table = rates.table(sheetId);
+        Map<Long, BigDecimal> open = new HashMap<>();
+        claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> byId.containsKey(c.getPersonId()))
+                .filter(c -> within.stream().anyMatch(p -> p.contains(c.getDueBy())))
+                .filter(c -> c.getDeferredUntil() == null || !table.today().isBefore(c.getDeferredUntil()))
+                .filter(c -> Dues.countsAsOf(c, byId.get(c.getPersonId()).leaves(), table.today(), end))
+                .filter(c -> {
+                    ClaimStatus then = Dues.statusAsOf(c, end);
+                    return then == ClaimStatus.OPEN || then == ClaimStatus.PENDING;
+                })
+                .forEach(c -> {
+                    BigDecimal due = Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table);
+                    if (due != null) {
+                        open.merge(c.getPersonId(), due, BigDecimal::add);
+                    }
+                });
+        open.replaceAll((id, t) -> t.setScale(2, RoundingMode.HALF_UP));
+        return open;
+    }
+
+    /**
      * Close a period, fixing each person's due-total and carried figure for it (see {@link #carried}), for every person on the sheet, and its own, their sum: the due figures of the claims due by a date inside it that counted (OPEN, PENDING and SETTLED,
      * but not an unbound OPEN claim dated within a hold of its person, nor a deferred one) at the end of its last day,
      * see {@link Dues#countsAsOf}, added up per person. A soft-closed period is closed with its figures fixed
