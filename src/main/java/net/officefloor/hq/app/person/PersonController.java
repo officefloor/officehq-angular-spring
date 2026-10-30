@@ -121,7 +121,8 @@ public class PersonController {
      * from their SETTLED claims and from their OPEN and PENDING claims (see {@link Dues#settledTotal} and
      * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
      * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
-     * transferred from (null: none), their past retirements, earliest first, and their snapshot lines, oldest first.
+     * transferred from (null: none), their past retirements, earliest first, their snapshot lines, oldest first, and
+     * their statement lines: one per statement still standing, oldest first by date.
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<String> tags,
@@ -131,7 +132,7 @@ public class PersonController {
             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
-            List<SnapshotView> snapshots) {
+            List<SnapshotView> snapshots, List<StatementLineView> statementLines) {
 
         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -157,7 +158,10 @@ public class PersonController {
                     money(Dues.openTotal(grade, claims, rates, held)), person.getAliases(), clashing,
                     person.getOrigin(), person.getRetirements().stream()
                             .map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
-                    snapshots.stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList());
+                    snapshots.stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList(),
+                    statements.lines().stream()
+                            .map(l -> new StatementLineView(l.date(), l.dueTotal() == null ? "n/a" : money(l.dueTotal())))
+                            .toList());
         }
     }
 
@@ -167,6 +171,10 @@ public class PersonController {
 
     /** A snapshot line of a person: the day being left and their due-total on it as shown ('n/a': none). */
     public record SnapshotView(LocalDate day, String dueTotal) {
+    }
+
+    /** A statement line of a person: the statement's date and its due-total as shown ('n/a': none). */
+    public record StatementLineView(LocalDate date, String dueTotal) {
     }
 
     /** A hold on a person: from a date to a date (null: open-ended). */

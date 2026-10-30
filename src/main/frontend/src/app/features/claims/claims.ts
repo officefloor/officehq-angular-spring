@@ -100,6 +100,12 @@ export interface Snapshot {
   dueTotal: string;
 }
 
+/** A statement line of a person: the statement's date and its due-total as shown ('n/a': none). */
+export interface StatementLine {
+  date: string;
+  dueTotal: string;
+}
+
 /** A past retirement of a person: from the date they were retired from to the day they were unretired. */
 export interface Retirement {
   from: string;
@@ -156,6 +162,8 @@ export interface PersonWithClaims {
   retirements: Retirement[];
   /** The person's snapshot lines, one per SNAPSHOT written for them, oldest first. */
   snapshots: Snapshot[];
+  /** The person's statement lines, one per statement still standing, oldest first by date. */
+  statementLines: StatementLine[];
   /** Whether the person has any hold, whatever its dates. */
   held: boolean;
   /** The person's holds, earliest first: their OPEN claims dated within one, unless bound by a statement,

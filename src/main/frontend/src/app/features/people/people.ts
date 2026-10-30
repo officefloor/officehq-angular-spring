@@ -582,6 +582,11 @@ function csvField(value: string): string {
                     <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal }}</li>
                   }
                 </ul>
+                <ul aria-label="Statements">
+                  @for (s of p.statementLines; track $index) {
+                    <li data-testid="person-statement-line-line">{{ s.date }} {{ s.dueTotal }}</li>
+                  }
+                </ul>
                 <ul aria-label="Holds">
                   @for (h of p.holds; track $index) {
                     <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
