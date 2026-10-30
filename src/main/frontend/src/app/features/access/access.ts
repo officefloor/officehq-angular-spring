@@ -36,6 +36,8 @@ interface Settings {
   alertThreshold: string | null;
   /** A claim reminded at least this many days after its previous reminder is escalated; null when blank (off). Not dated. */
   escalateAfter: string | null;
+  /** A REVIEW claim whose review day plus this many days is before the sheet's today is late; null when blank (none). Not dated. */
+  reviewSla: string | null;
   /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; null when none. Not dated. */
   parent: string | null;
   /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
@@ -234,6 +236,7 @@ const ROUNDING = /^(half-up|half-even)$/;
       <p>Pot <strong data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</strong></p>
       <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
       <p>Escalate after (days) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
+      <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</strong></p>
@@ -432,6 +435,15 @@ const ROUNDING = /^(half-up|half-even)$/;
           (input)="escalateAfterInput.set(value($event)); escalateAfterTouched = true; settingsError.set('')"
           (keydown)="escalateAfterTouched = escalateAfterTouched || clears($event)"
         />
+        <label for="setting-review-sla">Review SLA: a claim in review more than this many days is late (blank: none)</label>
+        <input
+          id="setting-review-sla"
+          inputmode="numeric"
+          data-testid="setting-review-sla"
+          [value]="reviewSlaInput()"
+          (input)="reviewSlaInput.set(value($event)); reviewSlaTouched = true; settingsError.set('')"
+          (keydown)="reviewSlaTouched = reviewSlaTouched || clears($event)"
+        />
         <label for="setting-parent">Parent sheet id: its rates are used for a grade with none in force (blank: none)</label>
         <input
           id="setting-parent"
@@ -599,6 +611,8 @@ export class Access {
   protected readonly alertThresholdInput = signal('');
   protected readonly escalateAfter = signal<string | null>(null);
   protected readonly escalateAfterInput = signal('');
+  protected readonly reviewSla = signal<string | null>(null);
+  protected readonly reviewSlaInput = signal('');
   protected readonly parent = signal<string | null>(null);
   protected readonly parentInput = signal('');
   protected readonly fiscalStartMonth = signal('1');
@@ -637,6 +651,7 @@ export class Access {
   protected potTouched = false;
   protected alertThresholdTouched = false;
   protected escalateAfterTouched = false;
+  protected reviewSlaTouched = false;
   protected parentTouched = false;
   protected fiscalStartMonthTouched = false;
   protected capTouched = false;
@@ -661,7 +676,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -852,6 +867,11 @@ export class Access {
       this.settingsError.set('Enter an escalation gap as a whole number of days, or leave it blank for off.');
       return;
     }
+    const reviewSla = this.reviewSlaInput().trim();
+    if (this.reviewSlaTouched && reviewSla !== '' && !DAYS.test(reviewSla)) {
+      this.settingsError.set('Enter a review SLA as a whole number of days, or leave it blank for none.');
+      return;
+    }
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     if (this.fiscalStartMonthTouched && fiscalStartMonth !== '' && !MONTH.test(fiscalStartMonth)) {
       this.settingsError.set('Enter a fiscal year start month from 1 to 12, or leave it blank for 1.');
@@ -920,6 +940,7 @@ export class Access {
     if (this.potTouched) body.pot = pot;
     if (this.alertThresholdTouched) body.alertThreshold = alertThreshold;
     if (this.escalateAfterTouched) body.escalateAfter = escalateAfter;
+    if (this.reviewSlaTouched) body.reviewSla = reviewSla;
     if (this.parentTouched) body.parent = this.parentInput().trim();
     if (this.fiscalStartMonthTouched) body.fiscalStartMonth = fiscalStartMonth === '' ? '' : String(Number(fiscalStartMonth));
     if (this.capTouched) body.cap = cap;
@@ -1008,6 +1029,9 @@ export class Access {
     this.escalateAfter.set(settings.escalateAfter);
     this.escalateAfterInput.set(settings.escalateAfter ?? '');
     this.escalateAfterTouched = false;
+    this.reviewSla.set(settings.reviewSla);
+    this.reviewSlaInput.set(settings.reviewSla ?? '');
+    this.reviewSlaTouched = false;
     this.parent.set(settings.parent);
     this.parentInput.set(settings.parent ?? '');
     this.parentTouched = false;

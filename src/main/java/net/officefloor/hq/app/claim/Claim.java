@@ -121,6 +121,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** The sheet's today when the claim last went to REVIEW; null when it never did. */
+    @Column(name = "review_on")
+    private LocalDate reviewOn;
+
     /** Whether a reminder ever escalated the claim; a claim is escalated at most once. */
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
@@ -215,6 +219,7 @@ public class Claim {
         arrived.deferredUntil = deferredUntil;
         arrived.remindedOn = remindedOn;
         arrived.escalated = escalated;
+        arrived.reviewOn = reviewOn;
         arrived.proofs = proofs;
         arrived.splitFrom = splitFrom;
         arrived.tags = tags;
@@ -311,6 +316,14 @@ public class Claim {
 
     public void setRemindedOn(LocalDate remindedOn) {
         this.remindedOn = remindedOn;
+    }
+
+    public LocalDate getReviewOn() {
+        return reviewOn;
+    }
+
+    public void setReviewOn(LocalDate reviewOn) {
+        this.reviewOn = reviewOn;
     }
 
     public boolean isEscalated() {

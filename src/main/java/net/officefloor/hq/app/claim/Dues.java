@@ -83,6 +83,16 @@ public final class Dues {
     }
 
     /**
+     * Whether the claim is late in review: REVIEW, with the sheet's review SLA set, and its review day (the
+     * sheet's today when it went to REVIEW) plus the SLA days before the sheet's today.
+     */
+    public static boolean reviewLate(Claim claim, RateTable rates) {
+        Integer sla = rates.settings().reviewSla();
+        return claim.getStatus() == ClaimStatus.REVIEW && sla != null && claim.getReviewOn() != null
+                && claim.getReviewOn().plusDays(sla).isBefore(rates.today());
+    }
+
+    /**
      * Whether the claim is overdue: OPEN or PENDING, not {@link #deferred deferred}, and due by a date before
      * the sheet's today (its due-by, fixed when it was added, plus its {@link #graceBy grace}).
      */

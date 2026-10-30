@@ -379,6 +379,9 @@ public class ClaimService {
         if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
         }
+        if (next == ClaimStatus.REVIEW) {
+            claim.setReviewOn(sheets.today(sheetId));
+        }
         String number = claim.getShownNumber();
         String due = null;
         if (next == ClaimStatus.SETTLED) {

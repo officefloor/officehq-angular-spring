@@ -85,6 +85,7 @@ public class AccessService {
     public static final String PARENT = DatedSettings.PARENT;
 
     public static final String ESCALATE_AFTER = DatedSettings.ESCALATE_AFTER;
+    public static final String REVIEW_SLA = DatedSettings.REVIEW_SLA;
 
     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
 
@@ -265,7 +266,7 @@ public class AccessService {
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
-            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter) {
+            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla) {
         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
@@ -342,6 +343,9 @@ public class AccessService {
         if (escalateAfter != null) {
             setEscalateAfter(sheetId, user, days(escalateAfter, null));
         }
+        if (reviewSla != null) {
+            setReviewSla(sheetId, user, days(reviewSla, null));
+        }
         if (parent != null) {
             setParent(sheetId, user, parent.isEmpty() ? null : parent);
         }
@@ -406,6 +410,15 @@ public class AccessService {
     @Transactional
     public void setEscalateAfter(String sheetId, String user, String days) {
         setUndated(sheetId, user, ESCALATE_AFTER, days);
+    }
+
+    /**
+     * Record the sheet's review SLA, a number of days (null: none). Not dated: the value holds from the
+     * beginning of time, replacing the one it had.
+     */
+    @Transactional
+    public void setReviewSla(String sheetId, String user, String days) {
+        setUndated(sheetId, user, REVIEW_SLA, days);
     }
 
     /** Record an undated setting as written (null: none), replacing the one it had. */

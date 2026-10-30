@@ -45,6 +45,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** A claim reminded at least this many days after its previous reminder is escalated; not dated. */
     public static final String ESCALATE_AFTER = "escalate-after";
 
+    /** A REVIEW claim is late once its review day plus this many days is before the sheet's today; not dated. */
+    public static final String REVIEW_SLA = "review-sla";
+
     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
     public static final String PARENT = "parent";
 
@@ -188,6 +191,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's escalation gap in days (not dated: it holds on every date); null when it is off. */
     public Integer escalateAfter() {
         return on(ESCALATE_AFTER, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+    }
+
+    /** The sheet's review SLA in days (not dated: it holds on every date); null when there is none. */
+    public Integer reviewSla() {
+        return on(REVIEW_SLA, LocalDate.MAX).map(Integer::valueOf).orElse(null);
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in (not dated); 1 when none is set. */

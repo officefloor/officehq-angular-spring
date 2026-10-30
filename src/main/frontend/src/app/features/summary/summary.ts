@@ -21,7 +21,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
 // The sheet's figures summed from the list: per grade, the people on it today (retired people left
 // out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total and its change from the period before it by start date (none for the earliest); per month any claim is dated in, the dues of
 // its claims that count; per status, how many
-// claims have it; per reason on the sheet's void reasons, how many VOID claims were voided with it. Beside it the classic
+// claims have it, and how many REVIEW claims are late in review; per reason on the sheet's void reasons, how many VOID claims were voided with it. Beside it the classic
 // summary: per period, its due-total counting each claim by its status now (see classicPeriodDueTotals), and the
 // sheet's due-total untrimmed: everyone's due-total added up (n/a skipped).
 @Component({
@@ -89,6 +89,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
           }
         </tbody>
       </table>
+      <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
       <table>
         <caption>By void reason</caption>
         <thead>
@@ -174,6 +175,8 @@ export class Summary {
   });
 
   protected readonly byStatus = computed(() => statusCounts(this.people()));
+
+  protected readonly reviewLateCount = computed(() => this.people().flatMap((p) => p.claims).filter((c) => c.reviewLate).length);
 
   protected readonly byVoidReason = computed(() => {
     const voided = this.people().flatMap((p) => p.claims).filter((c) => c.status === 'VOID');

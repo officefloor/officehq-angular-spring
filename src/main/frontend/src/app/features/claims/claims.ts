@@ -56,6 +56,8 @@ export interface Claim {
   lockedBy: string | null;
   /** Whether the claim was added while its period was soft-closed. */
   lateEntry: boolean;
+  /** Whether the claim is REVIEW and its review day plus the sheet's review SLA is before the sheet's today. */
+  reviewLate: boolean;
   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
   remindedOn: string | null;
   /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
@@ -241,6 +243,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+          <span>Review late <span data-testid="claim-review-late">{{ c.reviewLate ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <button type="button" data-testid="claim-remind" (click)="remind(c)">
             Remind<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
