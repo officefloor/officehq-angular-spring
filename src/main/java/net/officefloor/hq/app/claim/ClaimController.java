@@ -331,6 +331,22 @@ public class ClaimController {
         return view(sheet, claims.comment(sheet, user.trim(), claimId, form.text()));
     }
 
+    /** Delete a DRAFT claim. */
+    @PostMapping("/claims/{claimId}/delete")
+    public PersonView delete(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.delete(sheet, user.trim(), claimId));
+    }
+
+    /** Restore a DELETED claim to a DRAFT, on the sheet's today it was deleted. */
+    @PostMapping("/claims/{claimId}/restore")
+    public PersonView restore(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.restore(sheet, user.trim(), claimId));
+    }
+
     @PostMapping("/claims/{claimId}/void")
     public PersonView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,

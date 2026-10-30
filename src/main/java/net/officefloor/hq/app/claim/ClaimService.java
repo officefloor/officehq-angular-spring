@@ -383,13 +383,65 @@ public class ClaimService {
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT -> throw new IllegalStateException();
+            case DRAFT, DELETED -> throw new IllegalStateException();
         };
         events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number,
                 due, null, reversed, null, null, reasonGiven));
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, owner, number);
         }
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
+    }
+
+    /**
+     * Delete a DRAFT claim: it becomes DELETED and counts nowhere. A claim in any other status, or one due by a
+     * date inside a closed period, is refused and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long delete(String sheetId, String user, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deleted; only a DRAFT can");
+        }
+        requireNotLockedByOther(claim, user);
+        return changeDeleted(sheetId, user, claim, ClaimStatus.DELETED, "CLAIM_DELETED");
+    }
+
+    /**
+     * Restore a DELETED claim to a DRAFT, only on the sheet's today it was deleted. A claim not DELETED, one
+     * deleted on another day, or one due by a date inside a closed period is refused and nothing changes.
+     * Returns the person it belongs to.
+     */
+    @Transactional
+    public long restore(String sheetId, String user, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be restored; only a DELETED one can");
+        }
+        LocalDate deletedOn = claim.getLog().stream().filter(l -> l.getStatus() == ClaimStatus.DELETED)
+                .map(ClaimLogLine::getOn).reduce((a, b) -> b).orElse(null);
+        LocalDate today = sheets.today(sheetId);
+        if (!today.equals(deletedOn)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim can only be restored on the day it was deleted"
+                            + (deletedOn == null ? "" : " (" + deletedOn + ")"));
+        }
+        return changeDeleted(sheetId, user, claim, ClaimStatus.DRAFT, "CLAIM_RESTORED");
+    }
+
+    /** Move a claim between DRAFT and DELETED, logging and auditing it. Returns the person it belongs to. */
+    private long changeDeleted(String sheetId, String user, Claim claim, ClaimStatus next, String event) {
+        Rollup.Figures before = rollup.figures(sheetId);
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        claim.setStatus(next);
+        claim.setLockedBy(null);
+        log(sheetId, user, claim, owner);
+        claims.flush();
+        events.publishEvent(new ClaimChanged(event, sheetId, user, owner == null ? "" : owner.getName(),
+                claim.getAmount(), claim.getDate(), null, null));
         rollup.changed(sheetId, user, before);
         return claim.getPersonId();
     }

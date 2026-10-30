@@ -10,11 +10,12 @@ import { ClaimTemplateList } from '../claim-templates/claim-templates';
  * DRAFT when added, then OPEN, then SETTLED; a clerk's settle above the clerk limit leaves it PENDING
  * until a steward approves it (SETTLED) or rejects it (OPEN again). A steward can re-settle a SETTLED claim,
  * fixing its due again at today's figure. A DRAFT, OPEN or PENDING claim can be VOID,
- * as can a SETTLED one by a steward within 7 days of settling.
+ * as can a SETTLED one by a steward within 7 days of settling. A DRAFT can be DELETED (counting nowhere) and
+ * restored to a DRAFT on the sheet's today it was deleted.
  */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
 
-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'resettle' | 'void';
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'resettle' | 'void' | 'delete' | 'restore';
 
 export interface Claim {
   id: number;
@@ -451,6 +452,8 @@ export class Claims implements OnInit {
     { action: 'reject', label: 'Reject' },
     { action: 'resettle', label: 'Re-settle' },
     { action: 'void', label: 'Void' },
+    { action: 'delete', label: 'Delete' },
+    { action: 'restore', label: 'Restore' },
   ];
 
   /** The name of the period whose dates contain the claim's due-by; '' when none does. */
@@ -947,7 +950,7 @@ export class Claims implements OnInit {
   }
 
   /**
-   * Open, settle, approve, reject, re-settle or void a claim; a change its status does not allow is refused on its
+   * Open, settle, approve, reject, re-settle, void, delete or restore a claim; a change its status does not allow is refused on its
    * row, as is a reject without a reason.
    */
   protected async move(c: Claim, action: ClaimAction): Promise<void> {
@@ -1000,4 +1003,6 @@ const PAST: Record<ClaimAction, string> = {
   reject: 'rejected',
   resettle: 're-settled',
   void: 'voided',
+  delete: 'deleted',
+  restore: 'restored',
 };
