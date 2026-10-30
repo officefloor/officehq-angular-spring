@@ -50,7 +50,8 @@ import org.springframework.transaction.annotation.Transactional;
  * pool. Its members come from the crew, so none can be added to it here, and a pool cannot take a crew's name.
  * For every period whose to-date is on or before the sheet's today, each member has the cut they had as the sheet
  * stood at the end of that period (its pools, members, pot and holds then, that day as its today); none when they
- * had none then.
+ * had none then. A closed or soft-closed period instead has the cuts fixed when it was closed, as the sheet stood
+ * then, whatever its to-date; reopening it makes them live again.
  */
 @Service
 public class Pools {
@@ -77,16 +78,31 @@ public class Pools {
     public record Shown(String name, List<Member> members, BigDecimal total, boolean balanced, boolean crew) {
     }
 
-    /** The pools as they stood at the end of a period: its name and the pools then. */
-    public record Then(String period, List<Shown> pools) {
+    /** The members' cuts for a period: its name and each member's cut (see {@link #key}), those with none left out. */
+    public record Then(String period, Map<String, BigDecimal> cuts) {
 
         /** The member's cut in the pool then; null when the pool or the member was not there, or had none. */
         public BigDecimal cut(String pool, Member member) {
-            return pools.stream().filter(p -> p.name().equals(pool)).flatMap(p -> p.members().stream())
-                    .filter(m -> Objects.equals(m.personId(), member.personId())
-                            && Objects.equals(m.pool(), member.pool()))
-                    .map(Member::cut).filter(Objects::nonNull).findFirst().orElse(null);
+            return cuts.get(key(pool, member));
         }
+    }
+
+    /** The key of a member of the named pool: the pool, then the person's id or the member pool's name. */
+    public static String key(String pool, Member member) {
+        return pool + "\t" + (member.personId() != null ? "person:" + member.personId() : "pool:" + member.pool());
+    }
+
+    /** Each member's cut as the pools stand now, by {@link #key}; a member with no cut is left out. */
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> cuts(String sheetId) {
+        return cuts(list(sheetId));
+    }
+
+    private static Map<String, BigDecimal> cuts(List<Shown> shown) {
+        Map<String, BigDecimal> cuts = new HashMap<>();
+        shown.forEach(p -> p.members().stream().filter(m -> m.cut() != null)
+                .forEach(m -> cuts.putIfAbsent(key(p.name(), m), m.cut())));
+        return cuts;
     }
 
     private final PoolRepository pools;
@@ -151,17 +167,21 @@ public class Pools {
     }
 
     /**
-     * The pools as they stood at the end of each period whose to-date is on or before the sheet's today, in the
-     * order of the periods. Not in a transaction of its own: each period is read in its own rolled-back one.
+     * The members' cuts for each period that is closed or soft-closed (those fixed then) or whose to-date is on or
+     * before the sheet's today (as the pools stood at its end), in the order of the periods. Not in a transaction of its own: each period is read in its own rolled-back one.
      */
     public List<Then> history(String sheetId) {
         LocalDate today = sheets.today(sheetId);
         List<Period> ended = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
-                .filter(p -> !p.getToDate().isAfter(today)).toList();
+                .filter(p -> p.isFixed() || !p.getToDate().isAfter(today)).toList();
         List<Then> result = new ArrayList<>();
         for (Period period : ended) {
+            if (period.isFixed()) {
+                result.add(new Then(period.getName(), period.getPoolCuts()));
+                continue;
+            }
             if (period.getToDate().equals(today)) {
-                result.add(new Then(period.getName(), list(sheetId)));
+                result.add(new Then(period.getName(), cuts(list(sheetId))));
                 continue;
             }
             List<Shown> then = pasts.asOf(sheetId, period.getToDate(), () -> {
@@ -171,7 +191,7 @@ public class Pools {
                 entities.clear();
                 return read;
             });
-            result.add(new Then(period.getName(), then));
+            result.add(new Then(period.getName(), cuts(then)));
         }
         return result;
     }

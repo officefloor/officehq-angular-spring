@@ -80,6 +80,16 @@ public class Period {
     @Column(name = "opening", nullable = false, precision = 14, scale = 2)
     private Map<Long, BigDecimal> personOpenings = new HashMap<>();
 
+    /**
+     * Per pool member (see {@code Pools.key}), the member's cut fixed when the period was closed, as the pools stood
+     * then; a member with no cut then has none. Empty while it is open.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "member_key")
+    @Column(name = "cut", nullable = false, precision = 14, scale = 2)
+    private Map<String, BigDecimal> poolCuts = new HashMap<>();
+
     protected Period() {
     }
 
@@ -158,6 +168,16 @@ public class Period {
         return Map.copyOf(personOpenings);
     }
 
+    public Map<String, BigDecimal> getPoolCuts() {
+        return Map.copyOf(poolCuts);
+    }
+
+    /** Fix the pool members' cuts for the period, as the pools stand when it is closed or soft-closed. */
+    public void fixPoolCuts(Map<String, BigDecimal> cuts) {
+        this.poolCuts.clear();
+        this.poolCuts.putAll(cuts);
+    }
+
     /** Add an opening balance to the person's carried figure for the period. */
     public void addOpening(Long personId, BigDecimal amount) {
         personOpenings.merge(personId, amount, BigDecimal::add);
@@ -182,13 +202,14 @@ public class Period {
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** Reopen the period: its due-total and carried figures are live again. */
+    /** Reopen the period: its due-total, carried figures and pool cuts are live again. */
     public void reopen() {
         this.closed = false;
         this.softClosed = false;
         this.closedTotal = null;
         this.personTotals.clear();
         this.personCarried.clear();
+        this.poolCuts.clear();
     }
 
     /** Whether the date falls in the period, its from and to date included. */

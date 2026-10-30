@@ -20,11 +20,13 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.Pools;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -47,10 +49,12 @@ public class PeriodService {
     private final RateService rates;
     private final AccessService access;
     private final ApplicationEventPublisher events;
+    private final Pools pools;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetRows,
             ClaimRepository claims, PersonRepository people, RateService rates, AccessService access,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events, @Lazy Pools pools) {
+        this.pools = pools;
         this.periods = periods;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -342,7 +346,10 @@ public class PeriodService {
         return carried;
     }
 
-    /** Fix the period's due-totals and carried figures as of the end of its last day and close it, or soft-close it. */
+    /**
+     * Fix the period's due-totals and carried figures as of the end of its last day, and its pool members' cuts as
+     * the pools stand now, and close it, or soft-close it.
+     */
     private void fix(String sheetId, String user, Period period, boolean auto, boolean soft) {
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, p -> p));
@@ -360,13 +367,14 @@ public class PeriodService {
                 });
         totals.replaceAll((id, t) -> t.setScale(2, RoundingMode.HALF_UP));
         period.close(totals, carried(sheetId, period, byId, table), soft);
+        period.fixPoolCuts(pools.cuts(sheetId));
         BigDecimal total = period.getClosedTotal().setScale(2, RoundingMode.HALF_UP);
         periods.flush();
         events.publishEvent(new PeriodClosed(sheetId, user, period.getName(), total, auto, soft));
     }
 
     /**
-     * Reopen a closed or soft-closed period: its due-total and its people's carried figures are live again, the current figures of the claims
+     * Reopen a closed or soft-closed period: its due-total, its people's carried figures and its pool cuts are live again, the current figures of the claims
      * due by a date inside it. Refused unless the sheet's permission matrix allows the user's role (a steward, unless
      * set), and when the period is neither closed nor soft-closed.
      */
