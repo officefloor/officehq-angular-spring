@@ -732,6 +732,30 @@ public class ClaimService {
     }
 
     /**
+     * Hold an OPEN or PENDING claim, or release it when it is held: while held it counts in the live totals as a
+     * held person's claims do (left out unless a statement binds it). A claim in any other status is refused and
+     * nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long toggleHold(String sheetId, String user, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot be "
+                    + (claim.isHeld() ? "released" : "held") + "; only an OPEN or PENDING one can");
+        }
+        Rollup.Figures before = rollup.figures(sheetId);
+        boolean held = !claim.isHeld();
+        claim.setHeld(held);
+        claims.flush();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(held
+                ? new ClaimHeld(sheetId, user, person, claim.getAmount(), claim.getDate(), claim.getShownNumber())
+                : new ClaimReleased(sheetId, user, person, claim.getAmount(), claim.getDate(), claim.getShownNumber()));
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
+    }
+
+    /**
      * Remind an OPEN or PENDING claim: it takes the sheet's today as its reminded date. A claim can be
      * reminded once per sheet's today; a claim in any other status, or one already reminded on the sheet's
      * today, is refused and nothing changes. A reminder changes no figure, so a claim due by a date inside a

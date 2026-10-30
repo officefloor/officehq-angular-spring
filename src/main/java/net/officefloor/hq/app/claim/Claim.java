@@ -140,6 +140,10 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: while OPEN or PENDING and not bound by a statement, it counts in no live total. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** How many proofs the claim has; it starts at 0. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -235,6 +239,7 @@ public class Claim {
         arrived.remindedOn = remindedOn;
         arrived.escalated = escalated;
         arrived.waived = waived;
+        arrived.held = held;
         arrived.reviewOn = reviewOn;
         arrived.proofs = proofs;
         arrived.proofPhotos = proofPhotos;
@@ -349,6 +354,14 @@ public class Claim {
 
     public void setWaived(boolean waived) {
         this.waived = waived;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
     }
 
     public boolean isEscalated() {

@@ -154,13 +154,14 @@ public final class Dues {
     }
 
     /**
-     * Whether the person's holds or retirement leave the claim out of the live totals: unless a statement
-     * binds it, an OPEN or PENDING claim dated within a hold, and an OPEN or PENDING claim once the sheet's today has
-     * reached the person's retirement date.
+     * Whether the person's holds or retirement, or the claim's own hold, leave the claim out of the live totals:
+     * unless a statement binds it, an OPEN or PENDING claim dated within a hold, an OPEN or PENDING claim once the
+     * sheet's today has reached the person's retirement date, and an OPEN or PENDING claim that is itself held.
      */
     private static boolean leftOut(Claim claim, Holds holds, LocalDate today) {
         return !bound(claim) && ((claim.getStatus().unpaid() && holds.on(claim.getDate()))
-                || (claim.getStatus().unpaid() && holds.retiredOn(today)));
+                || (claim.getStatus().unpaid() && holds.retiredOn(today))
+                || (claim.getStatus().unpaid() && claim.isHeld()));
     }
 
     /**

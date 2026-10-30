@@ -35,7 +35,7 @@ public class DayEnds {
 
     record ClaimRow(long id, long personId, BigDecimal amount, LocalDate date, ClaimStatus status,
             LocalDate correctsDate, LocalDate dueBy, LocalDate deferredUntil, BigDecimal settledDue, boolean stated,
-            BigDecimal statedDue, Boolean statedAsShown) {
+            BigDecimal statedDue, Boolean statedAsShown, Boolean held) {
     }
 
     record GradeRow(String grade, LocalDate from) {
@@ -110,7 +110,7 @@ public class DayEnds {
                 claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                         .map(c -> new ClaimRow(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getStatus(),
                                 c.getCorrectsDate(), c.getDueBy(), c.getDeferredUntil(), c.getSettledDue(),
-                                c.isStated(), c.getStatedDue(), c.isStatedAsShown()))
+                                c.isStated(), c.getStatedDue(), c.isStatedAsShown(), c.isHeld()))
                         .toList());
         dayEnds.saveAndFlush(new DayEnd(sheetId, day, json.writeValueAsString(state)));
     }
@@ -158,6 +158,7 @@ public class DayEnds {
         claim.setDueBy(row.dueBy());
         claim.setDeferredUntil(row.deferredUntil());
         claim.setSettledDue(row.settledDue());
+        claim.setHeld(Boolean.TRUE.equals(row.held()));
         if (row.stated()) {
             claim.bind(row.statedDue(), Boolean.TRUE.equals(row.statedAsShown()));
         }

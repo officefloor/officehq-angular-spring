@@ -339,6 +339,14 @@ public class ClaimController {
         return view(sheet, claims.waive(sheet, user.trim(), claimId));
     }
 
+    /** Hold an OPEN or PENDING claim, or release it when it is held. */
+    @PostMapping("/claims/{claimId}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.toggleHold(sheet, user.trim(), claimId));
+    }
+
     /** Remind an OPEN or PENDING claim, once per sheet's today. */
     @PostMapping("/claims/{claimId}/remind")
     public PersonView remind(@PathVariable @NotBlank @Size(max = 100) String sheetId,
