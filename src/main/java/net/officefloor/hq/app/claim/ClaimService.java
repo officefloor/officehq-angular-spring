@@ -366,6 +366,7 @@ public class ClaimService {
                     "The user who last edited a claim cannot settle it");
         }
         if (next == ClaimStatus.OPEN) {
+            requireUnflagged(sheetId, user, claim);
             requireNote(sheetId, claim);
             requireUnderCap(sheetId, claim);
         }
@@ -767,6 +768,16 @@ public class ClaimService {
      * Refuse opening a claim with an empty note whose due (null: n/a) is above the sheet's note threshold in
      * force on the claim's date.
      */
+    /** Refuse anyone but a steward opening a claim of a person whose flag is in force on the sheet's today. */
+    private void requireUnflagged(String sheetId, String user, Claim claim) {
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        if (owner != null && owner.flagOn(sheets.today(sheetId)) != null
+                && access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward can open a claim of " + owner.getName() + ", who is flagged");
+        }
+    }
+
     private void requireNote(String sheetId, Claim claim) {
         if (claim.getNote() != null && !claim.getNote().isBlank()) {
             return;

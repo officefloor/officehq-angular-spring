@@ -456,7 +456,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
             @if (columnShown('statement-count')) {<th scope="col">Statements</th>}@if (columnShown('stated-total')) {<th scope="col">Last stated total</th>}@if (columnShown('statement-date')) {<th scope="col">Last statement</th>}
             @if (columnShown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columnShown('hold')) {<th scope="col">On hold</th>}
             @if (columnShown('overdue-count')) {<th scope="col">Overdue</th>}@if (columnShown('overdue-total')) {<th scope="col">Overdue total</th>}
@@ -484,6 +484,7 @@ function csvField(value: string): string {
               @if (columnShown('aliases')) {
                 <td data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</td>
               }
+              <td data-testid="person-flag-shown">{{ p.flag ?? '' }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -639,6 +640,25 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)">
                   Add alias<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <label [for]="'person-flag-reason-' + p.id">Flag {{ p.name }} for</label>
+                <input
+                  #flagReason
+                  type="text"
+                  [id]="'person-flag-reason-' + p.id"
+                  data-testid="person-flag-reason"
+                  (input)="clearError(p)"
+                />
+                <label [for]="'person-flag-until-' + p.id">until</label>
+                <input
+                  #flagUntil
+                  type="date"
+                  [id]="'person-flag-until-' + p.id"
+                  data-testid="person-flag-until"
+                  (input)="clearError(p)"
+                />
+                <button type="button" data-testid="person-flag" (click)="flag(p, flagReason, flagUntil)">
+                  Flag<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
                 <label [for]="'person-inline-grade-' + p.id">Grade for {{ p.name }}</label>
                 <select
                   #inlineGrade
@@ -789,6 +809,8 @@ export class People {
   private naming = false;
   /** An alias still waiting for its answer: another press meanwhile is ignored. */
   private aliasing = false;
+  /** A flag still waiting for its answer: another press meanwhile is ignored. */
+  private flagging = false;
   /** A merge still waiting for its answer: another press meanwhile is ignored. */
   private merging = false;
   /** A move still waiting for its answer: another press meanwhile is ignored. */
@@ -1770,6 +1792,41 @@ export class People {
       this.personError.set({ id: p.id, message: 'Could not add the alias: it is already a name or alias on this sheet.' });
     } finally {
       this.aliasing = false;
+    }
+  }
+
+  /** Flag the person with the typed reason until the date (blank: the sheet's today); only a steward may, and a blank reason is refused. */
+  protected async flag(p: Person, reasonInput: HTMLInputElement, untilInput: HTMLInputElement): Promise<void> {
+    if (this.flagging) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const reason = reasonInput.value.trim();
+    if (!reason) {
+      this.personError.set({ id: p.id, message: 'Enter a reason for the flag.' });
+      return;
+    }
+    const until = untilInput.value || null;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.flagging = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/flag`,
+          { reason, until },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.replace(saved);
+      reasonInput.value = '';
+      untilInput.value = '';
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({ id: p.id, message: 'Could not flag the person: only a steward can.' });
+    } finally {
+      this.flagging = false;
     }
   }
 

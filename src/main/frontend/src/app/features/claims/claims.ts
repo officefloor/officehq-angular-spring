@@ -201,6 +201,8 @@ export interface PersonWithClaims {
   clashing: boolean;
   /** The sheet the person was transferred from; null when they were not transferred here. */
   origin: string | null;
+  /** The reason of their flag while it is in force on the sheet's today; null otherwise. */
+  flag: string | null;
   /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
    * statement, then count in no live total. */
   retiredNow: boolean;

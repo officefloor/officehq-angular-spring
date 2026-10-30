@@ -69,6 +69,12 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     @Column(name = "list_position", nullable = false)
     private int position;
 
@@ -132,6 +138,8 @@ public class Person {
         copy.arrivedOn = arrivedOn;
         copy.position = position;
         copy.retiredFrom = retiredFrom;
+        copy.flagReason = flagReason;
+        copy.flagUntil = flagUntil;
         holds.forEach(h -> copy.holds.add(new HoldSpan(h.getFromDate(), h.getToDate())));
         retirements.forEach(r -> copy.retirements.add(new RetirementSpan(r.getFromDate(), r.getToDate())));
         return copy;
@@ -288,6 +296,17 @@ public class Person {
     /** Add a hold from a date to an optional date, keeping the others. */
     public void hold(LocalDate from, LocalDate to) {
         holds.add(new HoldSpan(from, to));
+    }
+
+    /** Flag the person with a reason until a date, inclusive, replacing any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    /** The reason of the person's flag while it is in force on the sheet's today (on or before its until date); null otherwise. */
+    public String flagOn(LocalDate today) {
+        return flagReason != null && flagUntil != null && !today.isAfter(flagUntil) ? flagReason : null;
     }
 
     /** Whether the retirement date is reached on the sheet's today: on or after it. */

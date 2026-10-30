@@ -12,6 +12,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.claim.Tags;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -38,10 +40,12 @@ public class PersonService {
     private final ApplicationEventPublisher events;
     private final Tags tags;
     private final PersonSnapshotRepository snapshots;
+    private final AccessService access;
 
     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
             SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events, Tags tags,
-            PersonSnapshotRepository snapshots) {
+            PersonSnapshotRepository snapshots, AccessService access) {
+        this.access = access;
         this.tags = tags;
         this.snapshots = snapshots;
         this.patrons = patrons;
@@ -165,7 +169,7 @@ public class PersonService {
         if (termsFrom != null) {
             termsChanged = person.termsFrom(terms, termsFrom);
         } else {
-            termsChanged = !Objects.equals(terms, person.termsOn(today)) && !Objects.equals(terms, person.getTerms());
+            termsChanged = !Objects.equals(terms, person.termsOn(today));
             if (termsChanged) {
                 person.setTerms(terms);
             }
@@ -284,6 +288,28 @@ public class PersonService {
         people.flush();
         events.publishEvent(new PersonHeld(sheetId, user, person.getName(), on));
         rollup.changed(sheetId, user, before);
+        return person;
+    }
+
+    /**
+     * A steward flags the person with a reason, stored trimmed, until a date (none: the sheet's today). Anyone
+     * but a steward, or a blank reason, is refused. Takes turns with other changes on the sheet.
+     */
+    @Transactional
+    public Person flag(String sheetId, String user, long personId, String reason, LocalDate until) {
+        sheetRows.lockById(sheetId);
+        Person person = get(sheetId, personId);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can flag a person");
+        }
+        String trimmed = reason == null ? "" : reason.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give a reason");
+        }
+        LocalDate on = until != null ? until : sheets.today(sheetId);
+        person.flag(trimmed, on);
+        people.flush();
+        events.publishEvent(new PersonFlagged(sheetId, user, person.getName(), trimmed, on));
         return person;
     }
 

@@ -123,7 +123,8 @@ public class PersonController {
      * {@link Dues#openTotal}; 0.00 with none, never n/a), and their aliases, sorted as names are compared, and clashing: whether their name or an alias is
      * another's on a sheet of the sheet's tree (see {@link PersonService#clashing}), and the sheet they were
      * transferred from (null: none), their past retirements, earliest first, their snapshot lines, oldest first, and
-     * their statement lines: one per statement still standing, oldest first by date.
+     * their statement lines: one per statement still standing, oldest first by date, and the reason of their flag
+     * while it is in force on the sheet's today (null otherwise, see {@link Person#flagOn}).
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<String> tags,
@@ -133,7 +134,7 @@ public class PersonController {
             String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
-            List<SnapshotView> snapshots, List<StatementLineView> statementLines) {
+            List<SnapshotView> snapshots, List<StatementLineView> statementLines, String flag) {
 
         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -162,7 +163,8 @@ public class PersonController {
                     snapshots.stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList(),
                     statements.lines().stream()
                             .map(l -> new StatementLineView(l.date(), l.dueTotal() == null ? "n/a" : money(l.dueTotal())))
-                            .toList());
+                            .toList(),
+                    person.flagOn(rates.today()));
         }
     }
 
@@ -380,6 +382,19 @@ public class PersonController {
         Person person = service.hold(sheet, user.trim(), personId, form == null ? null : form.from(),
                 form == null ? null : form.to());
         return view(sheet, person);
+    }
+
+    /** A flag as entered: a reason (blank: refused) until a date (none: the sheet's today). */
+    public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
+    }
+
+    /** A steward flags the person; answers with the person as they are now. */
+    @PostMapping("/{personId}/flag")
+    public PersonView flag(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody FlagForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.flag(sheet, user.trim(), personId, form.reason(), form.until()));
     }
 
     /** A patron as named: the id of another person on the sheet. */
