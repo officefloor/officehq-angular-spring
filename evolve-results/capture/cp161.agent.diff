@@ -1,0 +1,40 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ae4f75ac5..07cc5b9ca 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1850,7 +1850,8 @@ export class People {
+     }
+   }
+ 
+-  /** Download everyone on the sheet, retired people included, as the store holds them now, as a CSV file. */
++  /** Download everyone on the sheet, retired people included, as the store holds them now (as of the as-of date
++   *  while one is set: the request names it), as a CSV file. */
+   protected async exportCsv(): Promise<void> {
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+@@ -1872,7 +1873,8 @@ export class People {
+     setTimeout(() => URL.revokeObjectURL(url));
+   }
+ 
+-  /** Download every claim on the sheet, retired people's included, as the store holds them now, as a CSV file:
++  /** Download every claim on the sheet, retired people's included, as the store holds them now (as of the as-of
++   *  date while one is set), as a CSV file:
+    *  people in list order, each person's claims oldest first, the figures as the screen shows them. */
+   protected async exportClaims(): Promise<void> {
+     const sheet = this.session.sheet();
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 7c990fdeb..829889993 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -249,8 +249,9 @@ export class Pools {
+     else this.drafts.update((all) => ({ ...all, [pool]: EMPTY }));
+   }
+ 
+-  /** Download every pool's members as the store holds them now, as a CSV file: pools and their members in the order
+-   *  they were added, a pool member as pool:<name>, the cut as shown (empty when none). */
++  /** Download every pool's members as the store holds them now (as of the as-of date while one is set), as a CSV
++   *  file: pools and their members in the order they were added, a pool member as pool:<name>,
++   *  the cut as shown (empty when none). */
+   protected async exportCsv(): Promise<void> {
+     const sheet = this.session.sheet();
+     if (!sheet) return;
