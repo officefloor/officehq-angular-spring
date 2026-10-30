@@ -492,6 +492,26 @@ public class ClaimService {
     }
 
     /**
+     * Comment a claim, in any status: the comment is kept with the user and the sheet's today. A blank
+     * comment is refused and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long comment(String sheetId, String user, long claimId, String text) {
+        if (text == null || text.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A comment cannot be empty");
+        }
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        String comment = text.trim();
+        claim.comment(user, sheets.today(sheetId), comment);
+        claims.flush();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new ClaimCommented(sheetId, user, person, claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), comment));
+        return claim.getPersonId();
+    }
+
+    /**
      * Remind an OPEN or PENDING claim: it takes the sheet's today as its reminded date. A claim can be
      * reminded once per sheet's today; a claim in any other status, one already reminded on the sheet's today,
      * or a claim due by a date inside a closed period is refused and nothing changes. Returns the person it

@@ -58,6 +58,15 @@ export interface Claim {
   tags: string[];
   /** The reason from the sheet's list the claim was voided with; null when it is not VOID or was voided without one. */
   voidReason: string | null;
+  /** The claim's comments, oldest first. */
+  comments: ClaimComment[];
+}
+
+/** A comment on a claim: who wrote it, the sheet's today when it was written, and its text. */
+export interface ClaimComment {
+  by: string;
+  on: string;
+  text: string;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
@@ -191,6 +200,21 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
             }
           </ol>
+          <ol aria-label="Comments">
+            @for (m of c.comments; track $index) {
+              <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
+            }
+          </ol>
+          <label [for]="'claim-comment-text-' + c.id">Comment</label>
+          <input
+            [id]="'claim-comment-text-' + c.id"
+            data-testid="claim-comment-text"
+            [value]="commentTexts()[c.id] ?? ''"
+            (input)="setCommentText(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-comment-add" (click)="addComment(c)">
+            Add comment<span class="visually-hidden"> to claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
           <input
             [id]="'claim-reject-reason-' + c.id"
@@ -381,6 +405,8 @@ export class Claims implements OnInit {
   protected readonly newDates = signal<Record<number, string>>({});
   /** The amount typed for splitting off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The comment typed for each claim, by claim id. */
+  protected readonly commentTexts = signal<Record<number, string>>({});
   /** The new amount typed on each claim's row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The id of the person chosen to reassign each claim to, by claim id. */
@@ -551,6 +577,45 @@ export class Claims implements OnInit {
       const refusal =
         err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be reminded.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected setCommentText(id: number, text: string): void {
+    this.commentTexts.update((all) => ({ ...all, [id]: text }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Comment the claim with the text typed; an empty comment, or a refusal, shows on the claim's row. */
+  protected async addComment(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = (this.commentTexts()[c.id] ?? '').trim();
+    if (!text) {
+      this.claimError.set({ id: c.id, message: 'Enter a comment.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/comments`,
+          { text },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.commentTexts.update((all) => ({ ...all, [c.id]: '' }));
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'The comment cannot be added to this claim.' });
     } finally {
       this.busy = false;
     }

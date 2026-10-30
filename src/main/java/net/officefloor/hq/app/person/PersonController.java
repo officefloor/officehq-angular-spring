@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimComment;
 import net.officefloor.hq.app.claim.ClaimLogLine;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
@@ -55,13 +56,13 @@ public class PersonController {
      * correction, the number of the claim it corrects (null otherwise), and whether it is deferred on the
      * sheet's today and the date it is deferred until then (null when it is not, see {@link Dues#deferred}),
      * its proofs count and, for a claim split off another, the number of the claim it was split from (null otherwise),
-     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, and the reason it was voided with (null when none).
+     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none) and its comments, oldest first.
      */
     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
-            String voidReason) {
+            String voidReason, List<CommentView> comments) {
 
         static ClaimView of(Claim claim, Grades grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
@@ -71,7 +72,16 @@ public class PersonController {
                     Dues.deferred(claim, rates.today()),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
-                    Tags.list(claim.getTags()), claim.getVoidReason());
+                    Tags.list(claim.getTags()), claim.getVoidReason(),
+                    claim.getComments().stream().map(CommentView::of).toList());
+        }
+    }
+
+    /** A comment on a claim: who wrote it, the sheet's today then and its text. */
+    public record CommentView(String by, LocalDate on, String text) {
+
+        static CommentView of(ClaimComment comment) {
+            return new CommentView(comment.getBy(), comment.getOn(), comment.getText());
         }
     }
 

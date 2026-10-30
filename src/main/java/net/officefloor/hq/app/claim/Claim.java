@@ -145,6 +145,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<ClaimLogLine> log = new ArrayList<>();
 
+    /** The claim's comments, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_comment", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimComment> comments = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -283,6 +289,15 @@ public class Claim {
     /** Log the status the claim has now, by a user on a date, with its due then. */
     public void logStatus(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogLine(status, by, on, due));
+    }
+
+    public List<ClaimComment> getComments() {
+        return List.copyOf(comments);
+    }
+
+    /** Add a comment by a user on a date. */
+    public void comment(String by, LocalDate on, String text) {
+        comments.add(new ClaimComment(by, on, text));
     }
 
     public Integer getNumber() {

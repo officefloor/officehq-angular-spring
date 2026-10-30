@@ -94,6 +94,10 @@ public class ClaimController {
     public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
     }
 
+    /** A comment on a claim: not blank. */
+    public record CommentForm(@NotBlank @Size(max = 1000) String text) {
+    }
+
     public record Refusal(String message) {
     }
 
@@ -290,6 +294,15 @@ public class ClaimController {
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
         String sheet = sheetId.trim();
         return view(sheet, claims.addProof(sheet, user.trim(), claimId));
+    }
+
+    /** Comment a claim, as the signed-in user on the sheet's today. */
+    @PostMapping("/claims/{claimId}/comments")
+    public PersonView comment(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody CommentForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.comment(sheet, user.trim(), claimId, form.text()));
     }
 
     @PostMapping("/claims/{claimId}/void")
