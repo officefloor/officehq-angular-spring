@@ -31,7 +31,8 @@ public class SheetAudit {
     public void on(ClaimChanged e) {
         audit.record(e.event() + " sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
-                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number()));
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + (e.due() == null ? "" : " due=" + e.due()));
     }
 
     @TransactionalEventListener

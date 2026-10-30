@@ -13,7 +13,7 @@ export interface Claim {
   amount: string;
   date: string;
   note: string;
-  /** The amount at the rate for the person's grade; null when the grade has no rate. */
+  /** The amount at the rate for the person's grade, or once settled the due fixed then; null when there is no rate. */
   due: string | null;
   status: ClaimStatus;
   /** The number the claim got when opened, the next on the sheet; null while a draft or once voided. */

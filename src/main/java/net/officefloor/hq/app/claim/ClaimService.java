@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.rate.RateService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The claims on a sheet: listed per person newest first, added, edited and moved through their
- * statuses one at a time.
+ * statuses one at a time. Settling a claim fixes its due at the rate its person's grade has then.
  */
 @Service
 public class ClaimService {
@@ -24,13 +25,15 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final RateService rates;
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            ApplicationEventPublisher events) {
+            RateService rates, ApplicationEventPublisher events) {
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
+        this.rates = rates;
         this.events = events;
     }
 
@@ -53,7 +56,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note == null ? "" : note));
-        events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null));
+        events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
         return personId;
     }
 
@@ -68,7 +71,7 @@ public class ClaimService {
         claims.flush();
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
         events.publishEvent(new ClaimChanged("CLAIM_EDITED", sheetId, user, person, claim.getAmount(),
-                claim.getDate(), claim.getNumber()));
+                claim.getDate(), claim.getNumber(), null));
         return claim.getPersonId();
     }
 
@@ -91,16 +94,24 @@ public class ClaimService {
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        String due = null;
+        if (next == ClaimStatus.SETTLED) {
+            BigDecimal pct = owner == null ? null : rates.byGrade(sheetId).get(owner.getGrade());
+            BigDecimal fixed = RateService.due(claim.getAmount(), pct);
+            claim.setSettledDue(fixed);
+            due = fixed == null ? "n/a" : fixed.toPlainString();
+        }
         claim.setStatus(next);
         claims.flush();
-        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        String person = owner == null ? "" : owner.getName();
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number));
+        events.publishEvent(new ClaimChanged(event, sheetId, user, person, claim.getAmount(), claim.getDate(), number, due));
         return claim.getPersonId();
     }
 }
