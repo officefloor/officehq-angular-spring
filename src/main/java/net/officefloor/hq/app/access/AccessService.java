@@ -24,7 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
  * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
  * date, the date a claim's rounding turns on (none: the sheet's today); and its period numbering from,
  * the date from which a claim opened is numbered within its period (none: off); and its cap, the most a
- * person's due-total comes to (none: no cap). The settings that carry a figure are dated (see
+ * person's due-total comes to (none: no cap); and its proof threshold, the most due a claim may have to be
+ * settled or approved while it has no proof (none: no threshold). The settings that carry a figure are dated (see
  * {@link DatedSettings}): a save records its value from a from-date, the sheet's today when none is given.
  */
 @Service
@@ -48,6 +49,8 @@ public class AccessService {
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
     public static final String CAP = DatedSettings.CAP;
+
+    public static final String PROOF_THRESHOLD = DatedSettings.PROOF_THRESHOLD;
 
     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
     public record Dated(String value, LocalDate from) {
@@ -127,7 +130,8 @@ public class AccessService {
      */
     @Transactional
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
-            Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, Dated cap) {
+            Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, Dated cap,
+            Dated proofThreshold) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -154,6 +158,9 @@ public class AccessService {
         }
         if (cap != null) {
             setDated(sheetId, user, CAP, money(cap.value(), null), cap.from(), true);
+        }
+        if (proofThreshold != null) {
+            setDated(sheetId, user, PROOF_THRESHOLD, money(proofThreshold.value(), null), proofThreshold.from(), false);
         }
     }
 

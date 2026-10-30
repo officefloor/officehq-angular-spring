@@ -38,8 +38,10 @@ export interface Claim {
   /** Whether the claim is OPEN and deferred until a date after the sheet's today: it then counts in no total,
    * is not overdue and cannot be settled. */
   deferred: boolean;
-  /** The date the claim is deferred until while it is deferred; null otherwise. */
+  /** The date the claim was last deferred until, kept once that date has passed; null when it was never deferred. */
   deferredUntil: string | null;
+  /** How many proofs the claim has. */
+  proofs: number;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
@@ -133,6 +135,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ c.deferred ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c)">
+            Add proof<span class="visually-hidden"> to claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           <ol aria-label="Status log">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
@@ -311,6 +317,29 @@ export class Claims {
       if (this.session.sheet() !== sheet) return;
       const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be deferred to that date.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Add a proof to the claim, raising its proofs count by one; a refusal shows on the claim's row. */
+  protected async addProof(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(`/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/proof`, {}, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? 'A proof cannot be added to this claim.' });
     } finally {
       this.busy = false;
     }

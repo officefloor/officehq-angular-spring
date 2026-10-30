@@ -97,6 +97,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs the claim has; it starts at 0. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /** The claim's place in its person's list, newest first; the store takes it on adding and reassigning. */
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
@@ -169,6 +173,15 @@ public class Claim {
 
     public void setDeferredUntil(LocalDate deferredUntil) {
         this.deferredUntil = deferredUntil;
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Add a proof: the proofs count is raised by one. */
+    public void addProof() {
+        proofs++;
     }
 
     public String getNote() {

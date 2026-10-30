@@ -34,7 +34,8 @@ import org.springframework.web.server.ResponseStatusException;
  * (back to OPEN); the user who opened a claim cannot approve it. A steward re-settles a SETTLED claim,
  * fixing its due again at the figure it would have today as an OPEN claim bound by no statement. A claim
  * with a negative amount is a correction: it is added or edited only when it names, by number, a SETTLED
- * claim of the same person, and only a correction names one.
+ * claim of the same person, and only a correction names one. A claim whose due is above the sheet's proof
+ * threshold in force on its date cannot be settled or approved while it has no proof.
  */
 @Service
 public class ClaimService {
@@ -171,6 +172,7 @@ public class ClaimService {
         String due = null;
         if (next == ClaimStatus.SETTLED) {
             BigDecimal fixed = dueNow(sheetId, claim, owner);
+            requireProof(sheetId, claim, fixed);
             if (access.canSettle(sheetId, user, fixed)) {
                 claim.setSettledDue(fixed);
                 due = fixed == null ? "n/a" : fixed.toPlainString();
@@ -223,6 +225,40 @@ public class ClaimService {
     }
 
     /**
+     * Add a proof to a claim, raising its proofs count by one. A SETTLED or VOID claim, or a claim dated
+     * inside a closed period, is refused and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long addProof(String sheetId, String user, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot take a proof");
+        }
+        claim.addProof();
+        claims.flush();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
+        events.publishEvent(new ClaimProofAdded(sheetId, user, person, claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), claim.getProofs()));
+        return claim.getPersonId();
+    }
+
+    /**
+     * Refuse settling or approving a claim with no proof whose due (null: n/a) is above the sheet's proof
+     * threshold in force on the claim's date.
+     */
+    private void requireProof(String sheetId, Claim claim, BigDecimal due) {
+        if (due == null || claim.getProofs() > 0) {
+            return;
+        }
+        BigDecimal threshold = sheets.settings(sheetId).proofThreshold(claim.getDate());
+        if (threshold != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim with a due above " + threshold.toPlainString() + " needs a proof to be settled");
+        }
+    }
+
+    /**
      * Approve a PENDING claim, settling it with its due fixed now (its live figure, late charge frozen in).
      * Only a steward approves, never the user who opened the claim; a claim not PENDING or dated inside a
      * closed period is refused and nothing changes. Returns the person it belongs to.
@@ -236,6 +272,7 @@ public class ClaimService {
         Rollup.Figures before = rollup.figures(sheetId);
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
         BigDecimal fixed = dueNow(sheetId, claim, owner);
+        requireProof(sheetId, claim, fixed);
         claim.setSettledDue(fixed);
         claim.setStatus(ClaimStatus.SETTLED);
         log(sheetId, user, claim, owner);

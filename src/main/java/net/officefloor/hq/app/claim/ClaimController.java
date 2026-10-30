@@ -205,6 +205,14 @@ public class ClaimController {
         return view(sheet, claims.defer(sheet, user.trim(), claimId, form.until()));
     }
 
+    /** Add a proof to a claim, raising its proofs count by one. */
+    @PostMapping("/claims/{claimId}/proof")
+    public PersonView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.addProof(sheet, user.trim(), claimId));
+    }
+
     @PostMapping("/claims/{claimId}/void")
     public PersonView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user) {

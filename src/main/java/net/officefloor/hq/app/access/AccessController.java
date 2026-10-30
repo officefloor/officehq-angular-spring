@@ -44,10 +44,11 @@ public class AccessController {
      * the terms are a number of days, and so are the terms of grades A, B and C, null for a grade without
      * its own (it uses the sheet's); the late percent is a figure with two decimals; the policy date and
      * the period numbering from are dates (yyyy-mm-dd), null when blank; the cap is a figure with two
-     * decimals, null for none.
+     * decimals, null for none; so is the proof threshold.
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
-            String termsC, String latePct, String policyDate, String periodNumberingFrom, String cap) {
+            String termsC, String latePct, String policyDate, String periodNumberingFrom, String cap,
+            String proofThreshold) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom) {
             return new SettingsView(text(dated.clerkLimit(today)), dated.floor(today).toPlainString(),
@@ -56,7 +57,7 @@ public class AccessController {
                     dated.latePct(today).toPlainString(),
                     policyDate == null ? null : policyDate.toString(),
                     periodNumberingFrom == null ? null : periodNumberingFrom.toString(),
-                    text(dated.cap(today)));
+                    text(dated.cap(today)), text(dated.proofThreshold(today)));
         }
 
         private static String text(Object value) {
@@ -78,7 +79,7 @@ public class AccessController {
      * grade then uses the sheet's). The late percent is 0.00 or more with up to two
      * decimals, blank putting back 0.00. The policy date is a date (yyyy-mm-dd), blank meaning the
      * sheet's today. The period numbering from is a date (yyyy-mm-dd), blank meaning off. The cap is 0.00
-     * or more with up to two decimals, blank meaning no cap. Each setting that carries a figure takes a
+     * or more with up to two decimals, blank meaning no cap; so is the proof threshold, blank meaning none. Each setting that carries a figure takes a
      * from-date (yyyy-mm-dd) its value is in force from, blank or left out meaning the sheet's today.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
@@ -91,6 +92,7 @@ public class AccessController {
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String policyDate,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String periodNumberingFrom,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String cap,
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String proofThreshold,
             @Pattern(regexp = DATE) String clerkLimitFrom,
             @Pattern(regexp = DATE) String floorFrom,
             @Pattern(regexp = DATE) String termsFrom,
@@ -98,7 +100,8 @@ public class AccessController {
             @Pattern(regexp = DATE) String termsBFrom,
             @Pattern(regexp = DATE) String termsCFrom,
             @Pattern(regexp = DATE) String latePctFrom,
-            @Pattern(regexp = DATE) String capFrom) {
+            @Pattern(regexp = DATE) String capFrom,
+            @Pattern(regexp = DATE) String proofThresholdFrom) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -138,7 +141,7 @@ public class AccessController {
         AccessService.Dated latePct = dated(form.latePct(), form.latePctFrom());
         AccessService.Dated cap = dated(form.cap(), form.capFrom());
         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
-                form.periodNumberingFrom(), cap);
+                form.periodNumberingFrom(), cap, dated(form.proofThreshold(), form.proofThresholdFrom()));
         return settings(sheet);
     }
 

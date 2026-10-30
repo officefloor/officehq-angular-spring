@@ -10,7 +10,7 @@ import java.util.Optional;
  * A sheet's dated settings: the value of each in force on a date is the one with the latest from-date on
  * or before it (a value with no from-date applying from the beginning of time); before every from-date,
  * and where that value was saved blank, the sheet's starting value (1.00 for the floor, 0.00 for the late
- * percent, 14 days for the terms; none for the clerk limit and the cap; the sheet's terms for a grade's own
+ * percent, 14 days for the terms; none for the clerk limit, the cap and the proof threshold; the sheet's terms for a grade's own
  * terms).
  */
 public record DatedSettings(List<SheetSetting> values) {
@@ -24,6 +24,8 @@ public record DatedSettings(List<SheetSetting> values) {
     public static final String LATE_PCT = "late-pct";
 
     public static final String CAP = "cap";
+
+    public static final String PROOF_THRESHOLD = "proof-threshold";
 
     /** A sheet with no value saved: every setting has its starting value on every date. */
     public static final DatedSettings NONE = new DatedSettings(List.of());
@@ -71,6 +73,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The most due a clerk may settle on a claim on the date; null when there is no limit. */
     public BigDecimal clerkLimit(LocalDate date) {
         return on(CLERK_LIMIT, date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The most due a claim dated on the date may have to be settled or approved with no proof; null when there is none. */
+    public BigDecimal proofThreshold(LocalDate date) {
+        return on(PROOF_THRESHOLD, date).map(BigDecimal::new).orElse(null);
     }
 
     /** The most a person's due-total comes to on the date; null when there is no cap. */

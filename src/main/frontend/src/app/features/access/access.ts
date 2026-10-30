@@ -27,6 +27,8 @@ interface Settings {
   periodNumberingFrom: string | null;
   /** The most a person's due-total comes to, with two decimals; null when there is no cap. */
   cap: string | null;
+  /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
+  proofThreshold: string | null;
 }
 
 interface AccessView {
@@ -39,9 +41,9 @@ const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
 const GRADE_TERMS = { A: 'termsA', B: 'termsB', C: 'termsC' } as const;
 /** The settings that carry a figure: each is saved from a from-date. */
-const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap'] as const;
+const DATED = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold'] as const;
 type Dated = (typeof DATED)[number];
-const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '' };
+const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '' };
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -54,7 +56,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
 // (blank: the sheet's today), and the period numbering from, the date from which a claim opened is
 // numbered within its period (blank: off), and the cap, the most a person's due-total comes to (blank: no
-// cap). The settings that carry a figure are dated: each is saved from its from-date (blank: the sheet's
+// cap), and the proof threshold, the most due a claim may have to be settled or approved with no proof
+// (blank: none). The settings that carry a figure are dated: each is saved from its from-date (blank: the sheet's
 // today), and each shows, as does its input, the value in force on the sheet's today. A save sends only
 // the settings whose input (or from-date) was changed (a Delete or Backspace in a blank input asks to
 // save it blank).
@@ -111,6 +114,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
+      <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
       <form (submit)="saveSettings($event)" aria-label="Save settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
@@ -234,6 +238,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput().cap"
           (input)="setFrom('cap', value($event)); capTouched = true; settingsError.set('')"
         />
+        <label for="setting-proof-threshold">Proof threshold: a claim with a due above it needs a proof to be settled (blank: none)</label>
+        <input
+          id="setting-proof-threshold"
+          inputmode="decimal"
+          data-testid="setting-proof-threshold"
+          [value]="proofThresholdInput()"
+          (input)="proofThresholdInput.set(value($event)); proofThresholdTouched = true; settingsError.set('')"
+          (keydown)="proofThresholdTouched = proofThresholdTouched || clears($event)"
+        />
+        <label for="setting-proof-threshold-from">Proof threshold in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-proof-threshold-from"
+          type="date"
+          data-testid="setting-proof-threshold-from"
+          [value]="fromInput().proofThreshold"
+          (input)="setFrom('proofThreshold', value($event)); proofThresholdTouched = true; settingsError.set('')"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -268,6 +289,8 @@ export class Access {
   protected readonly numberingFromInput = signal('');
   protected readonly cap = signal<string | null>(null);
   protected readonly capInput = signal('');
+  protected readonly proofThreshold = signal<string | null>(null);
+  protected readonly proofThresholdInput = signal('');
   protected readonly GRADE_TERMS = GRADE_TERMS;
   /** The from-date typed for each dated setting; blank: the sheet's today. */
   protected readonly fromInput = signal<Record<Dated, string>>(NO_FROM);
@@ -280,6 +303,7 @@ export class Access {
   protected policyDateTouched = false;
   protected numberingFromTouched = false;
   protected capTouched = false;
+  protected proofThresholdTouched = false;
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
@@ -292,7 +316,7 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, cap: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, cap: null, proofThreshold: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -398,6 +422,11 @@ export class Access {
       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank for no cap.');
       return;
     }
+    const proofThreshold = this.proofThresholdInput().trim();
+    if (this.proofThresholdTouched && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
+      this.settingsError.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
     const froms = this.fromInput();
     for (const k of DATED) {
       const from = froms[k].trim();
@@ -417,6 +446,7 @@ export class Access {
     if (this.policyDateTouched) body.policyDate = policyDate;
     if (this.numberingFromTouched) body.periodNumberingFrom = numberingFrom;
     if (this.capTouched) body.cap = cap;
+    if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
     for (const k of DATED) {
       if (body[k] !== undefined && froms[k].trim() !== '') body[`${k}From`] = froms[k].trim();
     }
@@ -471,6 +501,9 @@ export class Access {
     this.cap.set(settings.cap);
     this.capInput.set(settings.cap ?? '');
     this.capTouched = false;
+    this.proofThreshold.set(settings.proofThreshold);
+    this.proofThresholdInput.set(settings.proofThreshold ?? '');
+    this.proofThresholdTouched = false;
     this.fromInput.set(NO_FROM);
   }
 }
