@@ -49,6 +49,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT);
     }
 
+    /** The sheet's policy date as set; null when blank (the sheet's today is the policy date then). */
+    public LocalDate policyDate(String id) {
+        return sheets.findById(id).map(Sheet::getPolicyDate).orElse(null);
+    }
+
     /** The sheet's today: the date to use for every decision and default date on the sheet. */
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(() -> LocalDate.now(clock));

@@ -26,13 +26,14 @@ public final class Dues {
         if (base == null || claim.isCorrection() || !overdue(claim, rates)) {
             return base;
         }
-        return base.add(rates.lateCharge(base, rates.dueBy(claim.getDate())));
+        return base.add(rates.lateCharge(base, rates.dueBy(claim.getDate()), claim.getRoundsBy()));
     }
 
     /**
      * A claim's figure before any late charge: while bound by a statement, the figure bound then;
      * otherwise the amount at the rate in force on its date for its person's grade in force then, but at
-     * least the sheet's floor; a correction has no floor and no late charge. Null when there is none. A
+     * least the sheet's floor; a correction has no floor and no late charge. Rounded by the date the claim's
+     * rounding goes by, see {@link RateTable#rounding}. Null when there is none. A
      * statement binds this figure, never the late charge.
      */
     public static BigDecimal base(Claim claim, Grades grades, RateTable rates) {
@@ -40,7 +41,8 @@ public final class Dues {
             return claim.getStatedDue();
         }
         String grade = grades.on(claim.getDate());
-        return claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()))
+        return claim.isCorrection() ? RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()),
+                rates.rounding(claim.getRoundsBy()))
                 : rates.due(claim.getAmount(), grade, claim.getDate());
     }
 

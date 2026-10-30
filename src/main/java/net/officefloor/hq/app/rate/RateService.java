@@ -38,11 +38,11 @@ public class RateService {
                 .toList();
     }
 
-    /** The sheet's rates with its today, floor, terms and late percent, to find the rate in force and the live due on any date. */
+    /** The sheet's rates with its today, floor, terms, late percent and policy date, to find the rate in force and the live due on any date. */
     @Transactional(readOnly = true)
     public RateTable table(String sheetId) {
         return new RateTable(list(sheetId), sheets.today(sheetId), sheets.floor(sheetId),
-                sheets.terms(sheetId), sheets.latePct(sheetId));
+                sheets.terms(sheetId), sheets.latePct(sheetId), sheets.policyDate(sheetId));
     }
 
     /** Set a grade's rate from a from-date (null: from the beginning of time), replacing the one it had. */
@@ -63,8 +63,8 @@ public class RateService {
         return rate;
     }
 
-    /** An amount times a percent, divided by 100, rounded half to even to two decimals; null with no rate. */
-    public static BigDecimal due(BigDecimal amount, BigDecimal pct) {
-        return pct == null ? null : amount.multiply(pct).divide(HUNDRED).setScale(2, RoundingMode.HALF_EVEN);
+    /** An amount times a percent, divided by 100, rounded as given to two decimals; null with no rate. */
+    public static BigDecimal due(BigDecimal amount, BigDecimal pct, RoundingMode rounding) {
+        return pct == null ? null : amount.multiply(pct).divide(HUNDRED).setScale(2, rounding);
     }
 }

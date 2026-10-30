@@ -84,9 +84,11 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         periods.requireOpen(sheetId, on);
         requireNotRetired(person, on);
-        requireCorrects(sheetId, personId, amount, corrects);
+        LocalDate correctsDate = requireCorrects(sheetId, personId, amount, corrects);
         Rollup.Figures before = rollup.figures(sheetId);
-        claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note == null ? "" : note, corrects));
+        Claim claim = new Claim(sheetId, personId, amount, on, note == null ? "" : note, corrects);
+        claim.setCorrectsDate(correctsDate);
+        claims.saveAndFlush(claim);
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
         rollup.changed(sheetId, user, before);
         return personId;
@@ -111,10 +113,11 @@ public class ClaimService {
         if (!on.equals(claim.getDate())) {
             people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
         }
-        requireCorrects(sheetId, claim.getPersonId(), amount, corrects);
+        LocalDate correctsDate = requireCorrects(sheetId, claim.getPersonId(), amount, corrects);
         Rollup.Figures before = rollup.figures(sheetId);
         claim.setAmount(amount);
         claim.setCorrects(corrects);
+        claim.setCorrectsDate(correctsDate);
         claim.setDate(on);
         claim.setNote(note == null ? "" : note);
         claims.flush();
@@ -176,26 +179,26 @@ public class ClaimService {
 
     /**
      * Refuse a correction (a negative amount) that does not name the number of a SETTLED claim of the
-     * same person, and a claim that is not a correction but names one.
+     * same person, and a claim that is not a correction but names one. Returns the date of the claim a
+     * correction corrects (its rounding goes by it); null for any other claim.
      */
-    private void requireCorrects(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private LocalDate requireCorrects(String sheetId, long personId, BigDecimal amount, Integer corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Only a correction (a negative amount) names a claim it corrects");
             }
-            return;
+            return null;
         }
         if (corrects == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A negative amount is a correction; name the number of the settled claim it corrects");
         }
-        boolean settled = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
-                .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
-        if (!settled) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Claim " + corrects + " is not a settled claim of this person");
-        }
+        return claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
+                .filter(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED)
+                .map(Claim::getDate).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Claim " + corrects + " is not a settled claim of this person"));
     }
 
     /** Refuse a claim dated after its person's retirement date. */

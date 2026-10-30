@@ -2,6 +2,7 @@ package net.officefloor.hq.app.access;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -15,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Who may do what on a sheet: the role each user name has (clerk unless set to steward) and the
  * clerk limit, the most due a clerk may settle on a claim (none: no limit); and the sheet's floor, the
  * least live due a claim has; its terms, the days a claim has to be paid by from its date; and its late
- * percent, what an overdue claim's due gains of its figure for every full 30 days overdue.
+ * percent, what an overdue claim's due gains of its figure for every full 30 days overdue; and its policy
+ * date, the date a claim's rounding turns on (none: the sheet's today).
  */
 @Service
 public class AccessService {
@@ -27,6 +29,8 @@ public class AccessService {
     public static final String TERMS = "terms";
 
     public static final String LATE_PCT = "late-pct";
+
+    public static final String POLICY_DATE = "policy-date";
 
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRows;
@@ -75,6 +79,12 @@ public class AccessService {
         return sheets.latePct(sheetId);
     }
 
+    /** The sheet's policy date as set; null when blank. */
+    @Transactional(readOnly = true)
+    public LocalDate policyDate(String sheetId) {
+        return sheets.policyDate(sheetId);
+    }
+
     /** Give a user name a role on the sheet, replacing the one it had. */
     @Transactional
     public SheetRole setRole(String sheetId, String user, String name, Role role) {
@@ -96,7 +106,7 @@ public class AccessService {
      */
     @Transactional
     public void setSettings(String sheetId, String user, String clerkLimit, String floor, String terms,
-            String latePct) {
+            String latePct, String policyDate) {
         if (clerkLimit != null) {
             setClerkLimit(sheetId, user, clerkLimit.isEmpty() ? null : new BigDecimal(clerkLimit));
         }
@@ -108,6 +118,9 @@ public class AccessService {
         }
         if (latePct != null) {
             setLatePct(sheetId, user, latePct.isEmpty() ? null : new BigDecimal(latePct));
+        }
+        if (policyDate != null) {
+            setPolicyDate(sheetId, user, policyDate.isEmpty() ? null : LocalDate.parse(policyDate));
         }
     }
 
@@ -141,6 +154,21 @@ public class AccessService {
         events.publishEvent(new SettingChanged(sheetId, user, LATE_PCT, scaled.toPlainString()));
         rollup.changed(sheetId, user, before);
         return scaled;
+    }
+
+    /**
+     * Save the sheet's policy date; null leaves it blank (the sheet's today). Every live figure rounds
+     * by it; a settled or stated figure keeps the one it had.
+     */
+    @Transactional
+    public LocalDate setPolicyDate(String sheetId, String user, LocalDate policyDate) {
+        Sheet sheet = sheets.load(sheetId, user);
+        Rollup.Figures before = rollup.figures(sheetId);
+        sheet.setPolicyDate(policyDate);
+        sheetRows.saveAndFlush(sheet);
+        events.publishEvent(new SettingChanged(sheetId, user, POLICY_DATE, policyDate == null ? "" : policyDate.toString()));
+        rollup.changed(sheetId, user, before);
+        return policyDate;
     }
 
     /** Save the sheet's clerk limit; null removes it. */

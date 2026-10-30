@@ -67,7 +67,8 @@ public class Rollup {
         RateTable table = new RateTable(rates.findBySheetId(sheetId), today,
                 sheet == null ? Sheet.DEFAULT_FLOOR : sheet.getFloor(),
                 sheet == null ? Sheet.DEFAULT_TERMS : sheet.getTerms(),
-                sheet == null ? Sheet.DEFAULT_LATE_PCT : sheet.getLatePct());
+                sheet == null ? Sheet.DEFAULT_LATE_PCT : sheet.getLatePct(),
+                sheet == null ? null : sheet.getPolicyDate());
         Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, PersonFigures> figures = new LinkedHashMap<>();

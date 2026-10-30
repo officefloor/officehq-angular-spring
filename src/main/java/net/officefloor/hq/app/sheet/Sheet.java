@@ -51,6 +51,10 @@ public class Sheet {
     @Column(name = "late_pct", nullable = false, precision = 14, scale = 2)
     private BigDecimal latePct = DEFAULT_LATE_PCT;
 
+    /** The date a claim's rounding turns on: half up before it, half to even on or after it; null: the sheet's today. */
+    @Column(name = "policy_date")
+    private LocalDate policyDate;
+
     protected Sheet() {
     }
 
@@ -98,6 +102,14 @@ public class Sheet {
 
     public void setTerms(int terms) {
         this.terms = terms;
+    }
+
+    public LocalDate getPolicyDate() {
+        return policyDate;
+    }
+
+    public void setPolicyDate(LocalDate policyDate) {
+        this.policyDate = policyDate;
     }
 
     public BigDecimal getLatePct() {

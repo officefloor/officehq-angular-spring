@@ -17,6 +17,8 @@ interface Settings {
   terms: string;
   /** The percent of its figure an overdue claim's due gains for every full 30 days overdue, with two decimals. */
   latePct: string;
+  /** The date a claim's rounding turns on (half up before it, half to even on or after); null when blank (the sheet's today). */
+  policyDate: string | null;
 }
 
 interface AccessView {
@@ -28,12 +30,14 @@ const ROLES = ['clerk', 'steward'];
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's roles (any name without one is a clerk) with the form that sets one, and the
 // sheet's settings: the clerk limit, the most due a clerk may settle (blank: no limit), and the floor,
 // the least live due a claim has (blank: 1.00), and the terms, the days a claim has to be paid by
 // from its date (blank: 14), and the late percent, what an overdue claim's due gains of its figure for
-// every full 30 days overdue (blank: 0.00). Each input shows the value saved; a save sends only the
+// every full 30 days overdue (blank: 0.00), and the policy date, the date a claim's rounding turns on
+// (blank: the sheet's today). Each input shows the value saved; a save sends only the
 // settings whose input was changed (a Delete or Backspace in a blank input asks to save it blank).
 @Component({
   selector: 'app-access',
@@ -82,6 +86,7 @@ const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
       <p>Floor <strong data-testid="setting-floor-current">{{ floor() }}</strong></p>
       <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
       <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
+      <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
       <form (submit)="saveSettings($event)" aria-label="Save settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
@@ -119,6 +124,15 @@ const PERCENT = /^\d{1,10}(\.\d{1,2})?$/;
           (input)="latePctInput.set(value($event)); latePctTouched = true; settingsError.set('')"
           (keydown)="latePctTouched = latePctTouched || clears($event)"
         />
+        <label for="setting-policy-date">Policy date: claims before it round half up, on or after it half to even (blank: the sheet's today)</label>
+        <input
+          id="setting-policy-date"
+          type="date"
+          data-testid="setting-policy-date"
+          [value]="policyDateInput()"
+          (input)="policyDateInput.set(value($event)); policyDateTouched = true; settingsError.set('')"
+          (keydown)="policyDateTouched = policyDateTouched || clears($event)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -144,11 +158,14 @@ export class Access {
   protected readonly termsInput = signal('');
   protected readonly latePct = signal('');
   protected readonly latePctInput = signal('');
+  protected readonly policyDate = signal<string | null>(null);
+  protected readonly policyDateInput = signal('');
   /** Whether each settings input was changed since the settings were last shown. */
   protected limitTouched = false;
   protected floorTouched = false;
   protected termsTouched = false;
   protected latePctTouched = false;
+  protected policyDateTouched = false;
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
@@ -161,7 +178,7 @@ export class Access {
       this.roleUser.set('');
       this.role.set('');
       this.roleError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', latePct: '' });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', latePct: '', policyDate: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -236,11 +253,17 @@ export class Access {
       this.settingsError.set('Enter a late percent of 0.00 or more, with up to two decimals, or leave it blank for 0.00.');
       return;
     }
+    const policyDate = this.policyDateInput().trim();
+    if (this.policyDateTouched && policyDate !== '' && !DATE.test(policyDate)) {
+      this.settingsError.set('Enter a policy date, or leave it blank for the sheet\'s today.');
+      return;
+    }
     const body: Partial<Settings> = {};
     if (this.limitTouched) body.clerkLimit = clerkLimit;
     if (this.floorTouched) body.floor = floor;
     if (this.termsTouched) body.terms = terms;
     if (this.latePctTouched) body.latePct = latePct;
+    if (this.policyDateTouched) body.policyDate = policyDate;
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
@@ -279,6 +302,9 @@ export class Access {
     this.limitTouched = false;
     this.floorTouched = false;
     this.termsTouched = false;
+    this.policyDate.set(settings.policyDate);
+    this.policyDateInput.set(settings.policyDate ?? '');
     this.latePctTouched = false;
+    this.policyDateTouched = false;
   }
 }
