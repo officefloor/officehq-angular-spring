@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.person.Person;
@@ -19,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The claims on a sheet: listed per person newest first, added, edited and moved through their
  * statuses one at a time. Settling a claim fixes its due at the rate its person's grade has then on the claim's date, or at the
- * figure a statement bound it to.
+ * figure a statement bound it to. No claim dated inside a closed period can be added, edited or moved.
  */
 @Service
 public class ClaimService {
@@ -29,11 +30,13 @@ public class ClaimService {
     private final SheetService sheets;
     private final RateService rates;
     private final Rollup rollup;
+    private final PeriodService periods;
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            RateService rates, Rollup rollup, ApplicationEventPublisher events) {
+            RateService rates, Rollup rollup, PeriodService periods, ApplicationEventPublisher events) {
         this.rollup = rollup;
+        this.periods = periods;
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
@@ -59,6 +62,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
+        periods.requireOpen(sheetId, on);
         Rollup.Figures before = rollup.figures(sheetId);
         claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note == null ? "" : note));
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null));
@@ -66,14 +70,19 @@ public class ClaimService {
         return personId;
     }
 
-    /** Edit a claim's amount, date and note. Returns the person it belongs to. */
+    /**
+     * Edit a claim's amount, date and note; refused when a closed period contains its date or the new one.
+     * Returns the person it belongs to.
+     */
     @Transactional
     public long edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        periods.requireOpen(sheetId, claim.getDate(), on);
         Rollup.Figures before = rollup.figures(sheetId);
         claim.setAmount(amount);
-        claim.setDate(date != null ? date : sheets.today(sheetId));
+        claim.setDate(on);
         claim.setNote(note == null ? "" : note);
         claims.flush();
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
@@ -84,14 +93,15 @@ public class ClaimService {
     }
 
     /**
-     * Move a claim to a status; a move its status does not allow, or settling by the user who opened
-     * the claim, is refused and changes nothing.
+     * Move a claim to a status; a move its status does not allow, settling by the user who opened
+     * the claim, or moving a claim dated inside a closed period, is refused and changes nothing.
      * Returns the person it belongs to.
      */
     @Transactional
     public long move(String sheetId, String user, long claimId, ClaimStatus next) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        periods.requireOpen(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);

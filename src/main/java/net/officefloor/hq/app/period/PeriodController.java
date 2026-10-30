@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,10 +27,13 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PeriodController {
 
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to) {
+    /** A period as shown; once closed, with the due-total fixed then (null while open). */
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal) {
 
         static PeriodView of(Period period) {
-            return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate());
+            return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                    period.isClosed(), period.getClosedTotal() == null ? null
+                            : period.getClosedTotal().setScale(2, RoundingMode.HALF_UP).toPlainString());
         }
     }
 
@@ -55,6 +59,12 @@ public class PeriodController {
     public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody PeriodForm form) {
         return PeriodView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to()));
+    }
+
+    @PostMapping("/{periodId}/close")
+    public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank String user) {
+        return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
     }
 
     @ExceptionHandler(PeriodRefused.class)

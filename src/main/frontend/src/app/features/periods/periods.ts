@@ -10,6 +10,9 @@ export interface Period {
   /** The first and last date of the period (yyyy-mm-dd), both inclusive. */
   from: string;
   to: string;
+  closed: boolean;
+  /** The due-total fixed when the period was closed; null while it is open. */
+  closedTotal: string | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -25,8 +28,8 @@ function cents(amount: string): number {
 }
 
 // The sheet's periods, earliest first, each with its due-total: the dues of the claims that count
-// (OPEN and SETTLED) whose date falls in it; and the form that adds one. No two periods share a name
-// or a date.
+// (OPEN and SETTLED) whose date falls in it, or once closed the due-total fixed then; and the form that
+// adds one. No two periods share a name or a date.
 @Component({
   selector: 'app-periods',
   template: `
@@ -34,7 +37,7 @@ function cents(amount: string): number {
       <h2>Periods</h2>
       <table>
         <thead>
-          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th></tr>
+          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -43,6 +46,13 @@ function cents(amount: string): number {
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals()[p.id] }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button type="button" data-testid="period-close" [attr.aria-label]="'Close period ' + p.name" (click)="close(p)">Close</button>
+                @if (rowError()?.id === p.id) {
+                  <p role="alert" data-testid="period-error">{{ rowError()?.message }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -90,21 +100,24 @@ export class Periods {
   protected readonly dueTotals = computed<Record<number, string>>(() => {
     const totals: Record<number, number> = {};
     for (const p of this.periods()) totals[p.id] = 0;
+    const closed = new Map(this.periods().filter((p) => p.closed).map((p) => [p.id, p.closedTotal ?? '0.00']));
     for (const person of this.people()) {
       for (const c of person.claims) {
         if ((c.status !== 'OPEN' && c.status !== 'SETTLED') || c.due === null) continue;
         const period = periodOf(this.periods(), c.date);
-        if (period) totals[period.id] += cents(c.due);
+        if (period && !closed.has(period.id)) totals[period.id] += cents(c.due);
       }
     }
     const shown: Record<number, string> = {};
-    for (const id of Object.keys(totals)) shown[+id] = (totals[+id] / 100).toFixed(2);
+    for (const id of Object.keys(totals)) shown[+id] = closed.get(+id) ?? (totals[+id] / 100).toFixed(2);
     return shown;
   });
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal('');
+  /** The refusal of the last action on a period's row, shown on that row. */
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
 
@@ -117,6 +130,7 @@ export class Periods {
       this.from.set('');
       this.to.set('');
       this.error.set('');
+      this.rowError.set(null);
       if (sheet) void this.reload(sheet);
     });
   }
@@ -163,6 +177,31 @@ export class Periods {
         ? (err.error?.message ?? 'That period name is already in use on this sheet.')
         : 'Could not add the period.';
       this.error.set(message);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Close a period, fixing its due-total; closing one already closed is refused on its row. */
+  protected async close(p: Period): Promise<void> {
+    if (this.busy) return;
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${p.id}/close`, null, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.periods.update((ps) => ps.map((q) => (q.id === saved.id ? saved : q)));
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const message = err instanceof HttpErrorResponse && err.status === 409
+        ? (err.error?.message ?? 'The period is already closed.')
+        : 'Could not close the period.';
+      this.rowError.set({ id: p.id, message });
     } finally {
       this.busy = false;
     }

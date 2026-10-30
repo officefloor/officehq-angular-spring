@@ -198,9 +198,10 @@ export class Claims {
       if (this.session.sheet() !== sheet) return;
       this.saved.emit(person);
       this.reset();
-    } catch {
+    } catch (err) {
       if (this.session.sheet() !== sheet) return;
-      this.error.set(id === null ? 'Could not add the claim.' : 'Could not save the claim.');
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.error.set(refusal ?? (id === null ? 'Could not add the claim.' : 'Could not save the claim.'));
     } finally {
       this.busy = false;
     }
@@ -230,7 +231,8 @@ export class Claims {
         this.claimError.set({ id: c.id, message: 'You opened this claim, so another user must settle it.' });
         return;
       }
-      this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be ${PAST[action]}.` });
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? `A ${c.status} claim cannot be ${PAST[action]}.` });
     } finally {
       this.busy = false;
     }

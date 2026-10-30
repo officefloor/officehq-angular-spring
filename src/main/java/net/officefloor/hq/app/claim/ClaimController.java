@@ -7,11 +7,15 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.period.ClosedPeriodRefused;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.statement.StatementService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -32,6 +36,9 @@ public class ClaimController {
     /** An amount is 0.00 or more with up to two decimals; a blank date takes the sheet's today. */
     public record ClaimForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
             LocalDate date, @Size(max = 500) String note) {
+    }
+
+    public record Refusal(String message) {
     }
 
     private final ClaimService claims;
@@ -91,5 +98,11 @@ public class ClaimController {
     private PersonView view(String sheetId, long personId) {
         return PersonView.of(people.get(sheetId, personId), claims.forPerson(sheetId, personId),
                 rates.table(sheetId), statements.forPerson(sheetId, personId));
+    }
+
+    /** A claim dated inside a closed period: refused, nothing changed. */
+    @ExceptionHandler(ClosedPeriodRefused.class)
+    public ResponseEntity<Refusal> closed(ClosedPeriodRefused e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getMessage()));
     }
 }
