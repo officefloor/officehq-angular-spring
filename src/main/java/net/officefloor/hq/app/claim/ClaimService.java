@@ -132,6 +132,41 @@ public class ClaimService {
     }
 
     /**
+     * The sheet's policy versions as CSV rows, oldest first: version, from (blank for one counting from the start),
+     * key, value, the count of the claims (DELETED ones left out) whose policy version it is, and the due of those
+     * of them that count (open, pending and settled ones, n/a dues left out) added up, to two decimals.
+     */
+    @Transactional(readOnly = true)
+    public List<List<String>> policyCsv(String sheetId) {
+        Sheet sheet = sheets.load(sheetId);
+        Map<Long, Person> byId = new HashMap<>();
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) byId.put(p.getId(), p);
+        Map<Integer, Integer> counts = new HashMap<>();
+        Map<Integer, BigDecimal> dues = new HashMap<>();
+        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (c.getStatus() == ClaimStatus.DELETED) continue;
+            int version = sheet.policyVersionOn(c.getDate());
+            counts.merge(version, 1, Integer::sum);
+            Person person = byId.get(c.getPersonId());
+            if (!c.getStatus().counts() || person == null) continue;
+            BigDecimal due = due(sheetId, person, c);
+            if (due != null) dues.merge(version, due, BigDecimal::add);
+        }
+        List<List<String>> rows = new ArrayList<>();
+        rows.add(List.of("version", "from", "key", "value", "claims", "due-total"));
+        List<SettingChange> changes = sheet.policyChanges();
+        for (int i = 0; i < changes.size(); i++) {
+            SettingChange ch = changes.get(i);
+            int version = i + 1;
+            rows.add(List.of(String.valueOf(version), ch.getFrom() == null ? "" : ch.getFrom().toString(),
+                    ch.getKey(), ch.getValue() == null ? "" : ch.getValue(),
+                    String.valueOf(counts.getOrDefault(version, 0)),
+                    dues.getOrDefault(version, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP).toPlainString()));
+        }
+        return rows;
+    }
+
+    /**
      * The claim's timeline: the audit lines about it, newest first, as the file holds them (see
      * {@link Audit#claimLines}).
      */

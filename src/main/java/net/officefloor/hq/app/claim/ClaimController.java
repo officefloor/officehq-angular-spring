@@ -150,6 +150,13 @@ public class ClaimController {
         return service.policy(sheetId);
     }
 
+    /** The sheet's policy versions as CSV rows, header first, each with its claims' count and their due added up. */
+    @GetMapping("/claims/policy/csv")
+    public List<List<String>> policyCsv(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId) {
+        return service.policyCsv(sheetId);
+    }
+
     @GetMapping("/claims/{id}/timeline")
     public List<String> timeline(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
