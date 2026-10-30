@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1206334b7..8c20e001f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -8,7 +8,7 @@ import { ClaimTemplates } from '../claim-templates/claim-templates';
+ import { Claims, PersonWithClaims as Person } from '../claims/claims';
+ import { Audit } from '../audit/audit';
+ import { Holidays } from '../holidays/holidays';
+-import { Period, Periods, personPeriodTotals } from '../periods/periods';
++import { Period, Periods, periodOf, personPeriodTotals } from '../periods/periods';
+ import { Pool, Pools } from '../pools/pools';
+ import { Rates } from '../rates/rates';
+ import { Summary, statusCounts } from '../summary/summary';
+@@ -245,6 +245,7 @@ function csvField(value: string): string {
+       </p>
+       <p>
+         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
++        <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+       </p>
+       <p>
+         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
+@@ -1553,6 +1554,38 @@ export class People {
+     setTimeout(() => URL.revokeObjectURL(url));
+   }
+ 
++  /** Download every claim on the sheet, retired people's included, as the store holds them now, as a CSV file:
++   *  people in list order, each person's claims oldest first, the figures as the screen shows them. */
++  protected async exportClaims(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const loads = this.session.loads();
++    const people = await firstValueFrom(
++      this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`),
++    );
++    if (this.session.sheet() !== sheet || this.session.loads() !== loads) return;
++    this.people.set(people);
++    const periods = this.periods();
++    const lines = [
++      'person,number,date,amount,due,status,period',
++      ...people.flatMap((p) =>
++        [...p.claims]
++          .reverse()
++          .map((c) =>
++            [p.name, c.number ?? '', c.date, c.amount, c.due ?? 'n/a', c.status, periodOf(periods, c.dueBy)?.name ?? '']
++              .map(csvField)
++              .join(','),
++          ),
++      ),
++    ];
++    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
++    const link = document.createElement('a');
++    link.href = url;
++    link.download = `claims-${sheet}.csv`;
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   /** After a refused stale edit: show the person as the store holds them now, in the row and the form. */
+   private async showCurrent(sheet: string, id: number): Promise<void> {
+     const loads = this.session.loads();
