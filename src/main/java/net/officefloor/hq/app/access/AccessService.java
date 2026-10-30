@@ -72,6 +72,8 @@ public class AccessService {
 
     public static final String NOTE_THRESHOLD = DatedSettings.NOTE_THRESHOLD;
 
+    public static final String POT = DatedSettings.POT;
+
     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
     public record Dated(String value, LocalDate from) {
     }
@@ -248,7 +250,7 @@ public class AccessService {
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
-            Map<String, Dated> gradeProofThreshold) {
+            Map<String, Dated> gradeProofThreshold, String pot) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -303,6 +305,9 @@ public class AccessService {
         if (entryDate != null) {
             setEntryDate(sheetId, user, entryDate.isEmpty() ? null : LocalDate.parse(entryDate));
         }
+        if (pot != null) {
+            setPot(sheetId, user, money(pot, null));
+        }
     }
 
     /** The roles that may take the action as set (comma separated); null when blank (the standing rule). */
@@ -333,6 +338,23 @@ public class AccessService {
             settingRows.flush();
         }
         events.publishEvent(new SettingChanged(sheetId, user, permission.key(), roles, null));
+    }
+
+    /**
+     * Record the sheet's pot, two decimals (null: none). Not dated: the value holds from the beginning of time,
+     * replacing the one it had.
+     */
+    @Transactional
+    public void setPot(String sheetId, String user, String pot) {
+        sheets.load(sheetId, user);
+        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, POT, null).orElse(null);
+        if (row == null) {
+            settingRows.saveAndFlush(new SheetSetting(sheetId, POT, null, pot));
+        } else {
+            row.setValue(pot);
+            settingRows.flush();
+        }
+        events.publishEvent(new SettingChanged(sheetId, user, POT, pot == null ? "" : pot, null));
     }
 
     /** A figure as kept: two decimals; blank is the starting value given (null: none). */

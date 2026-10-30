@@ -6,12 +6,14 @@ import { PersonWithClaims } from '../claims/claims';
 
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 
-/** A member of a pool: the person, their share (two decimals) and whether they are retired. */
+/** A member of a pool: the person, their share (two decimals), whether they are retired and their cut of the pot. */
 export interface PoolMember {
   personId: number;
   name: string;
   share: string;
   retired: boolean;
+  /** Two decimals; null in an unbalanced pool or when the sheet has no pot. */
+  cut: string | null;
 }
 
 /** A pool: its members, its total share (a retired member's counting 0.00) and whether that is exactly 100.00. */
@@ -32,7 +34,7 @@ interface Draft {
 const EMPTY: Draft = { personId: '', share: '', error: '' };
 
 // The sheet's pools, sorted by name, each with its members and their shares, its total share and whether it is
-// balanced; the form that adds a pool, and on each pool's row the form that adds a person to it with a share.
+// balanced, and each member's cut of the sheet's pot (none unless the pool is balanced and there is a pot); the form that adds a pool, and on each pool's row the form that adds a person to it with a share.
 // A person can be in several pools, each at most once.
 @Component({
   selector: 'app-pools',
@@ -50,6 +52,7 @@ const EMPTY: Draft = { personId: '', share: '', error: '' };
                 <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
                   <span data-testid="pool-member-name">{{ m.name }}</span>
                   <span>Share <span data-testid="pool-share">{{ m.share }}</span></span>
+                  <span>Cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span></span>
                   @if (m.retired) {
                     <span>(retired)</span>
                   }

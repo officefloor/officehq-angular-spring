@@ -34,8 +34,8 @@ public class PoolController {
             @Size(max = 100) String share) {
     }
 
-    /** A member of a pool; the share with two decimals. */
-    public record MemberView(long personId, String name, String share, boolean retired) {
+    /** A member of a pool; the share with two decimals, and so the cut, null when the member has none. */
+    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
     }
 
     /** A pool on the sheet; its total share with two decimals. */
@@ -43,7 +43,8 @@ public class PoolController {
 
         static PoolView of(Pools.Shown p) {
             return new PoolView(p.name(), p.members().stream()
-                    .map(m -> new MemberView(m.personId(), m.name(), m.share().toPlainString(), m.retired())).toList(),
+                    .map(m -> new MemberView(m.personId(), m.name(), m.share().toPlainString(), m.retired(),
+                            m.cut() == null ? null : m.cut().toPlainString())).toList(),
                     p.total().toPlainString(), p.balanced());
         }
     }

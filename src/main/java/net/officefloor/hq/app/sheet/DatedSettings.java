@@ -29,6 +29,9 @@ public record DatedSettings(List<SheetSetting> values) {
 
     public static final String NOTE_THRESHOLD = "note-threshold";
 
+    /** The sheet's pot, shared out over each balanced pool; not dated. */
+    public static final String POT = "pot";
+
     /** A sheet with no value saved: every setting has its starting value on every date. */
     public static final DatedSettings NONE = new DatedSettings(List.of());
 
@@ -129,5 +132,10 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The most a person's due-total comes to on the date; null when there is no cap. */
     public BigDecimal cap(LocalDate date) {
         return on(CAP, date).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The sheet's pot (not dated: it holds on every date); null when there is none. */
+    public BigDecimal pot() {
+        return on(POT, LocalDate.MAX).map(BigDecimal::new).orElse(null);
     }
 }

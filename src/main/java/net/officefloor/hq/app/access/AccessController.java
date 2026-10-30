@@ -51,13 +51,14 @@ public class AccessController {
      * void, reassign, close, reopen) is the roles that may take the action as written, comma separated; null
      * when blank (the standing rule). The entry date is a date (yyyy-mm-dd), null when blank (off). The grace
      * days of grades A, B and C are a number of days, null for a grade with none; the proof thresholds of
-     * grades A, B and C are figures with two decimals, null for a grade with none (it uses the sheet's).
+     * grades A, B and C are figures with two decimals, null for a grade with none (it uses the sheet's). The
+     * pot is a figure with two decimals, null for none; it is not dated.
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
-            String proofThresholdA, String proofThresholdB, String proofThresholdC) {
+            String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
                 Integer graceDays, LocalDate entryDate) {
@@ -74,7 +75,7 @@ public class AccessController {
                     entryDate == null ? null : entryDate.toString(), text(grace(dated, "A", today)),
                     text(grace(dated, "B", today)), text(grace(dated, "C", today)),
                     text(dated.gradeProofThreshold("A", today)), text(dated.gradeProofThreshold("B", today)),
-                    text(dated.gradeProofThreshold("C", today)));
+                    text(dated.gradeProofThreshold("C", today)), text(dated.pot()));
         }
 
         /** The grade's grace days in force on the date as written; null when it has none then. */
@@ -125,7 +126,8 @@ public class AccessController {
      * entry of the permission matrix is a comma separated list of roles (clerk, steward), blank putting back
      * the standing rule; it is not dated. The entry date is a date (yyyy-mm-dd), blank meaning off; not
      * dated. A grade's grace days are a whole number of days, blank meaning none; dated. A grade's proof
-     * threshold is 0.00 or more with up to two decimals, blank meaning none (the sheet's); dated.
+     * threshold is 0.00 or more with up to two decimals, blank meaning none (the sheet's); dated. The pot is
+     * 0.00 or more with up to two decimals, blank meaning none; not dated.
      */
     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
@@ -168,7 +170,8 @@ public class AccessController {
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String proofThresholdC,
             @Pattern(regexp = DATE) String proofThresholdAFrom,
             @Pattern(regexp = DATE) String proofThresholdBFrom,
-            @Pattern(regexp = DATE) String proofThresholdCFrom) {
+            @Pattern(regexp = DATE) String proofThresholdCFrom,
+            @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String pot) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -237,7 +240,8 @@ public class AccessController {
         permissions.put(Permission.REOPEN, form.permReopen());
         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
                 form.periodNumberingFrom(), form.graceDays(), gradeGrace, cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
-                dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold);
+                dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold,
+                form.pot());
         return settings(sheet);
     }
 

@@ -29,6 +29,8 @@ interface Settings {
   graceDays: string | null;
   /** While set, the date a new claim takes when none is given, in place of the sheet's today; null when blank (off). */
   entryDate: string | null;
+  /** The sheet's pot, shared out over each balanced pool, with two decimals; null when there is none. Not dated. */
+  pot: string | null;
   /** The most a person's due-total comes to, with two decimals; null when there is no cap. */
   cap: string | null;
   /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
@@ -211,6 +213,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <p>Grace days for grade {{ g }} <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</strong></p>
       }
       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
+      <p>Pot <strong data-testid="setting-pot-current">{{ pot() ?? '' }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
       @for (g of grades; track g) {
@@ -363,6 +366,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="entryDateInput.set(value($event)); entryDateTouched = true; settingsError.set('')"
           (keydown)="entryDateTouched = entryDateTouched || clears($event)"
         />
+        <label for="setting-pot">Pot shared out over each balanced pool (blank: none)</label>
+        <input
+          id="setting-pot"
+          inputmode="decimal"
+          data-testid="setting-pot"
+          [value]="potInput()"
+          (input)="potInput.set(value($event)); potTouched = true; settingsError.set('')"
+          (keydown)="potTouched = potTouched || clears($event)"
+        />
         <label for="setting-cap">Cap on a person's due-total (blank: no cap)</label>
         <input
           id="setting-cap"
@@ -486,6 +498,8 @@ export class Access {
   protected readonly graceDaysInput = signal('');
   protected readonly entryDate = signal<string | null>(null);
   protected readonly entryDateInput = signal('');
+  protected readonly pot = signal<string | null>(null);
+  protected readonly potInput = signal('');
   protected readonly cap = signal<string | null>(null);
   protected readonly capInput = signal('');
   protected readonly proofThreshold = signal<string | null>(null);
@@ -514,6 +528,7 @@ export class Access {
   protected numberingFromTouched = false;
   protected graceDaysTouched = false;
   protected entryDateTouched = false;
+  protected potTouched = false;
   protected capTouched = false;
   protected proofThresholdTouched = false;
   protected gradeProofTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
@@ -535,7 +550,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -706,6 +721,11 @@ export class Access {
       this.settingsError.set('Enter an entry date, or leave it blank for off.');
       return;
     }
+    const pot = this.potInput().trim();
+    if (this.potTouched && pot !== '' && !LIMIT.test(pot)) {
+      this.settingsError.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
     const cap = this.capInput().trim();
     if (this.capTouched && cap !== '' && !LIMIT.test(cap)) {
       this.settingsError.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank for no cap.');
@@ -760,6 +780,7 @@ export class Access {
       if (this.gradeGraceTouched[g]) body[GRADE_GRACE[g]] = gradeGrace[g].trim();
     }
     if (this.entryDateTouched) body.entryDate = entryDate;
+    if (this.potTouched) body.pot = pot;
     if (this.capTouched) body.cap = cap;
     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
     for (const g of GRADES) {
@@ -830,6 +851,9 @@ export class Access {
     this.entryDate.set(settings.entryDate);
     this.entryDateInput.set(settings.entryDate ?? '');
     this.entryDateTouched = false;
+    this.pot.set(settings.pot);
+    this.potInput.set(settings.pot ?? '');
+    this.potTouched = false;
     this.cap.set(settings.cap);
     this.capInput.set(settings.cap ?? '');
     this.capTouched = false;
