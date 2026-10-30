@@ -12,10 +12,16 @@ import java.time.LocalDate;
  * approving ({@code n/a} when there was no rate), or null when the event carries none. The reason is a
  * rejection's reason, or null when the event carries none. The reversed is the frozen figure a voided
  * SETTLED claim takes out of the totals ({@code n/a} when it had none), or null when the event carries none.
- * The ref is an added claim's external reference, or null when it has none or the event carries none.
+ * The ref is an added claim's external reference, or null when it has none or the event carries none. The
+ * tags are an added claim's tags, sorted and comma separated, or null when it has none or the event carries none.
  */
 public record ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
-        LocalDate date, String number, String due, String reason, String reversed, String ref) {
+        LocalDate date, String number, String due, String reason, String reversed, String ref, String tags) {
+
+    public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
+            LocalDate date, String number, String due, String reason, String reversed, String ref) {
+        this(event, sheetId, user, person, amount, date, number, due, reason, reversed, ref, null);
+    }
 
     public ClaimChanged(String event, String sheetId, String user, String person, BigDecimal amount,
             LocalDate date, String number, String due, String reason, String reversed) {

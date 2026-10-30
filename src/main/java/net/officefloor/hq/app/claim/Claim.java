@@ -116,6 +116,10 @@ public class Claim {
     @Column(name = "ref")
     private String ref;
 
+    /** The claim's tags, sorted and comma separated; "" when it has none. */
+    @Column(name = "tags", nullable = false)
+    private String tags = "";
+
     /** Whether the claim was added while a soft-closed period contained its due-by. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -319,6 +323,14 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags == null ? "" : tags;
     }
 
     public boolean isLateEntry() {

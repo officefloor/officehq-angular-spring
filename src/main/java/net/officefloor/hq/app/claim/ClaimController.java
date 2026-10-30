@@ -19,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -40,11 +41,12 @@ public class ClaimController {
 
     /**
      * An amount with up to two decimals, negative for a correction, which names the number of the claim
-     * it corrects; a blank date takes the sheet's today; a blank external reference is none.
+     * it corrects; a blank date takes the sheet's today; a blank external reference is none; tags are
+     * comma separated (blank: none).
      */
     public record ClaimForm(@NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount,
             LocalDate date, @Size(max = 500) String note, @Pattern(regexp = "[1-9]\\d{0,8}|.{1,100}-[1-9]\\d{0,8}") String corrects,
-            @Size(max = 100) String ref) {
+            @Size(max = 100) String ref, @Size(max = 1000) String tags) {
     }
 
     /** A quick-add: a person's name and a claim's amount. */
@@ -99,9 +101,12 @@ public class ClaimController {
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
+    private final Tags tags;
 
     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
-            BulkSettleService bulkSettle, PersonService people, RateService rates, StatementService statements) {
+            BulkSettleService bulkSettle, PersonService people, RateService rates, StatementService statements,
+            Tags tags) {
+        this.tags = tags;
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
         this.claims = claims;
@@ -112,13 +117,19 @@ public class ClaimController {
         this.statements = statements;
     }
 
+    /** Every tag ever used on the sheet, sorted. */
+    @GetMapping("/tags")
+    public List<String> tags(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return tags.used(sheetId.trim());
+    }
+
     @PostMapping("/people/{personId}/claims")
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
         long id = claims.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.date(), form.note(),
-                form.corrects(), form.ref());
+                form.corrects(), form.ref(), form.tags());
         return view(sheet, id);
     }
 
@@ -144,7 +155,7 @@ public class ClaimController {
             @Valid @RequestBody ClaimForm form) {
         String sheet = sheetId.trim();
         long id = claims.edit(sheet, user.trim(), claimId, new BigDecimal(form.amount()), form.date(), form.note(),
-                form.corrects(), form.ref());
+                form.corrects(), form.ref(), form.tags());
         return view(sheet, id);
     }
 

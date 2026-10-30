@@ -8,6 +8,7 @@ import { Holidays } from '../holidays/holidays';
 import { Period, Periods, personPeriodTotals } from '../periods/periods';
 import { Rates } from '../rates/rates';
 import { Summary, statusCounts } from '../summary/summary';
+import { Tags } from '../tags/tags';
 
 const GRADES = ['A', 'B', 'C'];
 const DAYS = /^\d{1,5}$/;
@@ -38,7 +39,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [Access, Claims, Holidays, Periods, Rates, Summary],
+  imports: [Access, Claims, Holidays, Periods, Rates, Summary, Tags],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -53,6 +54,7 @@ function csvField(value: string): string {
     <app-periods [people]="people()" [(periods)]="periods" />
     <app-holidays />
     <app-summary [people]="people()" [periods]="periods()" />
+    <app-tags [people]="people()" />
     <section aria-label="People">
       <h2>People</h2>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>

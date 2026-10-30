@@ -56,11 +56,13 @@ public class ClaimService {
     private final AccessService access;
     private final WatchService watches;
     private final HolidayService holidays;
+    private final Tags tags;
     private final ApplicationEventPublisher events;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetRows, RateService rates, Rollup rollup, PeriodService periods, AccessService access,
-            WatchService watches, HolidayService holidays, ApplicationEventPublisher events) {
+            WatchService watches, HolidayService holidays, Tags tags, ApplicationEventPublisher events) {
+        this.tags = tags;
         this.holidays = holidays;
         this.access = access;
         this.watches = watches;
@@ -110,6 +112,18 @@ public class ClaimService {
     @Transactional
     public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref) {
+        return add(sheetId, user, personId, amount, date, note, corrects, ref, null);
+    }
+
+    /**
+     * Add a claim as {@link #add(String, String, long, BigDecimal, LocalDate, String, String, String)} does,
+     * carrying the tags in the comma separated text (see {@link Tags#normalize}; null: none). Returns the
+     * person it belongs to.
+     */
+    @Transactional
+    public long add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref, String tagText) {
+        String tagged = Tags.normalize(tagText);
         String reference = requireFreeRef(sheetId, ref, null);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -126,10 +140,12 @@ public class ClaimService {
         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy).isPresent());
         claim.setDueBy(dueBy);
         claim.setRef(reference);
+        claim.setTags(tagged);
         log(sheetId, user, claim, person);
         claims.saveAndFlush(claim);
+        tags.use(sheetId, tagged);
         events.publishEvent(new ClaimChanged("CLAIM_ADDED", sheetId, user, person.getName(), amount, on, null, null,
-                null, null, reference));
+                null, null, reference, tagged.isEmpty() ? null : tagged));
         if (claim.isLateEntry()) {
             events.publishEvent(new ClaimChanged("LATE_ENTRY", sheetId, user, person.getName(), amount, on, null, null));
         }
@@ -143,11 +159,13 @@ public class ClaimService {
      * leaves as it was fixed), or
      * when the date it is left with is after its person's retirement date, or when its external reference
      * (surrounding spaces removed; blank: none) is carried by another claim on the sheet, compared without
-     * regard to case. Returns the person it belongs to.
+     * regard to case. Its tags are those in the comma separated text (see {@link Tags#normalize}; null: none).
+     * Returns the person it belongs to.
      */
     @Transactional
     public long edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tagText) {
+        String tagged = Tags.normalize(tagText);
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         String reference = requireFreeRef(sheetId, ref, claimId);
@@ -167,8 +185,10 @@ public class ClaimService {
         claim.setDate(on);
         claim.setNote(note == null ? "" : note);
         claim.setRef(reference);
+        claim.setTags(tagged);
         claim.setLockedBy(null);
         claims.flush();
+        tags.use(sheetId, tagged);
         String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse("");
         events.publishEvent(new ClaimChanged("CLAIM_EDITED", sheetId, user, person, claim.getAmount(),
                 claim.getDate(), claim.getShownNumber(), null));
@@ -184,7 +204,7 @@ public class ClaimService {
     public long editAmount(String sheetId, String user, long claimId, BigDecimal amount) {
         Claim claim = claim(sheetId, claimId);
         return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects(),
-                claim.getRef());
+                claim.getRef(), claim.getTags());
     }
 
     /**
@@ -388,7 +408,7 @@ public class ClaimService {
      * the rest and is released from any figure a statement bound it to; a new OPEN claim of the same person
      * takes the amount split off, with the same date and note, the next number, opened by the user and
      * due by its date plus the terms then of its person's grade on its date, naming the claim it was split
-     * from, and a late entry when that claim is. It is judged by the claim split alone: a claim not OPEN, a deferred one, one due by a date inside a closed period, an amount out of range, or a
+     * from, carrying its tags, and a late entry when that claim is. It is judged by the claim split alone: a claim not OPEN, a deferred one, one due by a date inside a closed period, an amount out of range, or a
      * split by a role the sheet's permission matrix does not allow to open a claim is refused and nothing
      * changes. Returns the person it belongs to.
      */
@@ -420,6 +440,7 @@ public class ClaimService {
         part.setDueBy(holidays.dueBy(sheetId, claim.getDate(),
                 sheets.settings(sheetId).termsFor(owner.getTerms(), owner.gradeOn(claim.getDate()), claim.getDate())));
         part.setSplitFrom(claim.getShownNumber());
+        part.setTags(claim.getTags());
         part.setLateEntry(claim.isLateEntry());
         giveNumber(sheetId, part);
         part.setOpenedBy(user);

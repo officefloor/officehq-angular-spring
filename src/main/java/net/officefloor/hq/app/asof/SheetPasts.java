@@ -52,7 +52,8 @@ public class SheetPasts {
             new Scope("DELEGATION", "sheet_id = ?"),
             new Scope("PERIOD", "sheet_id = ?"),
             new Scope("PERIOD_PERSON_TOTAL", "period_id IN (SELECT id FROM period WHERE sheet_id = ?)"),
-            new Scope("STATEMENT", "sheet_id = ?"));
+            new Scope("STATEMENT", "sheet_id = ?"),
+            new Scope("SHEET_TAG", "sheet_id = ?"));
 
     /** The sheet's own columns that stay as they are: its key, who started it and its today. */
     private static final List<String> SHEET_KEPT = List.of("ID", "CREATED_BY", "TODAY");

@@ -53,6 +53,8 @@ export interface Claim {
   remindedOn: string | null;
   /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
   ref: string | null;
+  /** The claim's tags: trimmed, lower-cased, without repeats, sorted. */
+  tags: string[];
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then and its due then (null when none). */
@@ -159,6 +161,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+          <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Due <span data-testid="claim-due">{{ c.due ?? 'n/a' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
@@ -311,6 +314,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         [value]="ref()"
         (input)="ref.set(value($event)); error.set('')"
       />
+      <label [for]="fid('tags')">Tags (comma separated)</label>
+      <input
+        [id]="fid('tags')"
+        data-testid="claim-form-tags"
+        [disabled]="locking()"
+        [value]="tags()"
+        (input)="tags.set(value($event)); error.set('')"
+      />
       <button type="submit" data-testid="claim-form-submit" [disabled]="locking()">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -338,6 +349,7 @@ export class Claims implements OnInit {
   protected readonly note = signal('');
   protected readonly corrects = signal('');
   protected readonly ref = signal('');
+  protected readonly tags = signal('');
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
   /** An edit button waiting for its claim's lock: the form is held until the answer comes. */
@@ -704,6 +716,7 @@ export class Claims implements OnInit {
     this.note.set(c.note);
     this.corrects.set(c.corrects ?? '');
     this.ref.set(c.ref ?? '');
+    this.tags.set(c.tags.join(', '));
     this.error.set('');
   }
 
@@ -734,6 +747,7 @@ export class Claims implements OnInit {
     this.note.set('');
     this.corrects.set('');
     this.ref.set('');
+    this.tags.set('');
     this.error.set('');
   }
 
@@ -763,7 +777,7 @@ export class Claims implements OnInit {
     const id = this.editing();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     const body = { amount, date: date === '' ? null : date, note, corrects: corrects === '' ? null : corrects,
-      ref: ref === '' ? null : ref };
+      ref: ref === '' ? null : ref, tags: this.tags() };
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
     try {
