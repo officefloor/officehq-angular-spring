@@ -1,0 +1,223 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ba27b39df..96484ad3a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -309,6 +309,23 @@ function csvField(value: string): string {
+           <p role="alert" data-testid="person-error">{{ bulkGradeError() }}</p>
+         }
+       </form>
++      <form (submit)="retireSelected($event)" aria-label="Retire selected people">
++        <label for="bulk-retire-date">Retire the selected people from (blank: today)</label>
++        <input
++          id="bulk-retire-date"
++          data-testid="bulk-retire-date"
++          type="date"
++          [value]="bulkRetireFrom()"
++          (input)="bulkRetireFrom.set(value($event)); bulkRetireError.set('')"
++        />
++        <button type="submit" data-testid="bulk-retire">Retire selected people</button>
++        @if (bulkRetired() !== null) {
++          <span>Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></span>
++        }
++        @if (bulkRetireError()) {
++          <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
++        }
++      </form>
+       <table>
+         <thead>
+           <tr>
+@@ -616,6 +633,13 @@ export class People {
+   protected readonly bulkGradeError = signal('');
+   /** A bulk grade still waiting for its answer: another press meanwhile is ignored. */
+   private bulkGrading = false;
++  /** The date the selected people are retired from; blank: the sheet's today. */
++  protected readonly bulkRetireFrom = signal('');
++  /** How many people the last bulk retire retired; null while it runs. */
++  protected readonly bulkRetired = signal<number | null>(null);
++  protected readonly bulkRetireError = signal('');
++  /** A bulk retire still waiting for its answer: another press meanwhile is ignored. */
++  private bulkRetiring = false;
+   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
+   protected readonly showRetired = signal(false);
+   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
+@@ -708,6 +732,9 @@ export class People {
+       this.bulkGradeFrom.set('');
+       this.bulkGraded.set(null);
+       this.bulkGradeError.set('');
++      this.bulkRetireFrom.set('');
++      this.bulkRetired.set(null);
++      this.bulkRetireError.set('');
+       this.reset();
+       this.quickName.set('');
+       this.quickAmount.set('');
+@@ -751,6 +778,7 @@ export class People {
+     else next.delete(p.id);
+     this.selectedPeople.set(next);
+     this.bulkGradeError.set('');
++    this.bulkRetireError.set('');
+     this.clearError(p);
+   }
+ 
+@@ -801,6 +829,48 @@ export class People {
+     }
+   }
+ 
++  /** Retire the selected people from the date (blank: the sheet's today), each as the row's retire would. */
++  protected async retireSelected(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.bulkRetiring) return;
++    this.bulkRetired.set(null);
++    this.bulkRetireError.set('');
++    this.personError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const personIds = [...this.selectedPeople()];
++    const from = this.bulkRetireFrom().trim();
++    if (personIds.length === 0) {
++      this.bulkRetireError.set('Select the people to retire.');
++      return;
++    }
++    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
++      this.bulkRetireError.set('Enter a date, or leave it blank for today.');
++      return;
++    }
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.bulkRetiring = true;
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ retired: number }>(
++          `/api/sheets/${encodeURIComponent(sheet)}/people/retire`,
++          { personIds, from: from || null },
++          { headers },
++        ),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.selectedPeople.set(new Set());
++      await this.reload(sheet);
++      if (this.session.sheet() !== sheet) return;
++      this.bulkRetired.set(result.retired);
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.bulkRetireError.set('Could not retire the selected people.');
++    } finally {
++      this.bulkRetiring = false;
++    }
++  }
++
+   /** Open the selected claims together; each that cannot be opened is refused and left as it is. */
+   protected async openSelected(): Promise<void> {
+     if (this.bulkOpening) return;
+diff --git a/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java
+index 8be3f57dc..c24a2f73f 100644
+--- a/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/access/ViewerGuard.java
+@@ -35,7 +35,8 @@ public class ViewerGuard implements HandlerInterceptor {
+             return true;
+         }
+         String path = request.getRequestURI();
+-        if (path.endsWith("/load") || path.contains("/bulk-") || path.endsWith("/people/grade")) {
++        if (path.endsWith("/load") || path.contains("/bulk-") || path.endsWith("/people/grade")
++                || path.endsWith("/people/retire")) {
+             return true;
+         }
+         Object vars = request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
+diff --git a/src/main/java/net/officefloor/hq/app/person/BulkRetireService.java b/src/main/java/net/officefloor/hq/app/person/BulkRetireService.java
+new file mode 100644
+index 000000000..d7f228923
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/BulkRetireService.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.person;
++
++import java.time.LocalDate;
++import java.util.Set;
++import net.officefloor.hq.app.access.AccessService;
++import org.springframework.stereotype.Service;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Retires a selection of people from a date together, in list order: the people in the order they
++ * were added. Each person is retired on their own, exactly as the row's retire would (a date left
++ * out takes the sheet's today), so one that cannot be retired is left as they are while the rest go
++ * through.
++ */
++@Service
++public class BulkRetireService {
++
++    public record Result(int retired) {
++    }
++
++    private final PersonService people;
++    private final AccessService access;
++
++    public BulkRetireService(PersonService people, AccessService access) {
++        this.people = people;
++        this.access = access;
++    }
++
++    public Result retire(String sheetId, String user, Set<Long> personIds, LocalDate from) {
++        if (access.isArchived(sheetId) || access.isViewer(sheetId, user)) {
++            return new Result(0); // an archived sheet, or a viewer, changes nothing: every one refused
++        }
++        int retired = 0;
++        for (Person p : people.list(sheetId)) {
++            if (!personIds.contains(p.getId())) {
++                continue;
++            }
++            try {
++                people.retire(sheetId, user, p.getId(), from);
++                retired++;
++            } catch (ResponseStatusException refused) {
++                // refused: left as they are
++            }
++        }
++        return new Result(retired);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 5a904d51f..900678c23 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -185,6 +185,10 @@ public class PersonController {
+             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
+     }
+ 
++    /** A retirement for the selected people as entered: from a date (none: the sheet's today). */
++    public record BulkRetireForm(@NotEmpty List<@NotNull Long> personIds, LocalDate from) {
++    }
++
+     /** Pasted lines of name,grade,terms,contact, one person per line; terms and contact may be left out. */
+     public record ImportForm(@NotNull @Size(max = 100_000) String text) {
+     }
+@@ -192,6 +196,7 @@ public class PersonController {
+     private final PersonService service;
+     private final PersonImportService imports;
+     private final BulkGradeService bulkGrade;
++    private final BulkRetireService bulkRetire;
+     private final ClaimService claims;
+     private final RateService rates;
+     private final StatementService statements;
+@@ -200,7 +205,8 @@ public class PersonController {
+ 
+     public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
+             RateService rates, StatementService statements, PersonMergeService merges,
+-            PersonTransferService transfers, PersonImportService imports) {
++            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire) {
++        this.bulkRetire = bulkRetire;
+         this.service = service;
+         this.imports = imports;
+         this.transfers = transfers;
+@@ -258,6 +264,13 @@ public class PersonController {
+                 form.from());
+     }
+ 
++    /** Retire the selected people from the date, in list order; answers how many were retired. */
++    @PostMapping("/retire")
++    public BulkRetireService.Result retireAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkRetireForm form) {
++        return bulkRetire.retire(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.personIds()), form.from());
++    }
++
+     /** A statement as asked for: as of a date on or before the sheet's today (none: as of now). */
+     public record StatementForm(LocalDate asOf) {
+     }
