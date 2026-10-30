@@ -1,0 +1,64 @@
+{
+  "checkpoint": 179,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp179_flags",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can flag a person with a reason and an until date (entries and a button on the row;\nPERSON_FLAGGED name=<name> reason=<reason> until=<date>; anyone else or a blank reason is refused\nwith an error on the row). While the sheet's today is on or before the until date the row shows the\nreason, and only a steward may open a claim of that person (alone, by the bulk button, or by a\npaste); after the date the flag shows nothing and has no effect.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can flag a person with a reason and an until date (entries and a button on the row;\nPERSON_FLAGGED name=<name> reason=<reason> until=<date>; anyone else or a blank reason is refused\nwith an error on the row). While the sheet's today is on or before the until date the row shows the\nreason, and only a steward may open a claim of that person (alone, by the bulk button, or by a\npaste); after the date the flag shows nothing and has no effect.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "154d16253411fb5e61e82e67af8c861cf8bdb118",
+  "reset_sha": "",
+  "preagent_sha": "6bdef128b308fa132effa52545c0480427288ad4",
+  "prev_sha": "6bdef128b308fa132effa52545c0480427288ad4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.140471,
+    "input_tokens": 56,
+    "output_tokens": 13184,
+    "cache_read_tokens": 1514275,
+    "cache_creation_tokens": 71714,
+    "num_turns": 30,
+    "duration_ms": 509292,
+    "duration_api_ms": 128261,
+    "model": "claude-opus-5-5",
+    "session_id": "8302205c-09df-4e45-8b61-b6395ae38ade",
+    "stop_reason": "success",
+    "result_text": "Flagging is in place, and all 4 tests in `bin/e2e` now pass.\n\n**How it works**\n- **Who can flag:** only a steward, including someone acting as steward through a delegation. Anyone else, or a blank reason, is refused with an error on the row (`person-error`). A refused flag saves nothing and writes nothing to the audit file.\n- **Audit record:** a successful flag writes `PERSON_FLAGGED sheet=\u2026 by=\u2026 name=\u2026 reason=\u2026 until=\u2026`. If the until date is left blank it defaults to the sheet's today.\n- **What shows on the row:** a new column (`person-flag-shown`) shows the reason while the sheet's today is on or before the until date. After that it's empty and the flag has no effect.\n- **Opening claims:** while a flag is in force, only a steward can open that person's claims. The check sits in the one server step that opening a single claim, the bulk open button and paste all go through. In bulk, that person's claims are counted as refused and the others still open. A paste containing such a line is refused as a whole.\n\n**Code changes**\n- New migration `V95__person_flag.sql` adds two columns to `person`: the reason and the until date.\n- `Person` gains `flag()` and `flagOn(today)`. Flags are copied when a sheet is cloned.\n- New endpoint `POST /api/sheets/{id}/people/{personId}/flag`, handled by `PersonService.flag`, and a `PersonFlagged` event that `SheetAudit` writes out.\n- `ClaimService.move` now checks the flag before opening a claim.\n- The row has reason and until inputs plus a Flag button (`person-flag-reason`, `person-flag-until`, `person-flag`).\n\n**One fix outside the flag feature:** \"flags scenario 1\" was failing at its edit-person audit lines. When a person was edited with their terms cleared, `PersonService.edit` recorded no terms change, though the test expects `terms=20`. The code had an extra condition comparing against the person's undated terms, and that condition contradicts the method's own javadoc. I removed it so the code does what the javadoc says, which made that test pass. This changes how editing a person's terms is audited, so please check it's what you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.140471,
+        "num_turns": 30,
+        "duration_ms": 509292,
+        "duration_api_ms": 128261,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp179.agent.jsonl",
+  "agent_diff_file": "cp179.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
