@@ -1,0 +1,64 @@
+{
+  "checkpoint": 170,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp170_rate-calendar",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7e470e6342f3a89ee86b9037385146d4e5de1360",
+  "reset_sha": "",
+  "preagent_sha": "53544296779f61b0aca804cdb9cdf13701c39082",
+  "prev_sha": "53544296779f61b0aca804cdb9cdf13701c39082",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8526380000000001,
+    "input_tokens": 46,
+    "output_tokens": 7914,
+    "cache_read_tokens": 1092110,
+    "cache_creation_tokens": 59469,
+    "num_turns": 24,
+    "duration_ms": 707317,
+    "duration_api_ms": 98750,
+    "model": "claude-opus-5-5",
+    "session_id": "4b57f030-3623-4124-a977-0a0fa2de44a8",
+    "stop_reason": "success",
+    "result_text": "I added the rate calendar, and all 4 tests in the spec now pass under `bin/e2e`. Getting the last one to pass also needed a fix to crews that the request didn't mention.\n\n**Rate calendar** (`src/main/frontend/src/app/features/rates/rates.ts`)\n- There's a new \"Rate calendar\" table in the Rates panel. It has one row per grade (A, B, C) and one column per month of the year that the sheet's \"today\" falls in.\n- Each cell shows the rate in force on the 1st of that month, or `n/a` when there is none. Each cell is tagged `rate-month-<grade>-<yyyy-mm>`.\n- It works out the rate exactly as the existing current-rate column (`rate-current-*`) does, including falling back to the parent sheets' rates. I moved that lookup into one shared helper so both use the same code. The calendar is worked out in the browser from the rates it already loads, so the server and database didn't change for this part.\n\n**Crew fix (outside the request)**\n- The last scenario transfers a crew's lead to another sheet and then expects the crew to still be there: no lead, its remaining member at a 100.00 share, still listed as a pool. The existing code deleted any crew whose lead was transferred, so that scenario failed every run.\n- To match the spec, the crew now stays with no lead. Three changes do this:\n  - `Crews.remove` clears the lead instead of deleting the crew and its members.\n  - The lead is now optional, with a new migration `V88__crew_lead_optional.sql`.\n  - The places that compared against the lead or copied it when cloning a sheet now handle a missing lead.\n- The front end already displayed a missing lead as blank, so it needed no change.\n\nThis changes behaviour for real users, not just the test: transferring a crew's lead now leaves a crew with no lead behind, where before the whole crew disappeared.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8526380000000001,
+        "num_turns": 24,
+        "duration_ms": 707317,
+        "duration_api_ms": 98750,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp170.agent.jsonl",
+  "agent_diff_file": "cp170.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
