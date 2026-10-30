@@ -73,6 +73,27 @@ export function personPeriodTotals(periods: Period[], person: PersonWithClaims):
   return shown;
 }
 
+/** Per period id, the person's carried figure for it: the dues as shown now of their claims that count (the same
+ * claims left out as personPeriodTotals) due by a date in a period ending before it starts and still OPEN or PENDING
+ * at the end of its last day, by the status log, added up. */
+export function personPeriodCarried(periods: Period[], person: PersonWithClaims): Record<number, string> {
+  const totals: Record<number, number> = {};
+  for (const p of periods) totals[p.id] = 0;
+  for (const c of person.claims) {
+    if (c.due === null || heldOut(c, person.holds) || retiredOut(c, person.retiredNow) || c.deferred) continue;
+    const home = periodOf(periods, c.dueBy);
+    if (!home) continue;
+    for (const p of periods) {
+      if (home.to >= p.from) continue;
+      const status = statusAsOf(c, p.to);
+      if (status === 'OPEN' || status === 'PENDING') totals[p.id] += cents(c.due);
+    }
+  }
+  const shown: Record<number, string> = {};
+  for (const p of periods) shown[p.id] = (totals[p.id] / 100).toFixed(2);
+  return shown;
+}
+
 /** Per period id, its due-total: the people's due-totals for it, added up. */
 export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
   const totals: Record<number, number> = {};

@@ -10,7 +10,7 @@ import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Audit } from '../audit/audit';
 import { Search } from '../search/search';
 import { Holidays } from '../holidays/holidays';
-import { Period, Periods, periodOf, personPeriodTotals } from '../periods/periods';
+import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
 import { PersonPlans, PlanList } from '../plans/plans';
 import { Pool, Pools } from '../pools/pools';
 import { Rates } from '../rates/rates';
@@ -447,7 +447,7 @@ function csvField(value: string): string {
             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
             @if (columnShown('patrons')) {<th scope="col">Patrons</th>}@if (columnShown('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Cut total</th>
             @for (pd of periods(); track pd.id) {
-              <th scope="col">Due in {{ pd.name }}</th>
+              <th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>
             }
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
@@ -525,6 +525,7 @@ function csvField(value: string): string {
               <td data-testid="person-cut-total">{{ (((personCuts().get(p.id) ?? 0) / 100).toFixed(2)) | figure }}</td>
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (periodTotals().get(p.id)?.[pd.id]) | figure }}</td>
+                <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">{{ (periodCarried().get(p.id)?.[pd.id]) | figure }}</td>
               }
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
@@ -716,6 +717,10 @@ export class People {
   /** Per person id, their due-total for each period on the sheet, by period id. */
   protected readonly periodTotals = computed(
     () => new Map(this.people().map((p) => [p.id, personPeriodTotals(this.periods(), p)])),
+  );
+  /** Per person id, their carried figure for each period on the sheet, by period id. */
+  protected readonly periodCarried = computed(
+    () => new Map(this.people().map((p) => [p.id, personPeriodCarried(this.periods(), p)])),
   );
   protected readonly name = signal('');
   protected readonly grade = signal('A');
