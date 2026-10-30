@@ -290,7 +290,7 @@ function csvField(value: string): string {
         }
       </form>
       <form (submit)="importPeople($event)" aria-label="Import people">
-        <label for="import-people">Import people, a line each: name,grade,terms,contact (terms and contact may be left out; a name on the sheet updates that person)</label>
+        <label for="import-people">Import people, a line each: name,grade,terms,contact (terms and contact may be left out; a blank grade is the default grade; a name on the sheet updates that person)</label>
         <textarea
           id="import-people"
           data-testid="import-people"
@@ -1464,7 +1464,7 @@ export class People {
     }
   }
 
-  /** Quick-add a DRAFT claim for the named person, who is added with grade A when not on the sheet. */
+  /** Quick-add a DRAFT claim for the named person, who is added with the default grade when not on the sheet. */
   protected async quickAdd(e: Event): Promise<void> {
     e.preventDefault();
     if (this.quickBusy) return;

@@ -51,6 +51,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's proof kinds, comma separated (receipt, photo): each a claim above its proof threshold needs a proof of; not dated. */
     public static final String PROOF_KINDS = "proof-kinds";
 
+    /** The grade a person added by quick-add or by an import line with a blank grade gets (A, B or C); not dated. */
+    public static final String DEFAULT_GRADE = "default-grade";
+
     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
     public static final String PARENT = "parent";
 
@@ -215,6 +218,17 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The month (1 to 12) the sheet's fiscal year starts in (not dated); 1 when none is set. */
     public int fiscalStartMonth() {
         return on(FISCAL_START_MONTH, LocalDate.MAX).map(Integer::valueOf).orElse(DEFAULT_FISCAL_START_MONTH);
+    }
+
+    /** The sheet's default grade as set (not dated); null when none is set (grade A). */
+    public String defaultGradeText() {
+        return on(DEFAULT_GRADE, LocalDate.MAX).orElse(null);
+    }
+
+    /** The grade a new person gets when none is given (not dated): the default grade, else A. */
+    public String defaultGrade() {
+        String grade = defaultGradeText();
+        return grade == null ? "A" : grade;
     }
 
     /** The id of the sheet's parent sheet (not dated); null when it has none. */

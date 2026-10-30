@@ -40,6 +40,8 @@ interface Settings {
   reviewSla: string | null;
   /** The kinds of proof (receipt, photo), comma separated, a claim above the proof threshold needs one of each of; null when none. Not dated. */
   proofKinds: string | null;
+  /** The grade quick-add and an import line with a blank grade give a new person; null when blank (A). Not dated. */
+  defaultGrade: string | null;
   /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; null when none. Not dated. */
   parent: string | null;
   /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
@@ -242,6 +244,7 @@ const ROUNDING = /^(half-up|half-even)$/;
       <p>Escalate after (days) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
       <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
       <p>Proof kinds <strong data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</strong></p>
+      <p>Default grade <strong data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</strong></p>
       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</strong></p>
@@ -457,6 +460,14 @@ const ROUNDING = /^(half-up|half-even)$/;
           (input)="proofKindsInput.set(value($event)); proofKindsTouched = true; settingsError.set('')"
           (keydown)="proofKindsTouched = proofKindsTouched || clears($event)"
         />
+        <label for="setting-default-grade">Default grade a quick-added or imported person without one gets: A, B or C (blank: A)</label>
+        <input
+          id="setting-default-grade"
+          data-testid="setting-default-grade"
+          [value]="defaultGradeInput()"
+          (input)="defaultGradeInput.set(value($event)); defaultGradeTouched = true; settingsError.set('')"
+          (keydown)="defaultGradeTouched = defaultGradeTouched || clears($event)"
+        />
         <label for="setting-parent">Parent sheet id: its rates are used for a grade with none in force (blank: none)</label>
         <input
           id="setting-parent"
@@ -628,6 +639,8 @@ export class Access {
   protected readonly reviewSlaInput = signal('');
   protected readonly proofKinds = signal<string | null>(null);
   protected readonly proofKindsInput = signal('');
+  protected readonly defaultGrade = signal<string | null>(null);
+  protected readonly defaultGradeInput = signal('');
   protected readonly parent = signal<string | null>(null);
   protected readonly parentInput = signal('');
   protected readonly fiscalStartMonth = signal('1');
@@ -668,6 +681,7 @@ export class Access {
   protected escalateAfterTouched = false;
   protected reviewSlaTouched = false;
   protected proofKindsTouched = false;
+  protected defaultGradeTouched = false;
   protected parentTouched = false;
   protected fiscalStartMonthTouched = false;
   protected capTouched = false;
@@ -692,7 +706,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -893,6 +907,11 @@ export class Access {
       this.settingsError.set('Enter the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
       return;
     }
+    const defaultGrade = this.defaultGradeInput().trim();
+    if (this.defaultGradeTouched && defaultGrade !== '' && !/^[ABC]$/.test(defaultGrade)) {
+      this.settingsError.set('Enter a default grade of A, B or C, or leave it blank for A.');
+      return;
+    }
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     if (this.fiscalStartMonthTouched && fiscalStartMonth !== '' && !MONTH.test(fiscalStartMonth)) {
       this.settingsError.set('Enter a fiscal year start month from 1 to 12, or leave it blank for 1.');
@@ -963,6 +982,7 @@ export class Access {
     if (this.escalateAfterTouched) body.escalateAfter = escalateAfter;
     if (this.reviewSlaTouched) body.reviewSla = reviewSla;
     if (this.proofKindsTouched) body.proofKinds = proofKinds;
+    if (this.defaultGradeTouched) body.defaultGrade = defaultGrade;
     if (this.parentTouched) body.parent = this.parentInput().trim();
     if (this.fiscalStartMonthTouched) body.fiscalStartMonth = fiscalStartMonth === '' ? '' : String(Number(fiscalStartMonth));
     if (this.capTouched) body.cap = cap;
@@ -1057,6 +1077,9 @@ export class Access {
     this.proofKinds.set(settings.proofKinds);
     this.proofKindsInput.set(settings.proofKinds ?? '');
     this.proofKindsTouched = false;
+    this.defaultGrade.set(settings.defaultGrade);
+    this.defaultGradeInput.set(settings.defaultGrade ?? '');
+    this.defaultGradeTouched = false;
     this.parent.set(settings.parent);
     this.parentInput.set(settings.parent ?? '');
     this.parentTouched = false;

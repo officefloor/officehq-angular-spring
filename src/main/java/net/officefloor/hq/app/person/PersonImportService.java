@@ -8,13 +8,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Import people: lines of {@code name,grade,terms,contact} (terms and contact may be left out or blank). A line
+ * Import people: lines of {@code name,grade,terms,contact} (terms and contact may be left out or blank; a blank
+ * grade is the sheet's default grade, A when none is set). A line
  * whose name is the name or an alias of a person on the sheet (compared as names are) updates that person as
  * the person form edits them: their grade is recorded from the sheet's today, and their terms and contact are
  * set when the line gives them. Any other line adds a person as the person form adds them. Every line is first
@@ -44,11 +46,14 @@ public class PersonImportService {
     private final PersonService service;
     private final PersonRepository people;
     private final SheetRepository sheetRows;
+    private final SheetService sheets;
 
-    public PersonImportService(PersonService service, PersonRepository people, SheetRepository sheetRows) {
+    public PersonImportService(PersonService service, PersonRepository people, SheetRepository sheetRows,
+            SheetService sheets) {
         this.service = service;
         this.people = people;
         this.sheetRows = sheetRows;
+        this.sheets = sheets;
     }
 
     /** Update or add a person per line, in order; returns how many were added and updated. */
@@ -59,9 +64,10 @@ public class PersonImportService {
         Set<String> names = new HashSet<>();
         Set<Long> updated = new HashSet<>();
         Set<String> contacts = new HashSet<>();
+        String defaultGrade = sheets.settings(sheetId).defaultGrade();
         for (String raw : text.split("\\R")) {
             if (raw.isBlank()) continue;
-            Line line = parse(raw);
+            Line line = parse(raw, defaultGrade);
             Optional<Person> match = service.findByNameOrAlias(sheetId, line.name());
             if (match.isEmpty() && service.inUse(sheetId, line.name(), null)) {
                 throw refused(raw, "the name \"" + line.name() + "\" is already in use");
@@ -102,13 +108,13 @@ public class PersonImportService {
         return new Result(added, planned.size() - added);
     }
 
-    private static Line parse(String raw) {
+    private static Line parse(String raw, String defaultGrade) {
         String[] f = raw.split(",", -1);
         if (f.length < 2 || f.length > 4) throw refused(raw, "give a name, a grade, and optionally terms and a contact");
         String name = f[0].trim();
         if (name.isEmpty()) throw refused(raw, "give a name");
         if (name.length() > NAME_MAX) throw refused(raw, "the name is too long");
-        String grade = f[1].trim();
+        String grade = f[1].isBlank() ? defaultGrade : f[1].trim();
         if (!GRADE.matcher(grade).matches()) throw refused(raw, "the grade must be A, B or C");
         Integer terms = null;
         if (f.length > 2 && !f[2].isBlank()) {
