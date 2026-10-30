@@ -17,6 +17,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -57,12 +58,22 @@ public class RateController {
     public record PreviewView(int count, String diff) {
     }
 
+    /** Pasted lines of {@code grade,rate,from,to}. */
+    public record ImportForm(@NotNull @Size(max = 100_000) String text) {
+    }
+
+    /** How many rates an import set. */
+    public record ImportView(int set) {
+    }
+
     private final RateService service;
     private final RatePreviewService previews;
+    private final RateImportService imports;
 
-    public RateController(RateService service, RatePreviewService previews) {
+    public RateController(RateService service, RatePreviewService previews, RateImportService imports) {
         this.service = service;
         this.previews = previews;
+        this.imports = imports;
     }
 
     /** What the candidate percent would do to the dues of the grade's OPEN and PENDING claims; nothing is saved. */
@@ -93,6 +104,13 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody RateForm form) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, form.from(), form.to(), new BigDecimal(form.pct())));
+    }
+
+    /** Set a rate per pasted line, in order, as the rate form sets it; one refused line sets none. */
+    @PostMapping("/import")
+    public ImportView importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody ImportForm form) {
+        return new ImportView(imports.importRates(sheetId.trim(), user.trim(), form.text()));
     }
 
     /** Another user set the same grade's rate for the same from-date at the same moment: this one is refused. */

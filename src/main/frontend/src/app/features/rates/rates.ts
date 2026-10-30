@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -115,6 +115,23 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
         }
       </form>
+      <form (submit)="importRates($event)" aria-label="Import rates">
+        <label for="import-rates">Import rates, a line each: grade,rate,from,to (from and to may be left out or blank)</label>
+        <textarea
+          id="import-rates"
+          data-testid="import-rates"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set('')"
+        ></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (importSet() !== null) {
+          <span>Set <strong data-testid="import-rates-set">{{ importSet() }}</strong></span>
+        }
+        @if (importError()) {
+          <p role="alert" data-testid="import-rates-error">{{ importError() }}</p>
+        }
+      </form>
       <form (submit)="preview($event)" aria-label="Preview rate">
         <label for="rate-preview-grade">Grade</label>
         <select
@@ -182,8 +199,14 @@ export class Rates {
   protected readonly previewPct = signal('');
   protected readonly previewed = signal<Preview | null>(null);
   protected readonly previewError = signal('');
+  protected readonly importText = signal('');
+  /** How many rates the last import set; null while it runs. */
+  protected readonly importSet = signal<number | null>(null);
+  protected readonly importError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
+  /** An import still waiting for its answer: another press meanwhile is ignored. */
+  private importing = false;
 
   constructor() {
     effect(() => {
@@ -200,6 +223,9 @@ export class Rates {
       this.previewPct.set('');
       this.previewed.set(null);
       this.previewError.set('');
+      this.importText.set('');
+      this.importSet.set(null);
+      this.importError.set('');
       if (sheet) void this.reload(sheet);
     });
   }
@@ -257,6 +283,40 @@ export class Rates {
       this.error.set('Could not set the rate.');
     } finally {
       this.busy = false;
+    }
+  }
+
+  /** Set a rate per pasted line, in order, each as the rate form would; one refused line sets none. */
+  protected async importRates(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.importing) return;
+    this.importSet.set(null);
+    this.importError.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.importing = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ set: number }>(`/api/sheets/${encodeURIComponent(sheet)}/rates/import`, { text }, { headers }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.rates.set(await firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`)));
+      if (this.session.sheet() !== sheet) return;
+      this.importText.set('');
+      this.importSet.set(result.set);
+      this.changed.emit();
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal = err instanceof HttpErrorResponse && err.status === 409 ? err.error?.message : undefined;
+      this.importError.set(refusal ?? 'Could not import the rates.');
+    } finally {
+      this.importing = false;
     }
   }
 
