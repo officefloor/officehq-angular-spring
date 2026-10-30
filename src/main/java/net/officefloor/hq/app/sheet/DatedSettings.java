@@ -54,6 +54,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** A person whose score is at or above it is in the HIGH band (while the mid threshold is set too); not dated. */
     public static final String SCORE_HIGH = "score-high";
 
+    /** While on, changing the sheet's today writes everyone's score on the day being left; on or blank (off); not dated. */
+    public static final String SCORE_LOG = "score-log";
+
     /** The sheet's proof kinds, comma separated (receipt, photo): each a claim above its proof threshold needs a proof of; not dated. */
     public static final String PROOF_KINDS = "proof-kinds";
 
@@ -240,6 +243,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's mid score threshold, a whole number (not dated); null when it is blank. */
     public Integer scoreMid() {
         return on(SCORE_MID, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+    }
+
+    /** Whether the sheet's score log is on (not dated). */
+    public boolean scoreLog() {
+        return on(SCORE_LOG, LocalDate.MAX).map("on"::equals).orElse(false);
     }
 
     /** The sheet's high score threshold, a whole number (not dated); null when it is blank. */

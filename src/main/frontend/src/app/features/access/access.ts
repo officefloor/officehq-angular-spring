@@ -41,6 +41,8 @@ interface Settings {
   /** While both are set, a person whose score is at or above the high one is HIGH, at or above the mid one MID, else LOW; null when blank. Whole numbers, not dated. */
   scoreMid: string | null;
   scoreHigh: string | null;
+  /** While on, changing the sheet's today writes everyone's score on the day being left; null when off. Not dated. */
+  scoreLog: string | null;
   /** The kinds of proof (receipt, photo), comma separated, a claim above the proof threshold needs one of each of; null when none. Not dated. */
   proofKinds: string | null;
   /** The grade quick-add and an import line with a blank grade give a new person; null when blank (A). Not dated. */
@@ -257,6 +259,7 @@ const ROUNDING = /^(half-up|half-even)$/;
       <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
       <p>Score mid threshold <strong data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</strong></p>
       <p>Score high threshold <strong data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</strong></p>
+      <p>Score log <strong data-testid="setting-score-log-current">{{ scoreLog() ?? '' }}</strong></p>
       <p>Proof kinds <strong data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</strong></p>
       <p>Default grade <strong data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</strong></p>
       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
@@ -503,6 +506,14 @@ const ROUNDING = /^(half-up|half-even)$/;
           (input)="scoreHighInput.set(value($event)); scoreHighTouched = true; settingsError.set('')"
           (keydown)="scoreHighTouched = scoreHighTouched || clears($event)"
         />
+        <label for="setting-score-log">Score log: while on, changing today writes everyone's score on the day being left (on, or blank: off)</label>
+        <input
+          id="setting-score-log"
+          data-testid="setting-score-log"
+          [value]="scoreLogInput()"
+          (input)="scoreLogInput.set(value($event)); scoreLogTouched = true; settingsError.set('')"
+          (keydown)="scoreLogTouched = scoreLogTouched || clears($event)"
+        />
         <label for="setting-proof-kinds">Proof kinds: a claim above the proof threshold needs a proof of each (comma separated, receipt or photo; blank: none)</label>
         <input
           id="setting-proof-kinds"
@@ -694,6 +705,8 @@ export class Access {
   protected readonly scoreMidInput = signal('');
   protected readonly scoreHigh = signal<string | null>(null);
   protected readonly scoreHighInput = signal('');
+  protected readonly scoreLog = signal<string | null>(null);
+  protected readonly scoreLogInput = signal('');
   protected readonly proofKinds = signal<string | null>(null);
   protected readonly proofKindsInput = signal('');
   protected readonly defaultGrade = signal<string | null>(null);
@@ -741,6 +754,7 @@ export class Access {
   protected reviewSlaTouched = false;
   protected scoreMidTouched = false;
   protected scoreHighTouched = false;
+  protected scoreLogTouched = false;
   protected proofKindsTouched = false;
   protected defaultGradeTouched = false;
   protected parentTouched = false;
@@ -767,7 +781,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -985,6 +999,11 @@ export class Access {
       this.settingsError.set('Enter a score high threshold as a whole number, or leave it blank for no bands.');
       return;
     }
+    const scoreLog = this.scoreLogInput().trim();
+    if (this.scoreLogTouched && scoreLog !== '' && scoreLog !== 'on') {
+      this.settingsError.set('Enter on for the score log, or leave it blank for off.');
+      return;
+    }
     const proofKinds = this.proofKindsInput().trim();
     if (this.proofKindsTouched && proofKinds !== '' && !PROOF_KINDS.test(proofKinds)) {
       this.settingsError.set('Enter the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
@@ -1069,6 +1088,7 @@ export class Access {
     if (this.reviewSlaTouched) body.reviewSla = reviewSla;
     if (this.scoreMidTouched) body.scoreMid = scoreMid;
     if (this.scoreHighTouched) body.scoreHigh = scoreHigh;
+    if (this.scoreLogTouched) body.scoreLog = scoreLog;
     if (this.proofKindsTouched) body.proofKinds = proofKinds;
     if (this.defaultGradeTouched) body.defaultGrade = defaultGrade;
     if (this.parentTouched) body.parent = this.parentInput().trim();
@@ -1171,6 +1191,9 @@ export class Access {
     this.scoreHigh.set(settings.scoreHigh);
     this.scoreHighInput.set(settings.scoreHigh ?? '');
     this.scoreHighTouched = false;
+    this.scoreLog.set(settings.scoreLog);
+    this.scoreLogInput.set(settings.scoreLog ?? '');
+    this.scoreLogTouched = false;
     this.proofKinds.set(settings.proofKinds);
     this.proofKindsInput.set(settings.proofKinds ?? '');
     this.proofKindsTouched = false;

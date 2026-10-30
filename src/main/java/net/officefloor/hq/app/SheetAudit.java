@@ -55,6 +55,7 @@ import net.officefloor.hq.app.pool.PoolMemberAdded;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
+import net.officefloor.hq.app.sheet.DayScores;
 import net.officefloor.hq.app.sheet.DaySnapshot;
 import net.officefloor.hq.app.sheet.SheetArchived;
 import net.officefloor.hq.app.sheet.SheetCloned;
@@ -450,6 +451,16 @@ public class SheetAudit {
     public void on(Delegated e) {
         change(e.sheetId(), e.user(), "DELEGATED sheet=" + e.sheetId() + " by=" + e.user() + " user=" + e.name()
                 + " from=" + e.from() + " to=" + e.to());
+    }
+
+    @TransactionalEventListener
+    public void on(DayScores e) {
+        // the day being left decides whether the user acted in a delegated role, not the today it moves to
+        String delegator = access.delegator(e.sheetId(), e.user(), e.day());
+        for (Rollup.PersonScore p : e.people()) {
+            String line = "SCORE sheet=" + e.sheetId() + " by=" + e.user() + " name=" + p.name() + " score=" + p.score();
+            audit.record(delegator == null ? line : line + " for=" + delegator);
+        }
     }
 
     @TransactionalEventListener

@@ -45,6 +45,10 @@ public class Rollup {
         }
     }
 
+    /** A person's score as shown (see {@link Dues#score}), a whole number. */
+    public record PersonScore(String name, String score) {
+    }
+
     /** The sheet's claimed-total, due-total and overdue-total as shown. */
     public record Totals(String claimed, String dueTotal, String overdueTotal) {
     }
@@ -72,13 +76,32 @@ public class Rollup {
         this.events = events;
     }
 
-    /** The sheet's figures now. */
-    public Figures figures(String sheetId) {
+    /** Everyone's score now, in list order. */
+    public List<PersonScore> scores(String sheetId) {
+        RateTable table = table(sheetId);
+        Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .collect(Collectors.groupingBy(Claim::getPersonId));
+        List<PersonScore> scores = new ArrayList<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
+            scores.add(new PersonScore(person.getName(),
+                    Dues.score(person::gradeOn, theirs, table, person.leaves()).toPlainString()));
+        }
+        return scores;
+    }
+
+    private RateTable table(String sheetId) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? LocalDate.now() : sheet.getToday();
-        RateTable table = new RateTable(rates.findBySheetId(sheetId), today,
+        return new RateTable(rates.findBySheetId(sheetId), today,
                 new DatedSettings(settings.findBySheetId(sheetId)), sheet == null ? null : sheet.getPolicyDate(),
                 parents.of(sheetId));
+    }
+
+    /** The sheet's figures now. */
+    public Figures figures(String sheetId) {
+        RateTable table = table(sheetId);
+        LocalDate today = table.today();
         Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, PersonFigures> figures = new LinkedHashMap<>();

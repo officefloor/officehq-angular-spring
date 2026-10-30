@@ -184,7 +184,8 @@ public class SheetService {
      * line of its own, only what follows from it ({@link TodayChanged}: the periods past their grace
      * days are closed) and then the figures it moves. The sheet as it stands is first written down as at
      * the end of the today it leaves (see {@link DayEnds} and {@link SheetPasts}; the sheet as of that day
-     * holds no snapshot line for it), and everyone's due-total on it is announced first ({@link DaySnapshot}).
+     * holds no snapshot line for it), and everyone's due-total on it is announced first ({@link DaySnapshot}), preceded
+     * by everyone's score on it while the score log is on ({@link DayScores}).
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
@@ -192,6 +193,9 @@ public class SheetService {
         Rollup.Figures before = rollup.figures(id);
         if (!today.equals(sheet.getToday())) {
             pasts.record(id, sheet.getToday());
+            if (new DatedSettings(settings.findBySheetId(id)).scoreLog()) {
+                events.publishEvent(new DayScores(id, user, sheet.getToday(), rollup.scores(id)));
+            }
             events.publishEvent(new DaySnapshot(id, user, sheet.getToday(), new LinkedHashMap<>(before.people())));
             dayEnds.record(id, sheet.getToday());
         }

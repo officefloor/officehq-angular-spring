@@ -95,6 +95,7 @@ public class AccessService {
     public static final String REVIEW_SLA = DatedSettings.REVIEW_SLA;
     public static final String SCORE_MID = DatedSettings.SCORE_MID;
     public static final String SCORE_HIGH = DatedSettings.SCORE_HIGH;
+    public static final String SCORE_LOG = DatedSettings.SCORE_LOG;
 
     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
 
@@ -276,7 +277,11 @@ public class AccessService {
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
             String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
-            String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh) {
+            String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh,
+            String scoreLog) {
+        if (scoreLog != null && !scoreLog.isEmpty() && !scoreLog.equals("on")) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The score log is on or blank");
+        }
         if (defaultGrade != null && !defaultGrade.isEmpty() && !defaultGrade.matches("[ABC]")) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The default grade is A, B or C");
         }
@@ -366,6 +371,9 @@ public class AccessService {
         }
         if (proofKinds != null) {
             setProofKinds(sheetId, user, proofKinds);
+        }
+        if (scoreLog != null) {
+            setUndated(sheetId, user, SCORE_LOG, scoreLog.isEmpty() ? null : scoreLog);
         }
         if (scoreMid != null) {
             setUndated(sheetId, user, SCORE_MID, whole(scoreMid));

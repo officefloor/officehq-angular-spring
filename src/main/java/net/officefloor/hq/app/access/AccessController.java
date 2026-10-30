@@ -61,6 +61,7 @@ public class AccessController {
      * The proof kinds are a comma separated list of kinds (receipt, photo), null for none; they are not dated.
      * The default grade is A, B or C, null for none (grade A); it is not dated.
      * The score thresholds (mid, high) are whole numbers, null when blank; they are not dated.
+     * The score log is on, null when off; it is not dated.
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
@@ -69,7 +70,7 @@ public class AccessController {
             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
             String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
             String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC, String scoreMid,
-            String scoreHigh) {
+            String scoreHigh, String scoreLog) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
                 Integer graceDays, LocalDate entryDate) {
@@ -92,7 +93,7 @@ public class AccessController {
                     text(dated.escalateAfter()), text(dated.reviewSla()), dated.proofKindsText(),
                     dated.defaultGradeText(), text(dated.gradeClerkLimit("A", today)),
                     text(dated.gradeClerkLimit("B", today)), text(dated.gradeClerkLimit("C", today)),
-                    text(dated.scoreMid()), text(dated.scoreHigh()));
+                    text(dated.scoreMid()), text(dated.scoreHigh()), dated.scoreLog() ? "on" : null);
         }
 
         /** The grade's grace days in force on the date as written; null when it has none then. */
@@ -215,7 +216,8 @@ public class AccessController {
             @Pattern(regexp = DATE) String clerkLimitBFrom,
             @Pattern(regexp = DATE) String clerkLimitCFrom,
             @Pattern(regexp = "(-?\\d{1,6})?") String scoreMid,
-            @Pattern(regexp = "(-?\\d{1,6})?") String scoreHigh) {
+            @Pattern(regexp = "(-?\\d{1,6})?") String scoreHigh,
+            @Pattern(regexp = "\\s*(on)?\\s*") String scoreLog) {
     }
 
     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
@@ -304,7 +306,8 @@ public class AccessController {
                 form.alertThreshold(), dated(form.rounding(), form.roundingFrom()),
                 dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter(),
                 form.reviewSla(), form.proofKinds(), form.defaultGrade(), gradeClerkLimit,
-                form.scoreMid() == null ? null : form.scoreMid().trim(), form.scoreHigh() == null ? null : form.scoreHigh().trim());
+                form.scoreMid() == null ? null : form.scoreMid().trim(), form.scoreHigh() == null ? null : form.scoreHigh().trim(),
+                form.scoreLog() == null ? null : form.scoreLog().trim());
         return settings(sheet);
     }
 
