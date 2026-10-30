@@ -92,7 +92,7 @@ export class People {
   protected readonly claimedTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
   );
-  /** Everyone's due-total added up; a person whose grade has no rate is skipped. */
+  /** Everyone's due-total added up; a person showing n/a is skipped. */
   protected readonly dueTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0) / 100).toFixed(2),
   );

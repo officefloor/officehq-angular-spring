@@ -10,6 +10,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
@@ -45,27 +46,40 @@ public class PersonController {
 
         static ClaimView of(Claim claim, String grade, RateTable rates) {
             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
-                    money(claim.getSettledDue() != null ? claim.getSettledDue()
-                            : RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()))), claim.getStatus(),
-                    claim.getNumber());
+                    money(figure(claim, grade, rates)), claim.getStatus(), claim.getNumber());
         }
+    }
+
+    /**
+     * A claim's due figure: once settled, the due fixed then; otherwise the amount at the rate for its person's
+     * grade in force on its date. Null when there is none.
+     */
+    private static BigDecimal figure(Claim claim, String grade, RateTable rates) {
+        return claim.getSettledDue() != null ? claim.getSettledDue()
+                : RateService.due(claim.getAmount(), rates.on(grade, claim.getDate()));
     }
 
     /**
      * A person with their claims, newest first, claimed: the sum of the amounts of the claims that
      * count (OPEN and SETTLED), and
-     * dueTotal: claimed at the rate for their grade in force on the sheet's today (null when none is).
+     * dueTotal: the sum of the due figures of the claims that count (0.00 with none). It is null (n/a) when their
+     * grade has no rate on the sheet's today, unless a settled claim that counts keeps a figure: then it is the sum
+     * of the figures there are.
      */
     public record PersonView(long id, String name, String grade, List<ClaimView> claims, String claimed,
             String dueTotal) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates) {
-            BigDecimal pct = rates.current(person.getGrade());
-            BigDecimal claimed = claims.stream().filter(c -> c.getStatus().counts()).map(Claim::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-            return new PersonView(person.getId(), person.getName(), person.getGrade(),
-                    claims.stream().map(c -> ClaimView.of(c, person.getGrade(), rates)).toList(), money(claimed),
-                    money(RateService.due(claimed, pct)));
+            String grade = person.getGrade();
+            List<Claim> counting = claims.stream().filter(c -> c.getStatus().counts()).toList();
+            BigDecimal claimed = counting.stream().map(Claim::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            boolean shown = rates.current(grade) != null || counting.stream().anyMatch(c -> c.getSettledDue() != null);
+            BigDecimal dueTotal = shown ? counting.stream().map(c -> figure(c, grade, rates))
+                    .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add) : null;
+            return new PersonView(person.getId(), person.getName(), grade,
+                    claims.stream().map(c -> ClaimView.of(c, grade, rates)).toList(), money(claimed),
+                    money(dueTotal));
         }
     }
 

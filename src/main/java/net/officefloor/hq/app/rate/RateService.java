@@ -57,8 +57,8 @@ public class RateService {
         return rate;
     }
 
-    /** An amount times a percent, divided by 100, rounded half up to two decimals; null with no rate. */
+    /** An amount times a percent, divided by 100, rounded half to even to two decimals; null with no rate. */
     public static BigDecimal due(BigDecimal amount, BigDecimal pct) {
-        return pct == null ? null : amount.multiply(pct).divide(HUNDRED).setScale(2, RoundingMode.HALF_UP);
+        return pct == null ? null : amount.multiply(pct).divide(HUNDRED).setScale(2, RoundingMode.HALF_EVEN);
     }
 }
