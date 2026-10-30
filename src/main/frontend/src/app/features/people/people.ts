@@ -208,6 +208,7 @@ function csvField(value: string): string {
             <th scope="col">Statements</th><th scope="col">Last stated total</th><th scope="col">Last statement</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+            <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
             <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Active</th>
             @for (pd of periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
@@ -241,6 +242,9 @@ function csvField(value: string): string {
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
               <td data-testid="person-overdue-total">{{ p.overdueTotal }}</td>
+              <td data-testid="person-aged-0-30">{{ p.aged0to30 }}</td>
+              <td data-testid="person-aged-31-60">{{ p.aged31to60 }}</td>
+              <td data-testid="person-aged-61">{{ p.aged61 }}</td>
               <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
               <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>

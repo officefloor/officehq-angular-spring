@@ -116,6 +116,10 @@ export interface PersonWithClaims {
   active: boolean;
   /** The settled figures of their SETTLED claims dated within the 90 days up to and including the sheet's today, added up. */
   recentSettled: string;
+  /** The due figures of their OPEN and PENDING claims that count, by the claim's age on the sheet's today (days from its date; one dated after it is aged 0): 0 to 30 days, 31 to 60, 61 or more. */
+  aged0to30: string;
+  aged31to60: string;
+  aged61: string;
   /** Whether the sheet's today has reached their retirement date: their OPEN and PENDING claims, unless bound by a
    * statement, then count in no live total. */
   retiredNow: boolean;

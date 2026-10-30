@@ -2,6 +2,7 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.rate.Grades;
@@ -136,6 +137,21 @@ public final class Dues {
         LocalDate from = today.minusDays(29);
         return claims.stream().anyMatch(c -> (c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
                 && counts(c, holds, today) && !c.getDate().isBefore(from) && !c.getDate().isAfter(today));
+    }
+
+    /**
+     * The sum of the due figures of the OPEN and PENDING claims that count (see {@link #counts}) whose age on
+     * the sheet's today (the days from the claim's date; a claim dated after that today is aged 0) is from
+     * {@code fromDays} to {@code toDays} inclusive (0.00 with none); a claim with no figure is skipped.
+     */
+    public static BigDecimal aged(Grades grades, List<Claim> claims, RateTable rates, Holds holds, long fromDays,
+            long toDays) {
+        LocalDate today = rates.today();
+        return sum(grades, claims.stream().filter(c -> c.getStatus().unpaid() && counts(c, holds, today))
+                .filter(c -> {
+                    long age = Math.max(0, ChronoUnit.DAYS.between(c.getDate(), today));
+                    return age >= fromDays && age <= toDays;
+                }).toList(), rates);
     }
 
     /**

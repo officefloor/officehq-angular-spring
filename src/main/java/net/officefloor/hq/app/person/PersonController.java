@@ -88,12 +88,15 @@ public class PersonController {
      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
      * that count are overdue and the sum of their due figures, the ids of their patrons, and whether they are
      * active (see {@link Dues#active}), and recentSettled: their recent settled figures (see {@link Dues#recentSettled}), and retiredNow: whether
-     * the sheet's today has reached their retirement date (their unbound OPEN and PENDING claims then count in no live total).
+     * the sheet's today has reached their retirement date (their unbound OPEN and PENDING claims then count in no live total),
+     * and aged0to30, aged31to60 and aged61: the due of their OPEN and PENDING claims that count by the claim's age on the
+     * sheet's today (see {@link Dues#aged}).
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, List<ClaimView> claims,
             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
-            String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow) {
+            String overdueTotal, List<Long> patrons, boolean active, String recentSettled, boolean retiredNow,
+            String aged0to30, String aged31to60, String aged61) {
 
         /** The person as shown, given the sheet's rates. */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -112,7 +115,10 @@ public class PersonController {
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     overdue.size(), money(Dues.sum(grade, overdue, rates)),
                     patrons, Dues.active(claims, held, rates.today()),
-                    money(Dues.recentSettled(claims, rates.today())), person.retiredOn(rates.today()));
+                    money(Dues.recentSettled(claims, rates.today())), person.retiredOn(rates.today()),
+                    money(Dues.aged(grade, claims, rates, held, 0, 30)),
+                    money(Dues.aged(grade, claims, rates, held, 31, 60)),
+                    money(Dues.aged(grade, claims, rates, held, 61, Long.MAX_VALUE)));
         }
     }
 
