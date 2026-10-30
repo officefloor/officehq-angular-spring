@@ -249,8 +249,9 @@ export class Pools {
     else this.drafts.update((all) => ({ ...all, [pool]: EMPTY }));
   }
 
-  /** Download every pool's members as the store holds them now, as a CSV file: pools and their members in the order
-   *  they were added, a pool member as pool:<name>, the cut as shown (empty when none). */
+  /** Download every pool's members as the store holds them now (as of the as-of date while one is set), as a CSV
+   *  file: pools and their members in the order they were added, a pool member as pool:<name>,
+   *  the cut as shown (empty when none). */
   protected async exportCsv(): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;

@@ -1850,7 +1850,8 @@ export class People {
     }
   }
 
-  /** Download everyone on the sheet, retired people included, as the store holds them now, as a CSV file. */
+  /** Download everyone on the sheet, retired people included, as the store holds them now (as of the as-of date
+   *  while one is set: the request names it), as a CSV file. */
   protected async exportCsv(): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -1872,7 +1873,8 @@ export class People {
     setTimeout(() => URL.revokeObjectURL(url));
   }
 
-  /** Download every claim on the sheet, retired people's included, as the store holds them now, as a CSV file:
+  /** Download every claim on the sheet, retired people's included, as the store holds them now (as of the as-of
+   *  date while one is set), as a CSV file:
    *  people in list order, each person's claims oldest first, the figures as the screen shows them. */
   protected async exportClaims(): Promise<void> {
     const sheet = this.session.sheet();
