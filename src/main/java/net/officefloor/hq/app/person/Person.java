@@ -63,6 +63,9 @@ public class Person {
     @Column(name = "origin")
     private String origin;
 
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
@@ -126,6 +129,7 @@ public class Person {
     public Person cloned(String sheetId) {
         Person copy = arriving(sheetId);
         copy.origin = origin;
+        copy.arrivedOn = arrivedOn;
         copy.position = position;
         copy.retiredFrom = retiredFrom;
         holds.forEach(h -> copy.holds.add(new HoldSpan(h.getFromDate(), h.getToDate())));
@@ -243,6 +247,15 @@ public class Person {
     /** The sheet the person was transferred from; null when they were not transferred here. */
     public String getOrigin() {
         return origin;
+    }
+
+    /** The sheet's today when the person arrived here by transfer; null when they were not transferred here. */
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
+    }
+
+    public void setArrivedOn(LocalDate arrivedOn) {
+        this.arrivedOn = arrivedOn;
     }
 
     public void setContact(String contact) {

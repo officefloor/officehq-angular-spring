@@ -137,6 +137,7 @@ public class PersonTransferService {
         Person arrived;
         if (into == null) {
             Person newcomer = person.arriving(toSheet);
+            newcomer.setArrivedOn(sheets.today(toSheet));
             newcomer.setPosition(people.maxPosition(toSheet) + 1);
             arrived = people.saveAndFlush(newcomer);
             tags.use(toSheet, arrived.getTags());
@@ -205,6 +206,28 @@ public class PersonTransferService {
             events.publishEvent(new PersonMerged(toSheet, user, person.getName(), into.getName()));
         }
         rollup.changed(toSheet, user, beforeThere);
+    }
+
+    /**
+     * Undo the transfer that brought the person to this sheet: only a steward of this sheet may, on the sheet's
+     * today they arrived; the person is then transferred back to the sheet they came from, as a transfer does.
+     */
+    @Transactional
+    public void undo(String sheetId, String user, long personId) {
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can undo a transfer");
+        }
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        String origin = person.getOrigin();
+        if (origin == null || person.getArrivedOn() == null || !person.getArrivedOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a transfer that arrived today can be undone");
+        }
+        String name = person.getName();
+        Rollup.Figures before = rollup.figures(sheetId);
+        transfer(sheetId, user, personId, origin);
+        events.publishEvent(new PersonTransferUndone(sheetId, user, name, origin));
+        rollup.changed(sheetId, user, before);
     }
 
     /** The sheet's today when the claim was opened: its first status after DRAFT; its date when it has no log of it. */

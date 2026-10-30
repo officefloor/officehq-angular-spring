@@ -34,6 +34,7 @@ import net.officefloor.hq.app.person.PersonMerged;
 import net.officefloor.hq.app.person.PersonMoved;
 import net.officefloor.hq.app.person.PersonRetired;
 import net.officefloor.hq.app.person.PersonUnretired;
+import net.officefloor.hq.app.person.PersonTransferUndone;
 import net.officefloor.hq.app.person.PersonTransferred;
 import net.officefloor.hq.app.person.PersonWatched;
 import net.officefloor.hq.app.person.WatcherNotified;
@@ -143,6 +144,12 @@ public class SheetAudit {
         change(e.sheetId(), e.user(), "PERSON_TRANSFERRED sheet=" + e.sheetId() + " by=" + e.user()
                 + " name=" + e.name() + (e.to() == null ? "" : " to=" + e.to())
                 + (e.from() == null ? "" : " from=" + e.from()));
+    }
+
+    @TransactionalEventListener
+    public void on(PersonTransferUndone e) {
+        change(e.sheetId(), e.user(), "PERSON_TRANSFER_UNDONE sheet=" + e.sheetId() + " by=" + e.user()
+                + " name=" + e.name() + " to=" + e.to());
     }
 
     @TransactionalEventListener

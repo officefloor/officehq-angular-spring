@@ -694,6 +694,9 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo)">
                   Transfer<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)">
+                  Undo transfer<span class="visually-hidden"> of {{ p.name }}</span>
+                </button>
                 <app-person-plans [personId]="p.id" [name]="p.name" />
               </td>
               <td><app-claims
@@ -1846,6 +1849,37 @@ export class People {
         id: p.id,
         message:
           'Could not transfer: only a steward can, not a retired person, to another sheet with no one of the same name, alias or contact.',
+      });
+    } finally {
+      this.transferring = false;
+    }
+  }
+
+  /** Undo the transfer that brought the person here today; once done the whole sheet is shown again as the store holds it. */
+  protected async undoTransfer(p: Person): Promise<void> {
+    if (this.transferring) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.transferring = true;
+    try {
+      await firstValueFrom(
+        this.http.post<void>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/transfer-undo`,
+          {},
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      await this.reload(sheet);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message:
+          'Could not undo the transfer: only a steward can, on the day the person arrived here by transfer.',
       });
     } finally {
       this.transferring = false;

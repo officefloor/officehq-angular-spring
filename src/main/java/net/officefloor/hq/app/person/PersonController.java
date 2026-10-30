@@ -434,6 +434,14 @@ public class PersonController {
         transfers.transfer(sheetId.trim(), user.trim(), personId, form.toSheet().trim());
     }
 
+    /** Undo the transfer that brought the person to this sheet today; they go back to the sheet they came from. */
+    @PostMapping("/{personId}/transfer-undo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void undoTransfer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user) {
+        transfers.undo(sheetId.trim(), user.trim(), personId);
+    }
+
     private PersonView view(String sheet, Person person) {
         long personId = person.getId();
         return PersonView.of(person, claims.forPerson(sheet, personId), rates.table(sheet),
