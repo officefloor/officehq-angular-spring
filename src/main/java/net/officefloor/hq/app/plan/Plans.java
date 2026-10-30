@@ -25,7 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
  * none yet, dated that day with an empty note, by every rule of the claim form. A date the form refuses is skipped,
  * writing nothing, and tried again the next time. A plan date within one of the plan's pauses (on or after the day
  * it was paused and before the day it was resumed) is skipped, not postponed: no claim is ever made for it. A viewer's generate makes nothing: every claim it would make is
- * refused.
+ * refused. A plan naming one of the sheet's descendants makes its claims on that sheet instead, for the person there of
+ * the same name as the plan's (none while there is no such person), by that sheet's rules and in that sheet's audit.
  */
 @Service
 public class Plans {
@@ -128,11 +129,12 @@ public class Plans {
 
     /**
      * Add a plan to the person, running every N days or monthly on a day of the month (exactly one given); refused
-     * when its end is before its start, its interval is under one day or its day is not 1 to 31.
+     * when its end is before its start, its interval is under one day, its day is not 1 to 31 or the sheet it names
+     * (blank: none) is not one of the sheet's descendants.
      */
     @Transactional
     public void add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String targetSheet) {
         if ((every == null) == (day == null)) {
             throw new PlanRefused("Enter either every how many days or a day of the month.");
         }
@@ -145,12 +147,16 @@ public class Plans {
         if (end.isBefore(start)) {
             throw new PlanRefused("The end cannot be before the start.");
         }
+        String target = targetSheet == null || targetSheet.isBlank() ? null : targetSheet.trim();
         sheets.load(sheetId, user);
         sheetRows.lockById(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end));
-        events.publishEvent(new PlanAdded(sheetId, user, person.getName(), amount, start, every, day, end));
+        if (target != null && !sheets.descendants(sheetId).contains(target)) {
+            throw new PlanRefused("The sheet " + target + " is not a descendant of this sheet.");
+        }
+        plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end, target));
+        events.publishEvent(new PlanAdded(sheetId, user, person.getName(), amount, start, every, day, end, target));
     }
 
     /** Make the claims the plans are due up to the sheet's today; returns how many were made. */
@@ -164,11 +170,16 @@ public class Plans {
         for (Plan plan : list(sheetId)) {
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
             List<PlanPause> skipped = pauses(plan);
+            String target = plan.getTargetSheetId() == null ? sheetId : plan.getTargetSheetId();
+            Long personId = plan.getTargetSheetId() == null ? plan.getPersonId() : namesake(sheetId, plan, target);
+            if (personId == null) {
+                continue; // no person of the plan's name on the sheet it names: nothing to make
+            }
             for (LocalDate on : plan.datesUpTo(last)) {
                 if (skipped.stream().anyMatch(p -> p.skips(on))) {
                     continue;
                 }
-                if (makeClaim(sheetId, user, plan, on)) {
+                if (makeClaim(target, user, plan, personId, on)) {
                     count++;
                 }
             }
@@ -176,15 +187,28 @@ public class Plans {
         return count;
     }
 
-    /** Make the plan's claim on the date, each in its own change: false when it has one or the form refuses it. */
-    private boolean makeClaim(String sheetId, String user, Plan plan, LocalDate on) {
+    /** The id of the person on the target sheet of the same name as the plan's person, or null when there is none. */
+    private Long namesake(String sheetId, Plan plan, String target) {
+        return people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .flatMap(p -> people.findBySheetIdOrderByPositionAscIdAsc(target).stream()
+                        .filter(t -> t.getName().trim().equalsIgnoreCase(p.getName().trim()))
+                        .map(Person::getId)
+                        .findFirst())
+                .orElse(null);
+    }
+
+    /**
+     * Make the plan's claim on the date for the person on the sheet, each in its own change: false when it has one or
+     * the form refuses it.
+     */
+    private boolean makeClaim(String sheetId, String user, Plan plan, long personId, LocalDate on) {
         try {
             return Boolean.TRUE.equals(transaction.execute(status -> {
                 sheetRows.lockById(sheetId);
                 if (made.existsByPlanIdAndOn(plan.getId(), on)) {
                     return false;
                 }
-                claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), on, "");
+                claims.add(sheetId, user, personId, plan.getAmount(), on, "");
                 made.saveAndFlush(new PlanClaim(plan.getId(), on));
                 return true;
             }));

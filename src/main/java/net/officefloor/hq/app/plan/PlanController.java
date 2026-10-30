@@ -29,11 +29,12 @@ public class PlanController {
 
     /**
      * A plan to add: an amount with up to two decimals, a start, either every N days (at least 1) or a day of the
-     * month (1 to 31), and an end.
+     * month (1 to 31), an end, and optionally a descendant sheet's id to make its claims on (blank: none).
      */
     public record PlanForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
             @NotNull LocalDate start, @Pattern(regexp = "\\d{1,6}") String every,
-            @Pattern(regexp = "\\d{1,2}") String day, @NotNull LocalDate end) {
+            @Pattern(regexp = "\\d{1,2}") String day, @NotNull LocalDate end,
+            @Size(max = 100) String sheet) {
     }
 
     /** A plan's new amount: up to two decimals. */
@@ -53,7 +54,7 @@ public class PlanController {
      * its pauses, and its amount changes oldest first.
      */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated, boolean paused, List<PauseView> pauses, List<ChangeView> changes) {
+            LocalDate end, String sheet, long generated, boolean paused, List<PauseView> pauses, List<ChangeView> changes) {
     }
 
     /** How many claims a generate made. */
@@ -81,7 +82,7 @@ public class PlanController {
                 .map(x -> new PauseView(x.getPausedOn(), x.getResumedOn()))
                 .toList();
         return new PlanView(p.getId(), p.getPersonId(), p.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString(),
-                p.getStart(), p.getEvery(), p.getDay(), p.getEnd(), plans.generated(p),
+                p.getStart(), p.getEvery(), p.getDay(), p.getEnd(), p.getTargetSheetId(), plans.generated(p),
                 pauses.stream().anyMatch(x -> x.to() == null), pauses,
                 plans.changes(p).stream()
                         .map(x -> new ChangeView(x.getChangedOn(),
@@ -123,7 +124,7 @@ public class PlanController {
         String sheet = sheetId.trim();
         plans.add(sheet, user.trim(), personId, new BigDecimal(form.amount()), form.start(),
                 form.every() == null ? null : Integer.valueOf(form.every()),
-                form.day() == null ? null : Integer.valueOf(form.day()), form.end());
+                form.day() == null ? null : Integer.valueOf(form.day()), form.end(), form.sheet());
         return list(sheet);
     }
 

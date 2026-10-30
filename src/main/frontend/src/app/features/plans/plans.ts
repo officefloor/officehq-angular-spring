@@ -68,6 +68,8 @@ export interface Plan {
   generated: number;
   /** Whether the plan is paused now. */
   paused: boolean;
+  /** The descendant sheet the plan's claims are made on, or null for the plan's own sheet. */
+  sheet: string | null;
   /** The plan's pauses: from the day paused up to the day resumed (null while still paused). */
   pauses: { from: string; to: string | null }[];
   /** The plan's amount changes, oldest first: the day made and the new amount (two decimals). */
@@ -92,7 +94,7 @@ export class PlanList {
   }
 
   /** Add a plan to the person, every N days or on a day of the month: '' once added, else why it was refused. */
-  async add(personId: number, amount: string, start: string, every: string, day: string, end: string): Promise<string> {
+  async add(personId: number, amount: string, start: string, every: string, day: string, end: string, onSheet = ''): Promise<string> {
     const sheet = this.session.sheet();
     if (!sheet) return 'Load a sheet first.';
     if (!AMOUNT.test(amount.trim())) return 'Enter an amount with up to two decimals.';
@@ -115,6 +117,7 @@ export class PlanList {
             every: every.trim() || null,
             day: day.trim() || null,
             end: end.trim(),
+            sheet: onSheet.trim() || null,
           },
           { headers },
         ),
@@ -203,6 +206,9 @@ export class PlanList {
             <span>monthly on day <span data-testid="plan-day">{{ pl.day }}</span></span>
           }
           <span>to <span data-testid="plan-end">{{ pl.end }}</span></span>
+          @if (pl.sheet) {
+            <span>on sheet <span data-testid="plan-sheet">{{ pl.sheet }}</span></span>
+          }
           <span>Made <span data-testid="plan-generated">{{ pl.generated }}</span></span>
           <span>Next <span data-testid="plan-next-dates">{{ nextDates(pl) }}</span></span>
           <span>Paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span></span>
@@ -275,6 +281,13 @@ export class PlanList {
         [value]="end()"
         (input)="end.set(value($event)); error.set('')"
       />
+      <label [for]="'plan-form-sheet-' + personId()">On descendant sheet (optional)</label>
+      <input
+        [id]="'plan-form-sheet-' + personId()"
+        data-testid="plan-form-sheet"
+        [value]="onSheet()"
+        (input)="onSheet.set(value($event)); error.set('')"
+      />
       <button type="submit" data-testid="plan-form-submit">Add plan<span class="visually-hidden"> for {{ name() }}</span></button>
       @if (error()) {
         <p role="alert" data-testid="plan-error">{{ error() }}</p>
@@ -295,6 +308,7 @@ export class PersonPlans {
   protected readonly every = signal('');
   protected readonly day = signal('');
   protected readonly end = signal('');
+  protected readonly onSheet = signal('');
   protected readonly error = signal('');
   /** Why the last action on a plan's row was refused, by plan id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
@@ -339,7 +353,7 @@ export class PersonPlans {
     this.error.set('');
     this.busy = true;
     try {
-      const refusal = await this.list.add(this.personId(), this.amount(), this.start(), this.every(), this.day(), this.end());
+      const refusal = await this.list.add(this.personId(), this.amount(), this.start(), this.every(), this.day(), this.end(), this.onSheet());
       if (refusal) {
         this.error.set(refusal);
       } else {
@@ -348,6 +362,7 @@ export class PersonPlans {
         this.every.set('');
         this.day.set('');
         this.end.set('');
+        this.onSheet.set('');
       }
     } finally {
       this.busy = false;

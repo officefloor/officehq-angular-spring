@@ -348,7 +348,8 @@ public class SheetAudit {
     public void on(PlanAdded e) {
         change(e.sheetId(), e.user(), "PLAN_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " name=" + e.name()
                 + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString() + " start=" + e.start()
-                + (e.day() == null ? " every=" + e.every() : " day=" + e.day()) + " end=" + e.end());
+                + (e.day() == null ? " every=" + e.every() : " day=" + e.day()) + " end=" + e.end()
+                + (e.sheet() == null ? "" : " sheet=" + e.sheet()));
     }
 
     @TransactionalEventListener

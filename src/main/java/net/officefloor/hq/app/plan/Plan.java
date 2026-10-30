@@ -15,7 +15,8 @@ import java.util.List;
 /**
  * A person's plan: a claim of the amount on the start date and every N days after it, or monthly on a day of the
  * month from the start's month (a day beyond the month's length on its last day, dates before the start left out), up
- * to the end date. Exactly one of {@code every} and {@code day} is set.
+ * to the end date. Exactly one of {@code every} and {@code day} is set. A plan may name one of its sheet's
+ * descendants, its claims then made for the person of the same name on that sheet.
  */
 @Entity
 @Table(name = "sheet_plan")
@@ -46,11 +47,15 @@ public class Plan {
     @Column(name = "end_date", nullable = false)
     private LocalDate end;
 
+    @Column(name = "target_sheet_id")
+    private String targetSheetId;
+
     protected Plan() {
     }
 
     public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
-            LocalDate end) {
+            LocalDate end, String targetSheetId) {
+        this.targetSheetId = targetSheetId;
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -115,5 +120,10 @@ public class Plan {
 
     public LocalDate getEnd() {
         return end;
+    }
+
+    /** The descendant sheet the plan's claims are made on, or null for the plan's own sheet. */
+    public String getTargetSheetId() {
+        return targetSheetId;
     }
 }
