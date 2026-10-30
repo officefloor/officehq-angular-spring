@@ -57,6 +57,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** While on, changing the sheet's today writes everyone's score on the day being left; on or blank (off); not dated. */
     public static final String SCORE_LOG = "score-log";
 
+    /** A person may have at most this many OPEN or PENDING claims: opening one more is refused; not dated. */
+    public static final String MAX_OPEN = "max-open";
+
     /** The sheet's proof kinds, comma separated (receipt, photo): each a claim above its proof threshold needs a proof of; not dated. */
     public static final String PROOF_KINDS = "proof-kinds";
 
@@ -243,6 +246,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's mid score threshold, a whole number (not dated); null when it is blank. */
     public Integer scoreMid() {
         return on(SCORE_MID, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+    }
+
+    /** The sheet's maximum of open claims per person (not dated); null when there is none. */
+    public Integer maxOpen() {
+        return on(MAX_OPEN, LocalDate.MAX).map(Integer::valueOf).orElse(null);
     }
 
     /** Whether the sheet's score log is on (not dated). */

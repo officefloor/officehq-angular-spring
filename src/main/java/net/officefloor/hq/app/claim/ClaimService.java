@@ -412,6 +412,7 @@ public class ClaimService {
             requireUnflagged(sheetId, user, claim);
             requireNote(sheetId, claim);
             requireUnderCap(sheetId, claim);
+            requireUnderMaxOpen(sheetId, claim);
         }
         Rollup.Figures before = rollup.figures(sheetId);
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
@@ -1175,6 +1176,22 @@ public class ClaimService {
         if (held >= period.getCap()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The person already has " + period.getCap()
                     + " open claims in period " + period.getName());
+        }
+    }
+
+    /** Refuse opening a claim of a person who already has the sheet's maximum of OPEN or PENDING claims. */
+    private void requireUnderMaxOpen(String sheetId, Claim claim) {
+        sheetRows.lockById(sheetId);
+        Integer max = sheets.settings(sheetId).maxOpen();
+        if (max == null) {
+            return;
+        }
+        long open = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()) && c.getStatus().unpaid())
+                .count();
+        if (open >= max) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The person already has " + max + " open claims, the most the sheet allows");
         }
     }
 

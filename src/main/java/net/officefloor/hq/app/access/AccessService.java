@@ -99,6 +99,8 @@ public class AccessService {
 
     public static final String FISCAL_START_MONTH = DatedSettings.FISCAL_START_MONTH;
 
+    public static final String MAX_OPEN = DatedSettings.MAX_OPEN;
+
     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
     public record Dated(String value, LocalDate from) {
     }
@@ -278,7 +280,7 @@ public class AccessService {
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
             String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
             String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh,
-            String scoreLog) {
+            String scoreLog, String maxOpen) {
         if (scoreLog != null && !scoreLog.isEmpty() && !scoreLog.equals("on")) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The score log is on or blank");
         }
@@ -380,6 +382,9 @@ public class AccessService {
         }
         if (scoreHigh != null) {
             setUndated(sheetId, user, SCORE_HIGH, whole(scoreHigh));
+        }
+        if (maxOpen != null) {
+            setUndated(sheetId, user, MAX_OPEN, whole(maxOpen));
         }
         if (defaultGrade != null) {
             setUndated(sheetId, user, DEFAULT_GRADE, defaultGrade.isEmpty() ? null : defaultGrade);
