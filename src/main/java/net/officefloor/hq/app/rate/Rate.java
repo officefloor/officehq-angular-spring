@@ -127,6 +127,14 @@ public class Rate {
         this.afterMark = afterMark;
     }
 
+    /** Replaces this, the newest version, with the older one before it, which the caller then drops. */
+    public void restore(RateVersion older) {
+        this.version = older.getVersion();
+        this.pct = older.getPct();
+        this.to = older.getTo();
+        this.afterMark = older.getAfterMark();
+    }
+
     /**
      * The rates a claim added at the mark sees among one sheet's rate versions, given oldest first: for each grade and
      * from-date, the newest version that applies to it (see {@link #appliesTo}); none for one with no such version.

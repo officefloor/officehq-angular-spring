@@ -300,6 +300,27 @@ export class RateStore {
   }
 
   /**
+   * Withdraw the newest version of the grade's rate for the from-date (null: from the beginning of time): the version
+   * before it applies again, and with none the rate is gone.
+   */
+  async withdraw(sheet: string, grade: string, from: string | null): Promise<void> {
+    const params: Record<string, string> = from === null ? {} : { from };
+    const r = await firstValueFrom(
+      this.http.post<RateView | null>(
+        `/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}/withdraw`,
+        null,
+        { params },
+      ),
+    );
+    if (this.session.sheetId() === sheet) {
+      this.list.update((l) =>
+        [...l.filter((x) => x.grade !== grade || x.from !== from), ...(r ? [r] : [])].sort(byGradeThenFrom),
+      );
+      await this.loadApplying(sheet);
+    }
+  }
+
+  /**
    * Set a rate for each line of grade,rate,from,to, in order, all of them or none; the store checks every line by the
    * rate form's rules first. Resolves to how many were set.
    */
@@ -458,7 +479,7 @@ export class RateStore {
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (r of store.list(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -468,6 +489,16 @@ export class RateStore {
               <td data-testid="rate-to">{{ (r.to ?? '') | fig }}</td>
               <td data-testid="rate-pct">{{ r.pct | fig }}</td>
               <td data-testid="rate-version">{{ r.version | fig }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="rate-withdraw"
+                  [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' from ' + (r.from ?? 'the start')"
+                  (click)="withdraw(r)"
+                >
+                  Withdraw
+                </button>
+              </td>
             </tr>
           }
         </tbody>
@@ -568,6 +599,23 @@ export class Rates {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  /** Withdraws the rate's newest version; only a steward may, anyone else is shown the refusal. */
+  protected async withdraw(r: RateView): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.submitting = true;
+    try {
+      await this.store.withdraw(sheet, r.grade, r.from);
+    } catch (err) {
+      const reason = err instanceof HttpErrorResponse ? (err.error as { message?: string } | null)?.message : null;
+      this.error.set(reason ? reason : 'Could not withdraw that rate.');
+    } finally {
+      this.submitting = false;
+    }
   }
 
   protected async submit(e: Event): Promise<void> {

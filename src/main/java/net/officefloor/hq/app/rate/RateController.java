@@ -15,6 +15,8 @@ import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.settings.ViewerPasses;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.SessionAttribute;
 
@@ -115,6 +118,20 @@ public class RateController {
             @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade, @Valid @RequestBody RateForm form,
             @SessionAttribute(SessionController.USER) String user) {
         return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), form.pct()));
+    }
+
+    /**
+     * Withdraws the newest version of the grade's rate for the from-date (none: from the beginning of time); only a
+     * steward may. Returns the rate as it now is, or nothing when it is gone.
+     */
+    @PostMapping("/{grade}/withdraw")
+    public ResponseEntity<RateView> withdraw(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_.-]+") String sheetId,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @SessionAttribute(SessionController.USER) String user) {
+        Rate left = service.withdraw(user, sheetId, grade, from);
+        return left == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(RateView.of(left));
     }
 
     /** Sets a rate for each line of the import box, in order, all of them or none; the rates set, in line order. */

@@ -43,6 +43,10 @@ public class RateChange {
     @Column(name = "after_mark")
     private Long afterMark;
 
+    /** Whether this change withdrew the newest version set for the grade and from-date, rather than setting one. */
+    @Column(name = "withdrawn", nullable = false)
+    private boolean withdrawn;
+
     protected RateChange() {
     }
 
@@ -54,6 +58,17 @@ public class RateChange {
         this.pct = rate.getPct();
         this.madeOn = madeOn;
         this.afterMark = rate.getAfterMark();
+    }
+
+    /** The withdrawal of the grade's newest version for the from-date, while the sheet's today was the day. */
+    public static RateChange withdrawal(Rate rate, LocalDate madeOn) {
+        RateChange c = new RateChange(rate, madeOn);
+        c.withdrawn = true;
+        return c;
+    }
+
+    public boolean isWithdrawn() {
+        return withdrawn;
     }
 
     public String getGrade() {

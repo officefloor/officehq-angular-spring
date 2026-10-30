@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -23,17 +24,19 @@ public class RateService {
     private final RateChain chain;
     private final SheetService sheets;
     private final RollupService rollup;
+    private final SettingsService settings;
     private final Audit audit;
 
     public RateService(RateRepository rates, RateChangeRepository changes,
             RateVersionRepository versions, RateChain chain, SheetService sheets,
-            RollupService rollup, Audit audit) {
+            RollupService rollup, SettingsService settings, Audit audit) {
         this.rates = rates;
         this.changes = changes;
         this.versions = versions;
         this.chain = chain;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -92,5 +95,38 @@ public class RateService {
                 + (to != null ? " to=" + to : ""));
         rollup.recordChanges(by, sheetId, before);
         return saved;
+    }
+
+    /**
+     * Withdraws the newest version of the grade's rate for the from-date (null: from the beginning of time): the
+     * version before it applies again, and with none the rate is gone. Refused unless the user is a steward, and for a
+     * grade and from-date with no rate. Returns the rate as it now is, or null when it is gone.
+     */
+    @Transactional
+    public Rate withdraw(String by, String sheetId, String grade, LocalDate from) {
+        if (!settings.isSteward(sheetId, by)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can withdraw a rate.");
+        }
+        Rate rate = rates.findExact(sheetId, grade, from).orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "There is no such rate to withdraw."));
+        LocalDate today = sheets.load(sheetId).getToday();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        changes.saveAndFlush(RateChange.withdrawal(rate, today));
+        RateVersion older = versions.findByRateIdAndVersion(rate.getId(), rate.getVersion() - 1).orElse(null);
+        Rate left;
+        if (older == null) {
+            rates.delete(rate);
+            rates.flush();
+            left = null;
+        } else {
+            rate.restore(older);
+            versions.delete(older);
+            versions.flush();
+            left = rates.saveAndFlush(rate);
+        }
+        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + by + " grade=" + grade
+                + (from != null ? " from=" + from : ""));
+        rollup.recordChanges(by, sheetId, before);
+        return left;
     }
 }
