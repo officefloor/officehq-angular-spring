@@ -17,6 +17,12 @@ function cents(amount: string): number {
 }
 
 /** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */
+/** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+function trimmedSum(figures: number[]): number {
+  const sum = figures.reduce((total, f) => total + f, 0);
+  return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+}
+
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
@@ -351,9 +357,9 @@ export class People {
   protected readonly claimedTotal = computed(() =>
     (this.people().reduce((sum, p) => sum + cents(p.claimed), 0) / 100).toFixed(2),
   );
-  /** Everyone's due-total added up; a person showing n/a is skipped. */
+  /** Everyone's due-total added up, trimmed (see {@link trimmedSum}); a person showing n/a is skipped. */
   protected readonly dueTotal = computed(() =>
-    (this.people().reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0) / 100).toFixed(2),
+    (trimmedSum(this.people().flatMap((p) => (p.dueTotal === null ? [] : [cents(p.dueTotal)]))) / 100).toFixed(2),
   );
 
   /** Each person's patrons' names, sorted and comma separated, and their backing: the patrons'
@@ -372,9 +378,9 @@ export class People {
 
   /** Everyone's overdue claims counted up. */
   protected readonly overdueCount = computed(() => this.people().reduce((sum, p) => sum + p.overdueCount, 0));
-  /** Everyone's overdue-total added up. */
+  /** Everyone's overdue-total added up, trimmed (see {@link trimmedSum}). */
   protected readonly overdueTotal = computed(() =>
-    (this.people().reduce((sum, p) => sum + cents(p.overdueTotal), 0) / 100).toFixed(2),
+    (trimmedSum(this.people().map((p) => cents(p.overdueTotal))) / 100).toFixed(2),
   );
 
   constructor() {

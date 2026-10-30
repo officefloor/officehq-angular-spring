@@ -25,7 +25,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * The figures of a sheet: each person's claimed, due-total and overdue-total, and the sheet's
- * claimed-total, due-total (a person showing n/a is skipped) and overdue-total. A change takes the figures before it and, once done,
+ * claimed-total, due-total (a person showing n/a is skipped) and overdue-total, the last two leaving out the
+ * single highest and single lowest person's figure when three or more people have one. A change takes the figures before it and, once done,
  * announces the ones it moved. Reads the store directly, within the change's own transaction.
  */
 @Service
@@ -78,8 +79,8 @@ public class Rollup {
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, PersonFigures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO;
-        BigDecimal dueTotal = BigDecimal.ZERO;
-        BigDecimal overdueTotal = BigDecimal.ZERO;
+        List<BigDecimal> dues = new ArrayList<>();
+        List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
             BigDecimal claimed = theirs.stream().filter(c -> Dues.counts(c, person::heldOn, today)).map(Claim::getAmount)
@@ -87,14 +88,24 @@ public class Rollup {
             BigDecimal due = Dues.total(person::gradeOn, theirs, table, person::heldOn);
             BigDecimal overdue = Dues.sum(person::gradeOn, Dues.overdue(theirs, table, person::heldOn), table);
             claimedTotal = claimedTotal.add(claimed);
-            overdueTotal = overdueTotal.add(overdue.setScale(2, RoundingMode.HALF_UP));
+            overdues.add(overdue.setScale(2, RoundingMode.HALF_UP));
             if (due != null) {
-                dueTotal = dueTotal.add(due);
+                dues.add(due.setScale(2, RoundingMode.HALF_UP));
             }
             figures.put(person.getId(), new PersonFigures(person.getName(), money(claimed),
                     due == null ? "n/a" : money(due), money(overdue)));
         }
-        return new Figures(figures, new Totals(money(claimedTotal), money(dueTotal), money(overdueTotal)));
+        return new Figures(figures, new Totals(money(claimedTotal), money(trimmedSum(dues)), money(trimmedSum(overdues))));
+    }
+
+    /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+    private static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (figures.size() < 3) {
+            return sum;
+        }
+        return sum.subtract(figures.stream().max(BigDecimal::compareTo).orElseThrow())
+                .subtract(figures.stream().min(BigDecimal::compareTo).orElseThrow());
     }
 
     /**
