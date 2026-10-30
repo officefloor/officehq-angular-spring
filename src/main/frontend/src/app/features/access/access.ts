@@ -31,6 +31,8 @@ interface Settings {
   entryDate: string | null;
   /** The sheet's pot, shared out over each balanced pool, with two decimals; null when there is none. Not dated. */
   pot: string | null;
+  /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; null when none. Not dated. */
+  parent: string | null;
   /** The most a person's due-total comes to, with two decimals; null when there is no cap. */
   cap: string | null;
   /** The most due a claim may have to be settled or approved with no proof, with two decimals; null when there is none. */
@@ -214,6 +216,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       }
       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
       <p>Pot <strong data-testid="setting-pot-current">{{ pot() ?? '' }}</strong></p>
+      <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
       <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
       <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
       @for (g of grades; track g) {
@@ -375,6 +378,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (input)="potInput.set(value($event)); potTouched = true; settingsError.set('')"
           (keydown)="potTouched = potTouched || clears($event)"
         />
+        <label for="setting-parent">Parent sheet id: its rates are used for a grade with none in force (blank: none)</label>
+        <input
+          id="setting-parent"
+          data-testid="setting-parent"
+          [value]="parentInput()"
+          (input)="parentInput.set(value($event)); parentTouched = true; settingsError.set('')"
+          (keydown)="parentTouched = parentTouched || clears($event)"
+        />
         <label for="setting-cap">Cap on a person's due-total (blank: no cap)</label>
         <input
           id="setting-cap"
@@ -500,6 +511,8 @@ export class Access {
   protected readonly entryDateInput = signal('');
   protected readonly pot = signal<string | null>(null);
   protected readonly potInput = signal('');
+  protected readonly parent = signal<string | null>(null);
+  protected readonly parentInput = signal('');
   protected readonly cap = signal<string | null>(null);
   protected readonly capInput = signal('');
   protected readonly proofThreshold = signal<string | null>(null);
@@ -529,6 +542,7 @@ export class Access {
   protected graceDaysTouched = false;
   protected entryDateTouched = false;
   protected potTouched = false;
+  protected parentTouched = false;
   protected capTouched = false;
   protected proofThresholdTouched = false;
   protected gradeProofTouched: Record<Grade, boolean> = { A: false, B: false, C: false };
@@ -550,7 +564,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, parent: null, cap: null, proofThreshold: null, noteThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -781,6 +795,7 @@ export class Access {
     }
     if (this.entryDateTouched) body.entryDate = entryDate;
     if (this.potTouched) body.pot = pot;
+    if (this.parentTouched) body.parent = this.parentInput().trim();
     if (this.capTouched) body.cap = cap;
     if (this.proofThresholdTouched) body.proofThreshold = proofThreshold;
     for (const g of GRADES) {
@@ -801,6 +816,7 @@ export class Access {
       );
       if (this.session.sheet() !== sheet) return;
       this.showSettings(saved);
+      if (this.session.asOf() === null) this.session.parent.set(saved.parent);
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.settingsError.set('Could not save the settings.');
@@ -854,6 +870,9 @@ export class Access {
     this.pot.set(settings.pot);
     this.potInput.set(settings.pot ?? '');
     this.potTouched = false;
+    this.parent.set(settings.parent);
+    this.parentInput.set(settings.parent ?? '');
+    this.parentTouched = false;
     this.cap.set(settings.cap);
     this.capInput.set(settings.cap ?? '');
     this.capTouched = false;

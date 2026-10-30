@@ -32,6 +32,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's pot, shared out over each balanced pool; not dated. */
     public static final String POT = "pot";
 
+    /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
+    public static final String PARENT = "parent";
+
     /** A sheet with no value saved: every setting has its starting value on every date. */
     public static final DatedSettings NONE = new DatedSettings(List.of());
 
@@ -137,5 +140,10 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's pot (not dated: it holds on every date); null when there is none. */
     public BigDecimal pot() {
         return on(POT, LocalDate.MAX).map(BigDecimal::new).orElse(null);
+    }
+
+    /** The id of the sheet's parent sheet (not dated); null when it has none. */
+    public String parent() {
+        return on(PARENT, LocalDate.MAX).orElse(null);
     }
 }

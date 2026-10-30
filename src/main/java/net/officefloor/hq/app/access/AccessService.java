@@ -3,8 +3,10 @@ package net.officefloor.hq.app.access;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.DatedSettings;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -73,6 +75,8 @@ public class AccessService {
     public static final String NOTE_THRESHOLD = DatedSettings.NOTE_THRESHOLD;
 
     public static final String POT = DatedSettings.POT;
+
+    public static final String PARENT = DatedSettings.PARENT;
 
     /** A dated setting to save: its value as written (blank: none, or the starting value) and its from-date (null: the sheet's today). */
     public record Dated(String value, LocalDate from) {
@@ -250,7 +254,7 @@ public class AccessService {
     public void setSettings(String sheetId, String user, Dated clerkLimit, Dated floor, Dated terms,
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
-            Map<String, Dated> gradeProofThreshold, String pot) {
+            Map<String, Dated> gradeProofThreshold, String pot, String parent) {
         if (clerkLimit != null) {
             setDated(sheetId, user, CLERK_LIMIT, money(clerkLimit.value(), null), clerkLimit.from(), false);
         }
@@ -308,6 +312,9 @@ public class AccessService {
         if (pot != null) {
             setPot(sheetId, user, money(pot, null));
         }
+        if (parent != null) {
+            setParent(sheetId, user, parent.isEmpty() ? null : parent);
+        }
     }
 
     /** The roles that may take the action as set (comma separated); null when blank (the standing rule). */
@@ -355,6 +362,40 @@ public class AccessService {
             settingRows.flush();
         }
         events.publishEvent(new SettingChanged(sheetId, user, POT, pot == null ? "" : pot, null));
+    }
+
+    /**
+     * Name the sheet's parent sheet (null: none), whose rates a grade with none in force on this sheet takes.
+     * Not dated: the value holds from the beginning of time, replacing the one it had. Refused (409, changing
+     * nothing) when it is this sheet, a sheet never loaded, or a sheet that has this sheet as an ancestor.
+     */
+    @Transactional
+    public void setParent(String sheetId, String user, String parent) {
+        sheets.load(sheetId, user);
+        if (parent != null) {
+            if (parent.equals(sheetId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "A sheet cannot be its own parent");
+            }
+            if (sheetRows.findById(parent).isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "No such sheet " + parent);
+            }
+            Set<String> seen = new HashSet<>();
+            for (String up = parent; up != null && seen.add(up); up = sheets.settings(up).parent()) {
+                if (up.equals(sheetId)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is an ancestor of " + parent);
+                }
+            }
+        }
+        Rollup.Figures before = rollup.figures(sheetId);
+        SheetSetting row = settingRows.findBySheetIdAndKeyAndFromDate(sheetId, PARENT, null).orElse(null);
+        if (row == null) {
+            settingRows.saveAndFlush(new SheetSetting(sheetId, PARENT, null, parent));
+        } else {
+            row.setValue(parent);
+            settingRows.flush();
+        }
+        events.publishEvent(new SettingChanged(sheetId, user, PARENT, parent == null ? "" : parent, null));
+        rollup.changed(sheetId, user, before);
     }
 
     /** A figure as kept: two decimals; blank is the starting value given (null: none). */

@@ -50,6 +50,7 @@ import { People } from '../people/people';
             <button type="submit" data-testid="asof-set">Set as of</button>
             <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
           </form>
+          <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
           <p>
             Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
             <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>

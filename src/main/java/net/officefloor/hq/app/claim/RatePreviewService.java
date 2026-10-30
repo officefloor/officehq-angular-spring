@@ -42,7 +42,8 @@ public class RatePreviewService {
         RateTable table = rates.table(sheetId);
         List<Rate> candidate = new ArrayList<>(table.rates().stream().filter(r -> !r.getGrade().equals(grade)).toList());
         candidate.add(new Rate(sheetId, grade, null, null, pct.setScale(2, RoundingMode.HALF_UP)));
-        RateTable then = new RateTable(candidate, table.today(), table.settings(), table.policyDate());
+        RateTable then = new RateTable(candidate, table.today(), table.settings(), table.policyDate(),
+                table.ancestors());
         Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         int count = 0;

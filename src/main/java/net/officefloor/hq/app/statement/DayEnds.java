@@ -12,6 +12,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.ParentRates;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.sheet.DatedSettings;
@@ -74,10 +75,13 @@ public class DayEnds {
     private final PersonRepository people;
     private final RateRepository rates;
     private final SheetSettingRepository settings;
+    private final ParentRates parents;
     private final JsonMapper json;
 
     public DayEnds(DayEndRepository dayEnds, SheetRepository sheets, ClaimRepository claims,
-            PersonRepository people, RateRepository rates, SheetSettingRepository settings, JsonMapper json) {
+            PersonRepository people, RateRepository rates, SheetSettingRepository settings, ParentRates parents,
+            JsonMapper json) {
+        this.parents = parents;
         this.dayEnds = dayEnds;
         this.sheets = sheets;
         this.claims = claims;
@@ -117,13 +121,13 @@ public class DayEnds {
                 .map(d -> then(sheetId, date, json.readValue(d.getState(), State.class)));
     }
 
-    private static SheetThen then(String sheetId, LocalDate date, State state) {
+    /** The sheet then; a grade with no rate in force then takes its parent sheets' rates as they are now. */
+    private SheetThen then(String sheetId, LocalDate date, State state) {
+        DatedSettings settingsThen = new DatedSettings(state.settings().stream()
+                .map(s -> new SheetSetting(sheetId, s.key(), s.from(), s.value())).toList());
         RateTable table = new RateTable(
                 state.rates().stream().map(r -> new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct())).toList(),
-                date,
-                new DatedSettings(state.settings().stream()
-                        .map(s -> new SheetSetting(sheetId, s.key(), s.from(), s.value())).toList()),
-                state.policyDate());
+                date, settingsThen, state.policyDate(), parents.from(sheetId, settingsThen.parent()));
         Map<Long, Person> byId = new LinkedHashMap<>();
         for (PersonRow row : state.people()) {
             byId.put(row.id(), person(sheetId, row));

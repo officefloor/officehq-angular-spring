@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.ParentRates;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -57,10 +58,12 @@ public class Rollup {
     private final RateRepository rates;
     private final SheetRepository sheets;
     private final SheetSettingRepository settings;
+    private final ParentRates parents;
     private final ApplicationEventPublisher events;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            SheetSettingRepository settings, ApplicationEventPublisher events) {
+            SheetSettingRepository settings, ParentRates parents, ApplicationEventPublisher events) {
+        this.parents = parents;
         this.settings = settings;
         this.people = people;
         this.claims = claims;
@@ -74,7 +77,8 @@ public class Rollup {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? LocalDate.now() : sheet.getToday();
         RateTable table = new RateTable(rates.findBySheetId(sheetId), today,
-                new DatedSettings(settings.findBySheetId(sheetId)), sheet == null ? null : sheet.getPolicyDate());
+                new DatedSettings(settings.findBySheetId(sheetId)), sheet == null ? null : sheet.getPolicyDate(),
+                parents.of(sheetId));
         Map<Long, List<Claim>> bySheet = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, PersonFigures> figures = new LinkedHashMap<>();

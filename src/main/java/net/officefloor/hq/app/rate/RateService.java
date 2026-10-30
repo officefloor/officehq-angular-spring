@@ -20,9 +20,12 @@ public class RateService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final Rollup rollup;
+    private final ParentRates parents;
     private final ApplicationEventPublisher events;
 
-    public RateService(RateRepository rates, SheetService sheets, Rollup rollup, ApplicationEventPublisher events) {
+    public RateService(RateRepository rates, SheetService sheets, Rollup rollup, ParentRates parents,
+            ApplicationEventPublisher events) {
+        this.parents = parents;
         this.rollup = rollup;
         this.rates = rates;
         this.sheets = sheets;
@@ -38,11 +41,17 @@ public class RateService {
                 .toList();
     }
 
-    /** The sheet's rates with its today, dated settings and policy date, to find the rate in force and the live due on any date. */
+    /** The rates of the sheet's parent sheets, nearest first, up to three levels up. */
+    @Transactional(readOnly = true)
+    public List<List<Rate>> inherited(String sheetId) {
+        return parents.of(sheetId);
+    }
+
+    /** The sheet's rates with its today, dated settings, policy date and its parent sheets' rates, to find the rate in force and the live due on any date. */
     @Transactional(readOnly = true)
     public RateTable table(String sheetId) {
         return new RateTable(list(sheetId), sheets.today(sheetId), sheets.settings(sheetId),
-                sheets.policyDate(sheetId));
+                sheets.policyDate(sheetId), parents.of(sheetId));
     }
 
     /**

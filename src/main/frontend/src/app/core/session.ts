@@ -6,6 +6,8 @@ interface SheetView {
   id: string;
   today: string;
   archived: boolean;
+  /** The id of the sheet's parent sheet; null when it has none. */
+  parent: string | null;
 }
 
 // The signed-in user and the active sheet. Every request after sign-in names the user in X-User.
@@ -26,6 +28,8 @@ export class Session {
   readonly today = computed(() => this.asOf() ?? this.sheetToday());
   /** Whether the active sheet is archived: it stays visible and every change to it is refused. */
   readonly archived = signal(false);
+  /** The id of the active sheet's parent sheet, as it stands; null when it has none. */
+  readonly parent = signal<string | null>(null);
   /** Bumped on every sheet load, so what is shown for the sheet is re-read even for the same id. */
   readonly loads = signal(0);
 
@@ -35,6 +39,7 @@ export class Session {
     this.sheetToday.set(null);
     this.asOf.set(null);
     this.archived.set(false);
+    this.parent.set(null);
     this.loads.update((n) => n + 1);
     this.user.set(res.name);
   }
@@ -48,6 +53,7 @@ export class Session {
     this.sheet.set(res.id);
     this.sheetToday.set(res.today);
     this.archived.set(res.archived);
+    this.parent.set(res.parent);
     if (this.asOf() !== null) await this.readShown(res.id);
     this.loads.update((n) => n + 1);
   }

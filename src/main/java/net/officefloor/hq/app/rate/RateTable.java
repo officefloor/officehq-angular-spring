@@ -13,9 +13,19 @@ import net.officefloor.hq.app.sheet.DatedSettings;
  * Every rate on a sheet, the sheet's today, its dated settings (the floor in force on a claim's date, the late
  * percent in force on each 30-day boundary past its due-by, the cap in force on the sheet's today) and its policy date (null: the sheet's today): which rate is in force for a grade on a date, the live due it
  * makes of an amount, the late charge an overdue figure gains, how a claim's figures round, and the most a
- * person's due-total comes to.
+ * person's due-total comes to. A grade with no rate in force on a date takes the rate of the parent sheet's
+ * rates on that date, then the parent's parent, up to three levels up ({@code ancestors}, nearest first).
  */
-public record RateTable(List<Rate> rates, LocalDate today, DatedSettings settings, LocalDate policyDate) {
+public record RateTable(List<Rate> rates, LocalDate today, DatedSettings settings, LocalDate policyDate,
+        List<List<Rate>> ancestors) {
+
+    /** How many levels of parent sheets a grade's rate is looked for in. */
+    public static final int ANCESTOR_LEVELS = 3;
+
+    /** A sheet's rates with no parent sheet to fall back on. */
+    public RateTable(List<Rate> rates, LocalDate today, DatedSettings settings, LocalDate policyDate) {
+        this(rates, today, settings, policyDate, List.of());
+    }
 
     /** The days in each period overdue that adds the late percent once more. */
     private static final int LATE_PERIOD_DAYS = 30;
@@ -23,19 +33,38 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
     /**
      * The percent in force for the grade on the date: the rate whose from-date is the latest one on
      * or before it, a rate with no from-date applying from the beginning of time; null when none does,
-     * or when that rate's to-date is before the date (it has ended, and no later rate is in force).
+     * or when that rate's to-date is before the date (it has ended, and no later rate is in force). When
+     * this sheet has none in force, the parent sheet's, then its parent's, up to three levels up.
      */
     public BigDecimal on(String grade, LocalDate date) {
-        return latest(grade, date).filter(r -> !ended(r, date)).map(Rate::getPct).orElse(null);
+        BigDecimal pct = on(rates, grade, date);
+        for (int i = 0; pct == null && i < ancestors.size() && i < ANCESTOR_LEVELS; i++) {
+            pct = on(ancestors.get(i), grade, date);
+        }
+        return pct;
     }
 
-    /** Whether the grade has no rate on the date only because the rate that would apply has ended by then. */
+    private static BigDecimal on(List<Rate> rates, String grade, LocalDate date) {
+        return latest(rates, grade, date).filter(r -> !ended(r, date)).map(Rate::getPct).orElse(null);
+    }
+
+    /**
+     * Whether the grade has no rate on the date (here or on a parent sheet) only because a rate that would
+     * apply has ended by then.
+     */
     public boolean ended(String grade, LocalDate date) {
-        return latest(grade, date).filter(r -> ended(r, date)).isPresent();
+        if (on(grade, date) != null) {
+            return false;
+        }
+        boolean ended = latest(rates, grade, date).isPresent();
+        for (int i = 0; !ended && i < ancestors.size() && i < ANCESTOR_LEVELS; i++) {
+            ended = latest(ancestors.get(i), grade, date).isPresent();
+        }
+        return ended;
     }
 
     /** The grade's rate with the latest from-date on or before the date, ended or not. */
-    private Optional<Rate> latest(String grade, LocalDate date) {
+    private static Optional<Rate> latest(List<Rate> rates, String grade, LocalDate date) {
         return rates.stream()
                 .filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))

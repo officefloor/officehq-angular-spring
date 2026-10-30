@@ -22,6 +22,21 @@ const GRADES = ['A', 'B', 'C'];
 const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Per grade, the rate in force on the date: the one with the latest from-date on or before it, unless its to-date is before it. */
+function inForce(rates: Rate[], date: string): Record<string, string> {
+  const latest: Record<string, Rate> = {};
+  for (const r of rates) {
+    if ((r.from === null || r.from <= date) && (latest[r.grade] === undefined || (latest[r.grade].from ?? '') <= (r.from ?? ''))) {
+      latest[r.grade] = r;
+    }
+  }
+  const found: Record<string, string> = {};
+  for (const [g, r] of Object.entries(latest)) {
+    if (r.to === null || r.to >= date) found[g] = r.pct;
+  }
+  return found;
+}
+
 /** Each grade's rates, earliest first, one with no from-date before all. */
 function byGradeAndFrom(a: Rate, b: Rate): number {
   return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
@@ -142,21 +157,21 @@ export class Rates {
 
   protected readonly grades = GRADES;
   protected readonly rates = signal<Rate[]>([]);
+  /** The rates of the sheet's parent sheets, nearest first, up to three levels up. */
+  private readonly inherited = signal<Rate[][]>([]);
   /**
    * Per grade, the rate in force on the sheet's today: the one with the latest from-date on or before it,
-   * unless its to-date is before today (it has ended).
+   * unless its to-date is before today (it has ended); with none, the parent sheet's, then its parent's.
    */
   protected readonly current = computed<Record<string, string>>(() => {
     const today = this.session.today() ?? '';
-    const latest: Record<string, Rate> = {};
-    for (const r of this.rates()) {
-      if (r.from === null || r.from <= today) latest[r.grade] = r;
+    const found: Record<string, string> = {};
+    for (const level of [this.rates(), ...this.inherited()]) {
+      for (const [g, pct] of Object.entries(inForce(level, today))) {
+        if (found[g] === undefined) found[g] = pct;
+      }
     }
-    const inForce: Record<string, string> = {};
-    for (const [g, r] of Object.entries(latest)) {
-      if (r.to === null || r.to >= today) inForce[g] = r.pct;
-    }
-    return inForce;
+    return found;
   });
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
@@ -175,6 +190,7 @@ export class Rates {
       const sheet = this.session.sheet();
       this.session.loads();
       this.rates.set([]);
+      this.inherited.set([]);
       this.grade.set('A');
       this.pct.set('');
       this.from.set('');
@@ -273,7 +289,13 @@ export class Rates {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const rates = await firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`));
-    if (this.session.sheet() === sheet && this.session.loads() === loads) this.rates.set(rates);
+    const [rates, inherited] = await Promise.all([
+      firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`)),
+      firstValueFrom(this.http.get<Rate[][]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/inherited`)),
+    ]);
+    if (this.session.sheet() === sheet && this.session.loads() === loads) {
+      this.rates.set(rates);
+      this.inherited.set(inherited);
+    }
   }
 }

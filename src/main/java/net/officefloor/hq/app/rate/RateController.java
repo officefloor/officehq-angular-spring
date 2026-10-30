@@ -79,6 +79,15 @@ public class RateController {
         return service.list(sheetId.trim()).stream().map(RateView::of).toList();
     }
 
+    /**
+     * The rates of the sheet's parent sheets, nearest first, up to three levels up: a grade with no rate in
+     * force on the sheet takes the first of them that has one.
+     */
+    @GetMapping("/inherited")
+    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return service.inherited(sheetId.trim()).stream().map(rs -> rs.stream().map(RateView::of).toList()).toList();
+    }
+
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade, @RequestHeader("X-User") @NotBlank String user,
