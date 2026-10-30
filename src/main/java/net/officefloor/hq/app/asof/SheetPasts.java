@@ -41,6 +41,7 @@ public class SheetPasts {
             new Scope("PERSON", "sheet_id = ?"),
             new Scope("PERSON_GRADE", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
             new Scope("PERSON_HOLD", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
+            new Scope("PERSON_ALIAS", "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"),
             new Scope("PERSON_PATRON", "sheet_id = ?"),
             new Scope("PERSON_WATCH", "sheet_id = ?"),
             new Scope("CLAIM", "sheet_id = ?"),
