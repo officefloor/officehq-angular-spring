@@ -22,23 +22,27 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /**
- * The figures of a sheet: each person's claimed and due-total, and the sheet's claimed-total and
- * due-total (a person showing n/a is skipped). A change takes the figures before it and, once done,
+ * The figures of a sheet: each person's claimed, due-total and overdue-total, and the sheet's
+ * claimed-total, due-total (a person showing n/a is skipped) and overdue-total. A change takes the figures before it and, once done,
  * announces the ones it moved. Reads the store directly, within the change's own transaction.
  */
 @Service
 public class Rollup {
 
-    /** A person's figures as shown: claimed, and due-total ({@code n/a} when there is none). */
-    public record PersonFigures(String name, String claimed, String dueTotal) {
+    /**
+     * A person's figures as shown: claimed, due-total ({@code n/a} when there is none), and overdue-total
+     * (the sum of the due figures of their overdue claims that count).
+     */
+    public record PersonFigures(String name, String claimed, String dueTotal, String overdueTotal) {
 
         boolean sameFigures(PersonFigures other) {
-            return other != null && claimed.equals(other.claimed) && dueTotal.equals(other.dueTotal);
+            return other != null && claimed.equals(other.claimed) && dueTotal.equals(other.dueTotal)
+                    && overdueTotal.equals(other.overdueTotal);
         }
     }
 
-    /** The sheet's claimed-total and due-total as shown. */
-    public record Totals(String claimed, String dueTotal) {
+    /** The sheet's claimed-total, due-total and overdue-total as shown. */
+    public record Totals(String claimed, String dueTotal, String overdueTotal) {
     }
 
     /** Everyone's figures by person id, in the order they were added, and the sheet's totals. */
@@ -73,19 +77,22 @@ public class Rollup {
         Map<Long, PersonFigures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO;
         BigDecimal dueTotal = BigDecimal.ZERO;
+        BigDecimal overdueTotal = BigDecimal.ZERO;
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
             BigDecimal claimed = theirs.stream().filter(c -> Dues.counts(c, person::heldOn)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal due = Dues.total(person::gradeOn, theirs, table, person::heldOn);
+            BigDecimal overdue = Dues.sum(person::gradeOn, Dues.overdue(theirs, table, person::heldOn), table);
             claimedTotal = claimedTotal.add(claimed);
+            overdueTotal = overdueTotal.add(overdue.setScale(2, RoundingMode.HALF_UP));
             if (due != null) {
                 dueTotal = dueTotal.add(due);
             }
             figures.put(person.getId(), new PersonFigures(person.getName(), money(claimed),
-                    due == null ? "n/a" : money(due)));
+                    due == null ? "n/a" : money(due), money(overdue)));
         }
-        return new Figures(figures, new Totals(money(claimedTotal), money(dueTotal)));
+        return new Figures(figures, new Totals(money(claimedTotal), money(dueTotal), money(overdueTotal)));
     }
 
     /**

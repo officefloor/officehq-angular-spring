@@ -121,11 +121,12 @@ public class SheetAudit {
     public void on(RollupChanged e) {
         for (Rollup.PersonFigures p : e.people()) {
             audit.record("ROLLUP sheet=" + e.sheetId() + " by=" + e.user() + " person=" + p.name()
-                    + " claimed=" + p.claimed() + " due-total=" + p.dueTotal());
+                    + " claimed=" + p.claimed() + " due-total=" + p.dueTotal() + " overdue-total=" + p.overdueTotal());
         }
         if (e.totals() != null) {
             audit.record("TOTALS sheet=" + e.sheetId() + " by=" + e.user()
-                    + " claimed-total=" + e.totals().claimed() + " due-total=" + e.totals().dueTotal());
+                    + " claimed-total=" + e.totals().claimed() + " due-total=" + e.totals().dueTotal()
+                    + " overdue-total=" + e.totals().overdueTotal());
         }
     }
 }
