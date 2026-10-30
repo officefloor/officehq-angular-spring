@@ -1,0 +1,76 @@
+{
+  "checkpoint": 164,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp164_correction-limit",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    34,
+    35,
+    51,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+    "cp30_corrections.spec.ts::corrections",
+    "cp34_bulk-open.spec.ts::bulk open scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "request": {
+    "spec": "A correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a66c6db3c3bd244fa11308eff9e85d42f88dff95",
+  "reset_sha": "",
+  "preagent_sha": "1befb8ee990919dc97fa32ae1bb686d30f6fe4dd",
+  "prev_sha": "1befb8ee990919dc97fa32ae1bb686d30f6fe4dd",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.35273319999999997,
+    "input_tokens": 18,
+    "output_tokens": 3186,
+    "cache_read_tokens": 245626,
+    "cache_creation_tokens": 29977,
+    "num_turns": 10,
+    "duration_ms": 267574,
+    "duration_api_ms": 62307,
+    "model": "claude-opus-5-5",
+    "session_id": "d88e1e1e-a99f-4350-aa29-856fe7532209",
+    "stop_reason": "success",
+    "result_text": "A correction can no longer be larger than what's left of the claim it corrects. `bin/e2e` passes all 4 tests in the spec.\n\n**The change** is all server-side, in `ClaimService.requireCorrects` (`src/main/java/net/officefloor/hq/app/claim/ClaimService.java`). That is the check that already confirms a correction names a settled claim of the same person. It now also works out what remains: the target's amount less every correction already made against it, leaving out VOID and DELETED ones. A correction larger than that is refused with a conflict error, which the claim form already displays, so the front end didn't need changing. A refused correction writes nothing to the store and nothing to the audit file.\n\n**Behaviour to know about:**\n- **Draft corrections count.** A correction still in DRAFT uses up the remainder, not just opened or settled ones. The test depends on this: a -0.01 correction is refused while a -20.00 draft is pending, and accepted only after that draft is voided.\n- **Edits are covered.** Editing a draft correction runs the same check (including changing just its amount), and the correction being edited is left out of the total so it isn't counted against itself.\n\n**Not checked:** restoring a voided or deleted correction doesn't go through this check, so a restore could still take a claim past its limit. Say if you want that path guarded too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.35273319999999997,
+        "num_turns": 10,
+        "duration_ms": 267574,
+        "duration_api_ms": 62307,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp164.agent.jsonl",
+  "agent_diff_file": "cp164.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

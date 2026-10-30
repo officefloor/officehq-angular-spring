@@ -1,0 +1,61 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 725471495..d101af166 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -145,7 +145,7 @@ public class ClaimService {
+         LocalDate dueBy = holidays.dueBy(sheetId, on, terms);
+         periods.requireOpen(sheetId, dueBy);
+         requireNotRetired(person, on);
+-        LocalDate correctsDate = requireCorrects(sheetId, personId, amount, corrects);
++        LocalDate correctsDate = requireCorrects(sheetId, personId, amount, corrects, null);
+         Rollup.Figures before = rollup.figures(sheetId);
+         Claim claim = new Claim(sheetId, personId, amount, on, note == null ? "" : note, corrects);
+         claim.setCorrectsDate(correctsDate);
+@@ -195,7 +195,7 @@ public class ClaimService {
+                     "The claim's amount is its lines added up (" + claim.getAmount().toPlainString() + ")");
+         }
+         people.findByIdAndSheetId(claim.getPersonId(), sheetId).ifPresent(p -> requireNotRetired(p, on));
+-        LocalDate correctsDate = requireCorrects(sheetId, claim.getPersonId(), amount, corrects);
++        LocalDate correctsDate = requireCorrects(sheetId, claim.getPersonId(), amount, corrects, claimId);
+         Rollup.Figures before = rollup.figures(sheetId);
+         claim.setAmount(amount);
+         claim.setCorrects(corrects);
+@@ -1017,9 +1017,12 @@ public class ClaimService {
+     /**
+      * Refuse a correction (a negative amount) that does not name the number of a SETTLED claim of the
+      * same person, and a claim that is not a correction but names one. Returns the date of the claim a
+-     * correction corrects (its rounding goes by it); null for any other claim.
++     * correction corrects (its rounding goes by it); null for any other claim. A correction may not exceed
++     * what remains of the claim it corrects: its amount less the corrections already made against it (VOID
++     * and DELETED ones left out, and the claim {@code claimId} being edited, null: none).
+      */
+-    private LocalDate requireCorrects(String sheetId, long personId, BigDecimal amount, String corrects) {
++    private LocalDate requireCorrects(String sheetId, long personId, BigDecimal amount, String corrects,
++            Long claimId) {
+         if (amount.signum() >= 0) {
+             if (corrects != null) {
+                 throw new ResponseStatusException(HttpStatus.CONFLICT,
+@@ -1031,11 +1034,21 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A negative amount is a correction; name the number of the settled claim it corrects");
+         }
+-        return claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
++        List<Claim> own = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
++        Claim target = own.stream()
+                 .filter(c -> corrects.equals(c.getShownNumber()) && c.getStatus() == ClaimStatus.SETTLED)
+-                .map(Claim::getDate).findFirst()
++                .findFirst()
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                         "Claim " + corrects + " is not a settled claim of this person"));
++        BigDecimal remaining = own.stream()
++                .filter(c -> corrects.equals(c.getCorrects()) && !c.getId().equals(claimId)
++                        && c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
++                .map(Claim::getAmount).reduce(target.getAmount(), BigDecimal::add);
++        if (amount.negate().compareTo(remaining) > 0) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A correction of claim " + corrects
++                    + " may not exceed what remains of it (" + remaining.max(BigDecimal.ZERO).toPlainString() + ")");
++        }
++        return target.getDate();
+     }
+ 
+     /** Refuse a claim dated after its person's retirement date, or within one of their past retirements. */
