@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, input, signal } from '@angular/cor
 import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { PersonWithClaims, heldOut, retiredOut } from '../claims/claims';
+import { PersonWithClaims, retiredOut } from '../claims/claims';
 
 /** Cents in an amount shown with two decimals ("12.50" is 1250). */
 function cents(amount: string): number {
@@ -11,7 +11,7 @@ function cents(amount: string): number {
 }
 
 // Every tag ever used on the sheet, sorted, each with its due-total: the dues of the claims that count
-// (OPEN, PENDING and SETTLED, not held, retired-out or deferred) carrying it, or whose person carries it
+// (OPEN, PENDING and SETTLED, held ones included, not retired-out or deferred) carrying it, or whose person carries it
 // (once, when both do); a claim with two tags counts in both.
 @Component({
   selector: 'app-tags',
@@ -52,7 +52,7 @@ export class Tags {
         const tags = new Set([...c.tags, ...(person.tags ?? [])]);
         for (const t of tags) if (!totals.has(t)) totals.set(t, 0);
         const counts = (c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED') && c.due !== null
-          && !c.deferred && !(c.held && !c.stated && c.status !== 'SETTLED') && !heldOut(c, person.holds) && !retiredOut(c, person.retiredNow);
+          && !c.deferred && !retiredOut(c, person.retiredNow);
         if (!counts) continue;
         for (const t of tags) totals.set(t, (totals.get(t) ?? 0) + cents(c.due!));
       }

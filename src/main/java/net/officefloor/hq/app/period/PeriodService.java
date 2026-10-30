@@ -238,7 +238,7 @@ public class PeriodService {
 
     /**
      * Each person's carried figure for the period, for every person on the sheet: the due figures as they stand of
-     * their claims that count on the sheet's today (neither left out by a hold or retirement nor deferred, see
+     * their claims that count on the sheet's today (neither left out by a retirement nor deferred, see
      * {@link Dues#counts}) due by a date inside a period ending before it starts and still OPEN or PENDING at the end
      * of its last day, by the status log, added up per person, with the opening balances pasted for them in it.
      */

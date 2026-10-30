@@ -292,7 +292,7 @@ public class Person {
         return holds.stream().sorted(Comparator.comparing(HoldSpan::getFromDate)).toList();
     }
 
-    /** Whether a hold covers the date: their OPEN claims dated then count in no live total. */
+    /** Whether a hold covers the date: held on the sheet's today, the person gets no cut of a pool. */
     public boolean heldOn(LocalDate date) {
         return holds.stream().anyMatch(h -> h.covers(date));
     }

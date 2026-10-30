@@ -802,8 +802,8 @@ public class ClaimService {
     }
 
     /**
-     * Hold an OPEN or PENDING claim, or release it when it is held: while held its due figures count in the live totals as a
-     * held person's claims do (left out unless a statement binds it), but its amount stays in claimed. A claim in any other status is refused and
+     * Hold an OPEN or PENDING claim, or release it when it is held: a held claim still counts in every
+     * total, as a held person's claims do. A claim in any other status is refused and
      * nothing changes. Returns the person it belongs to.
      */
     @Transactional

@@ -137,8 +137,8 @@ public final class Dues {
 
     /**
      * Whether the claim counts in the live totals on the sheet's today: OPEN, PENDING and SETTLED claims do,
-     * except that an OPEN or PENDING claim dated within one of its person's holds, and an OPEN or PENDING claim of a
-     * person whose retirement date that today has reached, counts in none, unless a statement binds it, and a claim {@link #deferred deferred} on that today counts in none.
+     * held ones included, except that an OPEN or PENDING claim of a person whose retirement date that today has
+     * reached counts in none, unless a statement binds it, and a claim {@link #deferred deferred} on that today counts in none.
      */
     public static boolean counts(Claim claim, Holds holds, LocalDate today) {
         return claim.getStatus().counts() && !deferred(claim, today) && !leftOut(claim, holds, today);
@@ -148,7 +148,7 @@ public final class Dues {
      * A person's claimed: the sum of the amounts of the OPEN, PENDING and SETTLED claims, leaving out the claims
      * that correct another, a claim {@link #deferred deferred} on the sheet's today and an unbound OPEN or PENDING
      * claim once that today has reached the person's retirement date. A hold (the person's or the claim's own)
-     * leaves a claim in claimed; only its due figures leave the totals while held.
+     * leaves a claim in claimed and in every total.
      */
     public static BigDecimal claimed(List<Claim> claims, Holds holds, LocalDate today) {
         return claims.stream().filter(c -> c.getCorrects() == null && c.getStatus().counts() && !deferred(c, today)
@@ -161,13 +161,11 @@ public final class Dues {
     }
 
     /**
-     * Whether the person's holds or retirement, or the claim's own hold, leave the claim out of the live totals:
-     * unless a statement binds it, an OPEN or PENDING claim dated within a hold, an OPEN or PENDING claim once the
-     * sheet's today has reached the person's retirement date, and an OPEN or PENDING claim that is itself held.
+     * Whether the person's retirement leaves the claim out of the live totals (see {@link #retiredOut}). A hold
+     * (the person's or the claim's own) leaves out none: it only takes the person's cut of a pool.
      */
     private static boolean leftOut(Claim claim, Holds holds, LocalDate today) {
-        return retiredOut(claim, holds, today) || (!bound(claim) && claim.getStatus().unpaid()
-                && (holds.on(claim.getDate()) || claim.isHeld()));
+        return retiredOut(claim, holds, today);
     }
 
     /**
@@ -222,7 +220,7 @@ public final class Dues {
 
     /**
      * Whether the claim counts in a period ending on {@code end}: its status at the end of that day (see
-     * {@link #statusAsOf}) is OPEN, PENDING or SETTLED, and it is neither left out by a hold nor deferred on the
+     * {@link #statusAsOf}) is OPEN, PENDING or SETTLED, and it is not deferred on the
      * sheet's today, as in {@link #counts}; so too by a retirement reached on that today.
      */
     public static boolean countsAsOf(Claim claim, Holds holds, LocalDate today, LocalDate end) {
@@ -277,7 +275,7 @@ public final class Dues {
 
     /**
      * The open part of a person's {@link #uncapped} sum: the due figures of their OPEN and PENDING claims that
-     * count (a held, deferred or retired-and-left-out claim does not); a claim with no figure is skipped.
+     * count (a deferred or retired-and-left-out claim does not); a claim with no figure is skipped.
      */
     public static BigDecimal openTotal(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
         return part(grades, claims, rates, holds, false);

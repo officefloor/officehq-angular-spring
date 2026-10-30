@@ -132,8 +132,8 @@ function csvField(value: string): string {
 // The people on the active sheet, in the order they were added, each with their claims, and the
 // one form that adds a person or, once a person's editor is opened, edits them. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
-// can be held from a date to an optional date, as many times as needed; their OPEN claims dated within a hold,
-// unless a statement binds them, count in no total. A person can name
+// can be held from a date to an optional date, as many times as needed; while held they get no cut of a pool,
+// but their claims count in every total. A person can name
 // others on the sheet as their patrons; each patron carries an equal share of 100.00 and their backing is
 // their patrons' recent settled figures, each weighted by its share. Each signed-in
 // user can watch people of their own choosing.

@@ -64,7 +64,7 @@ export interface Claim {
   reviewLate: boolean;
   /** Whether a steward waived the claim's late charge: it then bears none, whatever its overdue state. */
   waived: boolean;
-  /** Whether the claim is held: while OPEN or PENDING and not bound by a statement, its due figures count in no live total (its amount stays in claimed). */
+  /** Whether the claim is held: it still counts in every total; a hold no longer leaves it out. */
   held: boolean;
   /** The last sheet's today a reminder was written for the claim; null when it was never reminded. */
   remindedOn: string | null;
@@ -78,7 +78,7 @@ export interface Claim {
   comments: ClaimComment[];
   /** The claim's lines, in the order they were added; with any, its amount is theirs added up. */
   lines: ClaimLine[];
-  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, and not left out by a hold, a retirement or a deferral. */
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, and not left out by a retirement or a deferral (a hold leaves it counting). */
   counts: boolean;
 }
 
@@ -128,11 +128,6 @@ export interface Hold {
   to: string | null;
 }
 
-/** Whether the claim is OPEN, not bound by a statement, and dated within one of the holds: its due figures then count in no live total (its amount stays in claimed). */
-export function heldOut(c: Claim, holds: Hold[]): boolean {
-  return c.status === 'OPEN' && !c.stated && holds.some((h) => c.date >= h.from && (h.to === null || c.date <= h.to));
-}
-
 /** Whether the claim is OPEN or PENDING, not bound by a statement, and its person's retirement date is reached
  * on the sheet's today: it then counts in no live total. */
 export function retiredOut(c: Claim, retiredNow: boolean): boolean {
@@ -176,8 +171,8 @@ export interface PersonWithClaims {
   statementLines: StatementLine[];
   /** Whether the person has any hold, whatever its dates. */
   held: boolean;
-  /** The person's holds, earliest first: their OPEN claims dated within one, unless bound by a statement,
-   * count in no live total. */
+  /** The person's holds, earliest first: while one covers the sheet's today the person gets no cut of a pool;
+   * their claims count in every total. */
   holds: Hold[];
   /** How many of the claims that count are overdue. */
   overdueCount: number;
