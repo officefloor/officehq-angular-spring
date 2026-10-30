@@ -1,0 +1,93 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4dcf8cad8..ef4f44593 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -17,7 +17,7 @@ import { PersonPlans, PlanList } from '../plans/plans';
+ import { Crew, Crews, crewDueCents } from '../crews/crews';
+ import { Pool, Pools } from '../pools/pools';
+ import { Rates } from '../rates/rates';
+-import { Summary, statusCounts } from '../summary/summary';
++import { Summary, gradeDueCents, statusCounts } from '../summary/summary';
+ import { Tags } from '../tags/tags';
+ import { VoidReasonList, VoidReasons } from '../void-reasons/void-reasons';
+ 
+@@ -119,10 +119,20 @@ interface SheetFigures {
+   due: number;
+   /** In cents. */
+   overdue: number;
++  /** Per grade, in grade order, the due-totals of the people on it (retired people left out) added up, in cents. */
++  grades: { grade: string; due: number }[];
++  /** Per status, in status order, how many claims have it. */
++  statuses: { status: string; count: number }[];
+ }
+ 
+ function figuresOf(people: Person[]): SheetFigures {
+-  return { people: people.length, due: dueTotalOf(people), overdue: overdueTotalOf(people) };
++  return {
++    people: people.length,
++    due: dueTotalOf(people),
++    overdue: overdueTotalOf(people),
++    grades: gradeDueCents(people),
++    statuses: statusCounts(people),
++  };
+ }
+ 
+ function csvField(value: string): string {
+@@ -163,6 +173,12 @@ function csvField(value: string): string {
+       <p>People <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
+       <p>Due total <strong data-testid="consolidated-due-total">{{ consolidated().due | figure }}</strong></p>
+       <p>Overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdue | figure }}</strong></p>
++      @for (g of consolidated().grades; track g.grade) {
++        <p>Grade {{ g.grade }} due total <strong [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.due | figure }}</strong></p>
++      }
++      @for (s of consolidated().statuses; track s.status) {
++        <p>{{ s.status }} claims <strong [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</strong></p>
++      }
+     </section>
+     <app-rates (changed)="reloadSheet()" />
+     <app-access [settingsSaved]="reloadAfterSettings" />
+@@ -1049,7 +1065,7 @@ export class People {
+    */
+   private readonly descendants = signal<SheetFigures[]>([]);
+   /**
+-   * The people counted, and the due- and overdue-totals added up, over the sheet and all its descendants, as
++   * The people counted, the due- and overdue-totals, the due-totals per grade and the claims per status added up, over the sheet and all its descendants, as
+    * they stand live; while the sheet is shown as of a date, each as it stood at the end of that day, that date
+    * as its today.
+    */
+@@ -1059,6 +1075,14 @@ export class People {
+       people: all.reduce((sum, f) => sum + f.people, 0),
+       due: (all.reduce((sum, f) => sum + f.due, 0) / 100).toFixed(2),
+       overdue: (all.reduce((sum, f) => sum + f.overdue, 0) / 100).toFixed(2),
++      grades: all[0].grades.map(({ grade }) => ({
++        grade,
++        due: (all.reduce((sum, f) => sum + (f.grades.find((g) => g.grade === grade)?.due ?? 0), 0) / 100).toFixed(2),
++      })),
++      statuses: all[0].statuses.map(({ status }) => ({
++        status,
++        count: all.reduce((sum, f) => sum + (f.statuses.find((s) => s.status === status)?.count ?? 0), 0),
++      })),
+     };
+   });
+ 
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index e5e386a65..abdb2549f 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -12,6 +12,16 @@ function cents(amount: string): number {
+   return Math.round(Number(amount) * 100);
+ }
+ 
++/** Per grade, in grade order, the due-totals of the people on it today (retired people left out, n/a skipped) added up, in cents. */
++export function gradeDueCents(people: PersonWithClaims[]): { grade: string; due: number }[] {
++  return GRADES.map((grade) => ({
++    grade,
++    due: people
++      .filter((p) => !p.retired && p.grade === grade)
++      .reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0),
++  }));
++}
++
+ /** How many claims the people have in each status, in status order. */
+ export function statusCounts(people: PersonWithClaims[]): { status: string; count: number }[] {
+   const claims = people.flatMap((p) => p.claims);

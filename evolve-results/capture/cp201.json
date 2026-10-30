@@ -1,0 +1,64 @@
+{
+  "checkpoint": 201,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp201_consolidated-grades",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b911a8d2465f756957072a858438106855eea9ef",
+  "reset_sha": "",
+  "preagent_sha": "5eb50db241ee73f31ed910377e752cfa041ebf76",
+  "prev_sha": "5eb50db241ee73f31ed910377e752cfa041ebf76",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4073032000000001,
+    "input_tokens": 24,
+    "output_tokens": 4086,
+    "cache_read_tokens": 351876,
+    "cache_creation_tokens": 31889,
+    "num_turns": 13,
+    "duration_ms": 269317,
+    "duration_api_ms": 40255,
+    "model": "claude-opus-5-5",
+    "session_id": "f9934db4-50b2-4c2b-9938-460322252b76",
+    "stop_reason": "success",
+    "result_text": "The consolidated figures now show a due-total for each grade and a claim count for each status, added up over the sheet and all the sheets under it. `bin/e2e` passes all 4 tests.\n\nThis only needed front-end changes. The server and stored data are unchanged, because the screen already loads the people and claims of every sheet in the tree.\n\n- **`summary/summary.ts`**: a new `gradeDueCents` adds up, for each of grades A, B and C, the due-totals of the people on that grade. It leaves out retired people and skips anyone whose due-total is n/a, the same way the sheet's own by-grade summary does.\n- **`people/people.ts`**: each sheet's consolidated figures now also hold its per-grade due-totals and per-status claim counts. These are summed over the tree and shown as `consolidated-grade-<G>-due-total` and `consolidated-status-<STATUS>-count`, beside the existing people, due and overdue figures.\n\nThe per-grade totals are plain sums. The overall consolidated due-total drops each sheet's highest and lowest person once it has three or more people, so on a sheet like that the grade totals won't add up to the overall figure.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4073032000000001,
+        "num_turns": 13,
+        "duration_ms": 269317,
+        "duration_api_ms": 40255,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp201.agent.jsonl",
+  "agent_diff_file": "cp201.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
