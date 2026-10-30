@@ -1,0 +1,120 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index e21dcc97..b0ceb8d8 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { heldOut, type PersonWithClaims } from '../claims/claims';
++import { heldOut, type Claim, type ClaimStatus, type PersonWithClaims } from '../claims/claims';
+ 
+ export interface Period {
+   id: number;
+@@ -29,18 +29,27 @@ function cents(amount: string): number {
+   return Math.round(Number(amount) * 100);
+ }
+ 
+-/** Per period id, the person's due-total for it: the dues of their claims that count whose date falls in it,
+- * added up, or once closed the figure fixed then (0.00 for a person added later); an unbound OPEN claim dated
+- * within a hold of its person counts in none, nor does a deferred claim. */
++/** The status the claim had at the end of the day given, as its status log records it; undefined when it was
++ * added after that day. */
++export function statusAsOf(c: Claim, day: string): ClaimStatus | undefined {
++  let status: ClaimStatus | undefined;
++  for (const l of c.log) if (l.on <= day) status = l.status;
++  return status;
++}
++
++/** Per period id, the person's due-total for it: the dues as shown now of their claims dated in it that counted
++ * (OPEN, PENDING or SETTLED) at the end of its last day, added up, or once closed the figure fixed then (0.00
++ * for a person added later); an unbound OPEN claim dated within a hold of its person counts in none, nor does
++ * a deferred claim. */
+ export function personPeriodTotals(periods: Period[], person: PersonWithClaims): Record<number, string> {
+   const totals: Record<number, number> = {};
+   for (const p of periods) totals[p.id] = 0;
+   for (const c of person.claims) {
+-    const unpaid = c.status === 'OPEN' || c.status === 'PENDING';
+-    if ((!unpaid && c.status !== 'SETTLED') || c.due === null) continue;
+-    if (heldOut(c, person.holds) || c.deferred) continue;
++    if (c.due === null || heldOut(c, person.holds) || c.deferred) continue;
+     const period = periodOf(periods, c.date);
+-    if (period && !period.closed) totals[period.id] += cents(c.due);
++    if (!period || period.closed) continue;
++    const status = statusAsOf(c, period.to);
++    if (status === 'OPEN' || status === 'PENDING' || status === 'SETTLED') totals[period.id] += cents(c.due);
+   }
+   const shown: Record<number, string> = {};
+   for (const p of periods) {
+@@ -63,7 +72,8 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]):
+ }
+ 
+ // The sheet's periods, earliest first, each with its due-total: the people's due-totals for it added up,
+-// each the dues of their claims that count (OPEN, PENDING and SETTLED) whose date falls in it, or once
++// each the dues of their claims whose date falls in it that counted (OPEN, PENDING and SETTLED) at the end
++// of its last day, see personPeriodTotals, or once
+ // closed the figure fixed then; and the form that
+ // adds one. No two periods share a name or a date.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 8cc7c0d2..8169276b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -110,6 +110,31 @@ public final class Dues {
+                 && !bound(claim) && holds.on(claim.getDate()));
+     }
+ 
++    /**
++     * The status the claim had at the end of the given day, as its status log records it (each line on the
++     * sheet's today then); null when it was added after that day.
++     */
++    public static ClaimStatus statusAsOf(Claim claim, LocalDate day) {
++        ClaimStatus status = null;
++        for (ClaimLogLine line : claim.getLog()) {
++            if (!line.getOn().isAfter(day)) {
++                status = line.getStatus();
++            }
++        }
++        return status;
++    }
++
++    /**
++     * Whether the claim counts in a period ending on {@code end}: its status at the end of that day (see
++     * {@link #statusAsOf}) is OPEN, PENDING or SETTLED, and it is neither left out by a hold nor deferred on the
++     * sheet's today, as in {@link #counts}.
++     */
++    public static boolean countsAsOf(Claim claim, Holds holds, LocalDate today, LocalDate end) {
++        ClaimStatus then = statusAsOf(claim, end);
++        return then != null && then.counts() && !deferred(claim, today) && !(claim.getStatus() == ClaimStatus.OPEN
++                && !bound(claim) && holds.on(claim.getDate()));
++    }
++
+     /**
+      * A person's due-total (see {@link #total}); a person not on hold.
+      */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 7f7054b2..5de2b5be 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -83,8 +83,9 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims that count (OPEN, PENDING and SETTLED,
+-     * but not an unbound OPEN claim dated within a hold of its person) dated inside it, added up per person. Refused when it is already closed. Takes turns with claim changes on the
++     * Close a period, fixing each person's due-total for it, for every person on the sheet, and its own, their sum: the due figures of the claims dated inside it that counted (OPEN, PENDING and SETTLED,
++     * but not an unbound OPEN claim dated within a hold of its person, nor a deferred one) at the end of its last day,
++     * see {@link Dues#countsAsOf}, added up per person. Refused when it is already closed. Takes turns with claim changes on the
+      * sheet, so the total fixed is the one the claims had at that moment.
+      */
+     @Transactional
+@@ -101,7 +102,8 @@ public class PeriodService {
+         Map<Long, BigDecimal> totals = new HashMap<>();
+         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
+         claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+-                .filter(c -> Dues.counts(c, byId.get(c.getPersonId())::heldOn, table.today()) && period.contains(c.getDate()))
++                .filter(c -> period.contains(c.getDate())
++                        && Dues.countsAsOf(c, byId.get(c.getPersonId())::heldOn, table.today(), period.getToDate()))
+                 .forEach(c -> {
+                     BigDecimal due = Dues.figure(c, byId.get(c.getPersonId())::gradeOn, table);
+                     if (due != null) {
