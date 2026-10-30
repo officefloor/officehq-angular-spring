@@ -1,0 +1,350 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 75adc7951..2e75cfea5 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -40,6 +40,8 @@ interface Settings {
+   reviewSla: string | null;
+   /** The kinds of proof (receipt, photo), comma separated, a claim above the proof threshold needs one of each of; null when none. Not dated. */
+   proofKinds: string | null;
++  /** The grade quick-add and an import line with a blank grade give a new person; null when blank (A). Not dated. */
++  defaultGrade: string | null;
+   /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; null when none. Not dated. */
+   parent: string | null;
+   /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
+@@ -242,6 +244,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+       <p>Escalate after (days) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
+       <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
+       <p>Proof kinds <strong data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</strong></p>
++      <p>Default grade <strong data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</strong></p>
+       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
+       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
+       <p>Cap <strong data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</strong></p>
+@@ -457,6 +460,14 @@ const ROUNDING = /^(half-up|half-even)$/;
+           (input)="proofKindsInput.set(value($event)); proofKindsTouched = true; settingsError.set('')"
+           (keydown)="proofKindsTouched = proofKindsTouched || clears($event)"
+         />
++        <label for="setting-default-grade">Default grade a quick-added or imported person without one gets: A, B or C (blank: A)</label>
++        <input
++          id="setting-default-grade"
++          data-testid="setting-default-grade"
++          [value]="defaultGradeInput()"
++          (input)="defaultGradeInput.set(value($event)); defaultGradeTouched = true; settingsError.set('')"
++          (keydown)="defaultGradeTouched = defaultGradeTouched || clears($event)"
++        />
+         <label for="setting-parent">Parent sheet id: its rates are used for a grade with none in force (blank: none)</label>
+         <input
+           id="setting-parent"
+@@ -628,6 +639,8 @@ export class Access {
+   protected readonly reviewSlaInput = signal('');
+   protected readonly proofKinds = signal<string | null>(null);
+   protected readonly proofKindsInput = signal('');
++  protected readonly defaultGrade = signal<string | null>(null);
++  protected readonly defaultGradeInput = signal('');
+   protected readonly parent = signal<string | null>(null);
+   protected readonly parentInput = signal('');
+   protected readonly fiscalStartMonth = signal('1');
+@@ -668,6 +681,7 @@ export class Access {
+   protected escalateAfterTouched = false;
+   protected reviewSlaTouched = false;
+   protected proofKindsTouched = false;
++  protected defaultGradeTouched = false;
+   protected parentTouched = false;
+   protected fiscalStartMonthTouched = false;
+   protected capTouched = false;
+@@ -692,7 +706,7 @@ export class Access {
+       this.delegateFrom.set('');
+       this.delegateTo.set('');
+       this.delegateError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -893,6 +907,11 @@ export class Access {
+       this.settingsError.set('Enter the proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
+       return;
+     }
++    const defaultGrade = this.defaultGradeInput().trim();
++    if (this.defaultGradeTouched && defaultGrade !== '' && !/^[ABC]$/.test(defaultGrade)) {
++      this.settingsError.set('Enter a default grade of A, B or C, or leave it blank for A.');
++      return;
++    }
+     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
+     if (this.fiscalStartMonthTouched && fiscalStartMonth !== '' && !MONTH.test(fiscalStartMonth)) {
+       this.settingsError.set('Enter a fiscal year start month from 1 to 12, or leave it blank for 1.');
+@@ -963,6 +982,7 @@ export class Access {
+     if (this.escalateAfterTouched) body.escalateAfter = escalateAfter;
+     if (this.reviewSlaTouched) body.reviewSla = reviewSla;
+     if (this.proofKindsTouched) body.proofKinds = proofKinds;
++    if (this.defaultGradeTouched) body.defaultGrade = defaultGrade;
+     if (this.parentTouched) body.parent = this.parentInput().trim();
+     if (this.fiscalStartMonthTouched) body.fiscalStartMonth = fiscalStartMonth === '' ? '' : String(Number(fiscalStartMonth));
+     if (this.capTouched) body.cap = cap;
+@@ -1057,6 +1077,9 @@ export class Access {
+     this.proofKinds.set(settings.proofKinds);
+     this.proofKindsInput.set(settings.proofKinds ?? '');
+     this.proofKindsTouched = false;
++    this.defaultGrade.set(settings.defaultGrade);
++    this.defaultGradeInput.set(settings.defaultGrade ?? '');
++    this.defaultGradeTouched = false;
+     this.parent.set(settings.parent);
+     this.parentInput.set(settings.parent ?? '');
+     this.parentTouched = false;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ca2a35e0e..f05f5ec31 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -290,7 +290,7 @@ function csvField(value: string): string {
+         }
+       </form>
+       <form (submit)="importPeople($event)" aria-label="Import people">
+-        <label for="import-people">Import people, a line each: name,grade,terms,contact (terms and contact may be left out; a name on the sheet updates that person)</label>
++        <label for="import-people">Import people, a line each: name,grade,terms,contact (terms and contact may be left out; a blank grade is the default grade; a name on the sheet updates that person)</label>
+         <textarea
+           id="import-people"
+           data-testid="import-people"
+@@ -1464,7 +1464,7 @@ export class People {
+     }
+   }
+ 
+-  /** Quick-add a DRAFT claim for the named person, who is added with grade A when not on the sheet. */
++  /** Quick-add a DRAFT claim for the named person, who is added with the default grade when not on the sheet. */
+   protected async quickAdd(e: Event): Promise<void> {
+     e.preventDefault();
+     if (this.quickBusy) return;
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index 0d7821408..baad22e57 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -59,13 +59,15 @@ public class AccessController {
+      * The review SLA is a number of days, null for none; it is not dated.
+      * The rounding mode is half-up or half-even, null for none (the policy date decides); it is dated.
+      * The proof kinds are a comma separated list of kinds (receipt, photo), null for none; they are not dated.
++     * The default grade is A, B or C, null for none (grade A); it is not dated.
+      */
+     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
+             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
+             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
+-            String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String proofKinds) {
++            String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
++            String defaultGrade) {
+ 
+         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
+                 Integer graceDays, LocalDate entryDate) {
+@@ -85,7 +87,8 @@ public class AccessController {
+                     text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent(),
+                     Integer.toString(dated.fiscalStartMonth()), text(dated.alertThreshold()),
+                     dated.on(DatedSettings.ROUNDING, today).orElse(null), text(dated.reviewThreshold(today)),
+-                    text(dated.escalateAfter()), text(dated.reviewSla()), dated.proofKindsText());
++                    text(dated.escalateAfter()), text(dated.reviewSla()), dated.proofKindsText(),
++                    dated.defaultGradeText());
+         }
+ 
+         /** The grade's grace days in force on the date as written; null when it has none then. */
+@@ -144,6 +147,7 @@ public class AccessController {
+      * The escalation gap is a whole number of days, blank meaning off; not dated.
+      * The review SLA is a whole number of days, blank meaning none; not dated.
+      * The proof kinds are a comma separated list of kinds (receipt, photo), blank meaning none; not dated.
++     * The default grade is A, B or C, blank meaning A; not dated.
+      */
+     public record SettingsForm(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimit,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String floor,
+@@ -197,7 +201,8 @@ public class AccessController {
+             @Pattern(regexp = DATE) String reviewThresholdFrom,
+             @Pattern(regexp = "(\\d{1,5})?") String escalateAfter,
+             @Pattern(regexp = "(\\d{1,5})?") String reviewSla,
+-            @Pattern(regexp = "\\s*((receipt|photo)\\s*(,\\s*(receipt|photo)\\s*)*)?") String proofKinds) {
++            @Pattern(regexp = "\\s*((receipt|photo)\\s*(,\\s*(receipt|photo)\\s*)*)?") String proofKinds,
++            @Pattern(regexp = "[ABC]?") String defaultGrade) {
+     }
+ 
+     /** A from-date: a date (yyyy-mm-dd), or blank for the sheet's today. */
+@@ -281,7 +286,7 @@ public class AccessController {
+                 form.pot(), form.parent() == null ? null : form.parent().trim(), form.fiscalStartMonth(),
+                 form.alertThreshold(), dated(form.rounding(), form.roundingFrom()),
+                 dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter(),
+-                form.reviewSla(), form.proofKinds());
++                form.reviewSla(), form.proofKinds(), form.defaultGrade());
+         return settings(sheet);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 1e67dec11..af393e245 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -85,6 +85,9 @@ public class AccessService {
+ 
+     public static final String ALERT_THRESHOLD = DatedSettings.ALERT_THRESHOLD;
+ 
++    /** The key of the sheet's default grade. */
++    public static final String DEFAULT_GRADE = DatedSettings.DEFAULT_GRADE;
++
+     public static final String PARENT = DatedSettings.PARENT;
+ 
+     public static final String ESCALATE_AFTER = DatedSettings.ESCALATE_AFTER;
+@@ -269,7 +272,11 @@ public class AccessService {
+             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
+             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
+-            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds) {
++            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
++            String defaultGrade) {
++        if (defaultGrade != null && !defaultGrade.isEmpty() && !defaultGrade.matches("[ABC]")) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The default grade is A, B or C");
++        }
+         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
+                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The fiscal year start month is 1 to 12");
+@@ -352,6 +359,9 @@ public class AccessService {
+         if (proofKinds != null) {
+             setProofKinds(sheetId, user, proofKinds);
+         }
++        if (defaultGrade != null) {
++            setUndated(sheetId, user, DEFAULT_GRADE, defaultGrade.isEmpty() ? null : defaultGrade);
++        }
+         if (parent != null) {
+             setParent(sheetId, user, parent.isEmpty() ? null : parent);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+index e9d4a8b5a..822d0d492 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+@@ -3,25 +3,26 @@ package net.officefloor.hq.app.claim;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonService;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * Quick-add: a DRAFT claim of an amount, dated the sheet's entry date while set (else its today) with an empty note, for the person
+  * of a name or an alias, matched as the person form matches names; a name not on the sheet adds the person first
+- * with grade A. The whole of it is one change: a refused claim leaves no new person behind.
++ * with the sheet's default grade (A when none is set). The whole of it is one change: a refused claim leaves no new person behind.
+  */
+ @Service
+ public class QuickAddService {
+ 
+-    private static final String GRADE = "A";
+-
+     private final PersonService persons;
+     private final ClaimService claims;
++    private final SheetService sheets;
+ 
+-    public QuickAddService(PersonService persons, ClaimService claims) {
++    public QuickAddService(PersonService persons, ClaimService claims, SheetService sheets) {
+         this.persons = persons;
+         this.claims = claims;
++        this.sheets = sheets;
+     }
+ 
+     /** Returns the person the claim belongs to. */
+@@ -29,7 +30,7 @@ public class QuickAddService {
+     public long add(String sheetId, String user, String name, BigDecimal amount) {
+         String trimmed = name.trim();
+         Person person = persons.findByNameOrAlias(sheetId, trimmed)
+-                .orElseGet(() -> persons.add(sheetId, user, trimmed, GRADE, null, null));
++                .orElseGet(() -> persons.add(sheetId, user, trimmed, sheets.settings(sheetId).defaultGrade(), null, null));
+         return claims.add(sheetId, user, person.getId(), amount, null, "");
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+index 5a0b1404c..ff309ee6e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+@@ -8,13 +8,15 @@ import java.util.Optional;
+ import java.util.Set;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+- * Import people: lines of {@code name,grade,terms,contact} (terms and contact may be left out or blank). A line
++ * Import people: lines of {@code name,grade,terms,contact} (terms and contact may be left out or blank; a blank
++ * grade is the sheet's default grade, A when none is set). A line
+  * whose name is the name or an alias of a person on the sheet (compared as names are) updates that person as
+  * the person form edits them: their grade is recorded from the sheet's today, and their terms and contact are
+  * set when the line gives them. Any other line adds a person as the person form adds them. Every line is first
+@@ -44,11 +46,14 @@ public class PersonImportService {
+     private final PersonService service;
+     private final PersonRepository people;
+     private final SheetRepository sheetRows;
++    private final SheetService sheets;
+ 
+-    public PersonImportService(PersonService service, PersonRepository people, SheetRepository sheetRows) {
++    public PersonImportService(PersonService service, PersonRepository people, SheetRepository sheetRows,
++            SheetService sheets) {
+         this.service = service;
+         this.people = people;
+         this.sheetRows = sheetRows;
++        this.sheets = sheets;
+     }
+ 
+     /** Update or add a person per line, in order; returns how many were added and updated. */
+@@ -59,9 +64,10 @@ public class PersonImportService {
+         Set<String> names = new HashSet<>();
+         Set<Long> updated = new HashSet<>();
+         Set<String> contacts = new HashSet<>();
++        String defaultGrade = sheets.settings(sheetId).defaultGrade();
+         for (String raw : text.split("\\R")) {
+             if (raw.isBlank()) continue;
+-            Line line = parse(raw);
++            Line line = parse(raw, defaultGrade);
+             Optional<Person> match = service.findByNameOrAlias(sheetId, line.name());
+             if (match.isEmpty() && service.inUse(sheetId, line.name(), null)) {
+                 throw refused(raw, "the name \"" + line.name() + "\" is already in use");
+@@ -102,13 +108,13 @@ public class PersonImportService {
+         return new Result(added, planned.size() - added);
+     }
+ 
+-    private static Line parse(String raw) {
++    private static Line parse(String raw, String defaultGrade) {
+         String[] f = raw.split(",", -1);
+         if (f.length < 2 || f.length > 4) throw refused(raw, "give a name, a grade, and optionally terms and a contact");
+         String name = f[0].trim();
+         if (name.isEmpty()) throw refused(raw, "give a name");
+         if (name.length() > NAME_MAX) throw refused(raw, "the name is too long");
+-        String grade = f[1].trim();
++        String grade = f[1].isBlank() ? defaultGrade : f[1].trim();
+         if (!GRADE.matcher(grade).matches()) throw refused(raw, "the grade must be A, B or C");
+         Integer terms = null;
+         if (f.length > 2 && !f[2].isBlank()) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+index 9d65563b5..141116e3c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+@@ -51,6 +51,9 @@ public record DatedSettings(List<SheetSetting> values) {
+     /** The sheet's proof kinds, comma separated (receipt, photo): each a claim above its proof threshold needs a proof of; not dated. */
+     public static final String PROOF_KINDS = "proof-kinds";
+ 
++    /** The grade a person added by quick-add or by an import line with a blank grade gets (A, B or C); not dated. */
++    public static final String DEFAULT_GRADE = "default-grade";
++
+     /** The id of the sheet's parent sheet, whose rates a grade with none in force takes; not dated. */
+     public static final String PARENT = "parent";
+ 
+@@ -217,6 +220,17 @@ public record DatedSettings(List<SheetSetting> values) {
+         return on(FISCAL_START_MONTH, LocalDate.MAX).map(Integer::valueOf).orElse(DEFAULT_FISCAL_START_MONTH);
+     }
+ 
++    /** The sheet's default grade as set (not dated); null when none is set (grade A). */
++    public String defaultGradeText() {
++        return on(DEFAULT_GRADE, LocalDate.MAX).orElse(null);
++    }
++
++    /** The grade a new person gets when none is given (not dated): the default grade, else A. */
++    public String defaultGrade() {
++        String grade = defaultGradeText();
++        return grade == null ? "A" : grade;
++    }
++
+     /** The id of the sheet's parent sheet (not dated); null when it has none. */
+     public String parent() {
+         return on(PARENT, LocalDate.MAX).orElse(null);
