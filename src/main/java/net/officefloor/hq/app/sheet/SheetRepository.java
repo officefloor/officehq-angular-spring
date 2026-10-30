@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.sheet;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,4 +16,9 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query("select s.lastClaimNumber from Sheet s where s.id = :id")
     int lastClaimNumber(@Param("id") String id);
+
+    /** Lock the sheet's row until the transaction ends, so changes checked against the whole sheet take turns. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Sheet s where s.id = :id")
+    Sheet lockById(@Param("id") String id);
 }

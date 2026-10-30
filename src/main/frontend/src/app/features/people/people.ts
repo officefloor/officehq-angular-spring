@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
+import { Period, Periods } from '../periods/periods';
 import { Rates } from '../rates/rates';
 
 const GRADES = ['A', 'B', 'C'];
@@ -16,9 +17,10 @@ function cents(amount: string): number {
 // one form that adds a person or, once a person's editor is opened, edits them.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Rates],
+  imports: [Claims, Periods, Rates],
   template: `
     <app-rates (changed)="reloadSheet()" />
+    <app-periods [people]="people()" [(periods)]="periods" />
     <section aria-label="People">
       <h2>People</h2>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
@@ -81,7 +83,7 @@ function cents(amount: string): number {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
               </td>
-              <td><app-claims [person]="p" (saved)="replace($event)" /></td>
+              <td><app-claims [person]="p" [periods]="periods()" (saved)="replace($event)" /></td>
             </tr>
           }
         </tbody>
@@ -95,6 +97,7 @@ export class People {
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
+  protected readonly periods = signal<Period[]>([]);
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   protected readonly editing = signal<number | null>(null);

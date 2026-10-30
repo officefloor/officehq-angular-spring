@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Period, periodOf } from '../periods/periods';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -63,6 +64,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+          <span>Period <span data-testid="claim-period">{{ periodName(c) }}</span></span>
           @for (a of actions; track a.action) {
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="move(c, a.action)">
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
@@ -118,6 +120,7 @@ export class Claims {
   private readonly session = inject(Session);
 
   readonly person = input.required<PersonWithClaims>();
+  readonly periods = input<Period[]>([]);
   readonly saved = output<PersonWithClaims>();
 
   protected readonly amount = signal('');
@@ -134,6 +137,11 @@ export class Claims {
     { action: 'settle', label: 'Settle' },
     { action: 'void', label: 'Void' },
   ];
+
+  /** The name of the period whose dates contain the claim's date; '' when none does. */
+  protected periodName(c: Claim): string {
+    return periodOf(this.periods(), c.date)?.name ?? '';
+  }
 
   protected fid(field: string): string {
     return `claim-${this.person().id}-${field}`;

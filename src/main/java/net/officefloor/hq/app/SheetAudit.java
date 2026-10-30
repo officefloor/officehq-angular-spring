@@ -2,6 +2,7 @@ package net.officefloor.hq.app;
 
 import java.math.RoundingMode;
 import net.officefloor.hq.app.claim.ClaimChanged;
+import net.officefloor.hq.app.period.PeriodAdded;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -43,6 +44,12 @@ public class SheetAudit {
         audit.record("RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
                 + " grade=" + e.grade() + " rate=" + e.rate().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.from() == null ? "" : " from=" + e.from()));
+    }
+
+    @TransactionalEventListener
+    public void on(PeriodAdded e) {
+        audit.record("PERIOD_ADDED sheet=" + e.sheetId() + " by=" + e.user()
+                + " period=" + e.name() + " from=" + e.from() + " to=" + e.to());
     }
 
     @TransactionalEventListener
