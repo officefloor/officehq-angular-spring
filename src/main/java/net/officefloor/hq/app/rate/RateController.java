@@ -49,7 +49,7 @@ public class RateController {
      * A percent is 0.00 or more with up to two decimals; a blank from-date applies from the beginning of
      * time, a blank to-date has no end, and a to-date is not before the from-date.
      */
-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from,
+    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String pct, LocalDate from,
             LocalDate to) {
 
         @AssertTrue
@@ -84,7 +84,7 @@ public class RateController {
     @GetMapping("/{grade}/preview")
     public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
-            @RequestParam @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct) {
+            @RequestParam @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String pct) {
         RatePreviewService.Preview p = previews.preview(sheetId.trim(), grade, new BigDecimal(pct));
         return new PreviewView(p.count(), p.diff().toPlainString());
     }

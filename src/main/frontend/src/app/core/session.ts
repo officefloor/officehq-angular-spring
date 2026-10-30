@@ -2,6 +2,10 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
+/** The locales a user may choose; en unless chosen. */
+export const LOCALES = ['en', 'de'] as const;
+export type Locale = (typeof LOCALES)[number];
+
 interface SheetView {
   id: string;
   today: string;
@@ -16,6 +20,8 @@ export class Session {
   private readonly http = inject(HttpClient);
 
   readonly user = signal<string | null>(null);
+  /** The signed-in user's locale, saved per user: how the screen shows them figures. */
+  readonly locale = signal<Locale>('en');
   readonly sheet = signal<string | null>(null);
   /** The active sheet's own today (yyyy-mm-dd), whatever date the screen shows it as of. */
   private readonly sheetToday = signal<string | null>(null);
@@ -36,7 +42,7 @@ export class Session {
   readonly loads = signal(0);
 
   async signIn(name: string): Promise<void> {
-    const res = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
+    const res = await firstValueFrom(this.http.post<{ name: string; locale: Locale }>('/api/signin', { name }));
     this.sheet.set(null);
     this.sheetToday.set(null);
     this.asOf.set(null);
@@ -44,7 +50,18 @@ export class Session {
     this.parent.set(null);
     this.clonedTo.set(null);
     this.loads.update((n) => n + 1);
+    this.locale.set(res.locale);
     this.user.set(res.name);
+  }
+
+  /** Save the signed-in user's locale. */
+  async setLocale(locale: Locale): Promise<void> {
+    const res = await firstValueFrom(
+      this.http.put<{ locale: Locale }>('/api/me/locale', { locale }, {
+        headers: { 'X-User': this.user() ?? '' },
+      }),
+    );
+    this.locale.set(res.locale);
   }
 
   async loadSheet(id: string): Promise<void> {

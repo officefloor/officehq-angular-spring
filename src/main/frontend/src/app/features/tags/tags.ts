@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PersonWithClaims, heldOut, retiredOut } from '../claims/claims';
@@ -14,6 +15,7 @@ function cents(amount: string): number {
 // (once, when both do); a claim with two tags counts in both.
 @Component({
   selector: 'app-tags',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Tags">
       <h2>Tags</h2>
@@ -25,7 +27,7 @@ function cents(amount: string): number {
           @for (t of byTag(); track t.tag) {
             <tr>
               <th scope="row">{{ t.tag }}</th>
-              <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+              <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal | figure }}</td>
             </tr>
           }
         </tbody>

@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, output, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -23,7 +24,7 @@ interface Preview {
 }
 
 const GRADES = ['A', 'B', 'C'];
-const PCT = /^\d{1,3}(\.\d{1,2})?$/;
+const PCT = /^\d{1,12}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Per grade, the rate in force on the date: the one with the latest from-date on or before it, unless its to-date is before it. */
@@ -51,6 +52,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
 // rate that was set is handed up as `changed`, so the dues it makes can be shown again.
 @Component({
   selector: 'app-rates',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Rates">
       <h2>Rates</h2>
@@ -62,7 +64,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           @for (g of grades; track g) {
             <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">{{ current()[g] ?? 'n/a' }}</td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ (current()[g] ?? 'n/a') | figure }}</td>
             </tr>
           }
         </tbody>
@@ -74,7 +76,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
             @if (r.to) {
               through <span data-testid="rate-to">{{ r.to }}</span>
             }
-            : <span data-testid="rate-pct">{{ r.pct }}</span>%
+            : <span data-testid="rate-pct">{{ r.pct | figure }}</span>%
             (version <span data-testid="rate-version">{{ r.version }}</span>)
             @if (r.forwardOnly) {
               <span data-testid="rate-forward-only">forward-only</span>
@@ -164,7 +166,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
         @if (previewed(); as p) {
           <p>
             Claims whose due would change: <span data-testid="rate-preview-count">{{ p.count }}</span>;
-            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+            difference: <span data-testid="rate-preview-diff">{{ p.diff | figure }}</span>
           </p>
         }
         @if (previewError()) {

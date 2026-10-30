@@ -1,4 +1,5 @@
 import { Component, computed, inject, input } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import type { PersonWithClaims } from '../claims/claims';
 import { Period, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
 import { VoidReasonList } from '../void-reasons/void-reasons';
@@ -25,6 +26,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
 // sheet's due-total untrimmed: everyone's due-total added up (n/a skipped).
 @Component({
   selector: 'app-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Summary">
       <h2>Summary</h2>
@@ -38,7 +40,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
             <tr>
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
@@ -53,8 +55,8 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
           @for (p of byPeriod(); track p.name) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change | figure }}</td>
             </tr>
           }
         </tbody>
@@ -68,7 +70,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
           @for (m of byMonth(); track m.month) {
             <tr>
               <th scope="row">{{ m.month }}</th>
-              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
+              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal | figure }}</td>
             </tr>
           }
         </tbody>
@@ -113,12 +115,12 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
           @for (p of classicByPeriod(); track p.name) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
             </tr>
           }
         </tbody>
       </table>
-      <p>Due total: <span data-testid="classic-due-total">{{ classicDueTotal() }}</span></p>
+      <p>Due total: <span data-testid="classic-due-total">{{ classicDueTotal() | figure }}</span></p>
     </section>
   `,
 })

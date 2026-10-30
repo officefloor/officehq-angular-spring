@@ -21,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class RateImportService {
 
     private static final Pattern GRADE = Pattern.compile("[ABC]");
-    private static final Pattern PCT = Pattern.compile("\\d{1,3}(\\.\\d{1,2})?");
+    private static final Pattern PCT = Pattern.compile("\\d{1,12}(\\.\\d{1,2})?");
 
     private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
     }

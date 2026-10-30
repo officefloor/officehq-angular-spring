@@ -1,5 +1,6 @@
 import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
@@ -116,23 +117,23 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
+  imports: [FigurePipe, Access, Audit, ClaimTemplates, Claims, Holidays, Periods, PersonPlans, Pools, Rates, Search, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
       @for (s of statusCounts(); track s.status) {
         <p>{{ s.status }} claims <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong></p>
       }
-      <p>Due total <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
-      <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
-      <p>My due total <strong data-testid="my-due-total">{{ me() === null ? '' : (me()!.dueTotal ?? 'n/a') }}</strong></p>
-      <p>My overdue total <strong data-testid="my-overdue-total">{{ me()?.overdueTotal ?? '' }}</strong></p>
+      <p>Due total <strong data-testid="header-due-total">{{ dueTotal() | figure }}</strong></p>
+      <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+      <p>My due total <strong data-testid="my-due-total">{{ (me() === null ? '' : (me()!.dueTotal ?? 'n/a')) | figure }}</strong></p>
+      <p>My overdue total <strong data-testid="my-overdue-total">{{ (me()?.overdueTotal ?? '') | figure }}</strong></p>
     </header>
     <section aria-label="Consolidated figures">
       <h2>Consolidated over this sheet and its descendants</h2>
       <p>People <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
-      <p>Due total <strong data-testid="consolidated-due-total">{{ consolidated().due }}</strong></p>
-      <p>Overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdue }}</strong></p>
+      <p>Due total <strong data-testid="consolidated-due-total">{{ consolidated().due | figure }}</strong></p>
+      <p>Overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdue | figure }}</strong></p>
     </section>
     <app-rates (changed)="reloadSheet()" />
     <app-access [settingsSaved]="reloadAfterSettings" />
@@ -147,13 +148,13 @@ function csvField(value: string): string {
     <app-audit />
     <section aria-label="People">
       <h2>People</h2>
-      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
-      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
-      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
-      <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
-      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
+      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
+      <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
+      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add person' : 'Edit person'">
         <label for="person-form-name">Name</label>
         <input
@@ -438,29 +439,29 @@ function csvField(value: string): string {
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
-              <td data-testid="person-claimed">{{ p.claimed }}</td>
-              <td data-testid="person-due-total">{{ p.dueTotal ?? 'n/a' }}</td>
-              <td data-testid="person-settled-total">{{ p.settledTotal }}</td>
-              <td data-testid="person-open-total">{{ p.openTotal }}</td>
-              <td data-testid="person-excess">{{ p.excess }}</td>
+              <td data-testid="person-claimed">{{ p.claimed | figure }}</td>
+              <td data-testid="person-due-total">{{ (p.dueTotal ?? 'n/a') | figure }}</td>
+              <td data-testid="person-settled-total">{{ p.settledTotal | figure }}</td>
+              <td data-testid="person-open-total">{{ p.openTotal | figure }}</td>
+              <td data-testid="person-excess">{{ p.excess | figure }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
-              <td data-testid="person-stated-total">{{ p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a') }}</td>
+              <td data-testid="person-stated-total">{{ (p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a')) | figure }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-overdue-count">{{ p.overdueCount }}</td>
-              <td data-testid="person-overdue-total">{{ p.overdueTotal }}</td>
-              <td data-testid="person-aged-0-30">{{ p.aged0to30 }}</td>
-              <td data-testid="person-aged-31-60">{{ p.aged31to60 }}</td>
-              <td data-testid="person-aged-61">{{ p.aged61 }}</td>
+              <td data-testid="person-overdue-total">{{ p.overdueTotal | figure }}</td>
+              <td data-testid="person-aged-0-30">{{ p.aged0to30 | figure }}</td>
+              <td data-testid="person-aged-31-60">{{ p.aged31to60 | figure }}</td>
+              <td data-testid="person-aged-61">{{ p.aged61 | figure }}</td>
               <td data-testid="person-patrons">{{ patronage().get(p.id)?.names }}</td>
-              <td data-testid="person-backing">{{ patronage().get(p.id)?.backing }}</td>
+              <td data-testid="person-backing">{{ (patronage().get(p.id)?.backing) | figure }}</td>
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
-              <td data-testid="person-cut-total">{{ ((personCuts().get(p.id) ?? 0) / 100).toFixed(2) }}</td>
+              <td data-testid="person-cut-total">{{ (((personCuts().get(p.id) ?? 0) / 100).toFixed(2)) | figure }}</td>
               @for (pd of periods(); track pd.id) {
-                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodTotals().get(p.id)?.[pd.id] }}</td>
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (periodTotals().get(p.id)?.[pd.id]) | figure }}</td>
               }
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">

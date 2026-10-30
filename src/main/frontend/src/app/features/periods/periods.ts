@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, model, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { heldOut, retiredOut, type Claim, type ClaimStatus, type PersonWithClaims } from '../claims/claims';
@@ -111,6 +112,7 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
 // adds one. No two periods share a name or a date.
 @Component({
   selector: 'app-periods',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Periods">
       <h2>Periods</h2>
@@ -125,8 +127,8 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-fy">{{ p.fy }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
-              <td data-testid="period-due-total">{{ dueTotals()[p.id] }}</td>
+              <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+              <td data-testid="period-due-total">{{ dueTotals()[p.id] | figure }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" [attr.aria-label]="'Close period ' + p.name" (click)="act(p, 'close')">Close</button>

@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, effect, inject, input, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -128,6 +129,7 @@ const ROUNDING = /^(half-up|half-even)$/;
 // save it blank).
 @Component({
   selector: 'app-access',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Roles">
       <h2>Roles</h2>
@@ -212,13 +214,13 @@ const ROUNDING = /^(half-up|half-even)$/;
     </section>
     <section aria-label="Settings">
       <h2>Settings</h2>
-      <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
-      <p>Floor <strong data-testid="setting-floor-current">{{ floor() }}</strong></p>
+      <p>Clerk limit <strong data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</strong></p>
+      <p>Floor <strong data-testid="setting-floor-current">{{ floor() | figure }}</strong></p>
       <p>Terms (days) <strong data-testid="setting-terms-current">{{ terms() }}</strong></p>
       @for (g of grades; track g) {
         <p>Terms for grade {{ g }} (days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</strong></p>
       }
-      <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong></p>
+      <p>Late percent <strong data-testid="setting-late-pct-current">{{ latePct() | figure }}</strong></p>
       <p>Rounding mode <strong data-testid="setting-rounding-current">{{ rounding() ?? '' }}</strong></p>
       <p>Policy date <strong data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</strong></p>
       <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
@@ -227,17 +229,17 @@ const ROUNDING = /^(half-up|half-even)$/;
         <p>Grace days for grade {{ g }} <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</strong></p>
       }
       <p>Entry date <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
-      <p>Pot <strong data-testid="setting-pot-current">{{ pot() ?? '' }}</strong></p>
-      <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</strong></p>
+      <p>Pot <strong data-testid="setting-pot-current">{{ (pot() ?? '') | figure }}</strong></p>
+      <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong></p>
-      <p>Cap <strong data-testid="setting-cap-current">{{ cap() ?? '' }}</strong></p>
-      <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</strong></p>
+      <p>Cap <strong data-testid="setting-cap-current">{{ (cap() ?? '') | figure }}</strong></p>
+      <p>Proof threshold <strong data-testid="setting-proof-threshold-current">{{ (proofThreshold() ?? '') | figure }}</strong></p>
       @for (g of grades; track g) {
         <p>Proof threshold for grade {{ g }} <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProof()[g] ?? '' }}</strong></p>
       }
-      <p>Note threshold <strong data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</strong></p>
-      <p>Review threshold <strong data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</strong></p>
+      <p>Note threshold <strong data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</strong></p>
+      <p>Review threshold <strong data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</strong></p>
       @for (p of perms; track p.field) {
         <p>Roles that may {{ p.action }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
       }

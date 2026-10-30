@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, effect, inject, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -65,6 +66,7 @@ export class ClaimTemplateList {
 // name or an amount the claim form would refuse is refused.
 @Component({
   selector: 'app-claim-templates',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Claim templates">
       <h2>Claim templates</h2>
@@ -72,7 +74,7 @@ export class ClaimTemplateList {
         @for (t of list.templates(); track t.name) {
           <li [attr.data-testid]="'template-row-' + t.name">
             <span data-testid="template-name">{{ t.name }}</span>
-            <span>Amount <span data-testid="template-amount">{{ t.amount }}</span></span>
+            <span>Amount <span data-testid="template-amount">{{ t.amount | figure }}</span></span>
             <span>Note <span data-testid="template-note">{{ t.note }}</span></span>
           </li>
         }

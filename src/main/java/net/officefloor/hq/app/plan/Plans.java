@@ -3,6 +3,7 @@ package net.officefloor.hq.app.plan;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -21,7 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
  * the plan's amount for each plan date (the start, then every N days; or that day of every month from the start's month, on the month's
  * last day when it is shorter, leaving out dates before the start) up to its end and the sheet's today that has
  * none yet, dated that day with an empty note, by every rule of the claim form. A date the form refuses is skipped,
- * writing nothing, and tried again the next time.
+ * writing nothing, and tried again the next time. A viewer's generate makes nothing: every claim it would make is
+ * refused.
  */
 @Service
 public class Plans {
@@ -34,10 +36,12 @@ public class Plans {
     private final SheetRepository sheetRows;
     private final ApplicationEventPublisher events;
     private final TransactionTemplate transaction;
+    private final AccessService access;
 
     public Plans(PlanRepository plans, PlanClaimRepository made, PersonRepository people, ClaimService claims,
             SheetService sheets, SheetRepository sheetRows, ApplicationEventPublisher events,
-            PlatformTransactionManager transactions) {
+            PlatformTransactionManager transactions, AccessService access) {
+        this.access = access;
         this.plans = plans;
         this.made = made;
         this.people = people;
@@ -90,6 +94,9 @@ public class Plans {
     /** Make the claims the plans are due up to the sheet's today; returns how many were made. */
     public int generate(String sheetId, String user) {
         sheets.load(sheetId, user);
+        if (access.isViewer(sheetId, user)) {
+            return 0;
+        }
         LocalDate today = sheets.today(sheetId);
         int count = 0;
         for (Plan plan : list(sheetId)) {

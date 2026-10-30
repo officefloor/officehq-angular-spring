@@ -1,5 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
-import { Session } from '../../core/session';
+import { Component, inject, linkedSignal, signal } from '@angular/core';
+import { LOCALES, Locale, Session } from '../../core/session';
 import { People } from '../people/people';
 
 // The one screen: sign in by name, then load a sheet by id.
@@ -10,6 +10,24 @@ import { People } from '../people/people';
     @if (session.user(); as user) {
       <section aria-label="Session">
         <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+        <form (submit)="saveLocale($event)" aria-label="Locale">
+          <p>Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong></p>
+          <label for="user-locale">Show figures as</label>
+          <select
+            id="user-locale"
+            data-testid="user-locale"
+            [value]="localeInput()"
+            (change)="localeInput.set($any(value($event))); localeError.set('')"
+          >
+            @for (l of locales; track l) {
+              <option [value]="l" [selected]="l === localeInput()">{{ l }}</option>
+            }
+          </select>
+          <button type="submit" data-testid="user-locale-save">Save locale</button>
+          @if (localeError()) {
+            <p role="alert" data-testid="user-locale-error">{{ localeError() }}</p>
+          }
+        </form>
         <form (submit)="load($event)">
           <label for="sheet-id">Sheet id</label>
           <input
@@ -95,6 +113,10 @@ export class Home {
   protected readonly todayInput = signal('');
   protected readonly asOfInput = signal('');
   protected readonly cloneInput = signal('');
+  protected readonly locales = LOCALES;
+  /** The locale chosen in the select; it follows the user's saved locale until changed. */
+  protected readonly localeInput = linkedSignal<Locale>(() => this.session.locale());
+  protected readonly localeError = signal('');
   /** A today change, archive or clone still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
 
@@ -114,6 +136,16 @@ export class Home {
       await this.session.signIn(name);
     } catch {
       this.signinError.set('Could not sign in.');
+    }
+  }
+
+  protected async saveLocale(e: Event): Promise<void> {
+    e.preventDefault();
+    this.localeError.set('');
+    try {
+      await this.session.setLocale(this.localeInput());
+    } catch {
+      this.localeError.set('Could not save the locale.');
     }
   }
 

@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOf } from '../periods/periods';
@@ -199,6 +200,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // the others selected.
 @Component({
   selector: 'app-claims',
+  imports: [FigurePipe],
   template: `
     <ul aria-label="Claims">
       @for (c of person().claims; track c.id) {
@@ -211,12 +213,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             (change)="selectToggled.emit({ id: c.id, checked: checked($event) })"
           />
           <label [for]="'claim-select-' + c.id" class="visually-hidden">Select claim {{ c.amount }} {{ c.date }}</label>
-          <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
-          <span>Due <span data-testid="claim-due">{{ c.due ?? 'n/a' }}</span></span>
+          <span>Due <span data-testid="claim-due">{{ (c.due ?? 'n/a') | figure }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>

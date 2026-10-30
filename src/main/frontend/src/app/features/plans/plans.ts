@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -137,11 +138,12 @@ export class PlanList {
 // A person's plans, each with how many claims it has made so far, and the form that adds one.
 @Component({
   selector: 'app-person-plans',
+  imports: [FigurePipe],
   template: `
     <ul aria-label="Plans">
       @for (pl of plans(); track pl.id) {
         <li [attr.data-testid]="'plan-row-' + pl.id">
-          <span>Plan <span data-testid="plan-amount-shown">{{ pl.amount }}</span></span>
+          <span>Plan <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span></span>
           <span>from <span data-testid="plan-start">{{ pl.start }}</span></span>
           @if (pl.day === null) {
             <span>every <span data-testid="plan-every">{{ pl.every }}</span> days</span>

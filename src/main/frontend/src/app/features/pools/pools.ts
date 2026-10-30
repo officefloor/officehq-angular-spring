@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, model, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PersonWithClaims } from '../claims/claims';
@@ -55,6 +56,7 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
 // its cut there, while a pool that is a member of none has the sheet's pot.
 @Component({
   selector: 'app-pools',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Pools">
       <h2>Pools</h2>
@@ -62,14 +64,14 @@ const EMPTY: Draft = { personId: '', share: '', from: '', to: '', error: '' };
         @for (p of pools(); track p.name) {
           <li [attr.data-testid]="'pool-row-' + p.name">
             <span data-testid="pool-name">{{ p.name }}</span>
-            <span>Total share <span data-testid="pool-total-share">{{ p.total }}</span></span>
+            <span>Total share <span data-testid="pool-total-share">{{ p.total | figure }}</span></span>
             <span>Balanced <span data-testid="pool-balanced">{{ p.balanced ? 'yes' : 'no' }}</span></span>
             <ul>
               @for (m of p.members; track memberKey(m)) {
                 <li [attr.data-testid]="'pool-member-' + p.name + '-' + memberKey(m)">
                   <span data-testid="pool-member-name">{{ m.name }}</span>
-                  <span>Share <span data-testid="pool-share">{{ m.share }}</span></span>
-                  <span>Cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span></span>
+                  <span>Share <span data-testid="pool-share">{{ m.share | figure }}</span></span>
+                  <span>Cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span></span>
                   @if (m.retired) {
                     <span>(retired)</span>
                   }

@@ -28,7 +28,7 @@ public class Rate {
     @Column(name = "grade", nullable = false)
     private String grade;
 
-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+    @Column(name = "pct", nullable = false, precision = 14, scale = 2)
     private BigDecimal pct;
 
     /** The first date the rate applies to; null when it applies from the beginning of time. */

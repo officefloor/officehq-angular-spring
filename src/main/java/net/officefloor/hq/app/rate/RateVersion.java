@@ -24,7 +24,7 @@ public class RateVersion {
     @Column(name = "version", nullable = false)
     private int version;
 
-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+    @Column(name = "pct", nullable = false, precision = 14, scale = 2)
     private BigDecimal pct;
 
     @Column(name = "to_date")
