@@ -1,0 +1,94 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ca754661..fb2aeaa8 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -104,6 +104,8 @@ export interface PersonWithClaims {
+   patrons: number[];
+   /** Whether they have an OPEN or PENDING claim that counts dated within the 30 days up to and including the sheet's today. */
+   active: boolean;
++  /** The settled figures of their SETTLED claims dated within the 90 days up to and including the sheet's today, added up. */
++  recentSettled: string;
+ }
+ 
+ const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 63eb301f..e40d02d1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -33,7 +33,7 @@ function csvField(value: string): string {
+ // left out of the list unless "show retired" is on; their claims keep counting in the totals. A person
+ // can be held from a date to an optional date, as many times as needed; their OPEN claims dated within a hold,
+ // unless a statement binds them, count in no total. A person can name
+-// others on the sheet as their patrons; their backing is their patrons' due-totals added up. Each signed-in
++// others on the sheet as their patrons; their backing is their patrons' recent settled figures added up. Each signed-in
+ // user can watch people of their own choosing.
+ @Component({
+   selector: 'app-people',
+@@ -376,14 +376,14 @@ export class People {
+   );
+ 
+   /** Each person's patrons' names, sorted and comma separated, and their backing: the patrons'
+-   *  due-totals added up, a patron showing n/a skipped. */
++   *  recent settled figures (see {@link Person.recentSettled}) added up. */
+   protected readonly patronage = computed(() => {
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     return new Map(
+       this.people().map((p) => {
+         const patrons = p.patrons.map((id) => byId.get(id)).filter((q): q is Person => q !== undefined);
+         const names = patrons.map((q) => q.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
+-        const backing = patrons.reduce((sum, q) => sum + (q.dueTotal === null ? 0 : cents(q.dueTotal)), 0);
++        const backing = patrons.reduce((sum, q) => sum + cents(q.recentSettled), 0);
+         return [p.id, { names, backing: (backing / 100).toFixed(2) }];
+       }),
+     );
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 7c31c674..4dda3a18 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -129,6 +129,17 @@ public final class Dues {
+                 && counts(c, holds, today) && !c.getDate().isBefore(from) && !c.getDate().isAfter(today));
+     }
+ 
++    /**
++     * The sum of the settled figures of the SETTLED claims dated within the 90 days up to and including the
++     * sheet's today, each at the figure frozen when it was settled (0.00 with none); one with none is skipped.
++     */
++    public static BigDecimal recentSettled(List<Claim> claims, LocalDate today) {
++        LocalDate from = today.minusDays(89);
++        return claims.stream().filter(c -> c.getStatus() == ClaimStatus.SETTLED && c.getSettledDue() != null
++                && !c.getDate().isBefore(from) && !c.getDate().isAfter(today)).map(Claim::getSettledDue)
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++    }
++
+     /**
+      * The status the claim had at the end of the given day, as its status log records it (each line on the
+      * sheet's today then); null when it was added after that day.
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index fb4e324c..d1c5a7e3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -81,12 +81,12 @@ public class PersonController {
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
+      * that count are overdue and the sum of their due figures, the ids of their patrons, and whether they are
+-     * active (see {@link Dues#active}).
++     * active (see {@link Dues#active}), and recentSettled: their recent settled figures (see {@link Dues#recentSettled}).
+      */
+     public record PersonView(long id, long version, String name, String grade, Integer terms, List<ClaimView> claims,
+             String claimed, String dueTotal, String excess, int statementCount, String statedTotal, LocalDate statementDate,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, int overdueCount,
+-            String overdueTotal, List<Long> patrons, boolean active) {
++            String overdueTotal, List<Long> patrons, boolean active, String recentSettled) {
+ 
+         /** The person as shown, given the sheet's rates. */
+         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
+@@ -104,7 +104,8 @@ public class PersonController {
+                     person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+                     overdue.size(), money(Dues.sum(grade, overdue, rates)),
+-                    patrons, Dues.active(claims, held, rates.today()));
++                    patrons, Dues.active(claims, held, rates.today()),
++                    money(Dues.recentSettled(claims, rates.today())));
+         }
+     }
+ 
