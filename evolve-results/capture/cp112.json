@@ -1,0 +1,73 @@
+{
+  "checkpoint": 112,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp112_uniqueness-across-tree",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    109,
+    110,
+    111
+  ],
+  "replaced_tests": [
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+    "cp111_transfer-person.spec.ts::transfer person scenario 3"
+  ],
+  "request": {
+    "spec": "A name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c6db42797aabbe03b85b88ede740a0485ff9a138",
+  "reset_sha": "",
+  "preagent_sha": "44e3f846143166fd36e48b5890f4ca22df9cb260",
+  "prev_sha": "44e3f846143166fd36e48b5890f4ca22df9cb260",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2108708,
+    "input_tokens": 64,
+    "output_tokens": 14191,
+    "cache_read_tokens": 1835494,
+    "cache_creation_tokens": 69962,
+    "num_turns": 32,
+    "duration_ms": 575070,
+    "duration_api_ms": 160748,
+    "model": "claude-opus-5-5",
+    "session_id": "9a1947ee-a0f4-438d-8219-002883a37983",
+    "stop_reason": "success",
+    "result_text": "A name or alias can no longer be used on a sheet if any sheet in its tree already uses it. On the final `bin/e2e` run all 4 tests passed.\n\nThe first full run failed scenario 1 once. A viewer tried to edit a claim and the screen showed neither the change nor an error in time. That step has nothing to do with names. The test passed twice on its own and then in the full rerun, so it looks like an intermittent timing problem in the claim editor, but I didn't track down the cause.\n\n**What counts as the tree:** the sheet itself, its parent and the parent's parent upward, and all its descendants (children, their children, and so on), among sheets that exist. Sibling sheets are not part of it. Matching ignores case and surrounding spaces.\n\n**What is refused** (in `PersonService`, using a new `SheetService.tree`):\n- **Adding a person, quick-add, and new aliases:** refused if the name or alias is already used anywhere in the tree. Quick-add goes through the add, so its new-person path is covered.\n- **Editing through the person form:** refused unless, after the edit, the person's name and all their aliases are clear of everyone else in the tree. So someone who already clashes can only be saved by renaming them to a name that doesn't clash, and only if none of their aliases clash either.\n- **Transferring a person to another sheet:** now checked against the destination sheet's whole tree. The person being moved is left out of the check, so moving from a child sheet to its parent isn't blocked by their own name.\n- **The paste box:** needed no change. It only matches people already on the sheet, so a name used on another sheet in the tree is already refused.\n\n**Clashing column:** the person row has a new `person-clashing` cell showing `yes` or `no`. The person data returned by the server now includes `clashing`, so the value stays correct after edits, claim actions and template claims, not just on reload.\n\nPeople who already clash are left as they are.\n\nMerging two people wasn't changed, because it only moves names between two people on the same sheet and adds no new ones.\n\nThere's no database migration, since nothing new is stored.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2108708,
+        "num_turns": 32,
+        "duration_ms": 575070,
+        "duration_api_ms": 160748,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp112.agent.jsonl",
+  "agent_diff_file": "cp112.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
