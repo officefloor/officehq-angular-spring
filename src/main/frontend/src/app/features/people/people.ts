@@ -392,6 +392,21 @@ function csvField(value: string): string {
                 @if (patronError()?.id === p.id) {
                   <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                 }
+                <label [for]="'person-merge-into-' + p.id">Merge {{ p.name }} into</label>
+                <select
+                  #mergeSelect
+                  [id]="'person-merge-into-' + p.id"
+                  data-testid="person-merge-into"
+                  (change)="clearError(p)"
+                >
+                  <option value="">Choose a person</option>
+                  @for (o of people(); track o.id) {
+                    <option [value]="o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-merge" (click)="merge(p, mergeSelect)">
+                  Merge<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
               </td>
               <td><app-claims
                   [person]="p"
@@ -452,6 +467,8 @@ export class People {
   private naming = false;
   /** An alias still waiting for its answer: another press meanwhile is ignored. */
   private aliasing = false;
+  /** A merge still waiting for its answer: another press meanwhile is ignored. */
+  private merging = false;
   /** A statement still waiting for its answer: another press meanwhile is ignored. */
   private stating = false;
   /** A retirement still waiting for its answer: another press meanwhile is ignored. */
@@ -1089,6 +1106,41 @@ export class People {
       this.personError.set({ id: p.id, message: 'Could not add the alias: it is already a name or alias on this sheet.' });
     } finally {
       this.aliasing = false;
+    }
+  }
+
+  /** Merge the person into the chosen one; once done the whole sheet is shown again as the store holds it. */
+  protected async merge(p: Person, select: HTMLSelectElement): Promise<void> {
+    if (this.merging) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const intoId = Number(select.value);
+    if (!select.value || !Number.isInteger(intoId)) {
+      this.personError.set({ id: p.id, message: 'Choose a person to merge into.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.merging = true;
+    try {
+      await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/merge`,
+          { intoId },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      await this.reload(sheet);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: 'Could not merge: only a steward can, into someone else, and neither may be retired.',
+      });
+    } finally {
+      this.merging = false;
     }
   }
 

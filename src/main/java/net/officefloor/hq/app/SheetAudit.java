@@ -25,6 +25,7 @@ import net.officefloor.hq.app.person.PatronAdded;
 import net.officefloor.hq.app.person.PersonAliasAdded;
 import net.officefloor.hq.app.person.PersonChanged;
 import net.officefloor.hq.app.person.PersonHeld;
+import net.officefloor.hq.app.person.PersonMerged;
 import net.officefloor.hq.app.person.PersonRetired;
 import net.officefloor.hq.app.person.PersonWatched;
 import net.officefloor.hq.app.person.WatcherNotified;
@@ -106,6 +107,12 @@ public class SheetAudit {
     public void on(PersonAliasAdded e) {
         change(e.sheetId(), e.user(), "PERSON_ALIAS_ADDED sheet=" + e.sheetId() + " by=" + e.user()
                 + " name=" + e.name() + " alias=" + e.alias());
+    }
+
+    @TransactionalEventListener
+    public void on(PersonMerged e) {
+        change(e.sheetId(), e.user(), "PERSON_MERGED sheet=" + e.sheetId() + " by=" + e.user()
+                + " from=" + e.from() + " into=" + e.into());
     }
 
     @TransactionalEventListener

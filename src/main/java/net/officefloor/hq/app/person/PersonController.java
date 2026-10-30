@@ -186,10 +186,12 @@ public class PersonController {
     private final ClaimService claims;
     private final RateService rates;
     private final StatementService statements;
+    private final PersonMergeService merges;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
-            RateService rates, StatementService statements) {
+            RateService rates, StatementService statements, PersonMergeService merges) {
         this.service = service;
+        this.merges = merges;
         this.bulkGrade = bulkGrade;
         this.claims = claims;
         this.rates = rates;
@@ -307,6 +309,19 @@ public class PersonController {
             @Valid @RequestBody AliasForm form) {
         String sheet = sheetId.trim();
         return view(sheet, service.addAlias(sheet, user.trim(), personId, form.alias()));
+    }
+
+    /** A merge as asked for: the id of the other person on the sheet the person is merged into. */
+    public record MergeForm(@NotNull Long intoId) {
+    }
+
+    /** Merge the person into another on the sheet; answers with the other as they are now. */
+    @PostMapping("/{personId}/merge")
+    public PersonView merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody MergeForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, merges.merge(sheet, user.trim(), personId, form.intoId()));
     }
 
     private PersonView view(String sheet, Person person) {

@@ -9,5 +9,7 @@ public interface PatronRepository extends JpaRepository<Patron, Long> {
 
     List<Patron> findBySheetIdAndPersonIdOrderByIdAsc(String sheetId, Long personId);
 
+    List<Patron> findBySheetIdAndPatronIdOrderByIdAsc(String sheetId, Long patronId);
+
     boolean existsByPersonIdAndPatronId(Long personId, Long patronId);
 }
