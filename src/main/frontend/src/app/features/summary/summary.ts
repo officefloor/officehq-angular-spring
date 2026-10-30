@@ -1,6 +1,6 @@
 import { Component, computed, inject, input } from '@angular/core';
 import type { PersonWithClaims } from '../claims/claims';
-import { Period, periodDueTotals } from '../periods/periods';
+import { Period, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
 import { VoidReasonList } from '../void-reasons/void-reasons';
 
 const GRADES = ['A', 'B', 'C'];
@@ -20,7 +20,9 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
 // The sheet's figures summed from the list: per grade, the people on it today (retired people left
 // out), their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total and its change from the period before it by start date (none for the earliest); per month any claim is dated in, the dues of
 // its claims that count; per status, how many
-// claims have it; per reason on the sheet's void reasons, how many VOID claims were voided with it.
+// claims have it; per reason on the sheet's void reasons, how many VOID claims were voided with it. Beside it the classic
+// summary: per period, its due-total counting each claim by its status now (see classicPeriodDueTotals), and the
+// sheet's due-total untrimmed: everyone's due-total added up (n/a skipped).
 @Component({
   selector: 'app-summary',
   template: `
@@ -100,6 +102,24 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
         </tbody>
       </table>
     </section>
+    <section aria-label="Classic summary">
+      <h2>Classic summary</h2>
+      <table>
+        <caption>By period, by status now</caption>
+        <thead>
+          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
+        </thead>
+        <tbody>
+          @for (p of classicByPeriod(); track p.name) {
+            <tr>
+              <th scope="row">{{ p.name }}</th>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <p>Due total: <span data-testid="classic-due-total">{{ classicDueTotal() }}</span></p>
+    </section>
   `,
 })
 export class Summary {
@@ -139,6 +159,16 @@ export class Summary {
       totals.set(month, (totals.get(month) ?? 0) + due);
     }
     return [...totals.keys()].sort().map((month) => ({ month, dueTotal: ((totals.get(month) ?? 0) / 100).toFixed(2) }));
+  });
+
+  protected readonly classicByPeriod = computed(() => {
+    const totals = classicPeriodDueTotals(this.periods(), this.people());
+    return this.periods().map((p) => ({ name: p.name, dueTotal: totals[p.id] }));
+  });
+
+  protected readonly classicDueTotal = computed(() => {
+    const due = this.people().reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0);
+    return (due / 100).toFixed(2);
   });
 
   protected readonly byStatus = computed(() => statusCounts(this.people()));

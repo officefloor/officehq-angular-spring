@@ -85,6 +85,25 @@ export function periodDueTotals(periods: Period[], people: PersonWithClaims[]): 
   return shown;
 }
 
+/** Per period id, its classic due-total: the dues as shown now of the people's claims due by a date in it that count
+ * (OPEN, PENDING or SETTLED) by their status now, added up, with the same claims left out as personPeriodTotals; or once
+ * closed or soft-closed the figure fixed then. */
+export function classicPeriodDueTotals(periods: Period[], people: PersonWithClaims[]): Record<number, string> {
+  const totals: Record<number, number> = {};
+  for (const p of periods) totals[p.id] = 0;
+  for (const person of people) {
+    for (const c of person.claims) {
+      if (c.due === null || heldOut(c, person.holds) || retiredOut(c, person.retiredNow) || c.deferred) continue;
+      const period = periodOf(periods, c.dueBy);
+      if (!period || isFixed(period)) continue;
+      if (c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED') totals[period.id] += cents(c.due);
+    }
+  }
+  const shown: Record<number, string> = {};
+  for (const p of periods) shown[p.id] = isFixed(p) ? (p.closedTotal ?? '0.00') : (totals[p.id] / 100).toFixed(2);
+  return shown;
+}
+
 // The sheet's periods, earliest first, each with its due-total: the people's due-totals for it added up,
 // each the dues of their claims whose date falls in it that counted (OPEN, PENDING and SETTLED) at the end
 // of its last day, see personPeriodTotals, or once
