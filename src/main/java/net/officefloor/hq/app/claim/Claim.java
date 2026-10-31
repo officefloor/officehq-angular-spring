@@ -295,6 +295,17 @@ public class Claim {
         return at;
     }
 
+    /** The sheet's today on which the claim last became SETTLED, as its log records it; null when it never did. */
+    public LocalDate settledOn() {
+        LocalDate on = null;
+        for (ClaimLogEntry line : log) {
+            if (line.getStatus() == ClaimStatus.SETTLED) {
+                on = line.getOn();
+            }
+        }
+        return on;
+    }
+
     /** The claim's status log, oldest first. */
     public List<ClaimLogEntry> getLog() {
         return Collections.unmodifiableList(log);

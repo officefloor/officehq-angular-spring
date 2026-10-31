@@ -275,11 +275,15 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 403
           ? status === 'SETTLED' && c.openedBy === this.session.user()
             ? 'You opened this claim, so someone else must settle it.'
+            : status === 'VOID' && c.status === 'SETTLED'
+              ? 'Only a steward may void a settled claim.'
             : `Your role may not ${STATUS_ACTION[status] ?? 'move'} a claim.`
           : err instanceof HttpErrorResponse && err.status === 423
             ? 'This claim is dated inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 428
               ? UNPROVEN
+            : status === 'VOID' && c.status === 'SETTLED'
+              ? 'A settled claim can be voided only within 7 days of its settlement.'
             : status === 'SETTLED' && this.deferredOf(c)
               ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled before then.`
               : `A ${c.status} claim cannot become ${status}.`,

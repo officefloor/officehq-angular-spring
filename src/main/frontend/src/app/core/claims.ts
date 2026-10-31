@@ -3,7 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { HoldView, PersonView } from './people';
 
-/** DRAFT when added, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID. A clerk settling a
+/** DRAFT when added, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID, as can a SETTLED
+ *  one by a steward within 7 days of its settlement. A clerk settling a
  *  claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects (OPEN again). */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 

@@ -35,6 +35,9 @@ public class ClaimService {
     /** The prefix of the numbers given within no period. */
     private static final String NO_PERIOD = "X";
 
+    /** How many days after its settlement a steward may still void a SETTLED claim. */
+    static final int SETTLED_VOID_DAYS = 7;
+
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SheetService sheets;
@@ -147,7 +150,9 @@ public class ClaimService {
      * who opened a claim cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
      * makes it PENDING instead, for a steward to approve or reject (a claim with no due is within any limit); a
      * steward settles anything. Opening, settling and voiding are each refused for a role the sheet's permission
-     * matrix does not allow. A claim dated inside a closed period cannot move. The sheet is locked
+     * matrix does not allow. Only a steward may void a SETTLED claim, and only within {@value #SETTLED_VOID_DAYS}
+     * days of the day its log records it settled, by the sheet's today; its frozen figure then leaves every total
+     * and the audit line ends with it as reversed. A claim dated inside a closed period cannot move. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
      */
     @Transactional
@@ -169,6 +174,10 @@ public class ClaimService {
         };
         if (action != null && !sheet.allows(action, roles.roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim");
+        }
+        boolean voidsSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+        if (voidsSettled) {
+            refuseSettledVoid(sheet, user, claim);
         }
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheet.getToday())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -207,6 +216,8 @@ public class ClaimService {
         String line = entry(event, user, person, changed, number);
         if (next == ClaimStatus.SETTLED) {
             line += " due=" + dueText(changed);
+        } else if (voidsSettled) {
+            line += " reversed=" + dueText(changed);
         }
         audit.recordChangeOnCommit(sheetId, user, line);
         if (next == ClaimStatus.SETTLED) {
@@ -505,6 +516,20 @@ public class ClaimService {
             return false;
         }
         return !Role.STEWARD.equals(roles.roleOf(sheet.getId(), user));
+    }
+
+    /** Refuse to void a SETTLED claim for anyone but a steward, and on a sheet's today more than
+     *  {@value #SETTLED_VOID_DAYS} days after (or before) the day its log records it settled. */
+    private void refuseSettledVoid(Sheet sheet, String user, Claim claim) {
+        if (!Role.STEWARD.equals(roles.roleOf(sheet.getId(), user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may void a SETTLED claim");
+        }
+        LocalDate settled = claim.settledOn();
+        LocalDate today = sheet.getToday();
+        if (settled == null || today.isBefore(settled) || today.isAfter(settled.plusDays(SETTLED_VOID_DAYS))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A SETTLED claim can be voided only within " + SETTLED_VOID_DAYS + " days of its settlement");
+        }
     }
 
     /** Refuse a correction (a negative amount) that does not name, by number, a SETTLED claim of the same person,
