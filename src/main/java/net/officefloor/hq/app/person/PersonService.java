@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,18 +26,40 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    /** Add a person; the name is stored trimmed and must not already be in use on the sheet. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId, user);
-        return people.saveAndFlush(new Person(sheetId, name, grade));
+        String trimmed = name.trim();
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
+            throw nameInUse();
+        }
+        return save(new Person(sheetId, trimmed, grade));
     }
 
     @Transactional
     public Person update(String sheetId, long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        person.setName(name);
+        String trimmed = name.trim();
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)) {
+            throw nameInUse();
+        }
+        person.setName(trimmed);
         person.setGrade(grade);
-        return people.saveAndFlush(person);
+        return save(person);
+    }
+
+    private Person save(Person person) {
+        try {
+            return people.saveAndFlush(person);
+        } catch (DataIntegrityViolationException raced) {
+            // Another user took the same name at the same moment: theirs stands.
+            throw nameInUse();
+        }
+    }
+
+    private static ResponseStatusException nameInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet");
     }
 }

@@ -29,7 +29,7 @@ public class PersonController {
         }
     }
 
-    /** A person's values as the form submits them; the name is kept as typed. */
+    /** A person's values as the form submits them; the name is stored with surrounding spaces removed. */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {

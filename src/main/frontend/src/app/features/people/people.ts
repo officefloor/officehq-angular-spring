@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -109,9 +110,13 @@ export class PeopleList {
         );
         this.reset();
       },
-      error: () => {
+      error: (err: unknown) => {
         this.saving.set(false);
-        this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
+        if (err instanceof HttpErrorResponse && err.status === 409) {
+          this.error.set('That name is already in use on this sheet.');
+        } else {
+          this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
+        }
       },
     });
   }
