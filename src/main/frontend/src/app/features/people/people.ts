@@ -5,10 +5,12 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { forkJoin, of, switchMap } from 'rxjs';
 import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
+import { Periods, periodOn } from '../../core/periods';
 import { NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { PersonClaims } from '../claims/claims';
+import { PeriodsPanel } from '../periods/periods';
 
 const NO_CLAIMS: ClaimView[] = [];
 const NO_RATES: RateView[] = [];
@@ -17,8 +19,10 @@ const NO_RATES: RateView[] = [];
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims],
+  imports: [ReactiveFormsModule, PersonClaims, PeriodsPanel],
   template: `
+    <app-periods [dueTotals]="dueByPeriod()" />
+
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
@@ -61,6 +65,7 @@ const NO_RATES: RateView[] = [];
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates.ratesByGrade().get(p.grade) ?? noRates"
+                               [periods]="periods.list()"
                                (saved)="claimSaved($event)" />
           </li>
         }
@@ -74,6 +79,7 @@ export class PeopleList {
   private readonly claimsApi = inject(Claims);
   private readonly statementsApi = inject(Statements);
   protected readonly rates = inject(Rates);
+  protected readonly periods = inject(Periods);
 
   protected readonly grades = GRADES;
   protected readonly noRates = NO_RATES;
@@ -113,6 +119,20 @@ export class PeopleList {
   protected readonly dueTotal = computed(() =>
     money([...this.dueByPerson().values()].reduce<number>((sum, due) => sum + (due ?? 0), 0)),
   );
+  /** Each period's due-total, by period id: the dues of the claims that count whose date falls in it. */
+  protected readonly dueByPeriod = computed(() => {
+    const periods = this.periods.list();
+    const ratesByGrade = this.rates.ratesByGrade();
+    const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
+    const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
+    for (const c of this.claims().filter(counts)) {
+      const period = periodOn(periods, c.date);
+      const grade = gradeOf.get(c.personId);
+      if (!period || !grade) continue;
+      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, ratesByGrade.get(grade) ?? NO_RATES) ?? 0));
+    }
+    return new Map([...totals].map(([id, total]) => [id, money(total)]));
+  });
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion = 0;

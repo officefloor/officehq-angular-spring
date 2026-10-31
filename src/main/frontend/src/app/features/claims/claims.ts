@@ -3,6 +3,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, counts, money } from '../../core/claims';
+import { PeriodView, periodOn } from '../../core/periods';
 import { NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 
@@ -38,6 +39,7 @@ import { Sheets } from '../../core/sheet';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           on <span data-testid="claim-date">{{ c.date }}</span>
           — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
+          in period <span data-testid="claim-period">{{ periodOf(c) }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
@@ -72,6 +74,8 @@ export class PersonClaims {
   readonly claims = input.required<ClaimView[]>();
   /** The rates of this person's grade, in the order they take effect. */
   readonly rates = input.required<readonly RateView[]>();
+  /** The sheet's periods, by from-date. */
+  readonly periods = input.required<readonly PeriodView[]>();
   readonly saved = output<ClaimView>();
 
   protected readonly claimed = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
@@ -95,6 +99,10 @@ export class PersonClaims {
   protected dueOf(c: ClaimView): string {
     const due = claimDueCents(c, this.rates());
     return due === null ? NOT_AVAILABLE : money(due);
+  }
+
+  protected periodOf(c: ClaimView): string {
+    return periodOn(this.periods(), c.date)?.name ?? '';
   }
 
   protected changeStatus(c: ClaimView, status: ClaimStatus): void {
