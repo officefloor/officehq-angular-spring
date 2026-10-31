@@ -1,0 +1,64 @@
+{
+  "checkpoint": 241,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp241_as-of-roles",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "While an as-of date is set, the roles shown on the screen are those in force at the end of that\nday.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhile an as-of date is set, the roles shown on the screen are those in force at the end of that\nday.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e8a6a36ec48368f400bf07738c80be749f5e138c",
+  "reset_sha": "",
+  "preagent_sha": "e8a6a36ec48368f400bf07738c80be749f5e138c",
+  "prev_sha": "e8a6a36ec48368f400bf07738c80be749f5e138c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.392847,
+    "input_tokens": 18,
+    "output_tokens": 2396,
+    "cache_read_tokens": 248315,
+    "cache_creation_tokens": 36899,
+    "num_turns": 10,
+    "duration_ms": 228375,
+    "duration_api_ms": 39162,
+    "model": "claude-opus-5-5",
+    "session_id": "4eb89174-fee3-4ff2-9bca-096c96b1bfe2",
+    "stop_reason": "success",
+    "result_text": "I didn't change any code: the app already does this, and `bin/e2e` passes all 4 tests in the spec (\"as of roles\" plus scenarios 1\u20133) as it stands.\n\n**Why it already works:**\n- **Saved snapshots:** when a sheet's today moves on, `SheetPasts.record` saves every row the sheet has as it stood at the end of the day it's leaving. That includes the role table (`SHEET_ROLE` is in its table list, `src/main/java/net/officefloor/hq/app/asof/SheetPasts.java`).\n- **Reads with an as-of date:** `AsOfFilter` sends any request carrying the as-of date through `SheetPasts.asOf`. That swaps in the latest snapshot saved for a day on or before that date, inside a transaction that is always rolled back. The role list is read from that snapshot, so it shows the roles in force at the end of the day. Anything that would change the sheet is refused while an as-of date is set.\n\nThe main test exercises this directly. With vic made steward on 03-01, and wes made viewer and vic changed to clerk on 03-05:\n- **As of 03-01:** vic is steward.\n- **As of 03-05:** vic is clerk and wes is viewer.\n- **Cleared:** the screen shows the current roles again, and the audit lines match what the test expects.\n\nIf this request was meant to need new work, the installed spec doesn't check for anything the app doesn't already do.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.392847,
+        "num_turns": 10,
+        "duration_ms": 228375,
+        "duration_api_ms": 39162,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp241.agent.jsonl",
+  "agent_diff_file": "cp241.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
