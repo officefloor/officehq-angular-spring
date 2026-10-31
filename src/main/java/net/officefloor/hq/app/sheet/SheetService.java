@@ -32,6 +32,7 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final SheetSettingRepository settings;
+    private final PolicyVersionRepository versions;
     private final Rollup rollup;
     private final DayEnds dayEnds;
     private final SheetPasts pasts;
@@ -40,7 +41,8 @@ public class SheetService {
     private final Clock clock = Clock.systemDefaultZone();
 
     public SheetService(SheetRepository sheets, SheetSettingRepository settings, Rollup rollup, DayEnds dayEnds,
-            SheetPasts pasts, ApplicationEventPublisher events, JdbcTemplate jdbc) {
+            SheetPasts pasts, ApplicationEventPublisher events, JdbcTemplate jdbc, PolicyVersionRepository versions) {
+        this.versions = versions;
         this.jdbc = jdbc;
         this.dayEnds = dayEnds;
         this.pasts = pasts;
@@ -64,9 +66,17 @@ public class SheetService {
         return sheets.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet"));
     }
 
-    /** The sheet's dated settings: the floor, late percent, terms, clerk limit and cap in force on any date. */
+    /**
+     * The sheet's dated settings: the floor, late percent, terms, clerk limit and cap in force on any date, and
+     * its policy versions.
+     */
     public DatedSettings settings(String id) {
-        return new DatedSettings(settings.findBySheetId(id));
+        return new DatedSettings(settings.findBySheetId(id), policyVersions(versions, id));
+    }
+
+    /** The from-dates of the sheet's policy versions, oldest first, as {@link DatedSettings} takes them. */
+    public static List<LocalDate> policyVersions(PolicyVersionRepository versions, String id) {
+        return versions.findBySheetIdOrderByVersionAsc(id).stream().map(PolicyVersion::getFromDate).toList();
     }
 
     /**

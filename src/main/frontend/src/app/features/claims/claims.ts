@@ -63,6 +63,8 @@ export interface Claim {
   /** Whether the claim is REVIEW and its review day plus the sheet's review SLA is before the sheet's today. */
   reviewLate: boolean;
   pendingLate: boolean;
+  /** The number of the policy version in force on the claim's date: the versions from on or before it. */
+  policy: number;
   /** Whether a steward waived the claim's late charge: it then bears none, whatever its overdue state. */
   waived: boolean;
   /** Whether the claim is held: it still counts in every total; a hold no longer leaves it out. */
@@ -274,6 +276,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ c.reviewLate ? 'yes' : 'no' }}</span></span>
           <span>Pending late <span data-testid="claim-pending-late">{{ c.pendingLate ? 'yes' : 'no' }}</span></span>
+          <span>Policy version <span data-testid="claim-policy">{{ c.policy }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-waive" (click)="waive(c)">
             Waive late charge<span class="visually-hidden"> of claim {{ c.amount }} {{ c.date }}</span>

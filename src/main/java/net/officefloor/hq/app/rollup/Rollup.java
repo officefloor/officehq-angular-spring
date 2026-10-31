@@ -21,6 +21,8 @@ import net.officefloor.hq.app.rate.RateTable;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.DatedSettings;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.PolicyVersionRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.sheet.SheetSettingRepository;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
@@ -64,6 +66,7 @@ public class Rollup {
     private final RateRepository rates;
     private final SheetRepository sheets;
     private final SheetSettingRepository settings;
+    private final PolicyVersionRepository versions;
     private final ParentRates parents;
     private final ApplicationEventPublisher events;
     /** The pools, for each person's cut total; looked up when needed, since the pools read the sheet through this. */
@@ -71,7 +74,8 @@ public class Rollup {
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
             SheetSettingRepository settings, ParentRates parents, ApplicationEventPublisher events,
-            ObjectProvider<Pools> pools) {
+            ObjectProvider<Pools> pools, PolicyVersionRepository versions) {
+        this.versions = versions;
         this.pools = pools;
         this.parents = parents;
         this.settings = settings;
@@ -100,7 +104,7 @@ public class Rollup {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? LocalDate.now() : sheet.getToday();
         return new RateTable(rates.findBySheetId(sheetId), today,
-                new DatedSettings(settings.findBySheetId(sheetId)), sheet == null ? null : sheet.getPolicyDate(),
+                new DatedSettings(settings.findBySheetId(sheetId), SheetService.policyVersions(versions, sheetId)), sheet == null ? null : sheet.getPolicyDate(),
                 parents.of(sheetId));
     }
 

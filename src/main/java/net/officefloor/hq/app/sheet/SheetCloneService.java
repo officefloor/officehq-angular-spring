@@ -48,7 +48,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Cloning a sheet to another id. Only a steward of this sheet may, and only to an id never used; anything
- * else is refused. The clone gets this sheet's today, settings, roles, added grades, rates, holidays, void reasons,
+ * else is refused. The clone gets this sheet's today, settings, policy versions, roles, added grades, rates, holidays, void reasons,
  * templates and tags, its people (grades, terms, contacts, aliases, holds, retirements, patrons), pools, crews,
  * periods (all open) and claims (status, frozen figures, dates, notes, tags, logs and comments). Each claim
  * that had a number takes the clone's next one, in the order the claims were opened (by the sheet's today
@@ -78,13 +78,16 @@ public class SheetCloneService {
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
     private final AddedGradeRepository addedGrades;
+    private final PolicyVersionRepository versions;
 
     public SheetCloneService(SheetRepository sheetRows, SheetSettingRepository settings, SheetRoleRepository roles,
             RateRepository rates, HolidayRepository holidays, VoidReasonRepository voidReasons,
             ClaimTemplateRepository templates, SheetTagRepository tags, PersonRepository people,
             PatronRepository patrons, PoolRepository pools, PoolMemberRepository poolMembers, Crews crews,
             PeriodRepository periods, ClaimRepository claims, ClaimService claimService, AccessService access,
-            Rollup rollup, ApplicationEventPublisher events, AddedGradeRepository addedGrades) {
+            Rollup rollup, ApplicationEventPublisher events, AddedGradeRepository addedGrades,
+            PolicyVersionRepository versions) {
+        this.versions = versions;
         this.addedGrades = addedGrades;
         this.sheetRows = sheetRows;
         this.settings = settings;
@@ -124,6 +127,8 @@ public class SheetCloneService {
 
         settings.findBySheetId(sheetId).stream().sorted(Comparator.comparing(SheetSetting::getId))
                 .forEach(s -> settings.save(new SheetSetting(toSheet, s.getKey(), s.getFromDate(), s.getValue())));
+        versions.findBySheetIdOrderByVersionAsc(sheetId).forEach(v -> versions.save(
+                new PolicyVersion(toSheet, v.getVersion(), v.getKey(), v.getFromDate(), v.getValue())));
         roles.findBySheetIdOrderByUserName(sheetId)
                 .forEach(r -> roles.save(new SheetRole(toSheet, r.getUserName(), r.getRole())));
         addedGrades.findBySheetIdOrderById(sheetId)

@@ -12,6 +12,8 @@ import net.officefloor.hq.app.rate.AddedGradeRepository;
 import net.officefloor.hq.app.rate.GradeService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.DatedSettings;
+import net.officefloor.hq.app.sheet.PolicyVersion;
+import net.officefloor.hq.app.sheet.PolicyVersionRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetArchived;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -117,9 +119,12 @@ public class AccessService {
     private final ApplicationEventPublisher events;
 
     private final AddedGradeRepository addedGrades;
+    private final PolicyVersionRepository versions;
 
     public AccessService(SheetRoleRepository roles, DelegationRepository delegations, SheetRepository sheetRows, SheetSettingRepository settingRows,
-            SheetService sheets, Rollup rollup, ApplicationEventPublisher events, AddedGradeRepository addedGrades) {
+            SheetService sheets, Rollup rollup, ApplicationEventPublisher events, AddedGradeRepository addedGrades,
+            PolicyVersionRepository versions) {
+        this.versions = versions;
         this.addedGrades = addedGrades;
         this.rollup = rollup;
         this.roles = roles;
@@ -585,7 +590,8 @@ public class AccessService {
      * Record a dated setting's value (null: none) from the from-date (null: the sheet's today), replacing
      * the value it had from that date and keeping the others. When the setting moves live figures (the
      * floor, the late percent, the cap), every figure it moves is announced. The terms fix the due-by of a
-     * claim when it is added; a claim already added keeps the due-by it has.
+     * claim when it is added; a claim already added keeps the due-by it has. A change to a policy setting (see
+     * {@link DatedSettings#POLICY}) is the sheet's next policy version, from the same date.
      */
     @Transactional
     public void setDated(String sheetId, String user, String key, String value, LocalDate from, boolean moves) {
@@ -598,6 +604,10 @@ public class AccessService {
         } else {
             row.setValue(value);
             settingRows.flush();
+        }
+        if (DatedSettings.POLICY.contains(key)) {
+            sheetRows.lockById(sheetId);
+            versions.saveAndFlush(new PolicyVersion(sheetId, (int) versions.countBySheetId(sheetId) + 1, key, on, value));
         }
         events.publishEvent(new SettingChanged(sheetId, user, key, value == null ? "" : value, from));
         if (moves) {
@@ -661,16 +671,16 @@ public class AccessService {
 
     /**
      * Whether the user may settle a claim of the given due outright: a steward settles anything, a clerk
-     * a due up to the clerk limit in force on the sheet's today: the claim's person's grade's then when one is
+     * a due up to the clerk limit in force on the claim's date: the claim's person's grade's then when one is
      * set, else the sheet's (a due of n/a, null, is within any limit). A clerk's settle above it
      * leaves the claim PENDING for a steward.
      */
     @Transactional(readOnly = true)
-    public boolean canSettle(String sheetId, String user, String grade, BigDecimal due) {
+    public boolean canSettle(String sheetId, String user, String grade, LocalDate date, BigDecimal due) {
         if (due == null) {
             return true;
         }
-        BigDecimal limit = sheets.settings(sheetId).clerkLimitFor(grade, sheets.today(sheetId));
+        BigDecimal limit = sheets.settings(sheetId).clerkLimitFor(grade, date);
         return limit == null || due.compareTo(limit) <= 0 || !EnumSet.of(Role.CLERK, Role.RESTRICTED).contains(roleOf(sheetId, user));
     }
 }

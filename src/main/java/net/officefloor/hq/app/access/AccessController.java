@@ -63,6 +63,7 @@ public class AccessController {
      * The score thresholds (mid, high) are whole numbers, null when blank; they are not dated.
      * The score log is on, null when off; it is not dated.
      * The maximum of open claims per person is a whole number, null for none; it is not dated.
+     * The policy version is the number of the sheet's current policy version (0: none made yet).
      */
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
@@ -71,7 +72,7 @@ public class AccessController {
             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
             String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String pendingSla, String proofKinds,
             String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC, String scoreMid,
-            String scoreHigh, String scoreLog, String maxOpen) {
+            String scoreHigh, String scoreLog, String maxOpen, int policyVersion) {
 
         static SettingsView of(DatedSettings dated, LocalDate today, LocalDate policyDate, LocalDate periodNumberingFrom,
                 Integer graceDays, LocalDate entryDate) {
@@ -96,7 +97,7 @@ public class AccessController {
                     dated.defaultGradeText(), text(dated.gradeClerkLimit("A", today)),
                     text(dated.gradeClerkLimit("B", today)), text(dated.gradeClerkLimit("C", today)),
                     text(dated.scoreMid()), text(dated.scoreHigh()), dated.scoreLog() ? "on" : null,
-                    text(dated.maxOpen()));
+                    text(dated.maxOpen()), dated.policyVersion());
         }
 
         /** The grade's grace days in force on the date as written; null when it has none then. */

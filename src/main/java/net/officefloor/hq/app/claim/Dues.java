@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -260,16 +261,25 @@ public final class Dues {
     }
 
     /**
-     * A person's due-total: their {@link #uncapped} sum held to the sheet's cap, see {@link RateTable#capped}.
+     * The date whose cap holds a person's due-total: the date of their latest claim that counts (see
+     * {@link #counts}); the sheet's today when none does.
+     */
+    public static LocalDate capOn(List<Claim> claims, RateTable rates, Holds holds) {
+        return claims.stream().filter(c -> counts(c, holds, rates.today())).map(Claim::getDate)
+                .max(Comparator.naturalOrder()).orElse(rates.today());
+    }
+
+    /**
+     * A person's due-total: their {@link #uncapped} sum held to the cap in force on {@link #capOn}, see {@link RateTable#capped}.
      * Null (n/a) when the sum is.
      */
     public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
-        return rates.capped(uncapped(grades, claims, rates, holds));
+        return rates.capped(uncapped(grades, claims, rates, holds), capOn(claims, rates, holds));
     }
 
     /** What a person's {@link #uncapped} sum is above the sheet's cap: 0.00 when it is not, or is n/a. */
     public static BigDecimal excess(Grades grades, List<Claim> claims, RateTable rates, Holds holds) {
-        return rates.excess(uncapped(grades, claims, rates, holds));
+        return rates.excess(uncapped(grades, claims, rates, holds), capOn(claims, rates, holds));
     }
 
     /**
@@ -398,12 +408,12 @@ public final class Dues {
 
     /** A person's due-total (see {@link #total}) with their {@link Parts} of shared claims. */
     public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts) {
-        return rates.capped(uncapped(grades, claims, rates, holds, parts));
+        return rates.capped(uncapped(grades, claims, rates, holds, parts), capOn(claims, rates, holds));
     }
 
     /** What a person's {@link #uncapped} sum with their {@link Parts} is above the sheet's cap. */
     public static BigDecimal excess(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts) {
-        return rates.excess(uncapped(grades, claims, rates, holds, parts));
+        return rates.excess(uncapped(grades, claims, rates, holds, parts), capOn(claims, rates, holds));
     }
 
     /**
@@ -412,13 +422,13 @@ public final class Dues {
      */
     public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts,
             BigDecimal cut) {
-        return rates.capped(uncapped(grades, claims, rates, holds, parts), cut);
+        return rates.capped(uncapped(grades, claims, rates, holds, parts), cut, capOn(claims, rates, holds));
     }
 
     /** What a person's {@link #uncapped} sum with their {@link Parts} plus their cut total is above the sheet's cap. */
     public static BigDecimal excess(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts,
             BigDecimal cut) {
-        return rates.excess(uncapped(grades, claims, rates, holds, parts), cut);
+        return rates.excess(uncapped(grades, claims, rates, holds, parts), cut, capOn(claims, rates, holds));
     }
 
     /**

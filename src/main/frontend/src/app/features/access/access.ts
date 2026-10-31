@@ -46,6 +46,8 @@ interface Settings {
   scoreLog: string | null;
   /** A person may have at most this many OPEN or PENDING claims; null when there is no maximum. A whole number, not dated. */
   maxOpen: string | null;
+  /** The number of the sheet's current policy version: every change to a policy setting makes one; 0 when none has. */
+  policyVersion: number;
   /** The kinds of proof (receipt, photo), comma separated, a claim above the proof threshold needs one of each of; null when none. Not dated. */
   proofKinds: string | null;
   /** The grade quick-add and an import line with a blank grade give a new person; null when blank (A). Not dated. */
@@ -267,6 +269,7 @@ const ROUNDING = /^(half-up|half-even)$/;
       <p>Score high threshold <strong data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</strong></p>
       <p>Score log <strong data-testid="setting-score-log-current">{{ scoreLog() ?? '' }}</strong></p>
       <p>Max open claims per person <strong data-testid="setting-max-open-current">{{ maxOpen() ?? '' }}</strong></p>
+      <p>Policy version <strong data-testid="policy-version">{{ policyVersion() }}</strong></p>
       <p>Proof kinds <strong data-testid="setting-proof-kinds-current">{{ proofKinds() ?? '' }}</strong></p>
       <p>Default grade <strong data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</strong></p>
       <p>Parent sheet <strong data-testid="setting-parent-current">{{ parent() ?? '' }}</strong></p>
@@ -738,6 +741,7 @@ export class Access {
   protected readonly scoreLog = signal<string | null>(null);
   protected readonly scoreLogInput = signal('');
   protected readonly maxOpen = signal<string | null>(null);
+  protected readonly policyVersion = signal(0);
   protected readonly maxOpenInput = signal('');
   protected readonly proofKinds = signal<string | null>(null);
   protected readonly proofKindsInput = signal('');
@@ -817,7 +821,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, permToday: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, policyVersion: 0, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, permToday: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -1248,6 +1252,7 @@ export class Access {
     this.scoreLogInput.set(settings.scoreLog ?? '');
     this.scoreLogTouched = false;
     this.maxOpen.set(settings.maxOpen);
+    this.policyVersion.set(settings.policyVersion);
     this.maxOpenInput.set(settings.maxOpen ?? '');
     this.maxOpenTouched = false;
     this.proofKinds.set(settings.proofKinds);

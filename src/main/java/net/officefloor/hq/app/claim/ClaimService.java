@@ -434,7 +434,7 @@ public class ClaimService {
                 requireProof(sheetId, claim, owner, fixed);
             }
             String grade = owner == null ? null : owner.gradeOn(sheets.today(sheetId));
-            if (access.canSettle(sheetId, user, grade, fixed)) {
+            if (access.canSettle(sheetId, user, grade, claim.getDate(), fixed)) {
                 claim.setSettledDue(fixed);
                 numberIfNone(sheetId, claim);
                 due = fixed == null ? "n/a" : fixed.toPlainString();

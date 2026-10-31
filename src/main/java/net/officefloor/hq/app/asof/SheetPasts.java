@@ -57,6 +57,7 @@ public class SheetPasts {
             new Scope("RATE", "sheet_id = ?"),
             new Scope("RATE_VERSION", "rate_id IN (SELECT id FROM rate WHERE sheet_id = ?)"),
             new Scope("SHEET_SETTING", "sheet_id = ?"),
+            new Scope("POLICY_VERSION", "sheet_id = ?"),
             new Scope("SHEET_ROLE", "sheet_id = ?"),
             new Scope("DELEGATION", "sheet_id = ?"),
             new Scope("PERIOD", "sheet_id = ?"),

@@ -11,7 +11,7 @@ import net.officefloor.hq.app.sheet.DatedSettings;
 
 /**
  * Every rate on a sheet, the sheet's today, its dated settings (the floor in force on a claim's date, the late
- * percent in force on each 30-day boundary past its due-by, the cap in force on the sheet's today) and its policy date (null: the sheet's today): which rate is in force for a grade on a date, the live due it
+ * percent in force on each 30-day boundary past its due-by, the cap in force on a date) and its policy date (null: the sheet's today): which rate is in force for a grade on a date, the live due it
  * makes of an amount, the late charge an overdue figure gains, how a claim's figures round, and the most a
  * person's due-total comes to. A grade with no rate in force on a date takes the rate of the parent sheet's
  * rates on that date, then the parent's parent, up to three levels up; then, for a sheet that was cloned, the
@@ -88,29 +88,32 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
         return rate.getToDate() != null && rate.getToDate().isBefore(date);
     }
 
-    /** The cap in force on the sheet's today: the most a person's due-total comes to; null when there is none. */
-    public BigDecimal cap() {
-        return settings.cap(today);
+    /** The cap in force on the date: the most a person's due-total comes to; null when there is none. */
+    public BigDecimal cap(LocalDate on) {
+        return settings.cap(on);
     }
 
-    /** A due-total held to the cap: the cap when the sum is above it; as it is otherwise, or when n/a (null). */
-    public BigDecimal capped(BigDecimal sum) {
-        BigDecimal cap = cap();
+    /**
+     * A due-total held to the cap in force on the date: the cap when the sum is above it; as it is otherwise, or
+     * when n/a (null).
+     */
+    public BigDecimal capped(BigDecimal sum, LocalDate on) {
+        BigDecimal cap = cap(on);
         return sum == null || cap == null || sum.compareTo(cap) <= 0 ? sum : cap;
     }
 
-    /** What a due-total's sum is above the cap: 0.00 when it is not, or when n/a (null). */
-    public BigDecimal excess(BigDecimal sum) {
-        BigDecimal cap = cap();
+    /** What a due-total's sum is above the cap in force on the date: 0.00 when it is not, or when n/a (null). */
+    public BigDecimal excess(BigDecimal sum, LocalDate on) {
+        BigDecimal cap = cap(on);
         return sum == null || cap == null || sum.compareTo(cap) <= 0 ? BigDecimal.ZERO : sum.subtract(cap);
     }
 
     /**
-     * A due-total held to the cap less the person's cut total (not below 0.00): that when the sum is above it; as it
-     * is otherwise, or when n/a (null).
+     * A due-total held to the cap in force on the date less the person's cut total (not below 0.00): that when the
+     * sum is above it; as it is otherwise, or when n/a (null).
      */
-    public BigDecimal capped(BigDecimal sum, BigDecimal cut) {
-        BigDecimal cap = cap();
+    public BigDecimal capped(BigDecimal sum, BigDecimal cut, LocalDate on) {
+        BigDecimal cap = cap(on);
         if (sum == null || cap == null) {
             return sum;
         }
@@ -119,12 +122,12 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
     }
 
     /**
-     * What a due-total's sum loses to the cap less the person's cut total (see {@link #capped(BigDecimal, BigDecimal)}):
-     * the sum plus the cut total above the cap, but never more than the sum; 0.00 when it is not above, or when
-     * n/a (null).
+     * What a due-total's sum loses to the cap in force on the date less the person's cut total (see
+     * {@link #capped(BigDecimal, BigDecimal, LocalDate)}): the sum plus the cut total above the cap, but never more
+     * than the sum; 0.00 when it is not above, or when n/a (null).
      */
-    public BigDecimal excess(BigDecimal sum, BigDecimal cut) {
-        return sum == null ? BigDecimal.ZERO : sum.subtract(capped(sum, cut));
+    public BigDecimal excess(BigDecimal sum, BigDecimal cut, LocalDate on) {
+        return sum == null ? BigDecimal.ZERO : sum.subtract(capped(sum, cut, on));
     }
 
     /** The percent in force for the grade on the sheet's today; null when none is. */

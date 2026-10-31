@@ -12,9 +12,15 @@ import java.util.Optional;
  * or before it (a value with no from-date applying from the beginning of time); before every from-date,
  * and where that value was saved blank, the sheet's starting value (1.00 for the floor, 0.00 for the late
  * percent, 14 days for the terms; none for the rounding mode, a grade's grace days, the clerk limit, a grade's clerk limit, the cap, the proof threshold, a grade's proof threshold, the note threshold and the review threshold; the sheet's terms for a grade's own
- * terms).
+ * terms). The policy settings ({@link #POLICY}) are versioned together: {@code versions} holds the from-date
+ * of each of the sheet's policy versions (null: none), oldest first.
  */
-public record DatedSettings(List<SheetSetting> values) {
+public record DatedSettings(List<SheetSetting> values, List<LocalDate> versions) {
+
+    /** A sheet's dated settings with no policy versions told. */
+    public DatedSettings(List<SheetSetting> values) {
+        this(values, List.of());
+    }
 
     public static final String CLERK_LIMIT = "clerk-limit";
 
@@ -78,6 +84,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The month a fiscal year starts in when none is set: January. */
     public static final int DEFAULT_FISCAL_START_MONTH = 1;
 
+    /** The policy settings, versioned together: every change to one of them is a new policy version. */
+    public static final List<String> POLICY = List.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT, CLERK_LIMIT);
+
     /** A sheet with no value saved: every setting has its starting value on every date. */
     public static final DatedSettings NONE = new DatedSettings(List.of());
 
@@ -101,6 +110,19 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The key of a grade's own terms: terms-A, terms-B or terms-C. */
     public static String gradeTermsKey(String grade) {
         return TERMS + "-" + grade;
+    }
+
+    /** The number of the sheet's current policy version: how many have been made; 0 when none has. */
+    public int policyVersion() {
+        return versions.size();
+    }
+
+    /**
+     * The number of the policy version in force on the date: how many versions have a from-date on or before
+     * it, a version with no from-date counting always.
+     */
+    public int policyVersion(LocalDate date) {
+        return (int) versions.stream().filter(from -> from == null || !from.isAfter(date)).count();
     }
 
     /** The key's value in force on the date as written; empty when none is (or it was saved blank). */
