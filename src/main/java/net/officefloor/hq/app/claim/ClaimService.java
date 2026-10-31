@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -18,11 +20,13 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     /** Every claim on the sheet, newest first. */
@@ -35,9 +39,11 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         LocalDate today = sheets.load(sheetId, user).getToday();
-        people.findByIdAndSheetId(personId, sheetId)
+        Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        return claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note)));
+        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note)));
+        audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added));
+        return added;
     }
 
     /** Change a claim's amount, date and note; a missing date takes the sheet's today. */
@@ -49,7 +55,15 @@ public class ClaimService {
         claim.setAmount(scaled(amount));
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
-        return claims.saveAndFlush(claim);
+        Claim edited = claims.saveAndFlush(claim);
+        Person person = people.findByIdAndSheetId(edited.getPersonId(), sheetId).orElseThrow();
+        audit.recordOnCommit(entry("CLAIM_EDITED", user, person, edited));
+        return edited;
+    }
+
+    private static String entry(String event, String user, Person person, Claim claim) {
+        return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
+                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate();
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

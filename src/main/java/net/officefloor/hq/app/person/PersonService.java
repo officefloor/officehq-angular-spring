@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -14,10 +15,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     /** Everyone on the sheet, in the order they were added. */
@@ -34,11 +37,13 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
-        return save(new Person(sheetId, trimmed, grade));
+        Person added = save(new Person(sheetId, trimmed, grade));
+        audit.recordOnCommit(entry("PERSON_ADDED", user, added));
+        return added;
     }
 
     @Transactional
-    public Person update(String sheetId, long id, String name, String grade) {
+    public Person update(String sheetId, String user, long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         String trimmed = name.trim();
@@ -47,7 +52,14 @@ public class PersonService {
         }
         person.setName(trimmed);
         person.setGrade(grade);
-        return save(person);
+        Person edited = save(person);
+        audit.recordOnCommit(entry("PERSON_EDITED", user, edited));
+        return edited;
+    }
+
+    private static String entry(String event, String user, Person person) {
+        return event + " sheet=" + person.getSheetId() + " by=" + user
+                + " name=" + person.getName() + " grade=" + person.getGrade();
     }
 
     private Person save(Person person) {

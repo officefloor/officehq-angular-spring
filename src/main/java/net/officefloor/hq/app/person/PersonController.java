@@ -61,6 +61,6 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm request) {
-        return PersonView.of(people.update(sheetId, id, request.name(), request.grade()));
+        return PersonView.of(people.update(sheetId, user, id, request.name(), request.grade()));
     }
 }

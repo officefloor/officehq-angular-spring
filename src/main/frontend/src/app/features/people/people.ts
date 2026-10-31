@@ -81,7 +81,7 @@ export class PeopleList {
 
   constructor() {
     // Each (re)load of a sheet re-reads its people from the store.
-    toObservable(this.sheets.current)
+    toObservable(this.sheets.loaded)
       .pipe(
         switchMap((sheet) => {
           this.people.set([]);
