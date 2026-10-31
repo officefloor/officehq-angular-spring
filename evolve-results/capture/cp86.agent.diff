@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 02a1bbdd9..8a99cca9f 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -114,6 +114,12 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a
+           </select>
+           <button type="button" data-testid="claim-reassign" (click)="reassign(c)"
+                   [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date + ' to another person'">Move</button>
++          <label [for]="'claim-inline-amount-' + c.id">New amount</label>
++          <input [id]="'claim-inline-amount-' + c.id" data-testid="claim-inline-amount" inputmode="decimal"
++                 autocomplete="off" [value]="inlineAmounts()[c.id] ?? ''"
++                 (input)="inlineAmountChanged(c, $any($event.target).value)" />
++          <button type="button" data-testid="claim-inline-save" (click)="saveInline(c)"
++                  [attr.aria-label]="'Save the amount of claim of ' + c.amount + ' on ' + c.date">Save amount</button>
+           @if (editingId() === c.id) {
+             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+           } @else {
+@@ -177,6 +183,8 @@ export class PersonClaims {
+   protected readonly newDates = signal<Readonly<Record<number, string>>>({});
+   /** The amount typed to split off each OPEN claim, by id. */
+   protected readonly splitAmounts = signal<Readonly<Record<number, string>>>({});
++  /** The amount typed to change each DRAFT claim to in its row, by id. */
++  protected readonly inlineAmounts = signal<Readonly<Record<number, string>>>({});
+   /** The reason typed to reject each PENDING claim, by id. */
+   protected readonly rejectReasons = signal<Readonly<Record<number, string>>>({});
+ 
+@@ -481,6 +489,61 @@ export class PersonClaims {
+     });
+   }
+ 
++  protected inlineAmountChanged(c: ClaimView, amount: string): void {
++    this.inlineAmounts.update((amounts) => ({ ...amounts, [c.id]: amount }));
++    if (this.claimError()?.id === c.id) this.claimError.set(null);
++  }
++
++  /** Change a draft's amount in its row, keeping its date, note and the claim it corrects: the claim form's save,
++   *  under the same rules. */
++  protected saveInline(c: ClaimView): void {
++    this.claimError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const amount = (this.inlineAmounts()[c.id] ?? '').trim();
++    const refuse = (message: string) => this.claimError.set({ id: c.id, message });
++    if (!CLAIM_AMOUNT_PATTERN.test(amount)) {
++      refuse('Type an amount with up to two decimals; a negative one is a correction.');
++      return;
++    }
++    const correction = amount.startsWith('-');
++    if (correction && c.corrects === null) {
++      refuse('A negative amount is a correction: use the claim form to name the settled claim it corrects.');
++      return;
++    }
++    if (!correction && c.corrects !== null) {
++      refuse('Only a negative amount (a correction) names a claim it corrects.');
++      return;
++    }
++    if (c.status !== 'DRAFT') {
++      refuse(`A ${c.status} claim cannot be edited. Void it and add a new one.`);
++      return;
++    }
++    if (c.lockedBy !== null && c.lockedBy !== this.session.user()) {
++      refuse(`${c.lockedBy} is editing this claim, so it is locked until they are done.`);
++      return;
++    }
++    this.api.update(sheet.id, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects }).subscribe({
++      next: (saved) => {
++        this.inlineAmounts.update((amounts) => ({ ...amounts, [c.id]: '' }));
++        // The save released this user's lock, so an editor they had open on it is closed.
++        if (this.editingId() === c.id) this.reset();
++        this.saved.emit(saved);
++      },
++      error: (err: unknown) => refuse(
++        err instanceof HttpErrorResponse && err.status === 403
++          ? 'Your role may not edit a claim.'
++          : err instanceof HttpErrorResponse && err.status === 423
++            ? 'This claim is due by inside a closed period.'
++            : err instanceof HttpErrorResponse && err.status === 422
++              ? 'That claim is dated after the person retired.'
++              : err instanceof HttpErrorResponse && err.status === 409
++                ? 'Only a draft claim can be edited, and not while another user is editing it.'
++                : 'Could not save that amount.',
++      ),
++    });
++  }
++
+   /** Why approving or rejecting a claim was refused, other than by who asked. */
+   private refusal(err: unknown, c: ClaimView, done: string): string {
+     return err instanceof HttpErrorResponse && err.status === 423
