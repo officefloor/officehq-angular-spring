@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import net.officefloor.hq.app.role.Delegations;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -24,9 +25,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class Audit {
 
     private final Path file;
+    private final Delegations delegations;
 
-    public Audit(@Value("${app.audit.file:.run/audit.log}") String path) {
+    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, Delegations delegations) {
         this.file = Path.of(path);
+        this.delegations = delegations;
     }
 
     /** Append one audit record. Tests assert the exact line(s) in the file. */
@@ -58,6 +61,15 @@ public class Audit {
                 record(entry);
             }
         });
+    }
+
+    /**
+     * Append the record of a change the user made on the sheet once the current transaction commits, ending it with
+     * {@code for=<steward>} while the user acts as a steward by that steward's delegation. A record that only reports
+     * figures (a rollup, the totals, a notice) is appended with {@link #recordOnCommit} instead.
+     */
+    public void recordChangeOnCommit(String sheetId, String user, String entry) {
+        recordOnCommit(delegations.actingFor(sheetId, user).map(steward -> entry + " for=" + steward).orElse(entry));
     }
 
     /** Truncate the audit file. */

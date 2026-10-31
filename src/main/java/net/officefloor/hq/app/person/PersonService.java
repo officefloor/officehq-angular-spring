@@ -44,7 +44,7 @@ public class PersonService {
         }
         Rollup.Figures before = rollup.of(sheetId);
         Person added = save(new Person(sheetId, trimmed, grade));
-        audit.recordOnCommit(entry("PERSON_ADDED", user, added, grade));
+        audit.recordChangeOnCommit(sheetId, user, entry("PERSON_ADDED", user, added, grade));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
@@ -79,7 +79,7 @@ public class PersonService {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
         }
         Person edited = save(person);
-        audit.recordOnCommit(entry("PERSON_EDITED", user, edited, edited.gradeOn(today)));
+        audit.recordChangeOnCommit(sheetId, user, entry("PERSON_EDITED", user, edited, edited.gradeOn(today)));
         rollup.recordChanges(sheetId, user, before);
         return edited;
     }
@@ -92,7 +92,7 @@ public class PersonService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         person.setRetiredFrom(from != null ? from : today);
         Person retired = save(person);
-        audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
+        audit.recordChangeOnCommit(sheetId, user, "PERSON_RETIRED sheet=" + sheetId + " by=" + user
                 + " name=" + retired.getName() + " from=" + retired.getRetiredFrom());
         return retired;
     }
@@ -111,7 +111,7 @@ public class PersonService {
         Rollup.Figures before = rollup.of(sheetId);
         person.addHold(new Hold(start, to));
         Person saved = save(person);
-        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+        audit.recordChangeOnCommit(sheetId, user, "PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " from=" + start);
         rollup.recordChanges(sheetId, user, before);
         return saved;

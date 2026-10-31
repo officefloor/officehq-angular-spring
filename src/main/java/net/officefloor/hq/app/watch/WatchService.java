@@ -54,7 +54,7 @@ public class WatchService {
             watches.delete(existing.get());
             watches.flush();
         }
-        audit.recordOnCommit((watched ? "PERSON_WATCHED" : "PERSON_UNWATCHED") + " sheet=" + sheetId + " by=" + user
+        audit.recordChangeOnCommit(sheetId, user, (watched ? "PERSON_WATCHED" : "PERSON_UNWATCHED") + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName());
         return watched;
     }

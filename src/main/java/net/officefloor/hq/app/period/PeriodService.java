@@ -71,7 +71,7 @@ public class PeriodService {
         } catch (DataIntegrityViolationException raced) {
             throw nameInUse();
         }
-        audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+        audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
                 + " from=" + added.getFromDate() + " to=" + added.getToDate());
         return added;
     }
@@ -98,7 +98,7 @@ public class PeriodService {
                 continue;
             }
             Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
-            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+            audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
                     + " from=" + added.getFromDate() + " to=" + added.getToDate());
             made.add(added);
         }
@@ -140,7 +140,7 @@ public class PeriodService {
         period.close(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()));
         Period closed = periods.saveAndFlush(period);
         BigDecimal total = closed.getClosedTotal();
-        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
+        audit.recordChangeOnCommit(sheetId, user, "PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
                 + " total=" + total.toPlainString() + suffix);
         return closed;
     }
@@ -161,7 +161,7 @@ public class PeriodService {
         }
         period.reopen();
         Period reopened = periods.saveAndFlush(period);
-        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + reopened.getName());
+        audit.recordChangeOnCommit(sheetId, user, "PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + reopened.getName());
         return reopened;
     }
 

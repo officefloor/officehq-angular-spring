@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
+import { DelegationsPanel } from '../delegations/delegations';
 import { PeopleList } from '../people/people';
 import { RatesPanel } from '../rates/rates';
 import { SettingsPanel } from '../settings/settings';
@@ -9,7 +10,7 @@ import { SettingsPanel } from '../settings/settings';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel],
+  imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -38,6 +39,7 @@ import { SettingsPanel } from '../settings/settings';
 
         <app-rates />
         <app-settings />
+        <app-delegations />
         <app-people />
       } @else {
         <p data-testid="sheet-none">Load a sheet to begin.</p>

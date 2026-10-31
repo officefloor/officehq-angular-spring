@@ -14,10 +14,13 @@ public class RoleService {
     private final RoleRepository roles;
     private final SheetService sheets;
     private final SheetRepository sheetStore;
+    private final Delegations delegations;
     private final Audit audit;
 
-    public RoleService(RoleRepository roles, SheetService sheets, SheetRepository sheetStore, Audit audit) {
+    public RoleService(RoleRepository roles, SheetService sheets, SheetRepository sheetStore, Delegations delegations,
+            Audit audit) {
         this.roles = roles;
+        this.delegations = delegations;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
         this.audit = audit;
@@ -29,9 +32,19 @@ public class RoleService {
         return roles.findBySheetIdOrderByUserName(sheetId);
     }
 
-    /** The role of a user name on the sheet: the one assigned, else clerk. */
+    /** The role a user name acts in on the sheet: steward while a delegation of the role to it holds the sheet's
+     *  today, else the one assigned. */
     @Transactional(readOnly = true)
     public String roleOf(String sheetId, String userName) {
+        if (delegations.actingFor(sheetId, userName).isPresent()) {
+            return Role.STEWARD;
+        }
+        return assignedRoleOf(sheetId, userName);
+    }
+
+    /** The role assigned to a user name on the sheet, else clerk; a delegation does not change it. */
+    @Transactional(readOnly = true)
+    public String assignedRoleOf(String sheetId, String userName) {
         return roles.findBySheetIdAndUserName(sheetId, userName).map(Role::getRole).orElse(Role.CLERK);
     }
 
@@ -51,7 +64,7 @@ public class RoleService {
                 .orElseGet(() -> new Role(sheetId, userName, role));
         row.setRole(role);
         Role saved = roles.saveAndFlush(row);
-        audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + user
+        audit.recordChangeOnCommit(sheetId, user, "ROLE_SET sheet=" + sheetId + " by=" + user
                 + " user=" + saved.getUserName() + " role=" + saved.getRole());
         return saved;
     }

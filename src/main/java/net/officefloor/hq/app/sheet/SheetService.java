@@ -111,7 +111,7 @@ public class SheetService {
         Rollup.Figures before = rollup.of(id);
         sheet.setPolicyDate(policyDate);
         Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
                 + " key=policy-date value=" + (policyDate == null ? "" : policyDate));
         rollup.recordChanges(id, user, before);
         return saved;
@@ -124,7 +124,7 @@ public class SheetService {
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
         sheet.setPeriodNumberingFrom(from);
         Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
                 + " key=period-numbering-from value=" + (from == null ? "" : from));
         return saved;
     }
@@ -136,7 +136,7 @@ public class SheetService {
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
         sheet.setGraceDays(graceDays);
         Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
                 + " key=grace-days value=" + (graceDays == null ? "" : graceDays));
         return saved;
     }
@@ -169,7 +169,7 @@ public class SheetService {
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
         sheet.setPermission(action, value);
         Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
         return saved;
     }
 
@@ -182,7 +182,7 @@ public class SheetService {
         Rollup.Figures before = movesFigures ? rollup.of(id) : null;
         sheet.record(key, from != null ? from : sheet.getToday(), value);
         Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key
                 + " value=" + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
         if (movesFigures) {
             rollup.recordChanges(id, user, before);

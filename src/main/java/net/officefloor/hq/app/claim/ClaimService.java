@@ -101,7 +101,7 @@ public class ClaimService {
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), claimDate, dueBy,
                 noteOf(note), corrects, claims.lastListed(sheetId) + 1));
         added.logStatus(user, today, shownDue(sheet, added, person));
-        audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_ADDED", user, person, added, added.getNumber()));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
@@ -132,7 +132,7 @@ public class ClaimService {
         claim.setNote(noteOf(note));
         Claim edited = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(edited.getPersonId(), sheetId).orElseThrow();
-        audit.recordOnCommit(entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
         rollup.recordChanges(sheetId, user, before);
         return edited;
     }
@@ -208,7 +208,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             line += " due=" + dueText(changed);
         }
-        audit.recordOnCommit(line);
+        audit.recordChangeOnCommit(sheetId, user, line);
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, person, number);
         }
@@ -237,7 +237,7 @@ public class ClaimService {
         Rollup.Figures before = rollup.of(sheetId);
         claim.setDeferredUntil(until);
         Claim deferred = claims.saveAndFlush(claim);
-        audit.recordOnCommit(entry("CLAIM_DEFERRED", user, person, deferred, deferred.getNumber()) + " until=" + until);
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_DEFERRED", user, person, deferred, deferred.getNumber()) + " until=" + until);
         rollup.recordChanges(sheetId, user, before);
         return deferred;
     }
@@ -258,7 +258,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         claim.addProof();
         Claim proven = claims.saveAndFlush(claim);
-        audit.recordOnCommit(entry("CLAIM_PROOF_ADDED", user, person, proven, proven.getNumber())
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_PROOF_ADDED", user, person, proven, proven.getNumber())
                 + " proofs=" + proven.getProofs());
         return proven;
     }
@@ -282,7 +282,7 @@ public class ClaimService {
         claim.setSettledDue(due);
         claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
         Claim changed = claims.saveAndFlush(claim);
-        audit.recordOnCommit(entry("CLAIM_APPROVED", user, person, changed, changed.getNumber())
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_APPROVED", user, person, changed, changed.getNumber())
                 + " due=" + dueText(changed));
         watches.notifyWatchers(sheetId, user, person, changed.getNumber());
         rollup.recordChanges(sheetId, user, before);
@@ -302,7 +302,7 @@ public class ClaimService {
         claim.setStatus(ClaimStatus.OPEN);
         claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
         Claim changed = claims.saveAndFlush(claim);
-        audit.recordOnCommit(entry("CLAIM_REJECTED", user, person, changed, changed.getNumber())
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REJECTED", user, person, changed, changed.getNumber())
                 + " reason=" + reason.trim());
         rollup.recordChanges(sheetId, user, before);
         return changed;
@@ -334,7 +334,7 @@ public class ClaimService {
         claim.setSettledDue(due);
         claim.logStatus(user, sheet.getToday(), due);
         Claim changed = claims.saveAndFlush(claim);
-        audit.recordOnCommit(entry("CLAIM_RESETTLED", user, person, changed, changed.getNumber())
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_RESETTLED", user, person, changed, changed.getNumber())
                 + " old=" + old + " new=" + dueText(changed));
         watches.notifyWatchers(sheetId, user, person, changed.getNumber());
         rollup.recordChanges(sheetId, user, before);
@@ -372,7 +372,7 @@ public class ClaimService {
         claim.unbind();
         claim.reassign(to.getId(), claims.lastListed(sheetId) + 1);
         Claim moved = claims.saveAndFlush(claim);
-        audit.recordOnCommit(entry("CLAIM_REASSIGNED", user, to, moved, moved.getNumber())
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REASSIGNED", user, to, moved, moved.getNumber())
                 + " from=" + from.getName() + " to=" + to.getName());
         rollup.recordChanges(sheetId, user, before);
         return moved;
@@ -419,9 +419,9 @@ public class ClaimService {
         added.openAsSplit(nextNumber(sheet, date), user, original.getNumber());
         added.logStatus(user, sheet.getToday(), shownDue(sheet, added, person));
         added = claims.saveAndFlush(added);
-        audit.recordOnCommit(entry("CLAIM_SPLIT", user, person, original, original.getNumber())
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_SPLIT", user, person, original, original.getNumber())
                 + " into=" + added.getNumber());
-        audit.recordOnCommit(entry("CLAIM_OPENED", user, person, added, added.getNumber()));
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_OPENED", user, person, added, added.getNumber()));
         rollup.recordChanges(sheetId, user, before);
         return new Split(original, added);
     }

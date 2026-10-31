@@ -56,7 +56,7 @@ public class RateService {
         row.setRate(scaled);
         row.setToDate(to);
         Rate saved = rates.saveAndFlush(row);
-        audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
+        audit.recordChangeOnCommit(sheetId, user, "RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + saved.getGrade() + " rate=" + saved.getRate().toPlainString()
                 + (from == null ? "" : " from=" + from)
                 + (to == null ? "" : " to=" + to));

@@ -54,7 +54,7 @@ public class PatronService {
             // Another user named the same patron at the same moment: theirs stands.
             throw alreadyPatron();
         }
-        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user
+        audit.recordChangeOnCommit(sheetId, user, "PATRON_ADDED sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " patron=" + patron.getName());
         return added;
     }
