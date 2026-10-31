@@ -80,7 +80,8 @@ public class Rollup {
                     .anyMatch(grade -> Rate.inForceOn(ratesOf(sheetRates, grade), today).isPresent());
             String due = NOT_AVAILABLE;
             if (!dues.isEmpty() || anyRate) {
-                BigDecimal total = dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+                BigDecimal sum = dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+                BigDecimal total = sheet == null ? sum : sheet.capped(sum);
                 dueTotal = dueTotal.add(total);
                 due = total.toPlainString();
             }

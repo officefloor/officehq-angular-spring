@@ -28,15 +28,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
-     *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off. */
+     *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off; the cap (two decimals) is null when there is none. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
-            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
+            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
-                    sheet.getPeriodNumberingFrom(), sheet.getGradeTerms());
+                    sheet.getPeriodNumberingFrom(), sheet.getGradeTerms(),
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
         }
     }
 
@@ -69,6 +70,10 @@ public class SheetController {
 
     /** The sheet's period numbering from as the form submits it; a missing one means off. */
     public record PeriodNumberingFromChange(LocalDate periodNumberingFrom) {
+    }
+
+    /** The sheet's cap as the form submits it; a missing one means none. */
+    public record CapChange(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal cap) {
     }
 
     private final SheetService sheets;
@@ -156,5 +161,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PeriodNumberingFromChange request) {
         return SheetView.of(sheets.setPeriodNumberingFrom(id, user, request.periodNumberingFrom()));
+    }
+
+    /** Change the sheet's cap. */
+    @PutMapping("/{id}/settings/cap")
+    public SheetView setCap(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody CapChange request) {
+        return SheetView.of(sheets.setCap(id, user, request.cap()));
     }
 }

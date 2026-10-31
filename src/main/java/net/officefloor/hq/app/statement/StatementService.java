@@ -111,7 +111,7 @@ public class StatementService {
         // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any
         // of their claims that count is at, and no claim that has a due, the person has no due-total.
         boolean anyRate = grades.stream().anyMatch(g -> Rate.inForceOn(ratesOf(sheetRates, g), today).isPresent());
-        String dueTotal = !anyRate && !anyDue ? "n/a" : total.toPlainString();
+        String dueTotal = !anyRate && !anyDue ? "n/a" : sheet.capped(total).toPlainString();
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

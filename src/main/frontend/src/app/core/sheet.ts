@@ -24,6 +24,8 @@ export interface SheetView {
   periodNumberingFrom: string | null;
   /** The terms in days set per grade; a grade without its own uses the sheet's terms. */
   gradeTerms: Partial<Record<Grade, number>>;
+  /** A person's due-total is at most this (two decimals); null: none. */
+  cap: string | null;
 }
 
 /** The terms a sheet has until they are changed. */
@@ -104,6 +106,13 @@ export class Sheets {
   setLatePct(id: string, latePct: string): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/late-pct`, { latePct })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's cap; null means none. */
+  setCap(id: string, cap: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/cap`, { cap })
       .pipe(tap((s) => this.active.set(s)));
   }
 }

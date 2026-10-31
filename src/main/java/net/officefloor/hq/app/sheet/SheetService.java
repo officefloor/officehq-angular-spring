@@ -145,4 +145,19 @@ public class SheetService {
                 + " key=period-numbering-from value=" + (from == null ? "" : from));
         return saved;
     }
+
+    /** Set the sheet's cap (null: none), starting the sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setCap(String id, String user, BigDecimal cap) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        Rollup.Figures before = rollup.of(id);
+        BigDecimal scaled = cap == null ? null : cap.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setCap(scaled);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=cap value=" + (scaled == null ? "" : scaled.toPlainString()));
+        rollup.recordChanges(id, user, before);
+        return saved;
+    }
 }

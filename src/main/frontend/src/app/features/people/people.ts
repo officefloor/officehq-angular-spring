@@ -113,6 +113,7 @@ function csvField(value: string): string {
             <span data-testid="person-name">{{ p.name }}</span>
             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
+            excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span>
             — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
             due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
             — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
@@ -237,10 +238,21 @@ export class PeopleList {
   protected readonly claimedTotal = computed(() =>
     money(this.claims().filter(this.countsNow()).reduce((sum, c) => sum + cents(c.amount), 0)),
   );
-  /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none);
-   *  null when neither their grade in force today nor the grade any of those claims is at has a rate in
+  /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none),
+   *  at most the sheet's cap; null when neither their grade in force today nor the grade any of those claims is at has a rate in
    *  force today, and none of those claims has a due. */
   private readonly dueByPerson = computed(() => {
+    const cap = this.capCents();
+    return new Map([...this.uncappedDueByPerson()].map(([id, due]) =>
+      [id, due === null || cap === null ? due : Math.min(due, cap)]));
+  });
+  /** The sheet's cap in whole cents; null with none. */
+  private readonly capCents = computed(() => {
+    const cap = this.sheets.current()?.cap;
+    return cap === null || cap === undefined ? null : cents(cap);
+  });
+  /** Each person's due-total before the cap, in whole cents; null as for the due-total. */
+  private readonly uncappedDueByPerson = computed(() => {
     const today = this.rates.byGrade();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, number | null>();
@@ -402,6 +414,13 @@ export class PeopleList {
   protected dueOf(p: PersonView): string {
     const due = this.dueByPerson().get(p.id);
     return due === null || due === undefined ? NOT_AVAILABLE : money(due);
+  }
+
+  /** How far the person's figures add up above the cap, in whole cents; 0 when they do not, or have no due-total. */
+  protected excessOf(personId: number): number {
+    const sum = this.uncappedDueByPerson().get(personId) ?? null;
+    const due = this.dueByPerson().get(personId) ?? null;
+    return sum === null || due === null ? 0 : sum - due;
   }
 
   /** Download the people as CSV, in list order, retired people included. */
