@@ -86,6 +86,11 @@ const NO_RATES: readonly RateView[] = [];
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
                     [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           }
+          <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+            @for (l of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? notAvailable }}</li>
+            }
+          </ol>
           @if (claimError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
@@ -118,6 +123,7 @@ export class PersonClaims {
   readonly saved = output<ClaimView>();
   readonly selectToggled = output<{ id: number; selected: boolean }>();
 
+  protected readonly notAvailable = NOT_AVAILABLE;
   protected readonly claimed = computed(() => money(this.claims().filter(countsWhile(this.held())).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);

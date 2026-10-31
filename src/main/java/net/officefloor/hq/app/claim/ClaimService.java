@@ -97,6 +97,7 @@ public class ClaimService {
         LocalDate dueBy = claimDate.plusDays(sheet.termsFor(person.gradeOn(claimDate)));
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), claimDate, dueBy,
                 noteOf(note), corrects, claims.lastListed(sheetId) + 1));
+        added.logStatus(user, today, shownDue(sheet, added, person));
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
         rollup.recordChanges(sheetId, user, before);
         return added;
@@ -174,6 +175,7 @@ public class ClaimService {
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(due);
         }
+        claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
         Claim changed = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
@@ -207,6 +209,7 @@ public class ClaimService {
         Rollup.Figures before = rollup.of(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(due);
+        claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
         Claim changed = claims.saveAndFlush(claim);
         audit.recordOnCommit(entry("CLAIM_APPROVED", user, person, changed, changed.getNumber())
                 + " due=" + dueText(changed));
@@ -220,11 +223,12 @@ public class ClaimService {
     @Transactional
     public Claim reject(String sheetId, String user, long id, String reason) {
         sheets.load(sheetId, user);
-        sheetStore.findLockedById(sheetId).orElseThrow();
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = pendingClaim(sheetId, user, id);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         Rollup.Figures before = rollup.of(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
+        claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
         Claim changed = claims.saveAndFlush(claim);
         audit.recordOnCommit(entry("CLAIM_REJECTED", user, person, changed, changed.getNumber())
                 + " reason=" + reason.trim());
@@ -297,6 +301,11 @@ public class ClaimService {
         // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
         BigDecimal figure = claim.getBoundDue() != null ? claim.getBoundDue() : live;
         return figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
+    }
+
+    /** The due a claim shows as it is now: the due fixed when it was settled, else the one it would be settled at. */
+    private BigDecimal shownDue(Sheet sheet, Claim claim, Person person) {
+        return claim.getSettledDue() != null ? claim.getSettledDue() : dueNow(sheet, claim, person);
     }
 
     private static String dueText(Claim claim) {

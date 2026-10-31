@@ -1,6 +1,11 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -10,6 +15,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import org.hibernate.annotations.BatchSize;
 
 /** A claim a person on a sheet has made: an amount (two decimals), a date, a note and a status. A negative amount
  *  makes it a correction of the SETTLED claim of the same person whose number it names. */
@@ -75,6 +84,13 @@ public class Claim {
      *  is reassigned, so a person's claims list newest first by it. */
     @Column(name = "listed", nullable = false)
     private long listed;
+
+    /** The claim's status log, oldest first: a line for each status it has had, the DRAFT it was added as first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    @BatchSize(size = 100)
+    private List<ClaimLogEntry> log = new ArrayList<>();
 
     protected Claim() {
     }
@@ -210,5 +226,15 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+    }
+
+    /** The claim's status log, oldest first. */
+    public List<ClaimLogEntry> getLog() {
+        return Collections.unmodifiableList(log);
+    }
+
+    /** Log the status the claim has now, taken by this user on this day, at the due it has at this moment. */
+    public void logStatus(String user, LocalDate on, BigDecimal due) {
+        log.add(new ClaimLogEntry(status, user, on, due));
     }
 }

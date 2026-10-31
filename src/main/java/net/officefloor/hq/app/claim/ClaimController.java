@@ -32,11 +32,11 @@ public class ClaimController {
      * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
      * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
      * statedDue (null if it had no figure then, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
-     * on any other claim).
+     * on any other claim); log is its status log, oldest first.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate dueBy) {
+            LocalDate dueBy, List<LogLine> log) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -44,7 +44,17 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
-                    claim.getDueBy());
+                    claim.getDueBy(), claim.getLog().stream().map(LogLine::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log: the status it took, by whom, on the sheet's today then, at the due it had
+     *  then with exactly two decimals (null when it had none). */
+    public record LogLine(ClaimStatus status, String by, LocalDate on, String due) {
+
+        public static LogLine of(ClaimLogEntry entry) {
+            return new LogLine(entry.getStatus(), entry.getBy(), entry.getOn(),
+                    entry.getDue() == null ? null : entry.getDue().toPlainString());
         }
     }
 

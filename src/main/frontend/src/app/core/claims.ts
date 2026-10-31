@@ -35,6 +35,17 @@ export interface ClaimView {
   /** The day the claim is due by (yyyy-mm-dd): fixed when it was added, from its date and the terms of its
    *  person's grade in force then. */
   dueBy: string;
+  /** The claim's status log, oldest first: a line for each status it has had, the DRAFT it was added as first. */
+  log: ClaimLogLine[];
+}
+
+/** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
+ *  today (yyyy-mm-dd) then, and the due it had at that moment with exactly two decimals (null when it had none). */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  on: string;
+  due: string | null;
 }
 
 /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due. */
