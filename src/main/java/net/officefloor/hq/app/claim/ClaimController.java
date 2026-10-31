@@ -63,6 +63,10 @@ public class ClaimController {
     public record Rejection(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {
     }
 
+    /** The person a claim is to move to. */
+    public record Reassignment(@NotNull Long personId) {
+    }
+
     /** The claims selected to be opened together. */
     public record BulkOpen(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {
     }
@@ -127,6 +131,15 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody Rejection request) {
         return ClaimView.of(claims.reject(sheetId, user, id, request.reason()));
+    }
+
+    @PutMapping("/claims/{id}/person")
+    public ClaimView reassign(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody Reassignment request) {
+        return ClaimView.of(claims.reassign(sheetId, user, id, request.personId()));
     }
 
     /**

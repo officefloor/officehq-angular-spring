@@ -58,7 +58,7 @@ public class Rollup {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
         List<Rate> sheetRates = rates.findBySheetId(sheetId);
-        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<Long, PersonFigures> byPerson = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
@@ -96,7 +96,7 @@ public class Rollup {
         Map<Long, Person> personOf = new LinkedHashMap<>();
         people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
-        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = personOf.get(claim.getPersonId());
             if (person == null || !person.counts(claim.getStatus()) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {

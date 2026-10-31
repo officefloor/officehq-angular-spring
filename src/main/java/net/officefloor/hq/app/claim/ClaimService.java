@@ -63,7 +63,7 @@ public class ClaimService {
     /** Every claim on the sheet, newest first. */
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
     }
 
     /** The ids of those given that are claims on the sheet, in list order: people in the order they are listed,
@@ -71,7 +71,7 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Long> inListOrder(String sheetId, Collection<Long> ids) {
         Set<Long> wanted = new HashSet<>(ids);
-        return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        return claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
                 .filter(c -> wanted.contains(c.getId()))
                 .sorted(Comparator.comparing(Claim::getPersonId))
                 .map(Claim::getId)
@@ -92,8 +92,8 @@ public class ClaimService {
         refuseIfRetired(person, date != null ? date : today);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
         Rollup.Figures before = rollup.of(sheetId);
-        Claim added = claims.saveAndFlush(
-                new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note), corrects));
+        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today,
+                noteOf(note), corrects, claims.lastListed(sheetId) + 1));
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
         rollup.recordChanges(sheetId, user, before);
         return added;
@@ -229,6 +229,43 @@ public class ClaimService {
         return changed;
     }
 
+    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
+     *  loses any figure a statement bound it to (it is live again until its new person's next statement), and is
+     *  listed as its new person's newest claim. Refused for a clerk, for a SETTLED or VOID claim, for a move to the
+     *  person it is already of, for one dated inside a closed period or after the new person retired, and for a
+     *  correction the new person has no SETTLED claim of that number for. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long id, long toPersonId) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        Person to = people.findByIdAndSheetId(toPersonId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reassigns a claim");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reassigned");
+        }
+        if (claim.getPersonId().equals(to.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is already " + to.getName() + "'s");
+        }
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfRetired(to, claim.getDate());
+        refuseUnlessCorrects(sheetId, to.getId(), claim.getAmount(), claim.getCorrects());
+        Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
+        claim.unbind();
+        claim.reassign(to.getId(), claims.lastListed(sheetId) + 1);
+        Claim moved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(entry("CLAIM_REASSIGNED", user, to, moved, moved.getNumber())
+                + " from=" + from.getName() + " to=" + to.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return moved;
+    }
+
     /** The PENDING claim a steward approves or rejects; refused for a clerk, a claim in any other status and one
      *  dated inside a closed period. */
     private Claim pendingClaim(String sheetId, String user, long id) {
@@ -252,7 +289,7 @@ public class ClaimService {
         BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
                 .map(Rate::getRate)
                 .map(rate -> liveFigure(claim, rate, sheet.getFloor(), sheet.roundingFor(roundingDate(claim,
-                        claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId())))))
+                        claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, claim.getPersonId())))))
                 .orElse(null);
         // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
         BigDecimal figure = claim.getBoundDue() != null ? claim.getBoundDue() : live;
@@ -298,7 +335,7 @@ public class ClaimService {
             }
             return;
         }
-        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
+        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId).stream()
                 .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
         if (!settled) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

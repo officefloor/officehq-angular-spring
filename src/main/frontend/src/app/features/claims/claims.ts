@@ -70,6 +70,16 @@ const NO_RATES: readonly RateView[] = [];
                   [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'VOID')"
                   [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+          <select [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to"
+                  [value]="reassignTo()[c.id] ?? ''" (change)="reassignToChanged(c, $any($event.target).value)">
+            <option value="">Choose a person</option>
+            @for (o of others(); track o.id) {
+              <option [value]="o.id">{{ o.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" (click)="reassign(c)"
+                  [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date + ' to another person'">Move</button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
           } @else {
@@ -99,6 +109,8 @@ export class PersonClaims {
   readonly grades = input.required<Pick<PersonView, 'grade' | 'grades'>>();
   /** The sheet's periods, by from-date. */
   readonly periods = input.required<readonly PeriodView[]>();
+  /** The other people on the sheet a claim can be moved to. */
+  readonly others = input<readonly Pick<PersonView, 'id' | 'name'>[]>([]);
   /** Whether the person is on hold: their OPEN and PENDING claims then count in no total. */
   readonly held = input(false);
   /** The ids of the claims selected for a bulk action. */
@@ -112,6 +124,8 @@ export class PersonClaims {
   protected readonly saving = signal(false);
   /** The error of the last action taken on a claim's row, until the next action on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  /** The person chosen to move each claim to, by claim id. */
+  protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
   /** The reason typed to reject each PENDING claim, by id. */
   protected readonly rejectReasons = signal<Readonly<Record<number, string>>>({});
 
@@ -204,6 +218,40 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 403
           ? 'Only a steward can reject a claim.'
           : this.refusal(err, c, 'rejected'),
+      }),
+    });
+  }
+
+  protected reassignToChanged(c: ClaimView, personId: string): void {
+    this.reassignTo.update((chosen) => ({ ...chosen, [c.id]: personId }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected reassign(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const to = Number(this.reassignTo()[c.id] ?? '');
+    if (!to) {
+      this.claimError.set({ id: c.id, message: 'Choose the person to move the claim to.' });
+      return;
+    }
+    this.api.reassign(sheet.id, c.id, to).subscribe({
+      next: (saved) => {
+        this.reassignTo.update((chosen) => ({ ...chosen, [c.id]: '' }));
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can move a claim to another person.'
+          : err instanceof HttpErrorResponse && err.status === 423
+            ? 'This claim is dated inside a closed period.'
+            : err instanceof HttpErrorResponse && err.status === 422
+              ? 'This claim is dated after that person retired.'
+              : err instanceof HttpErrorResponse && err.status === 400
+                ? `That person has no settled claim No. ${c.corrects} for this correction to correct.`
+                : `A ${c.status} claim cannot be moved; only a DRAFT, OPEN or PENDING one can.`,
       }),
     });
   }

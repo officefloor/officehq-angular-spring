@@ -146,7 +146,7 @@ function csvField(value: string): string {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.ratesByGrade()" [grades]="p"
-                               [periods]="periods.list()" [held]="p.held"
+                               [periods]="periods.list()" [held]="p.held" [others]="othersOf(p.id)"
                                [selected]="selectedClaims()" (selectToggled)="toggleSelected($event)"
                                (saved)="claimSaved($event)" />
           </li>
@@ -206,6 +206,11 @@ export class PeopleList {
     const byPerson = new Map<number, ClaimView[]>();
     for (const c of this.claims()) byPerson.set(c.personId, [...(byPerson.get(c.personId) ?? []), c]);
     return byPerson;
+  });
+  /** For each person, the other people on the sheet their claims can be moved to. */
+  private readonly othersByPerson = computed(() => {
+    const people = this.people();
+    return new Map(people.map((p) => [p.id, people.filter((q) => q.id !== p.id)]));
   });
   /** Whether each claim counts in the live totals: a held person's OPEN claims do not. */
   private readonly countsNow = computed(() => {
@@ -539,12 +544,19 @@ export class PeopleList {
     });
   }
 
+  /** A claim as saved: a new one, or one moved to another person, is listed first (its person's newest). */
   protected claimSaved(saved: ClaimView): void {
-    this.claims.update((list) =>
-      list.some((c) => c.id === saved.id)
+    this.claims.update((list) => {
+      const was = list.find((c) => c.id === saved.id);
+      return was && was.personId === saved.personId
         ? list.map((c) => (c.id === saved.id ? saved : c))
-        : [saved, ...list].sort((a, b) => b.id - a.id),
-    );
+        : [saved, ...list.filter((c) => c.id !== saved.id)];
+    });
+  }
+
+  /** The other people on the sheet a person's claims can be moved to. */
+  protected othersOf(personId: number): PersonView[] {
+    return this.othersByPerson().get(personId) ?? [];
   }
 
   /** Quick-add a DRAFT claim for the named person, adding them first (grade A) when not on the sheet. */

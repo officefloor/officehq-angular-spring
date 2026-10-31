@@ -145,6 +145,12 @@ export class Claims {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/reject`, { reason });
   }
 
+  /** A steward moves a DRAFT, OPEN or PENDING claim to another person: it keeps its number and date, is no
+   *  longer bound by a statement, and is listed as that person's newest claim. */
+  reassign(sheetId: string, id: number, personId: number): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/person`, { personId });
+  }
+
   /** Open each of the claims that can be opened, numbered in list order; the rest are refused and left as they are. */
   bulkOpen(sheetId: string, ids: readonly number[]): Observable<BulkOpenView> {
     return this.http.post<BulkOpenView>(`${this.base(sheetId)}/claims/bulk-open`, { ids });

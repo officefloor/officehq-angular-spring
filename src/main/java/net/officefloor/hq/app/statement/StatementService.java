@@ -86,7 +86,7 @@ public class StatementService {
         Rollup.Figures before = rollup.of(sheetId);
         List<Rate> sheetRates = rates.findBySheetId(sheetId);
         Set<String> grades = new HashSet<>(Set.of(person.gradeOn(today)));
-        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId);
 
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFixed = false;

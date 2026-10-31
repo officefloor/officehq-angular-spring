@@ -66,11 +66,18 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** When the claim was listed under its person, in the sheet's order: given when it is added and again when it
+     *  is reassigned, so a person's claims list newest first by it. */
+    @Column(name = "listed", nullable = false)
+    private long listed;
+
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects,
+            long listed) {
         this.sheetId = sheetId;
+        this.listed = listed;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
@@ -88,6 +95,16 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    public long getListed() {
+        return listed;
+    }
+
+    /** Move the claim to another person, listed as their newest claim. */
+    public void reassign(Long personId, long listed) {
+        this.personId = personId;
+        this.listed = listed;
     }
 
     public BigDecimal getAmount() {
