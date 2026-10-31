@@ -117,7 +117,8 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         LocalDate claimDate = date != null ? date : sheet.defaultClaimDate();
-        LocalDate dueBy = holidays.dueBy(sheetId, claimDate, termsOf(sheet, person, claimDate));
+        int terms = termsOf(sheet, person, claimDate);
+        LocalDate dueBy = holidays.dueBy(sheetId, claimDate, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, claimDate);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
@@ -128,6 +129,7 @@ public class ClaimService {
         Rollup.Figures before = rollup.of(sheetId);
         Claim claim = new Claim(sheetId, personId, scaled(amount), claimDate, dueBy, noteOf(note), corrects,
                 claims.lastListed(sheetId) + 1);
+        claim.setTerms(terms);
         boolean late = periods.existsBySheetIdAndSoftClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(
                 sheetId, dueBy, dueBy);
         if (late) {
@@ -608,9 +610,11 @@ public class ClaimService {
         claim.unbind();
         Claim original = claims.saveAndFlush(claim);
         LocalDate date = original.getDate();
-        LocalDate dueBy = holidays.dueBy(sheetId, date, termsOf(sheet, person, date));
+        int terms = termsOf(sheet, person, date);
+        LocalDate dueBy = holidays.dueBy(sheetId, date, terms);
         Claim added = new Claim(sheetId, person.getId(), part, date, dueBy, original.getNote(), null,
                 claims.lastListed(sheetId) + 1);
+        added.setTerms(terms);
         added.openAsSplit(nextNumber(sheet, dueBy), user, original.getNumber());
         added.setTags(original.getTags());
         if (original.isLateEntry()) {

@@ -61,9 +61,14 @@ public class Claim {
     /** The day the claim is due by: fixed when it is added: the terms-th business day after its date (skipping
      *  Saturdays, Sundays and the sheet's holidays then), on its person's own terms, else the terms of their grade
      *  in force then, else the sheet's then; it does not change when the terms or its date
-     *  change later. */
+     *  change later. Adding a holiday on or before it fixes it again (unless the claim is SETTLED or VOID): from
+     *  its date, on its terms, over the holidays on the sheet then. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms the claim's due-by was fixed with: the number of business days after its date it is due by. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -211,6 +216,19 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
+    }
+
+    /** Fix the claim's due-by again, on the terms it was fixed with. */
+    public void refixDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
     }
 
     public String getNote() {

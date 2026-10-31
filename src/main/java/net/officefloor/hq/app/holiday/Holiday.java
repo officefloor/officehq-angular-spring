@@ -8,8 +8,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 
-/** A holiday on a sheet: a claim whose due-by, when fixed at its creation, falls on it is due by the next day that
- *  is not a holiday. */
+/** A holiday on a sheet: it is not a business day when a claim's due-by is fixed, at the claim's creation or again
+ *  when a holiday is added on or before it. */
 @Entity
 @Table(name = "holiday")
 public class Holiday {
