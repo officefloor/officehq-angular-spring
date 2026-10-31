@@ -38,7 +38,7 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements,
-            List<String> tags, Integer undatedTerms, List<TermsView> datedTerms) {
+            List<String> tags, Integer undatedTerms, List<TermsView> datedTerms, String flag) {
 
         /** A view read back without tags or dated terms (taken before people had them) has none. */
         public PersonView {
@@ -57,7 +57,8 @@ public class PersonController {
                     person.getHolds().stream().map(HoldView::of).toList(), person.getContact(),
                     person.getAliases(), clashing, person.getOriginSheetId(),
                     person.getPastRetirements().stream().map(RetirementView::of).toList(), person.tagList(),
-                    person.getTerms(), person.getDatedTerms().stream().map(TermsView::of).toList());
+                    person.getTerms(), person.getDatedTerms().stream().map(TermsView::of).toList(),
+                    person.flagOn(today));
         }
     }
 
@@ -87,6 +88,11 @@ public class PersonController {
 
     /** A hold as the form submits it: a missing from-date takes the sheet's today; a missing to-date has no end. */
     public record HoldForm(LocalDate from, LocalDate to) {
+    }
+
+    /** A flag as the form submits it: a reason (blank: refused) and the last day it is in force (missing: the
+     *  sheet's today). */
+    public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
     }
 
     /** A person's values as the form submits them; the name is stored with surrounding spaces removed; missing
@@ -345,6 +351,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody HoldForm request) {
         return view(sheetId, people.hold(sheetId, user, id, request.from(), request.to()));
+    }
+
+    /** A steward flags the person with a reason until a date. */
+    @PostMapping("/{id}/flag")
+    public PersonView flag(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody FlagForm request) {
+        return view(sheetId, people.flag(sheetId, user, id, request.reason(), request.until()));
     }
 
     /** The person as listed, with whether they clash on the sheet's tree. */

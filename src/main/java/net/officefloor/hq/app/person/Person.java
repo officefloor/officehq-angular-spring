@@ -86,6 +86,14 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<Hold> holds = new ArrayList<>();
 
+    /** The reason a steward flagged the person for; null when never flagged. */
+    @Column(name = "flag_reason", length = 200)
+    private String flagReason;
+
+    /** The last day the flag is in force; null when never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** The other names the person is found by, stored trimmed. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
@@ -122,6 +130,8 @@ public class Person {
         pastRetirements.forEach(r -> copy.pastRetirements.add(new PastRetirement(r.getFromDate(), r.getToDate())));
         holds.forEach(h -> copy.holds.add(new Hold(h.getFromDate(), h.getToDate())));
         copy.aliases.addAll(aliases);
+        copy.flagReason = flagReason;
+        copy.flagUntil = flagUntil;
         return copy;
     }
 
@@ -297,6 +307,19 @@ public class Person {
 
     public void addHold(Hold hold) {
         holds.add(hold);
+    }
+
+    /** Flag the person with a reason until a date, replacing any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    /** The reason the person is flagged for on {@code today}: while today is on or before the until-date; null
+     *  otherwise. */
+    public String flagOn(LocalDate today) {
+        return flagReason != null && flagUntil != null && today != null && !today.isAfter(flagUntil)
+                ? flagReason : null;
     }
 
     /** Whether a claim of this person counts in the live totals on the sheet's {@code today}: an OPEN or PENDING one

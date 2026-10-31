@@ -297,6 +297,7 @@ public class ClaimService {
         } else if (next == ClaimStatus.OPEN) {
             refuseUnnoted(sheet, claim, due);
             refuseOverCap(sheetId, claim);
+            refuseFlagged(sheet, user, person);
         }
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, due)) {
             next = ClaimStatus.PENDING;
@@ -1019,6 +1020,14 @@ public class ClaimService {
     private void refuseIfClosed(String sheetId, LocalDate date) {
         if (periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date, date)) {
             throw new ResponseStatusException(HttpStatus.LOCKED, "That claim's due-by is inside a closed period");
+        }
+    }
+
+    /** Refuse opening a claim of a person flagged on the sheet's today for anyone but a steward. */
+    private void refuseFlagged(Sheet sheet, String user, Person person) {
+        if (person.flagOn(sheet.getToday()) != null && !Role.STEWARD.equals(roles.roleOf(sheet.getId(), user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward may open a claim of a flagged person");
         }
     }
 

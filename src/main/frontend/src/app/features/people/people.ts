@@ -431,6 +431,15 @@ function csvField(value: string): string {
                    (input)="clearPersonError(p.id)" />
             <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
                     [disabled]="holding() === p.id" [attr.aria-label]="'Hold ' + p.name">Hold</button>
+            — flagged <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span>
+            <label [attr.for]="'person-flag-reason-' + p.id">Flag reason</label>
+            <input [id]="'person-flag-reason-' + p.id" data-testid="person-flag-reason" #flagReason autocomplete="off"
+                   (input)="clearPersonError(p.id)" />
+            <label [attr.for]="'person-flag-until-' + p.id">until</label>
+            <input [id]="'person-flag-until-' + p.id" type="date" data-testid="person-flag-until" #flagUntil
+                   (input)="clearPersonError(p.id)" />
+            <button type="button" data-testid="person-flag" (click)="flag(p, flagReason, flagUntil)"
+                    [disabled]="flagging() === p.id" [attr.aria-label]="'Flag ' + p.name">Flag</button>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
             <label [attr.for]="'person-statement-asof-' + p.id">Statement as of</label>
@@ -649,6 +658,9 @@ export class PeopleList {
   protected readonly merging = signal<number | null>(null);
   /** The person being transferred to another sheet, so a second press waits for the first. */
   protected readonly transferring = signal<number | null>(null);
+  /** The person being flagged, so a second press waits for the first. */
+  protected readonly flagging = signal<number | null>(null);
+
   /** The person an alias is being added to, so a second press waits for the first. */
   protected readonly aliasing = signal<number | null>(null);
   /** The error of the last action taken on a person's row, until the next action on that row. */
@@ -1479,6 +1491,33 @@ export class PeopleList {
       error: () => {
         this.aliasing.set(null);
         this.personError.set({ id: p.id, message: 'That alias is already a name or alias on this sheet.' });
+      },
+    });
+  }
+
+  /** Flag the person with the reason typed until the date given (blank: the sheet's today); a blank reason is
+   *  refused on the row, as is anyone but a steward. */
+  protected flag(p: PersonView, reason: HTMLInputElement, until: HTMLInputElement): void {
+    if (this.flagging() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    if (reason.value.trim() === '') {
+      this.personError.set({ id: p.id, message: 'A flag needs a reason.' });
+      return;
+    }
+    this.flagging.set(p.id);
+    this.api.flag(sheet.id, p.id, reason.value, until.value === '' ? null : until.value).subscribe({
+      next: (saved) => {
+        this.flagging.set(null);
+        reason.value = '';
+        until.value = '';
+        this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      },
+      error: () => {
+        this.flagging.set(null);
+        this.personError.set({ id: p.id, message: 'Only a steward may flag ' + p.name + '.' });
       },
     });
   }

@@ -63,6 +63,9 @@ export interface PersonView {
   pastRetirements?: RetirementView[] | null;
   /** The person's tags, sorted; empty when they have none. */
   tags: string[];
+  /** The reason a steward flagged the person for, while the sheet's today is on or before its until-date; null or
+   *  missing otherwise. */
+  flag?: string | null;
 }
 
 /** A past retirement: retired from `from`, unretired on `to` (yyyy-mm-dd). */
@@ -161,6 +164,11 @@ export class People {
   /** Put the person on hold from `from` (null takes the sheet's today) to `to` (null: no end). */
   hold(sheetId: string, id: number, from: string | null, to: string | null): Observable<PersonView> {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/hold`, { from, to });
+  }
+
+  /** A steward flags the person with a reason until a date (null takes the sheet's today). */
+  flag(sheetId: string, id: number, reason: string, until: string | null): Observable<PersonView> {
+    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/flag`, { reason, until });
   }
 
   /** Give the person an alias; refused when blank or already a name or alias on the sheet. */
