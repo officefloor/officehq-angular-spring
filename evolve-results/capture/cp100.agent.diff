@@ -1,0 +1,100 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 0b84a13da..79904cb95 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -338,10 +338,10 @@ public class ClaimController {
+     }
+ 
+     /**
+-     * Settle each selected claim that can be settled, one at a time in list order (people in the order listed,
+-     * newest claim first within a person), by exactly the rules of settling one claim; a claim a clerk's limit
+-     * makes PENDING counts as settled. Each that cannot be settled, or is not on the sheet, is refused and left as
+-     * it is. When at least one is settled, those settled are the sheet's next settle batch.
++     * Settle every selected claim, one at a time in list order (people in the order listed, newest claim first
++     * within a person), by exactly the rules of settling one claim; a claim a clerk's limit makes PENDING counts as
++     * settled. All or nothing: when any selected claim cannot be settled, or is not on the sheet, none is settled,
++     * every one is refused and nothing is written. Those settled are the sheet's next settle batch.
+      */
+     @PostMapping("/claims/bulk-settle")
+     public BulkSettleView bulkSettle(
+@@ -353,19 +353,15 @@ public class ClaimController {
+             // claim is refused.
+             return new BulkSettleView(0, (int) request.ids().stream().distinct().count(), List.of(), null);
+         }
++        int selected = (int) request.ids().stream().distinct().count();
+         List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+-        int refused = (int) request.ids().stream().distinct().count() - ordered.size();
+-        List<Long> settled = new ArrayList<>();
+-        for (long id : ordered) {
+-            try {
+-                settled.add(claims.changeStatus(sheetId, user, id, ClaimStatus.SETTLED).getId());
+-            } catch (ResponseStatusException refusal) {
+-                refused++;
+-            }
++        List<Claim> settled = ordered.size() < selected ? null : claims.settleBatch(sheetId, user, ordered);
++        if (settled == null) {
++            // All or nothing: one selected claim that cannot be settled, or is not on the sheet, refuses them all.
++            return new BulkSettleView(0, selected, List.of(), null);
+         }
+-        List<ClaimView> batch = claims.markSettleBatch(sheetId, settled).stream().map(ClaimView::of).toList();
+-        return new BulkSettleView(batch.size(), refused, batch,
+-                batch.isEmpty() ? null : batch.get(0).batch());
++        List<ClaimView> batch = settled.stream().map(ClaimView::of).toList();
++        return new BulkSettleView(batch.size(), 0, batch, batch.isEmpty() ? null : batch.get(0).batch());
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0df9cb8d1..5ad18ba7e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -32,6 +32,7 @@ import net.officefloor.hq.app.watch.WatchService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.interceptor.TransactionAspectSupport;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /** The claims people on a sheet have made. */
+@@ -296,13 +297,24 @@ public class ClaimService {
+         return changed;
+     }
+ 
+-    /** Make the claims just settled by a bulk settle the sheet's next settle batch, each keeping its number; none
+-     *  is made when none was settled. The claims, as saved, in the order given. */
++    /** Settle every claim given, one at a time in the order given, by exactly the rules of settling one claim (a
++     *  claim a clerk's limit makes PENDING counts as settled), as the sheet's next settle batch, each keeping its
++     *  number; after the claims' own lines BATCH_SETTLED is recorded with the batch's count and the frozen figures
++     *  of those SETTLED added up. All or nothing: when any claim cannot be settled, none is, nothing is written and
++     *  null is returned. The claims, as saved, in the order given; none when none is given. */
+     @Transactional
+-    public List<Claim> markSettleBatch(String sheetId, List<Long> ids) {
++    public List<Claim> settleBatch(String sheetId, String user, List<Long> ids) {
+         if (ids.isEmpty()) {
+             return List.of();
+         }
++        for (long id : ids) {
++            try {
++                changeStatus(sheetId, user, id, ClaimStatus.SETTLED);
++            } catch (ResponseStatusException refusal) {
++                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
++                return null;
++            }
++        }
+         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+         int batch = sheet.nextSettleBatch();
+         sheetStore.saveAndFlush(sheet);
+@@ -311,7 +323,12 @@ public class ClaimService {
+             claim.setSettleBatch(batch);
+             return claims.saveAndFlush(claim);
+         }).toList();
+-        history.keepOnCommit(sheetId);
++        BigDecimal total = marked.stream()
++                .filter(claim -> claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null)
++                .map(Claim::getSettledDue)
++                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++        audit.recordChangeOnCommit(sheetId, user, "BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + batch
++                + " count=" + marked.size() + " total=" + total.toPlainString());
+         return marked;
+     }
+ 
