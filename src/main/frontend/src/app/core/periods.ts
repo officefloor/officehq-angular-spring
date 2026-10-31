@@ -96,6 +96,14 @@ export class Periods {
       .pipe(tap((made) => this.addMade(made)));
   }
 
+  /** Generate the four calendar quarters of a year, named yyyy-Q1 to yyyy-Q4; a quarter whose name is in use or
+   *  that overlaps a period is left out. */
+  generateQuarters(sheetId: string, year: number): Observable<GenerateView> {
+    return this.http
+      .post<GenerateView>(`${this.base(sheetId)}/generate-quarters`, { year })
+      .pipe(tap((made) => this.addMade(made)));
+  }
+
   private addMade(made: GenerateView): void {
     this.periods.update((list) => [...list, ...made.periods].sort((a, b) => (a.from < b.from ? -1 : 1)));
   }

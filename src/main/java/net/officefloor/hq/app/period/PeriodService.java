@@ -117,6 +117,31 @@ public class PeriodService {
         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
     }
 
+    /** Generate the four calendar quarters of the given year, named yyyy-Q1 to yyyy-Q4, each running from the first
+     *  day of its first month to the last day of its third. A quarter whose name is already a period, or whose days
+     *  overlap a period of the sheet, is left out, as {@link #generate} does. Returns the periods made, in order. */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        List<Period> existing = periods.findBySheetIdOrderByFromDateAsc(sheetId);
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            String name = year + "-Q" + quarter;
+            YearMonth start = YearMonth.of(year, quarter * 3 - 2);
+            LocalDate first = start.atDay(1);
+            LocalDate last = start.plusMonths(2).atEndOfMonth();
+            if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) {
+                continue;
+            }
+            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+                    + " from=" + added.getFromDate() + " to=" + added.getToDate());
+            made.add(added);
+        }
+        return made;
+    }
+
     /** Close a period, open or soft-closed, fixing its due-total afresh as it is now; refused for a role the
      *  permission matrix does not allow, and when it is already closed. The sheet is locked so no claim in it changes while its total is taken. */
     @Transactional

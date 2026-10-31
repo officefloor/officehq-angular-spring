@@ -66,6 +66,10 @@ public class PeriodController {
     public record GenerateFiscalYearForm(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** A quarters generate request: the calendar year whose four quarters are made. */
+    public record GenerateQuartersForm(@NotNull @Min(1) @Max(9999) Integer year) {
+    }
+
     /** What a generate made: how many periods, and the periods themselves. */
     public record GenerateView(int made, List<PeriodView> periods) {
     }
@@ -113,6 +117,16 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody GenerateFiscalYearForm request) {
         List<PeriodView> made = periods.generateFiscalYear(sheetId, user, request.year()).stream()
+                .map(PeriodView::of).toList();
+        return new GenerateView(made.size(), made);
+    }
+
+    @PostMapping("/generate-quarters")
+    public GenerateView generateQuarters(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateQuartersForm request) {
+        List<PeriodView> made = periods.generateQuarters(sheetId, user, request.year()).stream()
                 .map(PeriodView::of).toList();
         return new GenerateView(made.size(), made);
     }

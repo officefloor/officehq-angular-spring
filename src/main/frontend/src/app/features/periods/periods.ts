@@ -70,6 +70,13 @@ import { FigurePipe } from '../../core/figure';
         <button type="button" data-testid="period-generate-fy" (click)="generateFiscalYear()" [disabled]="generating()">
           Generate fiscal year
         </button>
+        <label for="period-generate-quarters-year">Calendar year of the quarters</label>
+        <input id="period-generate-quarters-year" data-testid="period-generate-quarters-year"
+               formControlName="quartersYear" inputmode="numeric" autocomplete="off" />
+        <button type="button" data-testid="period-generate-quarters" (click)="generateQuarters()"
+                [disabled]="generating()">
+          Generate quarters
+        </button>
         @if (generated() !== null) {
           <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span> periods.</p>
         }
@@ -126,6 +133,7 @@ export class PeriodsPanel {
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
     year: new FormControl('', { nonNullable: true }),
+    quartersYear: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly form = new FormGroup({
@@ -372,6 +380,30 @@ export class PeriodsPanel {
       error: () => {
         this.generating.set(false);
         this.generateError.set('Could not generate the fiscal year\'s periods.');
+      },
+    });
+  }
+
+  protected generateQuarters(): void {
+    if (this.generating()) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const year = this.generateForm.getRawValue().quartersYear.trim();
+    if (!/^\d{4}$/.test(year) || Number(year) < 1) {
+      this.generateError.set('Type the year of the quarters as four digits.');
+      return;
+    }
+    this.generating.set(true);
+    this.periods.generateQuarters(sheet.id, Number(year)).subscribe({
+      next: (result) => {
+        this.generating.set(false);
+        this.generated.set(result.made);
+      },
+      error: () => {
+        this.generating.set(false);
+        this.generateError.set('Could not generate the quarters.');
       },
     });
   }
