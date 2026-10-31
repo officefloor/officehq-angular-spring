@@ -1,0 +1,590 @@
+diff --git a/src/main/frontend/src/app/core/statements.ts b/src/main/frontend/src/app/core/statements.ts
+index 8e56c7ba8..a2ea00bec 100644
+--- a/src/main/frontend/src/app/core/statements.ts
++++ b/src/main/frontend/src/app/core/statements.ts
+@@ -28,8 +28,10 @@ export class Statements {
+     return this.http.get<StatementSummary[]>(`${this.base(sheetId)}/statements`);
+   }
+ 
+-  take(sheetId: string, personId: number): Observable<StatementTaken> {
+-    return this.http.post<StatementTaken>(`${this.base(sheetId)}/people/${personId}/statements`, null);
++  /** Take a statement of the person now, or as of a date (yyyy-mm-dd) on or before the sheet's today. */
++  take(sheetId: string, personId: number, asOf: string | null = null): Observable<StatementTaken> {
++    return this.http.post<StatementTaken>(`${this.base(sheetId)}/people/${personId}/statements`, null,
++      asOf ? { params: { asOf } } : {});
+   }
+ 
+   /** Cancel the person's last statement: its claims are live again; the summary is of the statement before it. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 80a4a857a..f50872fde 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -183,7 +183,10 @@ function csvField(value: string): string {
+                     [disabled]="holding() === p.id" [attr.aria-label]="'Hold ' + p.name">Hold</button>
+             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
+                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
+-            <button type="button" data-testid="person-statement" (click)="takeStatement(p)" [disabled]="stating() === p.id"
++            <label [attr.for]="'person-statement-asof-' + p.id">Statement as of</label>
++            <input [id]="'person-statement-asof-' + p.id" type="date" data-testid="person-statement-asof" #statementAsOf
++                   (input)="clearPersonError(p.id)" />
++            <button type="button" data-testid="person-statement" (click)="takeStatement(p, statementAsOf)" [disabled]="stating() === p.id"
+                     [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+             <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)" [disabled]="stating() === p.id"
+                     [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
+@@ -632,17 +635,19 @@ export class PeopleList {
+     return this.statements().get(personId);
+   }
+ 
+-  /** Take a statement of the person, then show their summary and their claims as it left them. */
+-  protected takeStatement(p: PersonView): void {
++  /** Take a statement of the person, as of the date in its entry (blank: now), then show their summary and their
++   *  claims as it left them; the entry is cleared once it is taken. */
++  protected takeStatement(p: PersonView, asOf: HTMLInputElement): void {
+     if (this.stating() === p.id) return;
+     this.personError.set(null);
+     this.patronError.set(null);
+     const sheet = this.sheets.current();
+     if (!sheet) return;
+     this.stating.set(p.id);
+-    this.statementsApi.take(sheet.id, p.id).subscribe({
++    this.statementsApi.take(sheet.id, p.id, asOf.value || null).subscribe({
+       next: ({ summary, claims }) => {
+         this.stating.set(null);
++        asOf.value = '';
+         this.statements.update((map) => new Map(map).set(summary.personId, summary));
+         const byId = new Map(claims.map((c) => [c.id, c]));
+         this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 7cc3b5757..be9937590 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
++import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.role.Delegations;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.stereotype.Service;
+@@ -26,10 +27,13 @@ public class Audit {
+ 
+     private final Path file;
+     private final Delegations delegations;
++    private final SheetHistory history;
+ 
+-    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, Delegations delegations) {
++    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, Delegations delegations,
++            SheetHistory history) {
+         this.file = Path.of(path);
+         this.delegations = delegations;
++        this.history = history;
+     }
+ 
+     /** Append one audit record. Tests assert the exact line(s) in the file. */
+@@ -66,9 +70,11 @@ public class Audit {
+     /**
+      * Append the record of a change the user made on the sheet once the current transaction commits, ending it with
+      * {@code for=<steward>} while the user acts as a steward by that steward's delegation. A record that only reports
+-     * figures (a rollup, the totals, a notice) is appended with {@link #recordOnCommit} instead.
++     * figures (a rollup, the totals, a notice) is appended with {@link #recordOnCommit} instead. What the sheet holds
++     * once the change is made is kept in its history, under its today.
+      */
+     public void recordChangeOnCommit(String sheetId, String user, String entry) {
++        history.keepOnCommit(sheetId);
+         recordOnCommit(delegations.actingFor(sheetId, user).map(steward -> entry + " for=" + steward).orElse(entry));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+new file mode 100644
+index 000000000..5940a7099
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -0,0 +1,87 @@
++package net.officefloor.hq.app.history;
++
++import java.time.LocalDate;
++import java.util.Optional;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rate.RateRepository;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionSynchronization;
++import org.springframework.transaction.support.TransactionSynchronizationManager;
++import tools.jackson.databind.json.JsonMapper;
++
++/**
++ * A sheet's history: after each change, what the sheet holds is kept under the sheet's today, replacing what was kept
++ * under that day before. The sheet as it stood at the end of a date is then the last kept under a day on or before
++ * it: every change made while the sheet's today was on or before that date, and none made later.
++ */
++@Service
++public class SheetHistory {
++
++    private final SheetSnapshotRepository snapshots;
++    private final SheetRepository sheets;
++    private final RateRepository rates;
++    private final PersonRepository people;
++    private final ClaimRepository claims;
++    private final JsonMapper json;
++
++    public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateRepository rates,
++            PersonRepository people, ClaimRepository claims, JsonMapper json) {
++        this.snapshots = snapshots;
++        this.sheets = sheets;
++        this.rates = rates;
++        this.people = people;
++        this.claims = claims;
++        this.json = json;
++    }
++
++    /** Keep what the sheet holds once the change being made is done: just before the current transaction commits,
++     *  once however many changes it records; outside a transaction, at once. */
++    public void keepOnCommit(String sheetId) {
++        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
++            keep(sheetId);
++            return;
++        }
++        String key = SheetHistory.class.getName() + ":" + sheetId;
++        if (TransactionSynchronizationManager.hasResource(key)) {
++            return;
++        }
++        TransactionSynchronizationManager.bindResource(key, Boolean.TRUE);
++        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
++            @Override
++            public void beforeCommit(boolean readOnly) {
++                if (!readOnly) {
++                    keep(sheetId);
++                }
++            }
++
++            @Override
++            public void afterCompletion(int status) {
++                TransactionSynchronizationManager.unbindResourceIfPossible(key);
++            }
++        });
++    }
++
++    /** Keep what the sheet holds now under its today. */
++    @Transactional
++    public void keep(String sheetId) {
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
++        if (sheet == null) {
++            return;
++        }
++        SheetState state = SheetState.of(sheet, rates.findBySheetId(sheetId), people.findBySheetIdOrderByIdAsc(sheetId),
++                claims.findBySheetIdOrderByListedDescIdDesc(sheetId));
++        snapshots.deleteBySheetIdAndAsOf(sheetId, sheet.getToday());
++        snapshots.saveAndFlush(new SheetSnapshot(sheetId, sheet.getToday(), json.writeValueAsString(state)));
++    }
++
++    /** The sheet as it stood at the end of a date; empty when no change was made on it by then. */
++    @Transactional(readOnly = true)
++    public Optional<SheetState> asOf(String sheetId, LocalDate date) {
++        return snapshots.findFirstBySheetIdAndAsOfLessThanEqualOrderByAsOfDescIdDesc(sheetId, date)
++                .map(s -> json.readValue(s.getState(), SheetState.class));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetSnapshot.java b/src/main/java/net/officefloor/hq/app/history/SheetSnapshot.java
+new file mode 100644
+index 000000000..d9bf1efb7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/SheetSnapshot.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.history;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Lob;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** What a sheet held after a change made while its today was {@code asOf}, as JSON (see {@link SheetState}). */
++@Entity
++@Table(name = "sheet_snapshot")
++public class SheetSnapshot {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "as_of", nullable = false)
++    private LocalDate asOf;
++
++    @Lob
++    @Column(name = "state", nullable = false)
++    private String state;
++
++    protected SheetSnapshot() {
++    }
++
++    public SheetSnapshot(String sheetId, LocalDate asOf, String state) {
++        this.sheetId = sheetId;
++        this.asOf = asOf;
++        this.state = state;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public LocalDate getAsOf() {
++        return asOf;
++    }
++
++    public String getState() {
++        return state;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetSnapshotRepository.java b/src/main/java/net/officefloor/hq/app/history/SheetSnapshotRepository.java
+new file mode 100644
+index 000000000..b8fca4a68
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/SheetSnapshotRepository.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.history;
++
++import java.time.LocalDate;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++import org.springframework.transaction.annotation.Transactional;
++
++public interface SheetSnapshotRepository extends JpaRepository<SheetSnapshot, Long> {
++
++    /** The latest snapshot kept under a day on or before {@code date}: the last one of the latest such day. */
++    Optional<SheetSnapshot> findFirstBySheetIdAndAsOfLessThanEqualOrderByAsOfDescIdDesc(String sheetId, LocalDate date);
++
++    /** Drop the snapshots kept under a day, which a newer one of that day replaces. */
++    @Transactional
++    @Modifying
++    @Query("delete from SheetSnapshot s where s.sheetId = :sheetId and s.asOf = :asOf")
++    int deleteBySheetIdAndAsOf(@Param("sheetId") String sheetId, @Param("asOf") LocalDate asOf);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+new file mode 100644
+index 000000000..a7c2b07e3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -0,0 +1,105 @@
++package net.officefloor.hq.app.history;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++import java.util.Optional;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.person.GradeFrom;
++import net.officefloor.hq.app.person.Hold;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.sheet.Sheet;
++
++/** What a sheet held at a moment, as far as a person's figures depend on it: its dated settings and policy date,
++ *  its rates, its people and its claims. Each part is rebuilt as an unsaved entity, so the figures of the sheet as
++ *  it stood then are worked out by the same rules as the live ones. */
++public record SheetState(List<SettingState> settings, LocalDate policyDate, List<RateState> rates,
++        List<PersonState> people, List<ClaimState> claims) {
++
++    public record SettingState(String key, LocalDate from, String value) {
++    }
++
++    public record RateState(String grade, LocalDate from, LocalDate to, BigDecimal rate) {
++    }
++
++    public record GradeState(LocalDate from, String grade) {
++    }
++
++    public record HoldState(LocalDate from, LocalDate to) {
++    }
++
++    public record PersonState(long id, String name, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
++            List<HoldState> holds) {
++
++        /** The person as they stood then, unsaved. */
++        public Person rebuild(String sheetId) {
++            Person person = new Person(sheetId, name, grades.get(0).grade());
++            grades.stream().skip(1).forEach(g -> person.setGradeFrom(g.from(), g.grade()));
++            person.setTerms(terms);
++            person.setRetiredFrom(retiredFrom);
++            holds.forEach(h -> person.addHold(new Hold(h.from(), h.to())));
++            return person;
++        }
++    }
++
++    public record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
++            String corrects, long listed, ClaimStatus status, String number, BigDecimal settledDue, boolean stated,
++            BigDecimal statedDue, LocalDate deferredUntil) {
++
++        /** The claim as it stood then, unsaved. */
++        public Claim rebuild(String sheetId) {
++            Claim claim = new Claim(sheetId, personId, amount, date, dueBy, note, corrects, listed);
++            claim.setStatus(status);
++            claim.setNumber(number);
++            claim.setSettledDue(settledDue);
++            claim.setDeferredUntil(deferredUntil);
++            if (stated) {
++                claim.bind(statedDue);
++            }
++            return claim;
++        }
++    }
++
++    /** What the sheet holds now. */
++    public static SheetState of(Sheet sheet, List<Rate> rates, List<Person> people, List<Claim> claims) {
++        return new SheetState(
++                sheet.getSettings().stream().map(s -> new SettingState(s.getKey(), s.getFrom(), s.getValue())).toList(),
++                sheet.getPolicyDate(),
++                rates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getRate())).toList(),
++                people.stream().map(SheetState::stateOf).toList(),
++                claims.stream().map(c -> new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(),
++                        c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
++                        c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil())).toList());
++    }
++
++    private static PersonState stateOf(Person p) {
++        List<GradeFrom> grades = p.getGrades();
++        return new PersonState(p.getId(), p.getName(),
++                grades.stream().map(g -> new GradeState(g.getFromDate(), g.getGrade())).toList(), p.getTerms(),
++                p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.getFromDate(), h.getToDate())).toList());
++    }
++
++    /** The sheet as it stood then, unsaved, with {@code today} standing in for its today. */
++    public Sheet rebuildSheet(Sheet live, LocalDate today) {
++        Sheet sheet = new Sheet(live.getId(), live.getCreatedBy(), live.getCreatedAt(), today);
++        settings.forEach(s -> sheet.record(s.key(), s.from(), s.value()));
++        sheet.setPolicyDate(policyDate);
++        return sheet;
++    }
++
++    /** The rates as they stood then, unsaved. */
++    public List<Rate> rebuildRates(String sheetId) {
++        return rates.stream().map(r -> {
++            Rate rate = new Rate(sheetId, r.grade(), r.from(), r.rate());
++            rate.setToDate(r.to());
++            return rate;
++        }).toList();
++    }
++
++    /** The person with this id as they stood then; empty when they were not on the sheet yet. */
++    public Optional<PersonState> person(long id) {
++        return people.stream().filter(p -> p.id() == id).findFirst();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index 49517b276..e453a5b89 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** Statements taken of people on a sheet. The caller's signed-in name comes in the {@code X-User} header. */
+@@ -49,8 +51,9 @@ public class StatementController {
+     public TakenView take(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @PathVariable long personId,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        StatementService.Taken taken = statements.take(sheetId, user, personId);
++        StatementService.Taken taken = statements.take(sheetId, user, personId, asOf);
+         return new TakenView(SummaryView.of(taken.summary()), taken.claims().stream().map(ClaimView::of).toList());
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index b5d51ff46..3392b1578 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -2,15 +2,21 @@ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.Collection;
++import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.function.BiPredicate;
++import java.util.function.Function;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.history.SheetHistory;
++import net.officefloor.hq.app.history.SheetState;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+@@ -47,11 +53,13 @@ public class StatementService {
+     private final Audit audit;
+     private final Rollup rollup;
+     private final RoleService roles;
++    private final SheetHistory history;
+ 
+     public StatementService(StatementRepository statements, ClaimRepository claims, PersonRepository people,
+             RateRepository rates, SheetService sheets, SheetRepository sheetStore, Audit audit, Rollup rollup,
+-            RoleService roles) {
++            RoleService roles, SheetHistory history) {
+         this.roles = roles;
++        this.history = history;
+         this.statements = statements;
+         this.claims = claims;
+         this.people = people;
+@@ -80,52 +88,93 @@ public class StatementService {
+      * its grade's rate in force on its date, not raised to the floor) and leave the rest unbound. A late charge is never
+      * bound: it keeps following the sheet's today, and the floor is applied last, to the figure with its charge. The sheet is locked first, so
+      * a statement is not taken while a claim on it changes.
++     * <p>
++     * Taken as of a date ({@code asOf}, on or before the sheet's today), it reads the sheet as it stood at the end of
++     * that date (see {@link SheetHistory}): the claims that counted then are bound to their figures as they stood
++     * then, that date standing in for the sheet's today in every figure, and the rest are unbound; the statement is
++     * dated that date. Refused for a date after the sheet's today, and for a person not on the sheet by then.
+      */
+     @Transactional
+-    public Taken take(String sheetId, String user, long personId) {
++    public Taken take(String sheetId, String user, long personId, LocalDate asOf) {
+         sheets.load(sheetId, user);
+         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+         LocalDate today = sheet.getToday();
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        if (asOf != null && asOf.isAfter(today)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A statement can be taken as of a date on or before " + today);
++        }
+         Rollup.Figures before = rollup.of(sheetId);
+-        List<Rate> sheetRates = rates.findBySheetId(sheetId);
+-        Set<String> grades = new HashSet<>(Set.of(person.gradeOn(today)));
+         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId);
++        Stated stated;
++        if (asOf == null) {
++            stated = bind(sheet, rates.findBySheetId(sheetId), person, theirs, Function.identity(),
++                    person::countsUnbound, theirs);
++        } else {
++            SheetState then = history.asOf(sheetId, asOf).orElse(null);
++            SheetState.PersonState personThen = then == null ? null : then.person(personId).orElse(null);
++            if (personThen == null) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT,
++                        person.getName() + " was not on the sheet by " + asOf);
++            }
++            Person asThen = personThen.rebuild(sheetId);
++            Map<Long, Claim> claimsThen = new HashMap<>();
++            then.claims().stream().filter(c -> c.personId() == personId)
++                    .forEach(c -> claimsThen.put(c.id(), c.rebuild(sheetId)));
++            stated = bind(then.rebuildSheet(sheet, asOf), then.rebuildRates(sheetId), asThen, theirs,
++                    c -> claimsThen.get(c.getId()), asThen::counts, claimsThen.values());
++        }
++        LocalDate takenOn = asOf != null ? asOf : today;
++        claims.saveAllAndFlush(theirs);
++        statements.saveAndFlush(new Statement(sheetId, personId, stated.dueTotal(), takenOn));
++        audit.recordChangeOnCommit(sheetId, user, "STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " due-total=" + stated.dueTotal() + " claims=" + stated.counted() + (asOf == null ? "" : " asof=" + asOf));
++        rollup.recordChanges(sheetId, user, before);
++        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
++        return new Taken(new Summary(personId, taken.size(), stated.dueTotal(), takenOn), theirs);
++    }
+ 
++    /** What a statement came to: the due-total it records and how many claims it bound. */
++    private record Stated(String dueTotal, int counted) {
++    }
++
++    /**
++     * Bind each of the person's claims ({@code theirs}, as they are now) that counts on the {@code sheet}'s today to its
++     * figure and unbind the rest, reading each as it stands on the sheet given ({@code asThen}; none when it was not
++     * the person's then), with the person, the rates and the claims that decide its rounding as they stand there.
++     */
++    private static Stated bind(Sheet sheet, List<Rate> sheetRates, Person person, List<Claim> theirs,
++            Function<Claim, Claim> asThen, BiPredicate<Claim, LocalDate> counts, Collection<Claim> roundingClaims) {
++        LocalDate today = sheet.getToday();
++        Set<String> grades = new HashSet<>(Set.of(person.gradeOn(today)));
+         BigDecimal total = BigDecimal.ZERO.setScale(2);
+         boolean anyDue = false;
+         int counted = 0;
+         for (Claim claim : theirs) {
+-            if (!person.countsUnbound(claim, today) || claim.isDeferredOn(today)) {
++            Claim then = asThen.apply(claim);
++            if (then == null || !counts.test(then, today) || then.isDeferredOn(today)) {
+                 claim.unbind();
+                 continue;
+             }
+-            BigDecimal fixed = claim.getSettledDue() != null ? claim.getSettledDue() : claim.getBoundDue();
+-            BigDecimal figure = fixed != null || claim.isBound() ? fixed
+-                    : Rate.inForceOn(ratesOf(sheetRates, person.gradeOn(claim.getDate())), claim.getDate())
+-                            .map(rate -> ClaimService.liveFigure(claim, rate.getRate(),
+-                                    sheet.roundingFor(ClaimService.roundingDate(claim, theirs))))
++            BigDecimal fixed = then.getSettledDue() != null ? then.getSettledDue() : then.getBoundDue();
++            BigDecimal figure = fixed != null || then.isBound() ? fixed
++                    : Rate.inForceOn(ratesOf(sheetRates, person.gradeOn(then.getDate())), then.getDate())
++                            .map(rate -> ClaimService.liveFigure(then, rate.getRate(),
++                                    sheet.roundingFor(ClaimService.roundingDate(then, roundingClaims))))
+                             .orElse(null);
+             anyDue |= figure != null;
+-            grades.add(person.gradeOn(claim.getDate()));
++            grades.add(person.gradeOn(then.getDate()));
+             total = figure == null ? total
+-                    : total.add(claim.getSettledDue() != null ? figure
+-                            : ClaimService.floored(claim, figure.add(ClaimService.lateCharge(claim, figure, sheet)), sheet));
++                    : total.add(then.getSettledDue() != null ? figure
++                            : ClaimService.floored(then, figure.add(ClaimService.lateCharge(then, figure, sheet)), sheet));
+             claim.bind(figure);
+             counted++;
+         }
+         // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any
+         // of their claims that count is at, and no claim that has a due, the person has no due-total.
+         boolean anyRate = grades.stream().anyMatch(g -> Rate.inForceOn(ratesOf(sheetRates, g), today).isPresent());
+-        String dueTotal = !anyRate && !anyDue ? "n/a" : sheet.capped(total).toPlainString();
+-        claims.saveAllAndFlush(theirs);
+-        statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today));
+-        audit.recordChangeOnCommit(sheetId, user, "STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+-                + " due-total=" + dueTotal + " claims=" + counted);
+-        rollup.recordChanges(sheetId, user, before);
+-        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+-        return new Taken(new Summary(personId, taken.size(), dueTotal, today), theirs);
++        return new Stated(!anyRate && !anyDue ? "n/a" : sheet.capped(total).toPlainString(), counted);
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/migration/V48__sheet_snapshot.sql b/src/main/resources/db/migration/V48__sheet_snapshot.sql
+new file mode 100644
+index 000000000..bf4270e9d
+--- /dev/null
++++ b/src/main/resources/db/migration/V48__sheet_snapshot.sql
+@@ -0,0 +1,10 @@
++-- A sheet's history: after each change, what the sheet held (its dated settings, rates, people and claims, as JSON)
++-- is kept under the sheet's today then; the latest kept under a day on or before a date is the sheet as it stood
++-- at the end of that date, as a statement taken as of that date reads it.
++CREATE TABLE sheet_snapshot (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    as_of    DATE         NOT NULL,
++    state    CLOB         NOT NULL
++);
++CREATE INDEX sheet_snapshot_as_of ON sheet_snapshot (sheet_id, as_of, id);
