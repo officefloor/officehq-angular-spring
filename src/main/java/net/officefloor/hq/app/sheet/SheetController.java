@@ -31,10 +31,10 @@ public class SheetController {
     /** A sheet as the screen shows it, each dated setting as it is in force on the sheet's today, with every dated value
      *  recorded; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
      *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off; the cap (two decimals) is null when there is none, as is the proof threshold (two decimals); the permissions are the
-     *  matrix entries set, by action (one missing keeps its standing rule). */
+     *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions) {
+            List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -44,7 +44,7 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     sheet.getSettings().stream().map(s -> new DatedSettingView(s.getKey(), s.getFrom(), s.getValue())).toList(),
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
-                    sheet.getPermissions());
+                    sheet.getPermissions(), sheet.getGraceDays());
         }
     }
 
@@ -81,6 +81,10 @@ public class SheetController {
 
     /** The sheet's period numbering from as the form submits it; a missing one means off. */
     public record PeriodNumberingFromChange(LocalDate periodNumberingFrom) {
+    }
+
+    /** The sheet's grace days as the form submits them; missing ones mean off. */
+    public record GraceDaysChange(@Min(0) @Max(36500) Integer graceDays) {
     }
 
     /** The sheet's cap as the form submits it; a missing one means none. */
@@ -180,6 +184,15 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PeriodNumberingFromChange request) {
         return SheetView.of(sheets.setPeriodNumberingFrom(id, user, request.periodNumberingFrom()));
+    }
+
+    /** Change the sheet's grace days. */
+    @PutMapping("/{id}/settings/grace-days")
+    public SheetView setGraceDays(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GraceDaysChange request) {
+        return SheetView.of(sheets.setGraceDays(id, user, request.graceDays()));
     }
 
     /** Change the sheet's cap. */

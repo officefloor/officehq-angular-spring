@@ -43,6 +43,9 @@ export interface SheetView {
   /** The permission matrix entries set: for an action, the roles that may take it (comma separated); an action
    *  missing keeps its standing rule. Not dated. */
   permissions: Partial<Record<PermAction, string>>;
+  /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the new
+   *  today is closed; null: off. Not dated. */
+  graceDays: number | null;
 }
 
 /** The actions the permission matrix covers. */
@@ -137,6 +140,13 @@ export class Sheets {
   setPeriodNumberingFrom(id: string, periodNumberingFrom: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/period-numbering-from`, { periodNumberingFrom })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's grace days; null means off. Not dated. */
+  setGraceDays(id: string, graceDays: number | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/grace-days`, { graceDays })
       .pipe(tap((s) => this.active.set(s)));
   }
 

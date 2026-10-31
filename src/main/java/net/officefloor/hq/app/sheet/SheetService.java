@@ -7,8 +7,10 @@ import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.rollup.Rollup;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -23,10 +25,14 @@ public class SheetService {
     private final Rollup rollup;
     private final Audit audit;
 
-    public SheetService(SheetRepository sheets, Rollup rollup, Audit audit) {
+    private final PeriodService periods;
+
+    // The period service loads sheets through this one, so it is taken lazily.
+    public SheetService(SheetRepository sheets, Rollup rollup, Audit audit, @Lazy PeriodService periods) {
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
+        this.periods = periods;
     }
 
     /** The sheet with this id, re-read from the store; started empty if it has never been loaded. */
@@ -48,13 +54,16 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElse(null);
     }
 
-    /** Set the sheet's today, starting the sheet if it has never been loaded. */
+    /** Set the sheet's today, starting the sheet if it has never been loaded; then close every open period past its
+     *  grace days. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
-        Sheet sheet = load(id, user);
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
         Rollup.Figures before = rollup.of(id);
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
+        periods.closePastGrace(saved, user);
         rollup.recordChanges(id, user, before);
         return saved;
     }
@@ -117,6 +126,18 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
                 + " key=period-numbering-from value=" + (from == null ? "" : from));
+        return saved;
+    }
+
+    /** Set the sheet's grace days (null: off), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setGraceDays(String id, String user, Integer graceDays) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setGraceDays(graceDays);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=grace-days value=" + (graceDays == null ? "" : graceDays));
         return saved;
     }
 

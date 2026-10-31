@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
@@ -87,11 +88,29 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
         }
+        return closeAndRecord(sheetId, user, period, "");
+    }
+
+    /** Close, in order of their to-dates, every open period of the sheet whose to-date plus its grace days is
+     *  before its today, each exactly as a close by hand. Called with the sheet locked, once its new today is set. */
+    @Transactional
+    public void closePastGrace(Sheet sheet, String user) {
+        if (sheet.getGraceDays() == null) {
+            return;
+        }
+        periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
+                .filter(p -> !p.isClosed() && sheet.pastGrace(p.getToDate()))
+                .sorted(Comparator.comparing(Period::getToDate))
+                .forEach(p -> closeAndRecord(sheet.getId(), user, p, " auto=yes"));
+    }
+
+    /** Fix a period's due-total as it is now and record the close; the audit line ends with the suffix given. */
+    private Period closeAndRecord(String sheetId, String user, Period period, String suffix) {
         period.close(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()));
         Period closed = periods.saveAndFlush(period);
         BigDecimal total = closed.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
-                + " total=" + total.toPlainString());
+                + " total=" + total.toPlainString() + suffix);
         return closed;
     }
 

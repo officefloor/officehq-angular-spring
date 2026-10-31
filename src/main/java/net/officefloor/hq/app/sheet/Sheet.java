@@ -87,6 +87,11 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the
+     *  new today is closed; null means off. Not dated. */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     protected Sheet() {
     }
 
@@ -239,6 +244,20 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public Integer getGraceDays() {
+        return graceDays;
+    }
+
+    public void setGraceDays(Integer graceDays) {
+        this.graceDays = graceDays;
+    }
+
+    /** Whether a period ending on this day is closed by itself at the sheet's today: grace days are set and the day
+     *  plus them is before today. */
+    public boolean pastGrace(LocalDate toDate) {
+        return graceDays != null && toDate.plusDays(graceDays).isBefore(today);
     }
 
     /** A claim dated on a day whose due is above the proof threshold in force then (two decimals) cannot be settled
