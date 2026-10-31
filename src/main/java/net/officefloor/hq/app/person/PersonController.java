@@ -268,6 +268,10 @@ public class PersonController {
     public record BulkRetireForm(@NotEmpty List<@NotNull Long> personIds, LocalDate from) {
     }
 
+    /** A hold for the selected people as entered: from a date (none: the sheet's today) to an optional date. */
+    public record BulkHoldForm(@NotEmpty List<@NotNull Long> personIds, LocalDate from, LocalDate to) {
+    }
+
     /** Pasted lines of name,grade,terms,contact, one person per line; terms and contact may be left out. */
     public record ImportForm(@NotNull @Size(max = 100_000) String text) {
     }
@@ -276,6 +280,7 @@ public class PersonController {
     private final PersonImportService imports;
     private final BulkGradeService bulkGrade;
     private final BulkRetireService bulkRetire;
+    private final BulkHoldService bulkHold;
     private final ClaimService claims;
     private final RateService rates;
     private final StatementService statements;
@@ -285,8 +290,10 @@ public class PersonController {
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
             RateService rates, StatementService statements, PersonMergeService merges,
-            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire, Pools pools) {
+            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire,
+            BulkHoldService bulkHold, Pools pools) {
         this.pools = pools;
+        this.bulkHold = bulkHold;
         this.bulkRetire = bulkRetire;
         this.service = service;
         this.imports = imports;
@@ -365,6 +372,14 @@ public class PersonController {
     public BulkRetireService.Result retireAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkRetireForm form) {
         return bulkRetire.retire(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.personIds()), form.from());
+    }
+
+    /** Hold the selected people from the date to the optional date, in list order; answers how many were held. */
+    @PostMapping("/hold")
+    public BulkHoldService.Result holdAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody BulkHoldForm form) {
+        return bulkHold.hold(sheetId.trim(), user.trim(), new LinkedHashSet<>(form.personIds()), form.from(),
+                form.to());
     }
 
     /** A statement as asked for: as of a date on or before the sheet's today (none: as of now). */

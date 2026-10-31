@@ -514,6 +514,31 @@ function csvField(value: string): string {
           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
         }
       </form>
+      <form (submit)="holdSelected($event)" aria-label="Hold selected people">
+        <label for="bulk-hold-from">Hold the selected people from (blank: today)</label>
+        <input
+          id="bulk-hold-from"
+          data-testid="bulk-hold-from"
+          type="date"
+          [value]="bulkHoldFrom()"
+          (input)="bulkHoldFrom.set(value($event)); bulkHoldError.set('')"
+        />
+        <label for="bulk-hold-to">to (blank: open)</label>
+        <input
+          id="bulk-hold-to"
+          data-testid="bulk-hold-to"
+          type="date"
+          [value]="bulkHoldTo()"
+          (input)="bulkHoldTo.set(value($event)); bulkHoldError.set('')"
+        />
+        <button type="submit" data-testid="bulk-hold">Hold selected people</button>
+        @if (bulkHeld() !== null) {
+          <span>Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong></span>
+        }
+        @if (bulkHoldError()) {
+          <p role="alert" data-testid="person-error">{{ bulkHoldError() }}</p>
+        }
+      </form>
       <fieldset>
         <legend>Columns shown</legend>
         @for (c of columns; track c.key) {
@@ -987,6 +1012,14 @@ export class People {
   protected readonly bulkRetireError = signal('');
   /** A bulk retire still waiting for its answer: another press meanwhile is ignored. */
   private bulkRetiring = false;
+  /** The dates the selected people are held from (blank: the sheet's today) and to (blank: open-ended). */
+  protected readonly bulkHoldFrom = signal('');
+  protected readonly bulkHoldTo = signal('');
+  /** How many people the last bulk hold held; null while it runs. */
+  protected readonly bulkHeld = signal<number | null>(null);
+  protected readonly bulkHoldError = signal('');
+  /** A bulk hold still waiting for its answer: another press meanwhile is ignored. */
+  private bulkHolding = false;
   /** Whether retired people are listed; off when the screen opens, left as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
   /**
@@ -1188,6 +1221,10 @@ export class People {
       this.bulkRetireFrom.set('');
       this.bulkRetired.set(null);
       this.bulkRetireError.set('');
+      this.bulkHoldFrom.set('');
+      this.bulkHoldTo.set('');
+      this.bulkHeld.set(null);
+      this.bulkHoldError.set('');
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -1259,6 +1296,7 @@ export class People {
     this.selectedPeople.set(next);
     this.bulkGradeError.set('');
     this.bulkRetireError.set('');
+    this.bulkHoldError.set('');
     this.clearError(p);
   }
 
@@ -1348,6 +1386,49 @@ export class People {
       this.bulkRetireError.set('Could not retire the selected people.');
     } finally {
       this.bulkRetiring = false;
+    }
+  }
+
+  /** Hold the selected people from the date (blank: the sheet's today) to the optional date, each as the row's hold would. */
+  protected async holdSelected(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.bulkHolding) return;
+    this.bulkHeld.set(null);
+    this.bulkHoldError.set('');
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const personIds = [...this.selectedPeople()];
+    const from = this.bulkHoldFrom().trim();
+    const to = this.bulkHoldTo().trim();
+    if (personIds.length === 0) {
+      this.bulkHoldError.set('Select the people to hold.');
+      return;
+    }
+    if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
+      this.bulkHoldError.set('Enter the dates, or leave the from-date blank for today.');
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.bulkHolding = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ held: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/hold`,
+          { personIds, from: from || null, to: to || null },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedPeople.set(new Set());
+      await this.reload(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.bulkHeld.set(result.held);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkHoldError.set('Could not hold the selected people.');
+    } finally {
+      this.bulkHolding = false;
     }
   }
 
