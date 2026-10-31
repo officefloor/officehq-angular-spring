@@ -72,8 +72,9 @@ public class ClaimService {
 
     /**
      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
-     * claim gives it the sheet's next number; voiding it clears its number; settling it fixes its due
-     * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The sheet is locked
+     * claim gives it the sheet's next number and records who opened it; voiding it clears its number; settling it fixes its due
+     * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The user
+     * who opened a claim cannot settle it. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
      */
     @Transactional
@@ -86,12 +87,16 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
+        }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         Integer number = claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             number = sheet.nextClaimNumber();
             claim.setNumber(number);
+            claim.setOpenedBy(user);
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
         } else if (next == ClaimStatus.SETTLED) {

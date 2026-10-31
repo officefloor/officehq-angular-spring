@@ -19,6 +19,8 @@ export interface ClaimView {
   /** The due fixed when the claim was settled, with exactly two decimals; null while it is not
    *  settled, or if its grade had no rate then (its due then follows the rate as an open one does). */
   settledDue: string | null;
+  /** The signed-in name of the user who opened the claim; null while a draft. */
+  openedBy: string | null;
 }
 
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */

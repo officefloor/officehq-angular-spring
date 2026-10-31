@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -39,6 +40,7 @@ import { Sheets } from '../../core/sheet';
           — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
@@ -101,7 +103,12 @@ export class PersonClaims {
     if (!sheet) return;
     this.api.changeStatus(sheet.id, c.id, status).subscribe({
       next: (saved) => this.saved.emit(saved),
-      error: () => this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot become ${status}.` }),
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'You opened this claim, so someone else must settle it.'
+          : `A ${c.status} claim cannot become ${status}.`,
+      }),
     });
   }
 
