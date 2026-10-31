@@ -1,0 +1,64 @@
+{
+  "checkpoint": 239,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp239_period-claim-counts",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each period the count of claims belonging to it (VOID and DELETED claims left out).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each period the count of claims belonging to it (VOID and DELETED claims left out).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c7bd28888f4f186c823388917a76ed496f4256f0",
+  "reset_sha": "",
+  "preagent_sha": "f9a7da170ea56ee1d0130b5d690747402a8a105a",
+  "prev_sha": "f9a7da170ea56ee1d0130b5d690747402a8a105a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4970294,
+    "input_tokens": 32,
+    "output_tokens": 4689,
+    "cache_read_tokens": 522727,
+    "cache_creation_tokens": 37322,
+    "num_turns": 16,
+    "duration_ms": 293390,
+    "duration_api_ms": 69824,
+    "model": "claude-opus-5-5",
+    "session_id": "3f4b21c2-44e3-4d2c-a44e-149c329e3d45",
+    "stop_reason": "success",
+    "result_text": "Each period now shows how many claims belong to it, not counting VOID or DELETED ones. All 4 tests in the acceptance spec pass when run with `bin/e2e`.\n\n**How a claim is matched to a period:** by its due-by date, the same rule the period's due total and closing already use. It is not matched by the claim's own date. For example, in the first test a claim dated 2026-03-05 is counted in P2 (03-11 to 03-20), because the sheet's terms make it due 2026-03-15. DRAFT, OPEN, PENDING, SETTLED and REVIEW claims all count.\n\n**What changed** \u2014 only `src/main/frontend/src/app/features/periods/periods.ts`:\n- A new function, `periodClaimCounts`, counts the claims in each period from the people's claims the screen already loads. This works the same way as the existing due-total figures.\n- The periods table has a new \"Claims\" column, and each cell carries `data-testid=\"period-claims-count\"`.\n\nThere were no changes to the server, the stored data or the audit file. The count is worked out live every time, so it keeps changing after a period is closed. It isn't fixed at closing the way the due total is.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4970294,
+        "num_turns": 16,
+        "duration_ms": 293390,
+        "duration_api_ms": 69824,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp239.agent.jsonl",
+  "agent_diff_file": "cp239.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

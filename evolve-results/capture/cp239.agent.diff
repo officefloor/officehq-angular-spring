@@ -1,0 +1,50 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 4325de8cb..616d27173 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -143,6 +143,20 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
+   return shown;
+ }
+ 
++/** Per period id, how many of the people's claims are due by a date in it, VOID and DELETED claims left out. */
++export function periodClaimCounts(periods: Period[], people: PersonWithClaims[]): Record<number, number> {
++  const counts: Record<number, number> = {};
++  for (const p of periods) counts[p.id] = 0;
++  for (const person of people) {
++    for (const c of person.claims) {
++      if (c.status === 'VOID' || c.status === 'DELETED') continue;
++      const period = periodOf(periods, c.dueBy);
++      if (period) counts[period.id] += 1;
++    }
++  }
++  return counts;
++}
++
+ // The sheet's periods, earliest first, each with its due-total: the people's due-totals for it added up,
+ // each the dues of their claims whose date falls in it that counted (OPEN, PENDING and SETTLED) at the end
+ // of its last day, see personPeriodTotals, or once
+@@ -156,7 +170,7 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
+       <h2>Periods</h2>
+       <table>
+         <thead>
+-          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Locked</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of periods(); track p.id) {
+@@ -169,6 +183,7 @@ export function classicPeriodDueTotals(periods: Period[], people: PersonWithClai
+               <td data-testid="period-due-total">{{ dueTotals()[p.id] | figure }}</td>
+               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
++              <td data-testid="period-claims-count">{{ claimCounts()[p.id] }}</td>
+               <td>
+                 <button type="button" data-testid="period-close" [attr.aria-label]="'Close period ' + p.name" (click)="act(p, 'close')">Close</button>
+                 <button type="button" data-testid="period-soft-close" [attr.aria-label]="'Soft-close period ' + p.name" (click)="act(p, 'soft-close')">Soft-close</button>
+@@ -313,6 +328,7 @@ export class Periods {
+   readonly periods = model<Period[]>([]);
+ 
+   protected readonly dueTotals = computed(() => periodDueTotals(this.periods(), this.people()));
++  protected readonly claimCounts = computed(() => periodClaimCounts(this.periods(), this.people()));
+   protected readonly name = signal('');
+   protected readonly from = signal('');
+   protected readonly to = signal('');
