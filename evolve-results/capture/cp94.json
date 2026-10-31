@@ -1,0 +1,64 @@
+{
+  "checkpoint": 94,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp94_proof-threshold-per-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The proof threshold can be set per grade (settings, SETTING_CHANGED key=proof-threshold-<grade>\nvalue=<amount>, dated like the floor; blank means none). For a claim, the threshold in force is\nits person's grade's threshold in force on the claim's date when one is set, else the sheet's.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe proof threshold can be set per grade (settings, SETTING_CHANGED key=proof-threshold-<grade>\nvalue=<amount>, dated like the floor; blank means none). For a claim, the threshold in force is\nits person's grade's threshold in force on the claim's date when one is set, else the sheet's.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "66bbd14e749bf50522525804417c6b0e1b2ed5cc",
+  "reset_sha": "",
+  "preagent_sha": "b81c9449721cea0905a9b407bc26f0a5e910a53b",
+  "prev_sha": "b81c9449721cea0905a9b407bc26f0a5e910a53b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7689581999999999,
+    "input_tokens": 28,
+    "output_tokens": 8170,
+    "cache_read_tokens": 602991,
+    "cache_creation_tokens": 60606,
+    "num_turns": 15,
+    "duration_ms": 230255,
+    "duration_api_ms": 69383,
+    "model": "claude-opus-5-5",
+    "session_id": "a31cb92e-5264-4e97-8dab-03b03fe630e1",
+    "stop_reason": "success",
+    "result_text": "You can now set a proof threshold for each grade, and `bin/e2e` passes all 4 acceptance tests.\n\n**How it works:** for a claim, the app looks up the grade its person had on the claim's date. If that grade has its own threshold in force on that date, that threshold applies; otherwise the sheet's threshold applies. Like the floor, a grade's threshold is dated, and leaving it blank means the grade has none of its own. Saving one writes `SETTING_CHANGED ... key=proof-threshold-<grade> value=<amount>`, with ` from=<date>` added when a from-date is given.\n\nI followed the pattern the app already uses for each grade's grace days, so no database migration was needed:\n\n- **Rule** (`Sheet.java`): a new method finds the threshold that applies to a grade on a date. The check in `ClaimService.java` that refuses to settle or approve a claim with no proof now uses it, so it covers both actions.\n- **Saving** (`SheetService.java`, `SheetController.java`): a new endpoint, `PUT /api/sheets/{id}/settings/proof-threshold/{A|B|C}`, takes the same `{ proofThreshold, from }` body as the sheet's own threshold. The sheet view now also returns each grade's threshold as of the sheet's today.\n- **Screen** (`core/sheet.ts`, `features/settings/settings.ts`): for each grade, the settings panel shows the threshold in force (`setting-proof-threshold-<g>-current`). It has an input (`setting-proof-threshold-<g>`) and a from-date input (`setting-proof-threshold-<g>-from`), both checked the same way as the sheet's threshold.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7689581999999999,
+        "num_turns": 15,
+        "duration_ms": 230255,
+        "duration_api_ms": 69383,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp94.agent.jsonl",
+  "agent_diff_file": "cp94.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
