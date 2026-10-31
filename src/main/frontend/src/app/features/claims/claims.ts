@@ -243,7 +243,7 @@ export class PersonClaims {
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 423
-          ? 'This claim is dated inside a closed period.'
+          ? 'This claim is due by inside a closed period.'
           : err instanceof HttpErrorResponse && err.status === 400
             ? `A claim is deferred to a day after today (${sheet.today}).`
             : `A ${c.status} claim cannot be deferred; only an OPEN one can.`,
@@ -275,7 +275,7 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 403
           ? 'Only a steward can re-date a claim.'
           : err instanceof HttpErrorResponse && err.status === 423
-            ? 'This claim, or its new date, is inside a closed period.'
+            ? 'This claim is due by inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? `${this.personName()} retired before ${date}.`
               : `A ${c.status} claim cannot be re-dated; only an OPEN or PENDING one can.`,
@@ -308,7 +308,7 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 403
           ? 'Your role may not open a claim, so it may not split one.'
           : err instanceof HttpErrorResponse && err.status === 423
-            ? 'This claim is dated inside a closed period.'
+            ? 'This claim is due by inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 400
               ? `Type an amount more than 0.00 and less than ${c.amount} to split off.`
               : this.deferredOf(c)
@@ -319,7 +319,7 @@ export class PersonClaims {
   }
 
   protected periodOf(c: ClaimView): string {
-    return periodOn(this.periods(), c.date)?.name ?? '';
+    return periodOn(this.periods(), c.dueBy)?.name ?? '';
   }
 
   protected changeStatus(c: ClaimView, status: ClaimStatus): void {
@@ -337,7 +337,7 @@ export class PersonClaims {
               ? 'Only a steward may void a settled claim.'
             : `Your role may not ${STATUS_ACTION[status] ?? 'move'} a claim.`
           : err instanceof HttpErrorResponse && err.status === 423
-            ? 'This claim is dated inside a closed period.'
+            ? 'This claim is due by inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 428
               ? status === 'OPEN' ? UNNOTED : UNPROVEN
             : status === 'VOID' && c.status === 'SETTLED'
@@ -358,7 +358,7 @@ export class PersonClaims {
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 423
-          ? 'This claim is dated inside a closed period.'
+          ? 'This claim is due by inside a closed period.'
           : `A ${c.status} claim cannot be given a proof.`,
       }),
     });
@@ -392,7 +392,7 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 403
           ? 'Only a steward can re-settle a claim.'
           : err instanceof HttpErrorResponse && err.status === 423
-            ? 'This claim is dated inside a closed period.'
+            ? 'This claim is due by inside a closed period.'
             : `A ${c.status} claim cannot be re-settled; only a SETTLED one can.`,
       }),
     });
@@ -450,7 +450,7 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 403
           ? 'Your role may not move a claim to another person.'
           : err instanceof HttpErrorResponse && err.status === 423
-            ? 'This claim is dated inside a closed period.'
+            ? 'This claim is due by inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? 'This claim is dated after that person retired.'
               : err instanceof HttpErrorResponse && err.status === 400
@@ -463,7 +463,7 @@ export class PersonClaims {
   /** Why approving or rejecting a claim was refused, other than by who asked. */
   private refusal(err: unknown, c: ClaimView, done: string): string {
     return err instanceof HttpErrorResponse && err.status === 423
-      ? 'This claim is dated inside a closed period.'
+      ? 'This claim is due by inside a closed period.'
       : err instanceof HttpErrorResponse && err.status === 428
         ? UNPROVEN
       : err instanceof HttpErrorResponse && err.status === 400
@@ -509,7 +509,7 @@ export class PersonClaims {
           message: err instanceof HttpErrorResponse && err.status === 403
             ? 'Your role may not edit a claim.'
             : err instanceof HttpErrorResponse && err.status === 423
-              ? 'This claim is dated inside a closed period.'
+              ? 'This claim is due by inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 409
               ? 'Another user is editing this claim, or it is no longer a draft.'
               : 'Could not open this claim for editing.',
@@ -596,7 +596,7 @@ export class PersonClaims {
         this.saving.set(false);
         this.error.set(
           err instanceof HttpErrorResponse && err.status === 423
-            ? 'That claim is dated inside a closed period.'
+            ? 'That claim is due by inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? 'That claim is dated after the person retired.'
             : correction && err instanceof HttpErrorResponse && err.status === 400

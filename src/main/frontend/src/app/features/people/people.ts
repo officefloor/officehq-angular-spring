@@ -424,7 +424,7 @@ export class PeopleList {
     };
   });
   /** Each person's due-total for each period, in whole cents, by person id then period id: the dues as shown now
-   *  of their claims whose date falls in it and that counted by the status they had at the end of its last day
+   *  of their claims whose due-by falls in it and that counted by the status they had at the end of its last day
    *  (none counting as 0); a closed or soft-closed period keeps the figures fixed when it was closed, 0 for a person added since. */
   private readonly dueByPersonPeriod = computed(() => {
     const periods = this.periods.list();
@@ -433,7 +433,7 @@ export class PeopleList {
     for (const p of this.people()) {
       const live = new Map<number, number>(periods.map((pd) => [pd.id, 0]));
       for (const c of this.claimsOf(p.id)) {
-        const period = periodOn(periods, c.date);
+        const period = periodOn(periods, c.dueBy);
         if (period && countsAtEndWithHolds(p.holds, this.todayNow(), period.to, p.retiredFrom)(c)) {
           live.set(period.id, (live.get(period.id) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
         }
@@ -933,7 +933,7 @@ export class PeopleList {
         this.quickSaving.set(false);
         this.quickError.set(
           err instanceof HttpErrorResponse && err.status === 423
-            ? 'That claim is dated inside a closed period.'
+            ? 'That claim is due by inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? 'That claim is dated after the person retired.'
             : err instanceof HttpErrorResponse && err.status === 409
@@ -967,7 +967,7 @@ export class PeopleList {
         this.pasting.set(false);
         this.pasteError.set(
           err instanceof HttpErrorResponse && err.status === 423
-            ? 'A pasted claim is dated inside a closed period; nothing was added.'
+            ? 'A pasted claim is due by inside a closed period; nothing was added.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? 'A pasted claim is dated after its person retired; nothing was added.'
               : 'A pasted line is not a valid claim for someone on this sheet; nothing was added.',
