@@ -1,0 +1,64 @@
+{
+  "checkpoint": 187,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp187_cut-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f7f149a6024dee7782b25afd56c1de8324f38bf0",
+  "reset_sha": "",
+  "preagent_sha": "3ed9f9913be702a380d70dbda3bd613592a584a1",
+  "prev_sha": "3ed9f9913be702a380d70dbda3bd613592a584a1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1943742000000002,
+    "input_tokens": 42,
+    "output_tokens": 17387,
+    "cache_read_tokens": 1166851,
+    "cache_creation_tokens": 76637,
+    "num_turns": 22,
+    "duration_ms": 362790,
+    "duration_api_ms": 171377,
+    "model": "claude-opus-5-5",
+    "session_id": "19a7a80d-e563-43c6-8668-8c8f1859f593",
+    "stop_reason": "success",
+    "result_text": "I've added the per-period cut history, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What it does.** Each pool member's line now shows a `pool-cut-<period>` value for every period whose to-date is on or before the sheet's today. That value is the member's cut as it stood at the end of the period: the pools, memberships, crews, pot and holds as they were then, with that day as the sheet's today. It's empty when there was no cut then \u2014 nothing had been changed on the sheet by that date, the member wasn't in the pool yet, the pool wasn't balanced, or the membership wasn't in force that day.\n\n**How:**\n- **Stored data:** the app already saves a snapshot of the sheet under its today after each change, but pools and crews weren't in it. I added them, with their memberships, shares and from/to dates, at the end of `SheetState`. Pools, pool memberships and crews themselves are unchanged.\n- **Server:**\n  - `PoolService` now builds pools in one shared method. It feeds that either from what's stored now or from a snapshot.\n  - The new `stoodOn` rebuilds the pools as they were at a date. The new `listWithHistory` adds each member's per-period cuts.\n  - The pools list endpoint now returns a `periodCuts` list on each member.\n- **Front end:** `core/pools.ts` has the new `periodCuts` field. The pools panel renders one `pool-cut-<period name>` span per entry, through the same figure pipe as `pool-cut`.\n\n**Things you might trip over:**\n- **Snapshots saved before this change** don't include pools. For those dates, cuts fall back to today's pools and memberships, which is how the existing \"show the sheet as of a date\" view already reads pools.\n- **That as-of view is otherwise unchanged:** its main cut still uses memberships as they are now. Only the new per-period cuts use the historical pools. Within that view, the periods listed are the ones that existed on the as-of date.\n\nI didn't touch the test, `bin/*`, `e2e/support/*` or the instruction files.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1943742000000002,
+        "num_turns": 22,
+        "duration_ms": 362790,
+        "duration_api_ms": 171377,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp187.agent.jsonl",
+  "agent_diff_file": "cp187.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
