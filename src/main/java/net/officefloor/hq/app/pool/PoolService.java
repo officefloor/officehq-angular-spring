@@ -2,6 +2,7 @@ package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,12 +31,18 @@ public class PoolService {
     /** The most pools a chain of pools, each a member of the next, can hold. */
     public static final int MAX_DEPTH = 3;
 
-    /** A member of a pool as it stands: a person or another pool (exactly one is set), and its share. */
-    public record Member(Person person, Pool pool, BigDecimal share) {
+    /** A member of a pool as it stands: a person or another pool (exactly one is set), its share, and whether the
+     *  person has a hold in force on the sheet's today. */
+    public record Member(Person person, Pool pool, BigDecimal share, boolean held) {
 
         /** What the share counts toward the pool's total: nothing once the person is retired, whatever the date. */
         public BigDecimal counted() {
             return person != null && person.isRetired() ? BigDecimal.ZERO.setScale(2) : share;
+        }
+
+        /** What the share counts toward the cuts: nothing while held on the sheet's today, else what it counts. */
+        public BigDecimal cutShare() {
+            return held ? BigDecimal.ZERO.setScale(2) : counted();
         }
     }
 
@@ -54,19 +61,25 @@ public class PoolService {
         }
 
         /** Each member's cut of the pot, in the order of the members; none (null) when there is no pot or the pool
-         *  is not balanced. A cut is the pot times the share over 100, rounded half to even to two decimals, 0.00 for
-         *  a retired member; what the cuts fall short of (or over) the pot goes to the member with the largest share
-         *  counted, the earliest added on a tie, so the cuts total exactly the pot. */
+         *  is not balanced. A cut is the pot times the share over the shares of the members with a cut added up,
+         *  rounded half to even to two decimals, 0.00 for a retired member or one held on the sheet's today; what the
+         *  cuts fall short of (or over) the pot goes to the member with the largest share with a cut, the earliest
+         *  added on a tie, so the cuts total exactly the pot. When no member has a cut, each is 0.00. */
         public List<BigDecimal> cuts() {
             if (pot == null || !balanced()) {
                 return null;
             }
+            BigDecimal withCut = members.stream().map(Member::cutShare)
+                    .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            if (withCut.signum() == 0) {
+                return new ArrayList<>(members.stream().map(m -> BigDecimal.ZERO.setScale(2)).toList());
+            }
             List<BigDecimal> cuts = new ArrayList<>(members.stream()
-                    .map(m -> pot.multiply(m.counted()).divide(FULL, 2, RoundingMode.HALF_EVEN)).toList());
+                    .map(m -> pot.multiply(m.cutShare()).divide(withCut, 2, RoundingMode.HALF_EVEN)).toList());
             BigDecimal remainder = pot.subtract(cuts.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add));
             int largest = 0;
             for (int i = 1; i < members.size(); i++) {
-                if (members.get(i).counted().compareTo(members.get(largest).counted()) > 0) {
+                if (members.get(i).cutShare().compareTo(members.get(largest).cutShare()) > 0) {
                     largest = i;
                 }
             }
@@ -97,6 +110,7 @@ public class PoolService {
     public List<PoolWithMembers> list(String sheetId) {
         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
         BigDecimal sheetPot = sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
+        LocalDate today = sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, Pool> poolsById = list.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
@@ -110,11 +124,12 @@ public class PoolService {
                 if (m.getMemberPoolId() != null) {
                     Pool child = poolsById.get(m.getMemberPoolId());
                     if (child != null) {
-                        of.add(new Member(null, child, m.getShare()));
+                        of.add(new Member(null, child, m.getShare(), false));
                         parentOf.put(child.getId(), p.getId());
                     }
                 } else if (byId.containsKey(m.getPersonId())) {
-                    of.add(new Member(byId.get(m.getPersonId()), null, m.getShare()));
+                    Person person = byId.get(m.getPersonId());
+                    of.add(new Member(person, null, m.getShare(), person.heldOn(today)));
                 }
             }
             membersOf.put(p.getId(), of);

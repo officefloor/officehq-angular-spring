@@ -215,6 +215,11 @@ public class Person {
                 && (retiredOn(today) || holds.stream().anyMatch(h -> h.covers(claim.getDate())));
     }
 
+    /** Whether a hold of the person is in force on {@code date}: one whose dates include it. */
+    public boolean heldOn(LocalDate date) {
+        return date != null && holds.stream().anyMatch(h -> h.covers(date));
+    }
+
     /** Whether the retirement date is reached on {@code date}: set, and on or before it. */
     public boolean retiredOn(LocalDate date) {
         return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
