@@ -38,6 +38,8 @@ export interface PersonView {
   /** The person's holds, in the order they start: their open claims dated within one, and not bound by a
    *  statement, count in no live total. */
   holds: HoldView[];
+  /** The person's contact, trimmed and lower-cased; null when they have none. */
+  contact: string | null;
 }
 
 export interface PersonForm {
@@ -45,6 +47,8 @@ export interface PersonForm {
   grade: Grade;
   /** The person's own terms in days; null: none. */
   terms: number | null;
+  /** The person's contact; blank: none. */
+  contact: string;
 }
 
 /** An edit of a person: the grade is recorded from `gradeFrom` (yyyy-mm-dd; null takes the sheet's today). */

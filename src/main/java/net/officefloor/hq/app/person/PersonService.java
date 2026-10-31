@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -45,17 +46,29 @@ public class PersonService {
      *  on the sheet. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+        return add(sheetId, user, name, grade, terms, null);
+    }
+
+    /** Add a person with their own terms (null: none) and contact (stored trimmed and lower-cased; blank or null:
+     *  none); the name and the contact must not already be in use on the sheet. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
+        String reach = contactOf(contact);
+        if (reach != null && people.existsBySheetIdAndContact(sheetId, reach)) {
+            throw contactInUse();
+        }
         Rollup.Figures before = rollup.of(sheetId);
         Person person = new Person(sheetId, trimmed, grade);
         person.setTerms(terms);
+        person.setContact(reach);
         Person added = save(person);
         audit.recordChangeOnCommit(sheetId, user, entry("PERSON_ADDED", user, added, grade)
-                + (terms != null ? " terms=" + terms : ""));
+                + (terms != null ? " terms=" + terms : "") + (reach != null ? " contact=" + reach : ""));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
@@ -70,11 +83,24 @@ public class PersonService {
      * Edit a person, as loaded at {@code version}: refused when someone has saved them since. The grade is
      * recorded from {@code gradeFrom} (null: the sheet's today), keeping the grades already recorded from
      * other dates; a save leaving the grade as in force on the sheet's today, with no from-date, records none.
-     * The person's own terms become {@code terms} (null: none).
+     * The person's own terms become {@code terms} (null: none); their contact is kept.
      */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, person.getContact());
+    }
+
+    /**
+     * Edit a person as {@link #update(String, String, long, long, String, String, LocalDate, Integer)} does, their
+     * contact becoming {@code contact} (stored trimmed and lower-cased; blank or null: none): refused when another
+     * person on the sheet has it.
+     */
+    @Transactional
+    public Person update(String sheetId, String user, long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact) {
         LocalDate today = sheets.load(sheetId, user).getToday();
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
@@ -85,6 +111,10 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)) {
             throw nameInUse();
         }
+        String reach = contactOf(contact);
+        if (reach != null && people.existsBySheetIdAndContactAndIdNot(sheetId, reach, id)) {
+            throw contactInUse();
+        }
         Rollup.Figures before = rollup.of(sheetId);
         person.setName(trimmed);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
@@ -92,9 +122,12 @@ public class PersonService {
         }
         boolean termsChanged = !Objects.equals(person.getTerms(), terms);
         person.setTerms(terms);
+        boolean contactChanged = !Objects.equals(person.getContact(), reach);
+        person.setContact(reach);
         Person edited = save(person);
         audit.recordChangeOnCommit(sheetId, user, entry("PERSON_EDITED", user, edited, edited.gradeOn(today))
-                + (termsChanged ? " terms=" + (terms != null ? terms : "") : ""));
+                + (termsChanged ? " terms=" + (terms != null ? terms : "") : "")
+                + (contactChanged ? " contact=" + (reach != null ? reach : "") : ""));
         rollup.recordChanges(sheetId, user, before);
         return edited;
     }
@@ -155,6 +188,18 @@ public class PersonService {
     private static ResponseStatusException changedSince() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
                 "Someone else has saved this person since it was opened");
+    }
+
+    /** A contact as stored: trimmed and lower-cased; null when blank or not given. */
+    private static String contactOf(String contact) {
+        if (contact == null || contact.isBlank()) {
+            return null;
+        }
+        return contact.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static ResponseStatusException contactInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That contact is already in use on this sheet");
     }
 
     private static ResponseStatusException nameInUse() {

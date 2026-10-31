@@ -114,6 +114,8 @@ function csvField(value: string): string {
         }
         <label for="person-form-terms">Terms (business days; blank: none of their own)</label>
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
+        <label for="person-form-contact">Contact (blank: none)</label>
+        <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" autocomplete="off" />
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -223,6 +225,7 @@ function csvField(value: string): string {
             <span data-testid="person-name">{{ p.name }}</span>
             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
             — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
+            — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
             @for (pd of periods.list(); track pd.id) {
               — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd.id) }}</span>
@@ -622,6 +625,8 @@ export class PeopleList {
     gradeFrom: new FormControl('', { nonNullable: true }),
     /** The person's own terms in days; blank for none. */
     terms: new FormControl('', { nonNullable: true }),
+    /** The person's contact; blank for none. */
+    contact: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly quickError = signal<string | null>(null);
@@ -1141,13 +1146,13 @@ export class PeopleList {
     this.patronError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p) }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '' }, { emitEvent: false });
     this.error.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
     this.error.set(null);
   }
 
@@ -1173,9 +1178,10 @@ export class PeopleList {
     const id = this.editingId();
     this.saving.set(true);
     const request = id === null
-      ? this.api.add(sheet.id, { name: value.name, grade: value.grade, terms })
+      ? this.api.add(sheet.id, { name: value.name, grade: value.grade, terms, contact: value.contact })
       : this.api.update(sheet.id, id, this.editingVersion,
-          { name: value.name, grade: value.grade, gradeFrom: value.gradeFrom === '' ? null : value.gradeFrom, terms });
+          { name: value.name, grade: value.grade, gradeFrom: value.gradeFrom === '' ? null : value.gradeFrom, terms,
+            contact: value.contact });
     request.subscribe({
       next: (saved) => {
         this.saving.set(false);
@@ -1190,7 +1196,7 @@ export class PeopleList {
           this.error.set('Someone else has saved this person since you opened it; their values are shown.');
           this.showCurrent(sheet.id, id);
         } else if (err instanceof HttpErrorResponse && err.status === 409) {
-          this.error.set('That name is already in use on this sheet.');
+          this.error.set('That name or contact is already in use on this sheet.');
         } else {
           this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
         }
@@ -1206,7 +1212,7 @@ export class PeopleList {
         const current = people.find((p) => p.id === id);
         if (current && this.editingId() === id) {
           this.editingVersion = current.version;
-          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current) },
+          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current), contact: current.contact ?? '' },
             { emitEvent: false });
         }
       },
