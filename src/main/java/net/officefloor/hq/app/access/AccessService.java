@@ -8,6 +8,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.rate.AddedGradeRepository;
+import net.officefloor.hq.app.rate.GradeService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.DatedSettings;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -113,8 +115,11 @@ public class AccessService {
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
 
+    private final AddedGradeRepository addedGrades;
+
     public AccessService(SheetRoleRepository roles, DelegationRepository delegations, SheetRepository sheetRows, SheetSettingRepository settingRows,
-            SheetService sheets, Rollup rollup, ApplicationEventPublisher events) {
+            SheetService sheets, Rollup rollup, ApplicationEventPublisher events, AddedGradeRepository addedGrades) {
+        this.addedGrades = addedGrades;
         this.rollup = rollup;
         this.roles = roles;
         this.delegations = delegations;
@@ -284,8 +289,9 @@ public class AccessService {
         if (scoreLog != null && !scoreLog.isEmpty() && !scoreLog.equals("on")) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The score log is on or blank");
         }
-        if (defaultGrade != null && !defaultGrade.isEmpty() && !defaultGrade.matches("[ABC]")) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The default grade is A, B or C");
+        if (defaultGrade != null && !defaultGrade.isEmpty()
+                && !GradeService.grades(addedGrades, sheetId).contains(defaultGrade)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The default grade is one of the sheet's grades");
         }
         if (fiscalStartMonth != null && !fiscalStartMonth.isEmpty()
                 && (Integer.parseInt(fiscalStartMonth) < 1 || Integer.parseInt(fiscalStartMonth) > 12)) {

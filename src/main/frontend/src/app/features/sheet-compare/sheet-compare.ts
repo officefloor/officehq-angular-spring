@@ -3,6 +3,7 @@ import { Component, effect, inject, input, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PersonWithClaims as Person } from '../claims/claims';
+import { GradeList } from '../grades/grades';
 import { gradeDueCents } from '../summary/summary';
 
 // The sheet comparison: per grade of this sheet, in grade order, <grade> <this sheet's summary due-total>
@@ -37,6 +38,7 @@ import { gradeDueCents } from '../summary/summary';
 export class SheetCompare {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly grades = inject(GradeList);
 
   readonly people = input.required<Person[]>();
 
@@ -72,7 +74,7 @@ export class SheetCompare {
       this.error.set('Enter the other sheet id.');
       return;
     }
-    const mine = gradeDueCents(this.people());
+    const mine = gradeDueCents(this.grades.codes(), this.people());
     const id = encodeURIComponent(other);
     try {
       const [, theirs] = await Promise.all([
@@ -80,7 +82,7 @@ export class SheetCompare {
         firstValueFrom(this.http.get<Person[]>(`/api/sheets/${id}/people`)),
       ]);
       if (compare !== this.compares) return;
-      const theirDue = new Map(gradeDueCents(theirs).map((g) => [g.grade, g.due]));
+      const theirDue = new Map(gradeDueCents(this.grades.codes(), theirs).map((g) => [g.grade, g.due]));
       this.lines.set(
         mine.map((g) => `${g.grade} ${(g.due / 100).toFixed(2)} ${((theirDue.get(g.grade) ?? 0) / 100).toFixed(2)}`),
       );

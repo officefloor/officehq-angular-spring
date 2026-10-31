@@ -2,6 +2,7 @@ package net.officefloor.hq.app.rate;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Set;
@@ -28,6 +29,10 @@ public class GradeController {
     public record GradeView(String grade, boolean retired) {
     }
 
+    /** A grade to add. */
+    public record AddForm(@NotNull @Size(max = 10) String grade) {
+    }
+
     /** A merge of one grade into another. */
     public record MergeForm(@NotBlank @Size(max = 10) String from, @NotBlank @Size(max = 10) String into) {
     }
@@ -43,7 +48,15 @@ public class GradeController {
     @GetMapping
     public List<GradeView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         Set<String> retired = service.retired(sheetId.trim());
-        return GradeService.GRADES.stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+        return service.grades(sheetId.trim()).stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+    }
+
+    /** Add a grade to the sheet; answers the sheet's grades with it. */
+    @PostMapping
+    public List<GradeView> add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody AddForm form) {
+        service.add(sheetId.trim(), user.trim(), form.grade().trim());
+        return list(sheetId);
     }
 
     @PostMapping("/{grade}/retire")
@@ -60,7 +73,7 @@ public class GradeController {
         return merges.merge(sheetId.trim(), user.trim(), form.from().trim(), form.into().trim());
     }
 
-    /** Another user retired the same grade at the same moment: this one is refused. */
+    /** Another user retired or added the same grade at the same moment: this one is refused. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public void taken() {

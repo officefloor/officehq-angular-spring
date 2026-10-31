@@ -25,6 +25,7 @@ import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.claim.Holds;
 import net.officefloor.hq.app.claim.Tags;
 import net.officefloor.hq.app.pool.Pools;
+import net.officefloor.hq.app.rate.GradeService;
 import net.officefloor.hq.app.rate.Grades;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
@@ -237,7 +238,7 @@ public class PersonController {
      * (or none) for none; their tags comma separated text (none: none on an add, as they were on an edit).
      */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade, Long version, LocalDate gradeFrom,
             @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms, LocalDate termsFrom,
             @Size(max = 200) String contact, @Size(max = 1000) String tags) {
 
@@ -258,7 +259,7 @@ public class PersonController {
 
     /** A grade for the selected people as entered: from a date (none: the sheet's today). */
     public record BulkGradeForm(@NotEmpty List<@NotNull Long> personIds,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade, LocalDate from) {
     }
 
     /** A retirement for the selected people as entered: from a date (none: the sheet's today). */

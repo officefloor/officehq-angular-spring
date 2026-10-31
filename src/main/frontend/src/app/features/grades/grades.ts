@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, output, signal } from '@angular/core';
+import { Component, Injectable, computed, effect, inject, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -8,7 +8,68 @@ export interface Grade {
   retired: boolean;
 }
 
-// The sheet's grades and whether each is retired, and the select and button that retire one. A retired grade
+/** The grades every sheet starts with. */
+const BASE_GRADES = ['A', 'B', 'C'];
+
+/** A grade code a grade can be added as: one to three capital letters. */
+const GRADE_CODE = /^[A-Z]{1,3}$/;
+
+/** The active sheet's grades, in order (A, B and C, then those added, in the order added), re-read on every sheet load. */
+@Injectable({ providedIn: 'root' })
+export class GradeList {
+  private readonly http = inject(HttpClient);
+  private readonly session = inject(Session);
+
+  readonly grades = signal<Grade[]>([]);
+  /** The grade codes, in order: the grades every sheet starts with until the sheet's are read. */
+  readonly codes = computed(() => {
+    const grades = this.grades();
+    return grades.length === 0 ? BASE_GRADES : grades.map((g) => g.grade);
+  });
+
+  constructor() {
+    effect(() => {
+      const sheet = this.session.sheet();
+      this.session.loads();
+      this.grades.set([]);
+      if (sheet) void this.reload(sheet);
+    });
+  }
+
+  /** Add a grade to the active sheet: '' once added, else why it was refused. */
+  async add(text: string): Promise<string> {
+    const sheet = this.session.sheet();
+    if (!sheet) return 'Load a sheet first.';
+    const grade = text.trim();
+    if (!GRADE_CODE.test(grade)) return 'Enter a grade of one to three capital letters.';
+    if (this.codes().includes(grade)) return `Grade ${grade} is already a grade.`;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    try {
+      const grades = await firstValueFrom(
+        this.http.post<Grade[]>(`/api/sheets/${encodeURIComponent(sheet)}/grades`, { grade }, { headers }),
+      );
+      if (this.session.sheet() === sheet) this.grades.set(grades);
+      return '';
+    } catch (err) {
+      const answer = err instanceof HttpErrorResponse ? err : null;
+      return answer?.error?.message ?? 'Could not add the grade.';
+    }
+  }
+
+  /** Mark a grade retired in the list shown. */
+  retired(grade: string): void {
+    this.grades.update((gs) => gs.map((g) => (g.grade === grade ? { ...g, retired: true } : g)));
+  }
+
+  private async reload(sheet: string): Promise<void> {
+    const loads = this.session.loads();
+    const grades = await firstValueFrom(this.http.get<Grade[]>(`/api/sheets/${encodeURIComponent(sheet)}/grades`));
+    if (this.session.sheet() === sheet && this.session.loads() === loads) this.grades.set(grades);
+  }
+}
+
+// The sheet's grades and whether each is retired, the entry and button that add one (a code of one to three
+// capital letters not yet a grade), and the select and button that retire one. A retired grade
 // cannot be chosen for a new person or in an edit; people already on it keep it. A steward can merge a grade
 // into another: everyone on the merged grade today is given the other from today.
 @Component({
@@ -23,6 +84,16 @@ export interface Grade {
           </li>
         }
       </ul>
+      <form (submit)="add($event)" aria-label="Add grade">
+        <label for="grade-add-code">New grade</label>
+        <input
+          id="grade-add-code"
+          data-testid="grade-add-code"
+          [value]="code()"
+          (input)="code.set(input($event)); error.set('')"
+        />
+        <button type="submit" data-testid="grade-add">Add grade</button>
+      </form>
       <form (submit)="retire($event)" aria-label="Retire grade">
         <label for="grade-retire-select">Grade</label>
         <select
@@ -76,7 +147,11 @@ export class Grades {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
-  protected readonly grades = signal<Grade[]>([]);
+  private readonly list = inject(GradeList);
+
+  protected readonly grades = this.list.grades;
+  /** The code typed for a grade to add. */
+  protected readonly code = signal('');
   protected readonly grade = signal('');
   protected readonly error = signal('');
   protected readonly mergeFrom = signal('');
@@ -92,14 +167,33 @@ export class Grades {
     effect(() => {
       const sheet = this.session.sheet();
       this.session.loads();
-      this.grades.set([]);
+      this.code.set('');
       this.grade.set('');
       this.mergeFrom.set('');
       this.mergeInto.set('');
       this.merged.set('');
       this.error.set('');
-      if (sheet) void this.reload(sheet);
     });
+  }
+
+  protected input(e: Event): string {
+    return (e.target as HTMLInputElement).value;
+  }
+
+  protected async add(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.busy) return;
+    this.error.set('');
+    const sheet = this.session.sheet();
+    this.busy = true;
+    try {
+      const refused = await this.list.add(this.code());
+      if (this.session.sheet() !== sheet) return;
+      if (refused) this.error.set(refused);
+      else this.code.set('');
+    } finally {
+      this.busy = false;
+    }
   }
 
   protected value(e: Event): string {
@@ -133,7 +227,7 @@ export class Grades {
         ),
       );
       if (this.session.sheet() !== sheet) return;
-      this.grades.update((gs) => gs.map((g) => (g.grade === grade ? { ...g, retired: true } : g)));
+      this.list.retired(grade);
     } catch (err) {
       if (this.session.sheet() !== sheet) return;
       const answer = err instanceof HttpErrorResponse ? err : null;
@@ -180,11 +274,5 @@ export class Grades {
     } finally {
       this.busy = false;
     }
-  }
-
-  private async reload(sheet: string): Promise<void> {
-    const loads = this.session.loads();
-    const grades = await firstValueFrom(this.http.get<Grade[]>(`/api/sheets/${encodeURIComponent(sheet)}/grades`));
-    if (this.session.sheet() === sheet && this.session.loads() === loads) this.grades.set(grades);
   }
 }

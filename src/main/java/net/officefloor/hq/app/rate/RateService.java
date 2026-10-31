@@ -23,9 +23,11 @@ public class RateService {
     private final Rollup rollup;
     private final ParentRates parents;
     private final ApplicationEventPublisher events;
+    private final AddedGradeRepository added;
 
     public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets, Rollup rollup, ParentRates parents,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events, AddedGradeRepository added) {
+        this.added = added;
         this.parents = parents;
         this.rollup = rollup;
         this.rates = rates;
@@ -65,6 +67,9 @@ public class RateService {
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         sheets.load(sheetId, user);
+        if (!GradeService.grades(added, sheetId).contains(grade)) {
+            throw new GradeRefused("No such grade: " + grade + ".");
+        }
         BigDecimal scaled = pct.setScale(2, RoundingMode.HALF_UP);
         Rollup.Figures before = rollup.figures(sheetId);
         Long forwardAfter = from != null && !from.isBefore(sheets.today(sheetId)) ? rates.maxClaimId() : null;

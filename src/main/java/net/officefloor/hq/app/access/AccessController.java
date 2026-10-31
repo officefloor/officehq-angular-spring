@@ -211,7 +211,7 @@ public class AccessController {
             @Pattern(regexp = "(\\d{1,5})?") String escalateAfter,
             @Pattern(regexp = "(\\d{1,5})?") String reviewSla,
             @Pattern(regexp = "\\s*((receipt|photo)\\s*(,\\s*(receipt|photo)\\s*)*)?") String proofKinds,
-            @Pattern(regexp = "[ABC]?") String defaultGrade,
+            @Pattern(regexp = "([A-Z]{1,3})?") String defaultGrade,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimitA,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimitB,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimitC,

@@ -56,6 +56,7 @@ import net.officefloor.hq.app.crew.CrewMemberAdded;
 import net.officefloor.hq.app.pool.PoolAdded;
 import net.officefloor.hq.app.pool.PoolMemberAdded;
 import net.officefloor.hq.app.rate.GradeMerged;
+import net.officefloor.hq.app.rate.GradeAdded;
 import net.officefloor.hq.app.rate.GradeRetired;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -311,6 +312,11 @@ public class SheetAudit {
 
     private static String figure(java.math.BigDecimal due) {
         return due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    @TransactionalEventListener
+    public void on(GradeAdded e) {
+        change(e.sheetId(), e.user(), "GRADE_ADDED sheet=" + e.sheetId() + " by=" + e.user() + " grade=" + e.grade());
     }
 
     @TransactionalEventListener

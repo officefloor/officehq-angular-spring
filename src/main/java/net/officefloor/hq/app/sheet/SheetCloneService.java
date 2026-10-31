@@ -35,6 +35,8 @@ import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
+import net.officefloor.hq.app.rate.AddedGrade;
+import net.officefloor.hq.app.rate.AddedGradeRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -46,7 +48,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Cloning a sheet to another id. Only a steward of this sheet may, and only to an id never used; anything
- * else is refused. The clone gets this sheet's today, settings, roles, rates, holidays, void reasons,
+ * else is refused. The clone gets this sheet's today, settings, roles, added grades, rates, holidays, void reasons,
  * templates and tags, its people (grades, terms, contacts, aliases, holds, retirements, patrons), pools, crews,
  * periods (all open) and claims (status, frozen figures, dates, notes, tags, logs and comments). Each claim
  * that had a number takes the clone's next one, in the order the claims were opened (by the sheet's today
@@ -75,13 +77,15 @@ public class SheetCloneService {
     private final AccessService access;
     private final Rollup rollup;
     private final ApplicationEventPublisher events;
+    private final AddedGradeRepository addedGrades;
 
     public SheetCloneService(SheetRepository sheetRows, SheetSettingRepository settings, SheetRoleRepository roles,
             RateRepository rates, HolidayRepository holidays, VoidReasonRepository voidReasons,
             ClaimTemplateRepository templates, SheetTagRepository tags, PersonRepository people,
             PatronRepository patrons, PoolRepository pools, PoolMemberRepository poolMembers, Crews crews,
             PeriodRepository periods, ClaimRepository claims, ClaimService claimService, AccessService access,
-            Rollup rollup, ApplicationEventPublisher events) {
+            Rollup rollup, ApplicationEventPublisher events, AddedGradeRepository addedGrades) {
+        this.addedGrades = addedGrades;
         this.sheetRows = sheetRows;
         this.settings = settings;
         this.roles = roles;
@@ -122,6 +126,8 @@ public class SheetCloneService {
                 .forEach(s -> settings.save(new SheetSetting(toSheet, s.getKey(), s.getFromDate(), s.getValue())));
         roles.findBySheetIdOrderByUserName(sheetId)
                 .forEach(r -> roles.save(new SheetRole(toSheet, r.getUserName(), r.getRole())));
+        addedGrades.findBySheetIdOrderById(sheetId)
+                .forEach(g -> addedGrades.save(new AddedGrade(toSheet, g.getGrade())));
         Map<Rate, Long> forwardOnly = new HashMap<>();
         rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).forEach(r -> {
             Rate copy = rates.save(new Rate(toSheet, r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct()));

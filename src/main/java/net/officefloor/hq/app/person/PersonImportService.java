@@ -27,7 +27,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PersonImportService {
 
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
     private static final Pattern TERMS = Pattern.compile("\\d{1,5}");
     private static final int NAME_MAX = 200;
     private static final int CONTACT_MAX = 200;
@@ -65,9 +64,10 @@ public class PersonImportService {
         Set<Long> updated = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         String defaultGrade = grades.defaultGrade(sheetId);
+        List<String> sheetGrades = grades.grades(sheetId);
         for (String raw : text.split("\\R")) {
             if (raw.isBlank()) continue;
-            Line line = parse(raw, defaultGrade);
+            Line line = parse(raw, defaultGrade, sheetGrades);
             Optional<Person> match = service.findByNameOrAlias(sheetId, line.name());
             if (match.isEmpty() && service.inUse(sheetId, line.name(), null)) {
                 throw refused(raw, "the name \"" + line.name() + "\" is already in use");
@@ -108,14 +108,14 @@ public class PersonImportService {
         return new Result(added, planned.size() - added);
     }
 
-    private static Line parse(String raw, String defaultGrade) {
+    private static Line parse(String raw, String defaultGrade, List<String> sheetGrades) {
         String[] f = raw.split(",", -1);
         if (f.length < 2 || f.length > 4) throw refused(raw, "give a name, a grade, and optionally terms and a contact");
         String name = f[0].trim();
         if (name.isEmpty()) throw refused(raw, "give a name");
         if (name.length() > NAME_MAX) throw refused(raw, "the name is too long");
         String grade = f[1].isBlank() ? defaultGrade : f[1].trim();
-        if (!GRADE.matcher(grade).matches()) throw refused(raw, "the grade must be A, B or C");
+        if (!sheetGrades.contains(grade)) throw refused(raw, "the grade must be one of " + String.join(", ", sheetGrades));
         Integer terms = null;
         if (f.length > 2 && !f[2].isBlank()) {
             String days = f[2].trim();

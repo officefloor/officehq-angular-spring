@@ -83,7 +83,7 @@ public class RateController {
     /** What the candidate percent would do to the dues of the grade's OPEN and PENDING claims; nothing is saved. */
     @GetMapping("/{grade}/preview")
     public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = GradeService.CODE) String grade,
             @RequestParam @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String pct) {
         RatePreviewService.Preview p = previews.preview(sheetId.trim(), grade, new BigDecimal(pct));
         return new PreviewView(p.count(), p.diff().toPlainString());
@@ -105,7 +105,7 @@ public class RateController {
 
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade, @RequestHeader("X-User") @NotBlank String user,
+            @PathVariable @Pattern(regexp = GradeService.CODE) String grade, @RequestHeader("X-User") @NotBlank String user,
             @Valid @RequestBody RateForm form) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, form.from(), form.to(), new BigDecimal(form.pct())));
     }

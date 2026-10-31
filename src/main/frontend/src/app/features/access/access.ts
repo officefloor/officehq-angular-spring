@@ -1030,8 +1030,8 @@ export class Access {
       return;
     }
     const defaultGrade = this.defaultGradeInput().trim();
-    if (this.defaultGradeTouched && defaultGrade !== '' && !/^[ABC]$/.test(defaultGrade)) {
-      this.settingsError.set('Enter a default grade of A, B or C, or leave it blank for A.');
+    if (this.defaultGradeTouched && defaultGrade !== '' && !/^[A-Z]{1,3}$/.test(defaultGrade)) {
+      this.settingsError.set("Enter a default grade of the sheet's grades, or leave it blank for A.");
       return;
     }
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();

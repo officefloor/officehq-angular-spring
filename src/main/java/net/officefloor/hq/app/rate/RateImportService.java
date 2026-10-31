@@ -20,7 +20,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class RateImportService {
 
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
     private static final Pattern PCT = Pattern.compile("\\d{1,12}(\\.\\d{1,2})?");
 
     private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
@@ -28,10 +27,12 @@ public class RateImportService {
 
     private final RateService service;
     private final SheetRepository sheetRows;
+    private final AddedGradeRepository added;
 
-    public RateImportService(RateService service, SheetRepository sheetRows) {
+    public RateImportService(RateService service, SheetRepository sheetRows, AddedGradeRepository added) {
         this.service = service;
         this.sheetRows = sheetRows;
+        this.added = added;
     }
 
     /** Set a rate per line, in order; returns how many were set. */
@@ -39,9 +40,10 @@ public class RateImportService {
     public int importRates(String sheetId, String user, String text) {
         sheetRows.lockById(sheetId);
         List<Line> lines = new ArrayList<>();
+        List<String> grades = GradeService.grades(added, sheetId);
         for (String raw : text.split("\\R")) {
             if (raw.isBlank()) continue;
-            lines.add(parse(raw));
+            lines.add(parse(raw, grades));
         }
         if (lines.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Paste at least one line");
@@ -52,11 +54,11 @@ public class RateImportService {
         return lines.size();
     }
 
-    private static Line parse(String raw) {
+    private static Line parse(String raw, List<String> grades) {
         String[] f = raw.split(",", -1);
         if (f.length < 2 || f.length > 4) throw refused(raw, "give a grade, a rate, and optionally a from- and to-date");
         String grade = f[0].trim();
-        if (!GRADE.matcher(grade).matches()) throw refused(raw, "the grade must be A, B or C");
+        if (!grades.contains(grade)) throw refused(raw, "the grade must be one of " + String.join(", ", grades));
         String pct = f[1].trim();
         if (!PCT.matcher(pct).matches()) throw refused(raw, "the rate must be 0.00 or more, with up to two decimals");
         LocalDate from = f.length > 2 ? date(raw, f[2], "from-date") : null;

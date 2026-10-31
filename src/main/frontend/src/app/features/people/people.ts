@@ -13,7 +13,7 @@ import { Search } from '../search/search';
 import { SnapshotCompare } from '../snapshot-compare/snapshot-compare';
 import { SheetCompare } from '../sheet-compare/sheet-compare';
 import { Duplicates } from '../duplicates/duplicates';
-import { Grades } from '../grades/grades';
+import { GradeList, Grades } from '../grades/grades';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
 import { PersonPlans, PlanList } from '../plans/plans';
@@ -24,7 +24,6 @@ import { Summary, gradeDueCents, statusCounts } from '../summary/summary';
 import { Tags } from '../tags/tags';
 import { VoidReasonList, VoidReasons } from '../void-reasons/void-reasons';
 
-const GRADES = ['A', 'B', 'C'];
 
 /** The columns of the people list each user may switch off on their screen. */
 const COLUMNS = [
@@ -146,12 +145,12 @@ function distinctPeople(people: Person[]): number {
 }
 
 /** The figures over all the people of a tree of sheets. */
-function figuresOf(people: Person[]): SheetFigures {
+function figuresOf(grades: readonly string[], people: Person[]): SheetFigures {
   return {
     people: distinctPeople(people),
     due: dueTotalOf(people),
     overdue: overdueTotalOf(people),
-    grades: gradeDueCents(people),
+    grades: gradeDueCents(grades, people),
     statuses: statusCounts(people),
   };
 }
@@ -248,7 +247,7 @@ function csvField(value: string): string {
           [value]="grade()"
           (change)="grade.set(value($event)); error.set('')"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
@@ -476,7 +475,7 @@ function csvField(value: string): string {
           [value]="bulkGrade()"
           (change)="bulkGrade.set(value($event)); bulkGradeError.set('')"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === bulkGrade()">{{ g }}</option>
           }
         </select>
@@ -757,7 +756,7 @@ function csvField(value: string): string {
                   data-testid="person-inline-grade"
                   (change)="clearError(p)"
                 >
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === p.grade">{{ g }}</option>
                   }
                 </select>
@@ -835,7 +834,8 @@ export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
-  protected readonly grades = GRADES;
+  /** The sheet's grades, in order. */
+  protected readonly grades = inject(GradeList).codes;
   protected readonly people = signal<Person[]>([]);
   protected readonly periods = signal<Period[]>([]);
   protected readonly pools = signal<Pool[]>([]);
@@ -1140,7 +1140,7 @@ export class People {
    * as its today.
    */
   protected readonly consolidated = computed(() => {
-    const f = figuresOf([...this.people(), ...this.descendants().flat()]);
+    const f = figuresOf(this.grades(), [...this.people(), ...this.descendants().flat()]);
     return {
       people: f.people,
       due: (f.due / 100).toFixed(2),
@@ -1276,7 +1276,7 @@ export class People {
       this.bulkGradeError.set('Select the people to give the grade.');
       return;
     }
-    if (!GRADES.includes(grade)) {
+    if (!this.grades().includes(grade)) {
       this.bulkGradeError.set('Choose a grade.');
       return;
     }
@@ -1622,7 +1622,7 @@ export class People {
       this.error.set('Enter a name.');
       return;
     }
-    if (!GRADES.includes(grade)) {
+    if (!this.grades().includes(grade)) {
       this.error.set('Choose a grade.');
       return;
     }
@@ -1846,7 +1846,7 @@ export class People {
     this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    if (!GRADES.includes(grade)) {
+    if (!this.grades().includes(grade)) {
       this.personError.set({ id: p.id, message: 'Choose a grade.' });
       return;
     }

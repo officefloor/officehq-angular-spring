@@ -1,10 +1,10 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { FigurePipe } from '../../core/figure';
+import { GradeList } from '../grades/grades';
 import type { PersonWithClaims } from '../claims/claims';
 import { Period, classicPeriodDueTotals, periodDueTotals } from '../periods/periods';
 import { VoidReasonList } from '../void-reasons/void-reasons';
 
-const GRADES = ['A', 'B', 'C'];
 const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'];
 
 /** Cents in an amount shown with two decimals ("12.50" is 1250). */
@@ -12,9 +12,17 @@ function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
-/** Per grade, in grade order, the due-totals of the people on it today (retired people left out, n/a skipped) added up, in cents. */
-export function gradeDueCents(people: PersonWithClaims[]): { grade: string; due: number }[] {
-  return GRADES.map((grade) => ({
+/** The grades in order, then any other grade someone of the people is on, in the order first met. */
+function gradesOf(grades: readonly string[], people: PersonWithClaims[]): string[] {
+  return [...new Set([...grades, ...people.map((p) => p.grade)])];
+}
+
+/**
+ * Per grade (the grades in order, then any other a person is on), the due-totals of the people on it today
+ * (retired people left out, n/a skipped) added up, in cents.
+ */
+export function gradeDueCents(grades: readonly string[], people: PersonWithClaims[]): { grade: string; due: number }[] {
+  return gradesOf(grades, people).map((grade) => ({
     grade,
     due: people
       .filter((p) => !p.retired && p.grade === grade)
@@ -137,12 +145,13 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
 })
 export class Summary {
   private readonly voidReasons = inject(VoidReasonList);
+  private readonly grades = inject(GradeList);
 
   readonly people = input.required<PersonWithClaims[]>();
   readonly periods = input.required<Period[]>();
 
   protected readonly byGrade = computed(() =>
-    GRADES.map((grade) => {
+    gradesOf(this.grades.codes(), this.people()).map((grade) => {
       const on = this.people().filter((p) => !p.retired && p.grade === grade);
       const due = on.reduce((sum, p) => sum + (p.dueTotal === null ? 0 : cents(p.dueTotal)), 0);
       return { grade, count: on.length, dueTotal: (due / 100).toFixed(2), active: on.filter((p) => p.active).length };

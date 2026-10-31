@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, output, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure';
 import { firstValueFrom } from 'rxjs';
+import { GradeList } from '../grades/grades';
 import { Session } from '../../core/session';
 
 interface Rate {
@@ -23,7 +24,6 @@ interface Preview {
   diff: string;
 }
 
-const GRADES = ['A', 'B', 'C'];
 const PCT = /^\d{1,12}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -61,7 +61,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ (current()[g] ?? 'n/a') | figure }}</td>
@@ -81,7 +81,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
             </tr>
           </thead>
           <tbody>
-            @for (g of grades; track g) {
+            @for (g of grades(); track g) {
               <tr>
                 <th scope="row">{{ g }}</th>
                 @for (m of calendar(); track m.month) {
@@ -115,7 +115,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           [value]="grade()"
           (change)="grade.set(value($event)); error.set('')"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
@@ -173,7 +173,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
           [value]="previewGrade()"
           (change)="previewGrade.set(value($event)); previewed.set(null); previewError.set('')"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
           }
         </select>
@@ -205,7 +205,8 @@ export class Rates {
 
   readonly changed = output<void>();
 
-  protected readonly grades = GRADES;
+  /** The sheet's grades, in order. */
+  protected readonly grades = inject(GradeList).codes;
   protected readonly rates = signal<Rate[]>([]);
   /** The rates of the sheet's parent sheets, nearest first, up to three levels up. */
   private readonly inherited = signal<Rate[][]>([]);
@@ -288,7 +289,7 @@ export class Rates {
     const pct = this.pct().trim();
     const from = this.from().trim();
     const to = this.to().trim();
-    if (!GRADES.includes(grade)) {
+    if (!this.grades().includes(grade)) {
       this.error.set('Choose a grade.');
       return;
     }
@@ -373,7 +374,7 @@ export class Rates {
     if (!sheet) return;
     const grade = this.previewGrade();
     const pct = this.previewPct().trim();
-    if (!GRADES.includes(grade)) {
+    if (!this.grades().includes(grade)) {
       this.previewError.set('Choose a grade.');
       return;
     }
