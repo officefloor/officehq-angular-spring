@@ -1,0 +1,64 @@
+{
+  "checkpoint": 142,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp142_plan-preview",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each plan its next dates: the first five plan dates after the sheet's today and on or\nbefore the end, comma and space separated.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each plan its next dates: the first five plan dates after the sheet's today and on or\nbefore the end, comma and space separated.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4bc184ebc2b26518f482327a2e4afadcd6ef744f",
+  "reset_sha": "",
+  "preagent_sha": "df0a47cd2db89ce0c75d70631cbb2c2f695801f3",
+  "prev_sha": "df0a47cd2db89ce0c75d70631cbb2c2f695801f3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.806781,
+    "input_tokens": 52,
+    "output_tokens": 9471,
+    "cache_read_tokens": 1067805,
+    "cache_creation_tokens": 50449,
+    "num_turns": 26,
+    "duration_ms": 443303,
+    "duration_api_ms": 169973,
+    "model": "claude-opus-5-5",
+    "session_id": "3762263f-9474-48bb-b9d5-abdef6a055a4",
+    "stop_reason": "success",
+    "result_text": "Each plan now shows its next dates, but `bin/e2e` doesn't fully pass: 3 of the 4 tests pass and \"plan preview scenario 2\" fails. The failure isn't in the new feature.\n\n**What I changed**\n- **Server, `Plan.java`:** a new `nextDates(after, count)` method gives the first dates after a given day, up to the plan's end. It uses the same date rules as generating claims (every N days, or a monthly day moved back to the month's last day when the month is too short), and it starts counting near the given day instead of walking every date from the start.\n- **`PlanService` / `PlanController`:** each plan sent to the screen now includes `nextDates` (five dates after the sheet's today) when the plans are listed, added or generated. Nothing new is stored.\n- **Front end:** `PlanView` has a `nextDates` field, and each plan row shows it in `data-testid=\"plan-next-dates\"`, joined with `\", \"` (empty when there are none).\n\nThe next dates are worked out on the server when the sheet loads, so after changing the sheet's today they update on the next re-load. That matches how the other date-based values on the screen work, and every `plan-next-dates` check in the spec passes.\n\n**Why scenario 2 fails**\nAt `e2e/specs/acceptance.spec.ts:509` the test adds a line to claim `c_fay_0` and then splits it, and it expects the split to succeed (its audit expects `CLAIM_SPLIT \u2026 amount=8.00 \u2026 into=2`). The existing server refuses that: `ClaimService.java:713-715` rejects splitting any claim that has lines (\"A claim with lines has the amount of its lines; it cannot be split\"). I confirmed from the test's trace that this rule is the one refusing it. The rule was already there, and my change doesn't touch claims. That scenario has no checks on plan dates.\n\nI left the rule alone because changing split behaviour is outside this change request, and it's a deliberate rule. Making the test pass would mean allowing a claim with lines to be split, and deciding what then happens to its lines. Should I make that change too?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.806781,
+        "num_turns": 26,
+        "duration_ms": 443303,
+        "duration_api_ms": 169973,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp142.agent.jsonl",
+  "agent_diff_file": "cp142.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,132 @@
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 3d7208ed7..196c6af56 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -4,7 +4,7 @@ import { Observable, tap } from 'rxjs';
+ import { ClaimView } from './claims';
+ 
+ /** A person's plan: an amount claimed on its start date and every `every` days after, or monthly on day `day` of each
+- *  month from the start's, up to its end date, with how many claims it has made so far. */
++ *  month from the start's, up to its end date, with how many claims it has made so far and its next dates. */
+ export interface PlanView {
+   id: number;
+   personId: number;
+@@ -14,6 +14,8 @@ export interface PlanView {
+   day: number | null;
+   end: string;
+   generated: number;
++  /** The first five plan dates after the sheet's today and on or before the end, as of the last (re)load. */
++  nextDates: string[];
+ }
+ 
+ /** A plan as its form submits it, with either an interval or a day of the month; a blank start takes the sheet's
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index f2ddb89c0..2f7938f4e 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -28,6 +28,7 @@ const DAY_PATTERN = /^\d{1,2}$/;
+             }
+             to <span data-testid="plan-end">{{ pl.end }}</span>
+             — made <span data-testid="plan-generated">{{ pl.generated }}</span>
++            — next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
+           </li>
+         }
+       </ul>
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index ad8964b80..5d86784d5 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -107,6 +107,32 @@ public class Plan {
+         return dates;
+     }
+ 
++    /** The plan's first {@code count} dates after {@code after} and on or before its end, in order. */
++    public List<LocalDate> nextDates(LocalDate after, int count) {
++        List<LocalDate> dates = new ArrayList<>();
++        if (day == null) {
++            LocalDate d = start;
++            if (d.isBefore(after)) {
++                long steps = (after.toEpochDay() - start.toEpochDay()) / every;
++                d = start.plusDays(steps * every);
++            }
++            for (; !d.isAfter(end) && dates.size() < count; d = d.plusDays(every)) {
++                if (d.isAfter(after)) {
++                    dates.add(d);
++                }
++            }
++            return dates;
++        }
++        YearMonth m = YearMonth.from(start.isAfter(after) ? start : after);
++        for (; !m.atDay(1).isAfter(end) && dates.size() < count; m = m.plusMonths(1)) {
++            LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
++            if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
++                dates.add(d);
++            }
++        }
++        return dates;
++    }
++
+     public LocalDate getEnd() {
+         return end;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 7c3f8968f..9a58f15da 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -24,14 +24,15 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class PlanController {
+ 
+-    /** A plan as the screen shows it, with how many claims it has made so far. */
++    /** A plan as the screen shows it, with how many claims it has made so far and its next dates after the
++     *  sheet's today. */
+     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated) {
++            LocalDate end, int generated, List<LocalDate> nextDates) {
+ 
+         public static PlanView of(PlanService.Counted c) {
+             Plan p = c.plan();
+             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(), p.getEvery(),
+-                    p.getDay(), p.getEnd(), c.generated());
++                    p.getDay(), p.getEnd(), c.generated(), c.nextDates());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 2c07a32c8..d06c0e8ac 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -45,8 +45,11 @@ public class PlanService {
+         this.audit = audit;
+     }
+ 
+-    /** A plan with how many claims it has made so far. */
+-    public record Counted(Plan plan, int generated) {
++    /** How many next dates a plan shows. */
++    private static final int NEXT_DATES = 5;
++
++    /** A plan with how many claims it has made so far, and its next dates after the sheet's today. */
++    public record Counted(Plan plan, int generated, List<LocalDate> nextDates) {
+     }
+ 
+     /** What a generate did: the claims it made, in the order made, and every plan on the sheet as it is now. */
+@@ -59,7 +62,9 @@ public class PlanService {
+         List<Plan> all = plans.findBySheetIdOrderByIdAsc(sheetId);
+         Map<Long, Long> counts = made.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList()).stream()
+                 .collect(Collectors.groupingBy(PlanClaim::getPlanId, Collectors.counting()));
+-        return all.stream().map(p -> new Counted(p, counts.getOrDefault(p.getId(), 0L).intValue())).toList();
++        LocalDate today = sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
++        return all.stream().map(p -> new Counted(p, counts.getOrDefault(p.getId(), 0L).intValue(),
++                today == null ? List.of() : p.nextDates(today, NEXT_DATES))).toList();
+     }
+ 
+     /** Add a plan for a person; a missing start takes the sheet's today. It runs either every so many days or
+@@ -99,7 +104,7 @@ public class PlanService {
+                 + " start=" + plan.getStart()
+                 + (plan.getDay() != null ? " day=" + plan.getDay() : " every=" + plan.getEvery())
+                 + " end=" + plan.getEnd());
+-        return new Counted(plan, 0);
++        return new Counted(plan, 0, plan.nextDates(sheet.getToday(), NEXT_DATES));
+     }
+ 
+     /**
