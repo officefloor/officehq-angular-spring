@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { PersonView } from './people';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -40,6 +41,13 @@ export interface ClaimForm {
   note: string;
 }
 
+/** What a quick-add made: the person the claim is for, whether they were added by it, and the claim. */
+export interface QuickAddView {
+  person: PersonView;
+  personAdded: boolean;
+  claim: ClaimView;
+}
+
 /** An amount the form accepts: 0.00 or more, with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
 
@@ -65,6 +73,12 @@ export class Claims {
 
   add(sheetId: string, personId: number, claim: ClaimForm): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/people/${personId}/claims`, claim);
+  }
+
+  /** Add a DRAFT claim for the person named `name`, dated the sheet's today; one not on the sheet is
+   *  added first with grade A. Refused as a whole when the person or the claim is. */
+  quickAdd(sheetId: string, name: string, amount: string): Observable<QuickAddView> {
+    return this.http.post<QuickAddView>(`${this.base(sheetId)}/quick-add`, { name, amount });
   }
 
   update(sheetId: string, id: number, claim: ClaimForm): Observable<ClaimView> {

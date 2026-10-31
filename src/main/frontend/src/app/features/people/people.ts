@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
 import { Periods, periodOn } from '../../core/periods';
 import { NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
@@ -45,6 +45,17 @@ const NO_RATES: RateView[] = [];
         }
         @if (error(); as err) {
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
+        }
+      </form>
+
+      <form [formGroup]="quickForm" (ngSubmit)="quickAdd()" aria-label="Quick-add a claim">
+        <label for="quick-name">Name</label>
+        <input id="quick-name" data-testid="quick-name" formControlName="name" autocomplete="off" />
+        <label for="quick-amount">Amount</label>
+        <input id="quick-amount" data-testid="quick-amount" formControlName="amount" inputmode="decimal" autocomplete="off" />
+        <button type="submit" data-testid="quick-submit" [disabled]="quickSaving()">Quick add</button>
+        @if (quickError(); as err) {
+          <p role="alert" data-testid="quick-error">{{ err }}</p>
         }
       </form>
 
@@ -146,6 +157,14 @@ export class PeopleList {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
   });
 
+  protected readonly quickError = signal<string | null>(null);
+  protected readonly quickSaving = signal(false);
+
+  protected readonly quickForm = new FormGroup({
+    name: new FormControl('', { nonNullable: true }),
+    amount: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     // Each (re)load of a sheet re-reads its people from the store.
     toObservable(this.sheets.loaded)
@@ -156,6 +175,8 @@ export class PeopleList {
           this.statements.set(new Map());
           this.personError.set(null);
           this.reset();
+          this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
+          this.quickError.set(null);
           return sheet
             ? forkJoin({
                 people: this.api.list(sheet.id),
@@ -175,6 +196,7 @@ export class PeopleList {
       });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+    this.quickForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.quickError.set(null));
   }
 
   protected claimsOf(personId: number): ClaimView[] {
@@ -217,6 +239,44 @@ export class PeopleList {
         ? list.map((c) => (c.id === saved.id ? saved : c))
         : [saved, ...list].sort((a, b) => b.id - a.id),
     );
+  }
+
+  /** Quick-add a DRAFT claim for the named person, adding them first (grade A) when not on the sheet. */
+  protected quickAdd(): void {
+    // A second submit before the first has answered is ignored, so it stores one record.
+    if (this.quickSaving()) return;
+    this.quickError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const value = this.quickForm.getRawValue();
+    if (value.name.trim() === '') {
+      this.quickError.set('Type a name for the person.');
+      return;
+    }
+    const amount = value.amount.trim();
+    if (!AMOUNT_PATTERN.test(amount)) {
+      this.quickError.set('Type an amount of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    this.quickSaving.set(true);
+    this.claimsApi.quickAdd(sheet.id, value.name, amount).subscribe({
+      next: ({ person, personAdded, claim }) => {
+        this.quickSaving.set(false);
+        if (personAdded) this.people.update((list) => [...list, person]);
+        this.claimSaved(claim);
+        this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
+      },
+      error: (err: unknown) => {
+        this.quickSaving.set(false);
+        this.quickError.set(
+          err instanceof HttpErrorResponse && err.status === 423
+            ? 'That claim is dated inside a closed period.'
+            : err instanceof HttpErrorResponse && err.status === 409
+              ? 'That name is already in use on this sheet.'
+              : 'Could not add that claim.',
+        );
+      },
+    });
   }
 
   protected edit(p: PersonView): void {
