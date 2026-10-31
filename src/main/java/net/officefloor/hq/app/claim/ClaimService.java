@@ -57,6 +57,7 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final RoleService roles;
     private final ClaimSequenceRepository sequences;
+    private final ClaimFiscalSequenceRepository fiscalSequences;
     private final WatchService watches;
     private final HolidayService holidays;
     private final VoidReasonService voidReasons;
@@ -64,8 +65,9 @@ public class ClaimService {
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetStore, RateChains rates, Audit audit, Rollup rollup, PeriodRepository periods,
-            RoleService roles, ClaimSequenceRepository sequences, WatchService watches,
-            HolidayService holidays, VoidReasonService voidReasons, SheetHistory history) {
+            RoleService roles, ClaimSequenceRepository sequences, ClaimFiscalSequenceRepository fiscalSequences,
+            WatchService watches, HolidayService holidays, VoidReasonService voidReasons, SheetHistory history) {
+        this.fiscalSequences = fiscalSequences;
         this.history = history;
         this.voidReasons = voidReasons;
         this.holidays = holidays;
@@ -798,10 +800,16 @@ public class ClaimService {
 
     /** The next number for a claim due by this day, opened now: within its period (<period name>-<n>, or X-<n>
      *  in no period) while the sheet's period numbering is on by its today, else the next number in the sheet-wide
-     *  sequence its tree shares. */
+     *  sequence its tree shares within the fiscal year of the day (FY<year>-<n>, counting from 1 each year). */
     private String nextNumber(Sheet sheet, LocalDate date) {
         if (!sheet.numbersPerPeriod()) {
-            return String.valueOf(sheet.nextClaimNumberAfter(lastNumberInTree(sheet)));
+            int year = sheet.fiscalYearOf(date);
+            int last = lastNumberInTree(sheet, year);
+            ClaimFiscalSequence sequence = fiscalSequences.findBySheetIdAndFiscalYear(sheet.getId(), year)
+                    .orElseGet(() -> new ClaimFiscalSequence(sheet.getId(), year));
+            String number = sequence.nextAfter(last);
+            fiscalSequences.save(sequence);
+            return number;
         }
         String prefix = prefixOn(sheet, date);
         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(sheet.getId(), prefix)
@@ -811,9 +819,10 @@ public class ClaimService {
         return number;
     }
 
-    /** The last sheet-wide number given anywhere in the sheet's tree: the sheet at the top of its line of parents
-     *  and all of that sheet's descendants. The top sheet is locked so the tree's numbers are given one at a time. */
-    private int lastNumberInTree(Sheet sheet) {
+    /** The last sheet-wide number given in a fiscal year anywhere in the sheet's tree but the sheet itself: the
+     *  sheet at the top of its line of parents and all of that sheet's descendants. The top sheet is locked so the
+     *  tree's numbers are given one at a time. */
+    private int lastNumberInTree(Sheet sheet, int fiscalYear) {
         List<String> ancestors = sheetStore.ancestorsOf(sheet.getId(), Integer.MAX_VALUE);
         String top = ancestors.isEmpty() ? sheet.getId() : ancestors.get(ancestors.size() - 1);
         if (!top.equals(sheet.getId())) {
@@ -822,8 +831,7 @@ public class ClaimService {
         Set<String> others = new HashSet<>(sheetStore.descendantsOf(top));
         others.add(top);
         others.remove(sheet.getId());
-        int last = sheet.getLastClaimNumber();
-        return others.isEmpty() ? last : Math.max(last, sheetStore.lastClaimNumberOf(others));
+        return others.isEmpty() ? 0 : fiscalSequences.lastNumberOf(others, fiscalYear);
     }
 
     /** The prefix of the numbers given within the period a day is in: its name, or X in no period. */

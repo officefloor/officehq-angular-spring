@@ -448,13 +448,6 @@ public class Sheet {
         return lastClaimNumber;
     }
 
-    /** Take the next claim number on this sheet after the last one given anywhere in its tree (this sheet's own
-     *  last included); it is never given out again. */
-    public int nextClaimNumberAfter(int lastInTree) {
-        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
-        return lastClaimNumber;
-    }
-
     /** The number of the last settle batch on this sheet; 0 when there has been none. */
     public int getLastSettleBatch() {
         return lastSettleBatch;
