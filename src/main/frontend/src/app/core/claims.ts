@@ -94,6 +94,12 @@ export interface QuickAddView {
   claim: ClaimView;
 }
 
+/** What a paste did: how many claims it added and the claims, in the order added. */
+export interface PasteView {
+  added: number;
+  claims: ClaimView[];
+}
+
 /** What a bulk open did: how many it opened and refused, and the claims it opened. */
 export interface BulkOpenView {
   opened: number;
@@ -145,6 +151,12 @@ export class Claims {
    *  added first with grade A. Refused as a whole when the person or the claim is. */
   quickAdd(sheetId: string, name: string, amount: string): Observable<QuickAddView> {
     return this.http.post<QuickAddView>(`${this.base(sheetId)}/quick-add`, { name, amount });
+  }
+
+  /** Add a DRAFT claim per line of name,amount,date,note, in order, for people already on the sheet.
+   *  Refused as a whole when any line is. */
+  paste(sheetId: string, text: string): Observable<PasteView> {
+    return this.http.post<PasteView>(`${this.base(sheetId)}/claims/paste`, { text });
   }
 
   update(sheetId: string, id: number, claim: ClaimForm): Observable<ClaimView> {

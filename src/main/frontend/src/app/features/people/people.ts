@@ -86,6 +86,18 @@ function csvField(value: string): string {
         }
       </form>
 
+      <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste claims">
+        <label for="paste-claims">Paste claims, one per line as name,amount,date,note</label>
+        <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="paste-submit" [disabled]="pasting()">Add pasted claims</button>
+        @if (pasteAdded() !== null) {
+          Added <span data-testid="paste-added">{{ pasteAdded() }}</span>
+        }
+        @if (pasteError(); as err) {
+          <p role="alert" data-testid="paste-error">{{ err }}</p>
+        }
+      </form>
+
       <p>
         <input id="show-retired" type="checkbox" data-testid="show-retired"
                [checked]="api.showRetired()" (change)="api.showRetired.set($any($event.target).checked)" />
@@ -390,6 +402,15 @@ export class PeopleList {
     amount: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly pasteError = signal<string | null>(null);
+  protected readonly pasting = signal(false);
+  /** How many claims the last paste added; null while one runs or before any. */
+  protected readonly pasteAdded = signal<number | null>(null);
+
+  protected readonly pasteForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     // Each (re)load of a sheet re-reads its people from the store.
     toObservable(this.sheets.loaded)
@@ -409,6 +430,9 @@ export class PeopleList {
           this.reset();
           this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
           this.quickError.set(null);
+          this.pasteForm.reset({ text: '' }, { emitEvent: false });
+          this.pasteError.set(null);
+          this.pasteAdded.set(null);
           return sheet
             ? forkJoin({
                 people: this.api.list(sheet.id),
@@ -431,6 +455,7 @@ export class PeopleList {
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
     this.quickForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.quickError.set(null));
+    this.pasteForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.pasteError.set(null));
   }
 
   protected claimsOf(personId: number): ClaimView[] {
@@ -695,6 +720,38 @@ export class PeopleList {
             : err instanceof HttpErrorResponse && err.status === 409
               ? 'That name is already in use on this sheet.'
               : 'Could not add that claim.',
+        );
+      },
+    });
+  }
+
+  /** Add a DRAFT claim per pasted line for people on the sheet; when any line is refused, none is added. */
+  protected paste(): void {
+    if (this.pasting()) return;
+    this.pasteError.set(null);
+    this.pasteAdded.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const text = this.pasteForm.getRawValue().text;
+    if (text.trim() === '') {
+      this.pasteError.set('Paste at least one line of name,amount,date,note.');
+      return;
+    }
+    this.pasting.set(true);
+    this.claimsApi.paste(sheet.id, text).subscribe({
+      next: ({ added, claims }) => {
+        this.pasting.set(false);
+        claims.forEach((c) => this.claimSaved(c));
+        this.pasteAdded.set(added);
+      },
+      error: (err: unknown) => {
+        this.pasting.set(false);
+        this.pasteError.set(
+          err instanceof HttpErrorResponse && err.status === 423
+            ? 'A pasted claim is dated inside a closed period; nothing was added.'
+            : err instanceof HttpErrorResponse && err.status === 422
+              ? 'A pasted claim is dated after its person retired; nothing was added.'
+              : 'A pasted line is not a valid claim for someone on this sheet; nothing was added.',
         );
       },
     });
