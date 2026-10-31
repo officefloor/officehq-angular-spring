@@ -8,6 +8,8 @@ export interface SheetView {
   today: string;
   /** A clerk can settle a claim only when its due is at or below this (two decimals); null: no limit. */
   clerkLimit: string | null;
+  /** A claim's live due is at least this (two decimals). */
+  floor: string;
 }
 
 // The active sheet. Everything else in the app is kept per sheet; loading an id re-reads it from
@@ -43,6 +45,13 @@ export class Sheets {
   setSettings(id: string, clerkLimit: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's floor. */
+  setFloor(id: string, floor: string): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/floor`, { floor })
       .pipe(tap((s) => this.active.set(s)));
   }
 }

@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -75,7 +76,8 @@ public class StatementService {
     @Transactional
     public Taken take(String sheetId, String user, long personId) {
         sheets.load(sheetId, user);
-        LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        LocalDate today = sheet.getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         Rollup.Figures before = rollup.of(sheetId);
@@ -93,7 +95,9 @@ public class StatementService {
             BigDecimal fixed = claim.getSettledDue() != null ? claim.getSettledDue() : claim.getStatedDue();
             BigDecimal figure = fixed != null ? fixed
                     : Rate.inForceOn(gradeRates, claim.getDate())
-                            .map(rate -> ClaimService.dueOn(claim.getAmount(), rate.getRate())).orElse(null);
+                            .map(rate -> ClaimService.floored(ClaimService.dueOn(claim.getAmount(), rate.getRate()),
+                                    sheet.getFloor()))
+                            .orElse(null);
             anyFixed |= fixed != null;
             total = figure == null ? total : total.add(figure);
             claim.bind(figure);

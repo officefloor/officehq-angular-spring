@@ -28,6 +28,9 @@ function byFrom(a: RateView, b: RateView): number {
 /** A rate the form accepts: a percent of 0.00 or more, up to 999.99, with up to two decimals. */
 export const RATE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 
+/** The floor a sheet starts with. */
+export const DEFAULT_FLOOR = '1.00';
+
 /** What is shown in place of a due when its grade has no rate. */
 export const NOT_AVAILABLE = 'n/a';
 
@@ -44,15 +47,17 @@ export function dueCents(amountCents: number, rate: string): number {
 }
 
 /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
- *  last statement bound it to, else its amount at its grade's rate in force on its date; null when it has none. */
+ *  last statement bound it to, else its amount at its grade's rate in force on its date raised to the
+ *  sheet's floor; null when it has none. */
 export function claimDueCents(
   c: { amount: string; date: string; settledDue: string | null; statedDue: string | null },
   gradeRates: readonly RateView[],
+  floor: string,
 ): number | null {
   if (c.settledDue !== null) return amountCents(c.settledDue);
   if (c.statedDue !== null) return amountCents(c.statedDue);
   const rate = rateOn(gradeRates, c.date);
-  return rate === undefined ? null : dueCents(amountCents(c.amount), rate);
+  return rate === undefined ? null : Math.max(dueCents(amountCents(c.amount), rate), amountCents(floor));
 }
 
 /** An amount ("12.3", "4") in whole cents. */

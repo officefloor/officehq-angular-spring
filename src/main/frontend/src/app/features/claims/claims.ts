@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, money } from '../../core/claims';
 import { PeriodView, periodOn } from '../../core/periods';
-import { NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
+import { DEFAULT_FLOOR, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
 
@@ -101,7 +101,7 @@ export class PersonClaims {
   }
 
   protected dueOf(c: ClaimView): string {
-    const due = claimDueCents(c, this.rates());
+    const due = claimDueCents(c, this.rates(), this.sheets.current()?.floor ?? DEFAULT_FLOOR);
     return due === null ? NOT_AVAILABLE : money(due);
   }
 

@@ -24,12 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    /** A sheet as the screen shows it; the clerk limit has exactly two decimals (null: no limit). */
-    public record SheetView(String id, LocalDate today, String clerkLimit) {
+    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor have exactly two decimals. */
+    public record SheetView(String id, LocalDate today, String clerkLimit, String floor) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
-                    sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString());
+                    sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+                    sheet.getFloor().toPlainString());
         }
     }
 
@@ -38,6 +39,10 @@ public class SheetController {
 
     /** The sheet's settings as the form submits them; a missing clerk limit means no limit. */
     public record SettingsChange(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal clerkLimit) {
+    }
+
+    /** The sheet's floor as the form submits it. */
+    public record FloorChange(@NotNull @DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal floor) {
     }
 
     private final SheetService sheets;
@@ -70,5 +75,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody SettingsChange request) {
         return SheetView.of(sheets.setClerkLimit(id, user, request.clerkLimit()));
+    }
+
+    /** Change the sheet's floor. */
+    @PutMapping("/{id}/settings/floor")
+    public SheetView setFloor(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody FloorChange request) {
+        return SheetView.of(sheets.setFloor(id, user, request.floor()));
     }
 }

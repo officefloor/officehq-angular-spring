@@ -60,4 +60,19 @@ public class SheetService {
                 + " key=clerk-limit value=" + (scaled == null ? "" : scaled.toPlainString()));
         return saved;
     }
+
+    /** Set the sheet's floor, starting the sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setFloor(String id, String user, BigDecimal floor) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        Rollup.Figures before = rollup.of(id);
+        BigDecimal scaled = floor.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setFloor(scaled);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=floor value=" + scaled.toPlainString());
+        rollup.recordChanges(id, user, before);
+        return saved;
+    }
 }

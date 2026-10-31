@@ -124,7 +124,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal due = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
-                .map(Rate::getRate).map(rate -> dueOn(claim.getAmount(), rate)).orElse(null);
+                .map(Rate::getRate).map(rate -> floored(dueOn(claim.getAmount(), rate), sheet.getFloor())).orElse(null);
         if (next == ClaimStatus.SETTLED) {
             refuseOverClerkLimit(sheet, user, due);
         }
@@ -192,6 +192,11 @@ public class ClaimService {
     /** The due on an amount at a rate (a percent): amount × rate / 100, rounded half to even to the cent. */
     public static BigDecimal dueOn(BigDecimal amount, BigDecimal rate) {
         return amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    /** A live due raised to the sheet's floor when it is below it. */
+    public static BigDecimal floored(BigDecimal due, BigDecimal floor) {
+        return floor != null && due.compareTo(floor) < 0 ? floor : due;
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

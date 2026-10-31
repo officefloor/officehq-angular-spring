@@ -1,14 +1,14 @@
 import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { EMPTY, switchMap } from 'rxjs';
+import { EMPTY, Observable, concat, last, switchMap } from 'rxjs';
 import { ROLES, RoleName, Roles } from '../../core/roles';
-import { Sheets } from '../../core/sheet';
+import { SheetView, Sheets } from '../../core/sheet';
 
 /** A clerk limit the form accepts: an amount of 0.00 or more with up to two decimals. */
 const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
 
-// The sheet's settings: its clerk limit, and the role assigned to each user name.
+// The sheet's settings: its clerk limit, its floor, and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -16,10 +16,14 @@ const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
       <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ sheets.current()?.clerkLimit ?? '' }}</span></p>
+      <p>Floor: <span data-testid="setting-floor-current">{{ sheets.current()?.floor ?? '' }}</span></p>
 
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit"
+               inputmode="decimal" autocomplete="off" />
+        <label for="setting-floor">Floor (a claim's due is at least this)</label>
+        <input id="setting-floor" data-testid="setting-floor" formControlName="floor"
                inputmode="decimal" autocomplete="off" />
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError(); as err) {
@@ -68,6 +72,7 @@ export class SettingsPanel {
 
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
+    floor: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -81,7 +86,7 @@ export class SettingsPanel {
         switchMap((sheet) => {
           this.settingsError.set(null);
           this.roleError.set(null);
-          this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '' }, { emitEvent: false });
+          this.resetSettings(sheet);
           return this.roles.load(sheet?.id ?? null) ?? EMPTY;
         }),
         takeUntilDestroyed(),
@@ -98,19 +103,39 @@ export class SettingsPanel {
     this.settingsError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const limit = this.settingsForm.controls.clerkLimit.value.trim();
-    if (limit !== '' && !LIMIT_PATTERN.test(limit)) {
+    const { clerkLimit, floor } = this.settingsForm.controls;
+    const limit = clerkLimit.value.trim();
+    const floorValue = floor.value.trim();
+    // Only the settings changed in the form are saved; with none changed, the clerk limit is saved as it is.
+    const saveFloor = floor.dirty;
+    const saveLimit = clerkLimit.dirty || !saveFloor;
+    if (saveLimit && limit !== '' && !LIMIT_PATTERN.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    if (saveFloor && !LIMIT_PATTERN.test(floorValue)) {
+      this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    const saves: Observable<SheetView>[] = [];
+    if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit));
+    if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue));
     this.savingSettings.set(true);
-    this.sheets.setSettings(sheet.id, limit === '' ? null : limit).subscribe({
-      next: () => this.savingSettings.set(false),
+    concat(...saves).pipe(last()).subscribe({
+      next: (saved) => {
+        this.savingSettings.set(false);
+        this.resetSettings(saved);
+      },
       error: () => {
         this.savingSettings.set(false);
         this.settingsError.set('Could not save the settings.');
       },
     });
+  }
+
+  /** Show the sheet's settings in the form, as not yet changed. */
+  private resetSettings(sheet: SheetView | null): void {
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '' }, { emitEvent: false });
   }
 
   protected saveRole(): void {
