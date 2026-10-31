@@ -1,0 +1,356 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 19c03989b..1d8a0d090 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -49,6 +49,8 @@ export interface PersonView {
+   origin?: string | null;
+   /** The retirements the person was unretired from, in the order they started; missing in an older snapshot. */
+   pastRetirements?: RetirementView[] | null;
++  /** The person's tags, sorted; empty when they have none. */
++  tags: string[];
+ }
+ 
+ /** A past retirement: retired from `from`, unretired on `to` (yyyy-mm-dd). */
+@@ -64,6 +66,8 @@ export interface PersonForm {
+   terms: number | null;
+   /** The person's contact; blank: none. */
+   contact: string;
++  /** The tags, comma separated (each trimmed and lower-cased by the store, repeats dropped); blank for none. */
++  tags: string;
+ }
+ 
+ /** An edit of a person: the grade is recorded from `gradeFrom` (yyyy-mm-dd; null takes the sheet's today). */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b44a6a261..8c70412ee 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -129,6 +129,8 @@ function csvField(value: string): string {
+         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
+         <label for="person-form-contact">Contact (blank: none)</label>
+         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" autocomplete="off" />
++        <label for="person-form-tags">Tags (comma separated)</label>
++        <input id="person-form-tags" data-testid="person-form-tags" formControlName="tags" autocomplete="off" />
+         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
+           {{ editingId() === null ? 'Add person' : 'Save person' }}
+         </button>
+@@ -270,6 +272,7 @@ function csvField(value: string): string {
+             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
+             — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
+             — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
++            — tags <span data-testid="person-tags">{{ p.tags.join(', ') }}</span>
+             — aliases <span data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</span>
+             — clashing <span data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</span>
+             — from <span data-testid="person-origin">{{ p.origin ?? '' }}</span>
+@@ -581,17 +584,19 @@ export class PeopleList {
+     }
+     return total;
+   });
+-  /** For every tag used on the sheet's claims, in tag order, the dues in whole cents of the claims that count which
+-   *  carry it (none counting as 0); a claim with two tags counts in both. */
++  /** For every tag used on the sheet's claims or people, in tag order, the dues in whole cents of the claims that
++   *  count which carry it, or whose person does, once (none counting as 0); a claim with two tags counts in both. */
+   protected readonly tagTotals = computed(() => {
+     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+     const totals = new Map<string, number>();
+     for (const c of this.claims()) for (const tag of c.tags) totals.set(tag, 0);
++    for (const p of this.people()) for (const tag of p.tags) totals.set(tag, 0);
+     for (const p of this.people()) {
+       for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
+-        if (c.tags.length === 0) continue;
++        const tags = new Set([...c.tags, ...p.tags]);
++        if (tags.size === 0) continue;
+         const due = this.claimDue(p, c, dueTerms) ?? 0;
+-        for (const tag of c.tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
++        for (const tag of tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
+       }
+     }
+     return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
+@@ -768,6 +773,8 @@ export class PeopleList {
+     terms: new FormControl('', { nonNullable: true }),
+     /** The person's contact; blank for none. */
+     contact: new FormControl('', { nonNullable: true }),
++    /** The person's tags, comma separated; blank for none. */
++    tags: new FormControl('', { nonNullable: true }),
+   });
+ 
+   protected readonly quickError = signal<string | null>(null);
+@@ -1514,13 +1521,13 @@ export class PeopleList {
+     this.patronError.set(null);
+     this.editingId.set(p.id);
+     this.editingVersion = p.version;
+-    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '' }, { emitEvent: false });
++    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
+     this.error.set(null);
+   }
+ 
+   protected reset(): void {
+     this.editingId.set(null);
+-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
++    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
+     this.error.set(null);
+   }
+ 
+@@ -1546,10 +1553,10 @@ export class PeopleList {
+     const id = this.editingId();
+     this.saving.set(true);
+     const request = id === null
+-      ? this.api.add(sheet.id, { name: value.name, grade: value.grade, terms, contact: value.contact })
++      ? this.api.add(sheet.id, { name: value.name, grade: value.grade, terms, contact: value.contact, tags: value.tags })
+       : this.api.update(sheet.id, id, this.editingVersion,
+           { name: value.name, grade: value.grade, gradeFrom: value.gradeFrom === '' ? null : value.gradeFrom, terms,
+-            contact: value.contact });
++            contact: value.contact, tags: value.tags });
+     request.subscribe({
+       next: (saved) => {
+         this.saving.set(false);
+@@ -1580,7 +1587,7 @@ export class PeopleList {
+         const current = people.find((p) => p.id === id);
+         if (current && this.editingId() === id) {
+           this.editingVersion = current.version;
+-          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current), contact: current.contact ?? '' },
++          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current), contact: current.contact ?? '', tags: current.tags.join(', ') },
+             { emitEvent: false });
+         }
+       },
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+index 8a5fb69f9..74f130c51 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetState.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -118,7 +118,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+         return views.people().stream().map(v -> person(v.id())
+                 .map(p -> new PersonView(v.id(), v.name(), p.rebuild(sheetId).gradeOn(today), v.grades(), v.terms(),
+                         v.version(), v.retired(), v.retiredFrom(), v.held(), v.holds(), v.contact(), v.aliases(), v.clashing(), v.origin(),
+-                        v.pastRetirements()))
++                        v.pastRetirements(), v.tags()))
+                 .orElse(v)).toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 16a0b2baf..651997a70 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -57,6 +57,11 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    /** The person's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; none when they have
++     *  none. */
++    @Column(name = "tags", length = 1000)
++    private String tags;
++
+     /** The date the person is retired from; null while they are not retired. */
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+@@ -92,8 +97,8 @@ public class Person {
+         this.grades.add(new GradeFrom(null, grade));
+     }
+ 
+-    /** A copy of the person on another sheet, unsaved: their name, place in the list, grades, terms, contact, aliases,
+-     *  holds and retirements (current and past); not where they came from. */
++    /** A copy of the person on another sheet, unsaved: their name, place in the list, grades, terms, contact, tags,
++     *  aliases, holds and retirements (current and past); not where they came from. */
+     public Person copyTo(String sheetId) {
+         Person copy = new Person();
+         copy.sheetId = sheetId;
+@@ -102,6 +107,7 @@ public class Person {
+         grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
+         copy.terms = terms;
+         copy.contact = contact;
++        copy.tags = tags;
+         copy.retiredFrom = retiredFrom;
+         pastRetirements.forEach(r -> copy.pastRetirements.add(new PastRetirement(r.getFromDate(), r.getToDate())));
+         holds.forEach(h -> copy.holds.add(new Hold(h.getFromDate(), h.getToDate())));
+@@ -181,6 +187,19 @@ public class Person {
+         this.contact = contact;
+     }
+ 
++    public String getTags() {
++        return tags;
++    }
++
++    public void setTags(String tags) {
++        this.tags = tags;
++    }
++
++    /** The person's tags, sorted; empty when they have none. */
++    public List<String> tagList() {
++        return tags == null ? List.of() : List.of(tags.split(","));
++    }
++
+     /** The person's aliases, sorted as names are compared: without regard to case (those differing only in case
+      *  in their natural order). */
+     public List<String> getAliases() {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 7b670b62e..997f7b5bc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -37,7 +37,13 @@ public class PersonController {
+      *  sheet of the sheet's tree; {@code origin} the sheet they were transferred from (null: none). */
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
+             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
+-            List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements) {
++            List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements,
++            List<String> tags) {
++
++        /** A view read back without tags (taken before people had them) has none. */
++        public PersonView {
++            tags = tags == null ? List.of() : tags;
++        }
+ 
+         public static PersonView of(Person person, LocalDate today) {
+             return of(person, today, false);
+@@ -49,7 +55,7 @@ public class PersonController {
+                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(HoldView::of).toList(), person.getContact(),
+                     person.getAliases(), clashing, person.getOriginSheetId(),
+-                    person.getPastRetirements().stream().map(RetirementView::of).toList());
++                    person.getPastRetirements().stream().map(RetirementView::of).toList(), person.tagList());
+         }
+     }
+ 
+@@ -74,16 +80,19 @@ public class PersonController {
+     }
+ 
+     /** A person's values as the form submits them; the name is stored with surrounding spaces removed; missing
+-     *  terms: none of their own; the contact is stored trimmed and lower-cased (blank or missing: none). */
++     *  terms: none of their own; the contact is stored trimmed and lower-cased (blank or missing: none); the tags are
++     *  comma separated, each trimmed and lower-cased, repeats dropped (blank or missing: none). */
+     public record PersonForm(
+             @NotBlank @Size(max = 200) String name,
+             @NotNull @Pattern(regexp = "[ABC]") String grade,
+             @Min(0) @Max(36500) Integer terms,
+-            @Size(max = 200) String contact) {
++            @Size(max = 200) String contact,
++            @Size(max = 1000) String tags) {
+     }
+ 
+     /** An edit of a person: their new values, the date the grade is from (missing: the sheet's today), their own
+-     *  terms (missing: none), their contact (blank or missing: none) and the version of the person the editor
++     *  terms (missing: none), their contact (blank or missing: none), their tags (comma separated; blank or missing:
++     *  none) and the version of the person the editor
+      *  loaded. */
+     public record PersonEdit(
+             @NotBlank @Size(max = 200) String name,
+@@ -91,7 +100,8 @@ public class PersonController {
+             LocalDate gradeFrom,
+             @Min(0) @Max(36500) Integer terms,
+             @NotNull Long version,
+-            @Size(max = 200) String contact) {
++            @Size(max = 200) String contact,
++            @Size(max = 1000) String tags) {
+     }
+ 
+     /** An alias as the row submits it; stored trimmed, and refused when blank. */
+@@ -174,7 +184,7 @@ public class PersonController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody PersonForm request) {
+         Person added = people.add(sheetId, user, request.name(), request.grade(), request.terms(),
+-                request.contact());
++                request.contact(), request.tags());
+         return view(sheetId, added);
+     }
+ 
+@@ -185,7 +195,7 @@ public class PersonController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody PersonEdit request) {
+         Person edited = people.update(sheetId, user, id, request.version(), request.name(), request.grade(),
+-                request.gradeFrom(), request.terms(), request.contact());
++                request.gradeFrom(), request.terms(), request.contact(), request.tags());
+         return view(sheetId, edited);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 8c719c4f6..9d6915381 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -9,6 +9,7 @@ import java.util.Locale;
+ import java.util.Objects;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -62,6 +63,14 @@ public class PersonService {
+      *  on another sheet of its tree. */
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
++        return add(sheetId, user, name, grade, terms, contact, null);
++    }
++
++    /** Add a person as {@link #add(String, String, String, String, Integer, String)} does, with their tags (comma
++     *  separated; each trimmed and lower-cased, blanks and repeats dropped; blank or null: none). */
++    @Transactional
++    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
++            String tags) {
+         sheets.load(sheetId, user);
+         String trimmed = name.trim();
+         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)
+@@ -77,6 +86,7 @@ public class PersonService {
+         Person person = new Person(sheetId, trimmed, grade);
+         person.setTerms(terms);
+         person.setContact(reach);
++        person.setTags(ClaimService.tagsOf(tags));
+         person.setPosition(people.findMaxPositionBySheetId(sheetId) + 1);
+         Person added = save(person);
+         audit.recordChangeOnCommit(sheetId, user, entry("PERSON_ADDED", user, added, grade)
+@@ -127,23 +137,39 @@ public class PersonService {
+             LocalDate gradeFrom, Integer terms) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+-        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, person.getContact(), false);
++        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, person.getContact(), person.getTags(),
++                false);
+     }
+ 
+     /**
+      * Edit a person as {@link #update(String, String, long, long, String, String, LocalDate, Integer)} does, their
+      * contact becoming {@code contact} (stored trimmed and lower-cased; blank or null: none): refused when another
+      * person on the sheet has it. As an edit through the person form, it is also refused while the new name or any
+-     * of the person's aliases is used on another sheet of the sheet's tree.
++     * of the person's aliases is used on another sheet of the sheet's tree. Their tags are kept.
+      */
+     @Transactional
+     public Person update(String sheetId, String user, long id, long version, String name, String grade,
+             LocalDate gradeFrom, Integer terms, String contact) {
+-        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, true);
++        Person person = people.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, person.getTags(), true);
++    }
++
++    /**
++     * Edit a person through the person form as
++     * {@link #update(String, String, long, long, String, String, LocalDate, Integer, String)} does, their tags
++     * becoming {@code tags} (comma separated; each trimmed and lower-cased, blanks and repeats dropped; blank or
++     * null: none).
++     */
++    @Transactional
++    public Person update(String sheetId, String user, long id, long version, String name, String grade,
++            LocalDate gradeFrom, Integer terms, String contact, String tags) {
++        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, ClaimService.tagsOf(tags),
++                true);
+     }
+ 
+     private Person update(String sheetId, String user, long id, long version, String name, String grade,
+-            LocalDate gradeFrom, Integer terms, String contact, boolean throughForm) {
++            LocalDate gradeFrom, Integer terms, String contact, String tags, boolean throughForm) {
+         LocalDate today = sheets.load(sheetId, user).getToday();
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+@@ -174,6 +200,7 @@ public class PersonService {
+         person.setTerms(terms);
+         boolean contactChanged = !Objects.equals(person.getContact(), reach);
+         person.setContact(reach);
++        person.setTags(tags);
+         Person edited = save(person);
+         audit.recordChangeOnCommit(sheetId, user, entry("PERSON_EDITED", user, edited, edited.gradeOn(today))
+                 + (termsChanged ? " terms=" + (terms != null ? terms : "") : "")
+diff --git a/src/main/resources/db/migration/V74__person_tags.sql b/src/main/resources/db/migration/V74__person_tags.sql
+new file mode 100644
+index 000000000..d55c944bc
+--- /dev/null
++++ b/src/main/resources/db/migration/V74__person_tags.sql
+@@ -0,0 +1,2 @@
++-- The person's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; none when not given.
++ALTER TABLE person ADD COLUMN tags VARCHAR(1000);
