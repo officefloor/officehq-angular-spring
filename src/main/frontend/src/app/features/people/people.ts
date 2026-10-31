@@ -157,6 +157,18 @@ function csvField(value: string): string {
         }
       </form>
 
+      <form [formGroup]="importForm" (ngSubmit)="importPeople()" aria-label="Import people">
+        <label for="import-people">Import people, one per line as name,grade,terms,contact (terms and contact may be left out)</label>
+        <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="import-submit" [disabled]="importing()">Import people</button>
+        @if (importAdded() !== null) {
+          Added <span data-testid="import-added">{{ importAdded() }}</span>
+        }
+        @if (importError(); as err) {
+          <p role="alert" data-testid="import-error">{{ err }}</p>
+        }
+      </form>
+
       <p>
         <input id="show-retired" type="checkbox" data-testid="show-retired"
                [checked]="api.showRetired()" (change)="api.showRetired.set($any($event.target).checked)" />
@@ -694,6 +706,15 @@ export class PeopleList {
     text: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly importError = signal<string | null>(null);
+  protected readonly importing = signal(false);
+  /** How many people the last import added; null while one runs or before any. */
+  protected readonly importAdded = signal<number | null>(null);
+
+  protected readonly importForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     // Each (re)load of a sheet re-reads its people from the store.
     toObservable(this.sheets.loaded)
@@ -724,6 +745,9 @@ export class PeopleList {
           this.pasteForm.reset({ text: '' }, { emitEvent: false });
           this.pasteError.set(null);
           this.pasteAdded.set(null);
+          this.importForm.reset({ text: '' }, { emitEvent: false });
+          this.importError.set(null);
+          this.importAdded.set(null);
           return sheet
             ? forkJoin({
                 people: this.api.list(sheet.id),
@@ -751,6 +775,7 @@ export class PeopleList {
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
     this.quickForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.quickError.set(null));
     this.pasteForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.pasteError.set(null));
+    this.importForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.importError.set(null));
   }
 
   protected claimsOf(personId: number): ClaimView[] {
@@ -1262,6 +1287,36 @@ export class PeopleList {
             : err instanceof HttpErrorResponse && err.status === 409
               ? 'A pasted reference is already used on this sheet or repeated in the paste; nothing was added.'
               : 'A pasted line is not a valid claim for someone on this sheet; nothing was added.',
+        );
+      },
+    });
+  }
+
+  /** Add a person per pasted line, as the person form would; when any line is refused, none is added. */
+  protected importPeople(): void {
+    if (this.importing()) return;
+    this.importError.set(null);
+    this.importAdded.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const text = this.importForm.getRawValue().text;
+    if (text.trim() === '') {
+      this.importError.set('Paste at least one line of name,grade,terms,contact.');
+      return;
+    }
+    this.importing.set(true);
+    this.api.importPeople(sheet.id, text).subscribe({
+      next: ({ added, people }) => {
+        this.importing.set(false);
+        this.people.update((list) => [...list, ...people]);
+        this.importAdded.set(added);
+      },
+      error: (err: unknown) => {
+        this.importing.set(false);
+        this.importError.set(
+          err instanceof HttpErrorResponse && err.status === 409
+            ? 'A pasted name or contact is already in use or repeated in the paste; nothing was imported.'
+            : 'A pasted line is not a valid person; nothing was imported.',
         );
       },
     });

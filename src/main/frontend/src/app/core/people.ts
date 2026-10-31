@@ -67,6 +67,12 @@ export interface BulkGradeView {
   people: PersonView[];
 }
 
+/** What an import did: how many people it added and the people, in the order added. */
+export interface ImportView {
+  added: number;
+  people: PersonView[];
+}
+
 /** The person's grade in force on `date` (yyyy-mm-dd): the one with the latest from-date on or before it. */
 export function gradeOn(p: Pick<PersonView, 'grade' | 'grades'>, date: string): Grade {
   let inForce: GradeFrom | undefined;
@@ -89,6 +95,11 @@ export class People {
 
   add(sheetId: string, person: PersonForm): Observable<PersonView> {
     return this.http.post<PersonView>(this.base(sheetId), person);
+  }
+
+  /** Add a person per pasted line of name,grade,terms,contact; when any line is refused, none is added. */
+  importPeople(sheetId: string, text: string): Observable<ImportView> {
+    return this.http.post<ImportView>(`${this.base(sheetId)}/import`, { text });
   }
 
   /** Save an edit made from `version` of the person; refused (412) when someone has saved them since. */
