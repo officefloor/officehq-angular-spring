@@ -24,6 +24,7 @@ import { Sheets } from '../../core/sheet';
                   @if (r.to !== null) {
                     through <span data-testid="rate-to">{{ r.to }}</span>
                   }
+                  (version <span data-testid="rate-version">{{ r.version }}</span>)
                 </li>
               }
             </ul>

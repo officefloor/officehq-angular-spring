@@ -42,6 +42,9 @@ public class Rate {
     @Column(name = "rate", nullable = false)
     private BigDecimal rate;
 
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -94,5 +97,14 @@ public class Rate {
 
     public void setRate(BigDecimal rate) {
         this.rate = rate;
+    }
+
+    /** The number of the version in force: how many versions the rate has had, the newest being this one. */
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = version;
     }
 }

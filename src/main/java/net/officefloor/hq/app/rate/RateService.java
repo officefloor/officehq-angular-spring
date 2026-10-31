@@ -23,8 +23,11 @@ public class RateService {
     private final Audit audit;
     private final Rollup rollup;
     private final RateChains chains;
+    private final RateVersionRepository versions;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup, RateChains chains) {
+    public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup, RateChains chains,
+            RateVersionRepository versions) {
+        this.versions = versions;
         this.chains = chains;
         this.rates = rates;
         this.sheets = sheets;
@@ -53,8 +56,9 @@ public class RateService {
     }
 
     /** Set a grade's rate from a date (null: from the beginning of time) through a to-date (null: it
-     *  does not end), replacing the rate it had from that same date, if any. A to-date before the
-     *  from-date is refused. */
+     *  does not end). When the grade already has a rate from that same date, the value it replaces is
+     *  kept as an older version and the new one becomes the newest version, the one in force. A to-date
+     *  before the from-date is refused. */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal rate) {
         if (from != null && to != null && to.isBefore(from)) {
@@ -66,7 +70,13 @@ public class RateService {
         Rate row = rates.findBySheetIdAndGrade(sheetId, grade).stream()
                 .filter(r -> Objects.equals(r.getFromDate(), from))
                 .findFirst()
-                .orElseGet(() -> new Rate(sheetId, grade, from, scaled));
+                .orElse(null);
+        if (row == null) {
+            row = new Rate(sheetId, grade, from, scaled);
+        } else {
+            versions.save(new RateVersion(row.getId(), row.getVersion(), row.getRate(), row.getToDate()));
+            row.setVersion(row.getVersion() + 1);
+        }
         row.setRate(scaled);
         row.setToDate(to);
         Rate saved = rates.saveAndFlush(row);

@@ -20,6 +20,8 @@ export interface RateView {
   from: string | null;
   /** The last day it applies (yyyy-mm-dd); null when it does not end. */
   to: string | null;
+  /** How many versions the rate has had; the one shown is the newest. */
+  version: number;
 }
 
 /** What a rate import did: how many rates it set, and those rates, in line order. */

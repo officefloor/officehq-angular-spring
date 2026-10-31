@@ -31,12 +31,17 @@ public class RateController {
 
     /** A grade's rate as the screen shows it: a percent with exactly two decimals, and the day it
      *  takes effect (null when it applies from the beginning of time) and the last day it applies
-     *  (null when it does not end). */
-    public record RateView(String grade, String rate, LocalDate from, LocalDate to) {
+     *  (null when it does not end), and how many versions it has had (the one shown is the newest). */
+    public record RateView(String grade, String rate, LocalDate from, LocalDate to, int version) {
+
+        /** A view kept before rates had versions has none recorded: it was the first. */
+        public RateView {
+            version = Math.max(version, 1);
+        }
 
         public static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFromDate(),
-                    rate.getToDate());
+                    rate.getToDate(), rate.getVersion());
         }
     }
 

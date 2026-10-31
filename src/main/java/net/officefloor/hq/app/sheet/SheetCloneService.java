@@ -26,6 +26,8 @@ import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateVersion;
+import net.officefloor.hq.app.rate.RateVersionRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleRepository;
 import net.officefloor.hq.app.role.RoleService;
@@ -56,6 +58,7 @@ public class SheetCloneService {
     private final RoleService roleService;
     private final RoleRepository roles;
     private final RateRepository rates;
+    private final RateVersionRepository rateVersions;
     private final HolidayRepository holidays;
     private final VoidReasonRepository voidReasons;
     private final ClaimTemplateRepository templates;
@@ -73,7 +76,8 @@ public class SheetCloneService {
             RoleRepository roles, RateRepository rates, HolidayRepository holidays, VoidReasonRepository voidReasons,
             ClaimTemplateRepository templates, PersonRepository people, PatronRepository patrons, PoolRepository pools,
             PoolMemberRepository poolMembers, PeriodRepository periods, ClaimRepository claims,
-            ClaimService claimService, Rollup rollup, Audit audit) {
+            ClaimService claimService, Rollup rollup, Audit audit, RateVersionRepository rateVersions) {
+        this.rateVersions = rateVersions;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
         this.roleService = roleService;
@@ -116,11 +120,14 @@ public class SheetCloneService {
 
         roles.saveAll(roles.findBySheetIdOrderByUserName(sheetId).stream()
                 .map(r -> new Role(target, r.getUserName(), r.getRole())).toList());
-        rates.saveAll(rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).map(r -> {
+        rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).forEach(r -> {
             Rate copy = new Rate(target, r.getGrade(), r.getFromDate(), r.getRate());
             copy.setToDate(r.getToDate());
-            return copy;
-        }).toList());
+            copy.setVersion(r.getVersion());
+            Long copyId = rates.save(copy).getId();
+            rateVersions.saveAll(rateVersions.findByRateIdOrderByVersionAsc(r.getId()).stream()
+                    .map(v -> new RateVersion(copyId, v.getVersion(), v.getRate(), v.getToDate())).toList());
+        });
         holidays.saveAll(holidays.findBySheetIdOrderByDateAsc(sheetId).stream()
                 .map(h -> new Holiday(target, h.getDate())).toList());
         voidReasons.saveAll(voidReasons.findBySheetIdOrderByIdAsc(sheetId).stream()
