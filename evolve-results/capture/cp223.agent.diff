@@ -1,0 +1,619 @@
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+new file mode 100644
+index 000000000..0b23cbab2
+--- /dev/null
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -0,0 +1,113 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++export interface Grade {
++  grade: string;
++  retired: boolean;
++}
++
++// The sheet's grades and whether each is retired, and the select and button that retire one. A retired grade
++// cannot be chosen for a new person or in an edit; people already on it keep it.
++@Component({
++  selector: 'app-grades',
++  template: `
++    <section aria-label="Grades">
++      <h2>Grades</h2>
++      <ul>
++        @for (g of grades(); track g.grade) {
++          <li [attr.data-testid]="'grade-row-' + g.grade">
++            {{ g.grade }} retired <span data-testid="grade-retired">{{ g.retired ? 'yes' : 'no' }}</span>
++          </li>
++        }
++      </ul>
++      <form (submit)="retire($event)" aria-label="Retire grade">
++        <label for="grade-retire-select">Grade</label>
++        <select
++          id="grade-retire-select"
++          data-testid="grade-retire-select"
++          [value]="grade()"
++          (change)="grade.set(value($event)); error.set('')"
++        >
++          <option value="">Choose a grade</option>
++          @for (g of grades(); track g.grade) {
++            <option [value]="g.grade">{{ g.grade }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="grade-retire">Retire grade</button>
++        @if (error()) {
++          <p role="alert" data-testid="grade-error">{{ error() }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class Grades {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly grades = signal<Grade[]>([]);
++  protected readonly grade = signal('');
++  protected readonly error = signal('');
++  /** A retire still waiting for its answer: another press meanwhile is ignored. */
++  private busy = false;
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheet();
++      this.session.loads();
++      this.grades.set([]);
++      this.grade.set('');
++      this.error.set('');
++      if (sheet) void this.reload(sheet);
++    });
++  }
++
++  protected value(e: Event): string {
++    return (e.target as HTMLSelectElement).value;
++  }
++
++  protected async retire(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    this.error.set('');
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const grade = this.grade();
++    const known = this.grades().find((g) => g.grade === grade);
++    if (!known) {
++      this.error.set('Choose a grade.');
++      return;
++    }
++    if (known.retired) {
++      this.error.set(`Grade ${grade} is already retired.`);
++      return;
++    }
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.busy = true;
++    try {
++      await firstValueFrom(
++        this.http.post<Grade>(
++          `/api/sheets/${encodeURIComponent(sheet)}/grades/${encodeURIComponent(grade)}/retire`,
++          null,
++          { headers },
++        ),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.grades.update((gs) => gs.map((g) => (g.grade === grade ? { ...g, retired: true } : g)));
++    } catch (err) {
++      if (this.session.sheet() !== sheet) return;
++      const answer = err instanceof HttpErrorResponse ? err : null;
++      this.error.set(answer?.error?.message ?? 'Could not retire the grade.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
++  private async reload(sheet: string): Promise<void> {
++    const loads = this.session.loads();
++    const grades = await firstValueFrom(this.http.get<Grade[]>(`/api/sheets/${encodeURIComponent(sheet)}/grades`));
++    if (this.session.sheet() === sheet && this.session.loads() === loads) this.grades.set(grades);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0ebf68068..1d7918794 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -13,6 +13,7 @@ import { Search } from '../search/search';
+ import { SnapshotCompare } from '../snapshot-compare/snapshot-compare';
+ import { SheetCompare } from '../sheet-compare/sheet-compare';
+ import { Duplicates } from '../duplicates/duplicates';
++import { Grades } from '../grades/grades';
+ import { Holidays } from '../holidays/holidays';
+ import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
+ import { PersonPlans, PlanList } from '../plans/plans';
+@@ -169,7 +170,7 @@ function csvField(value: string): string {
+ // user can watch people of their own choosing.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, Access, Activity, Audit, ClaimTemplates, Claims, Crews, Duplicates, Holidays, Notes, Periods, PersonPlans, Pools, Rates, Search, SheetCompare, SnapshotCompare, Summary, Tags, VoidReasons],
++  imports: [FigurePipe, Access, Activity, Audit, ClaimTemplates, Claims, Crews, Duplicates, Grades, Holidays, Notes, Periods, PersonPlans, Pools, Rates, Search, SheetCompare, SnapshotCompare, Summary, Tags, VoidReasons],
+   template: `
+     <header aria-label="Counters">
+       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
+@@ -203,6 +204,7 @@ function csvField(value: string): string {
+       }
+     </section>
+     <app-rates (changed)="reloadSheet()" />
++    <app-grades />
+     <app-access [settingsSaved]="reloadAfterSettings" />
+     <app-periods [people]="people()" [(periods)]="periods" />
+     <app-holidays />
+@@ -1651,7 +1653,8 @@ export class People {
+         return;
+       }
+       if (err instanceof HttpErrorResponse && err.status === 409) {
+-        this.error.set('That name (or alias) or contact is already in use on this sheet.');
++        // a retired grade's refusal says why; any other is a name or contact in use
++        this.error.set(err.error?.message ?? 'That name (or alias) or contact is already in use on this sheet.');
+         return;
+       }
+       this.error.set(id === null ? 'Could not add the person.' : 'Could not save the person.');
+@@ -1869,7 +1872,7 @@ export class People {
+       const message =
+         err instanceof HttpErrorResponse && err.status === 412
+           ? 'Someone else saved this person since the sheet was loaded; re-load it to see their values.'
+-          : 'Could not save the grade.';
++          : (err instanceof HttpErrorResponse && err.status === 409 && err.error?.message) || 'Could not save the grade.';
+       this.personError.set({ id: p.id, message });
+     } finally {
+       this.grading = false;
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 14ace65f9..0bcdb0d52 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -55,6 +55,7 @@ import net.officefloor.hq.app.crew.CrewAdded;
+ import net.officefloor.hq.app.crew.CrewMemberAdded;
+ import net.officefloor.hq.app.pool.PoolAdded;
+ import net.officefloor.hq.app.pool.PoolMemberAdded;
++import net.officefloor.hq.app.rate.GradeRetired;
+ import net.officefloor.hq.app.rate.RateChanged;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.rollup.RollupChanged;
+@@ -311,6 +312,11 @@ public class SheetAudit {
+         return due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_UP).toPlainString();
+     }
+ 
++    @TransactionalEventListener
++    public void on(GradeRetired e) {
++        change(e.sheetId(), e.user(), "GRADE_RETIRED sheet=" + e.sheetId() + " by=" + e.user() + " grade=" + e.grade());
++    }
++
+     @TransactionalEventListener
+     public void on(RateChanged e) {
+         change(e.sheetId(), e.user(), "RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
+diff --git a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+index 822d0d492..3678466c6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+@@ -3,26 +3,26 @@ package net.officefloor.hq.app.claim;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonService;
+-import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.rate.GradeService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * Quick-add: a DRAFT claim of an amount, dated the sheet's entry date while set (else its today) with an empty note, for the person
+  * of a name or an alias, matched as the person form matches names; a name not on the sheet adds the person first
+- * with the sheet's default grade (A when none is set). The whole of it is one change: a refused claim leaves no new person behind.
++ * with the sheet's default grade (A when none is set or it is retired). The whole of it is one change: a refused claim leaves no new person behind.
+  */
+ @Service
+ public class QuickAddService {
+ 
+     private final PersonService persons;
+     private final ClaimService claims;
+-    private final SheetService sheets;
++    private final GradeService grades;
+ 
+-    public QuickAddService(PersonService persons, ClaimService claims, SheetService sheets) {
++    public QuickAddService(PersonService persons, ClaimService claims, GradeService grades) {
+         this.persons = persons;
+         this.claims = claims;
+-        this.sheets = sheets;
++        this.grades = grades;
+     }
+ 
+     /** Returns the person the claim belongs to. */
+@@ -30,7 +30,7 @@ public class QuickAddService {
+     public long add(String sheetId, String user, String name, BigDecimal amount) {
+         String trimmed = name.trim();
+         Person person = persons.findByNameOrAlias(sheetId, trimmed)
+-                .orElseGet(() -> persons.add(sheetId, user, trimmed, sheets.settings(sheetId).defaultGrade(), null, null));
++                .orElseGet(() -> persons.add(sheetId, user, trimmed, grades.defaultGrade(sheetId), null, null));
+         return claims.add(sheetId, user, person.getId(), amount, null, "");
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+index ff309ee6e..465e63030 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+@@ -8,7 +8,7 @@ import java.util.Optional;
+ import java.util.Set;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+-import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.rate.GradeService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Import people: lines of {@code name,grade,terms,contact} (terms and contact may be left out or blank; a blank
+- * grade is the sheet's default grade, A when none is set). A line
++ * grade is the sheet's default grade, A when none is set or it is retired). A line
+  * whose name is the name or an alias of a person on the sheet (compared as names are) updates that person as
+  * the person form edits them: their grade is recorded from the sheet's today, and their terms and contact are
+  * set when the line gives them. Any other line adds a person as the person form adds them. Every line is first
+@@ -46,14 +46,14 @@ public class PersonImportService {
+     private final PersonService service;
+     private final PersonRepository people;
+     private final SheetRepository sheetRows;
+-    private final SheetService sheets;
++    private final GradeService grades;
+ 
+     public PersonImportService(PersonService service, PersonRepository people, SheetRepository sheetRows,
+-            SheetService sheets) {
++            GradeService grades) {
+         this.service = service;
+         this.people = people;
+         this.sheetRows = sheetRows;
+-        this.sheets = sheets;
++        this.grades = grades;
+     }
+ 
+     /** Update or add a person per line, in order; returns how many were added and updated. */
+@@ -64,7 +64,7 @@ public class PersonImportService {
+         Set<String> names = new HashSet<>();
+         Set<Long> updated = new HashSet<>();
+         Set<String> contacts = new HashSet<>();
+-        String defaultGrade = sheets.settings(sheetId).defaultGrade();
++        String defaultGrade = grades.defaultGrade(sheetId);
+         for (String raw : text.split("\\R")) {
+             if (raw.isBlank()) continue;
+             Line line = parse(raw, defaultGrade);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index adada12e6..df77c6898 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.access.AccessService;
+ import net.officefloor.hq.app.access.Role;
+ import net.officefloor.hq.app.claim.Tags;
++import net.officefloor.hq.app.rate.GradeService;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -28,7 +29,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * or down swapping with their neighbour, added and edited one at a time;
+  * an edit made from a version someone else has saved since is refused. A person can be retired from a
+  * date; no claim dated after it can then be added for them. A retired person can be unretired; no claim
+- * dated within a past retirement (after its from-date, before its to-date) can be added for them either. */
++ * dated within a past retirement (after its from-date, before its to-date) can be added for them either. A
++ * retired grade (see {@link GradeService}) cannot be chosen for a new person or in an edit. */
+ @Service
+ public class PersonService {
+ 
+@@ -41,10 +43,12 @@ public class PersonService {
+     private final Tags tags;
+     private final PersonSnapshotRepository snapshots;
+     private final AccessService access;
++    private final GradeService grades;
+ 
+     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
+             SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events, Tags tags,
+-            PersonSnapshotRepository snapshots, AccessService access) {
++            PersonSnapshotRepository snapshots, AccessService access, GradeService grades) {
++        this.grades = grades;
+         this.access = access;
+         this.tags = tags;
+         this.snapshots = snapshots;
+@@ -93,6 +97,7 @@ public class PersonService {
+         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
+             throw contactInUse();
+         }
++        grades.choosable(sheetId, grade);
+         Rollup.Figures before = rollup.figures(sheetId);
+         Person added = new Person(sheetId, trimmed, grade);
+         if (termsFrom != null) {
+@@ -159,10 +164,14 @@ public class PersonService {
+         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
+             throw contactInUse();
+         }
++        LocalDate today = sheets.today(sheetId);
++        boolean gradeChosen = gradeFrom != null || !grade.equals(person.gradeOn(today));
++        if (gradeChosen) {
++            grades.choosable(sheetId, grade);
++        }
+         Rollup.Figures before = rollup.figures(sheetId);
+         person.setName(trimmed);
+-        LocalDate today = sheets.today(sheetId);
+-        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
++        if (gradeChosen) {
+             person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
+         }
+         boolean termsChanged;
+diff --git a/src/main/java/net/officefloor/hq/app/rate/GradeController.java b/src/main/java/net/officefloor/hq/app/rate/GradeController.java
+new file mode 100644
+index 000000000..1f626927f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/GradeController.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import java.util.Set;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The grades of a sheet and whether each is retired. The signed-in user's name comes in the {@code X-User} header. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/grades")
++@Validated
++public class GradeController {
++
++    public record GradeView(String grade, boolean retired) {
++    }
++
++    private final GradeService service;
++
++    public GradeController(GradeService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<GradeView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        Set<String> retired = service.retired(sheetId.trim());
++        return GradeService.GRADES.stream().map(g -> new GradeView(g, retired.contains(g))).toList();
++    }
++
++    @PostMapping("/{grade}/retire")
++    public GradeView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable @NotBlank @Size(max = 10) String grade, @RequestHeader("X-User") @NotBlank String user) {
++        service.retire(sheetId.trim(), user.trim(), grade.trim());
++        return new GradeView(grade.trim(), true);
++    }
++
++    /** Another user retired the same grade at the same moment: this one is refused. */
++    @ExceptionHandler(DataIntegrityViolationException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public void taken() {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/GradeRefused.java b/src/main/java/net/officefloor/hq/app/rate/GradeRefused.java
+new file mode 100644
+index 000000000..2e9a7406f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/GradeRefused.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.rate;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.server.ResponseStatusException;
++
++/** A grade was refused (a retired grade chosen, or a grade retired twice): nothing was written. */
++public class GradeRefused extends ResponseStatusException {
++
++    public GradeRefused(String message) {
++        super(HttpStatus.CONFLICT, message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/GradeRefusedAdvice.java b/src/main/java/net/officefloor/hq/app/rate/GradeRefusedAdvice.java
+new file mode 100644
+index 000000000..ec6446ed9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/GradeRefusedAdvice.java
+@@ -0,0 +1,19 @@
++package net.officefloor.hq.app.rate;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.RestControllerAdvice;
++
++/** A refused grade, wherever it was chosen, answers 409 with the reason, for the screen to show. */
++@RestControllerAdvice
++public class GradeRefusedAdvice {
++
++    public record Refusal(String message) {
++    }
++
++    @ExceptionHandler(GradeRefused.class)
++    public ResponseEntity<Refusal> refused(GradeRefused e) {
++        return ResponseEntity.status(HttpStatus.CONFLICT).body(new Refusal(e.getReason()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/GradeRetired.java b/src/main/java/net/officefloor/hq/app/rate/GradeRetired.java
+new file mode 100644
+index 000000000..6b7f0c459
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/GradeRetired.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.rate;
++
++/** A grade was retired ({@code GRADE_RETIRED}) on a sheet. */
++public record GradeRetired(String sheetId, String user, String grade) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/GradeService.java b/src/main/java/net/officefloor/hq/app/rate/GradeService.java
+new file mode 100644
+index 000000000..9a16d4b2a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/GradeService.java
+@@ -0,0 +1,74 @@
++package net.officefloor.hq.app.rate;
++
++import java.util.List;
++import java.util.Set;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.ApplicationEventPublisher;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The grades of a sheet, A, B and C, each of which can be retired. A retired grade cannot be chosen for a
++ * person: not for a new person, nor in an edit (one leaving a person's grade as it was, with no from-date, is
++ * not a choice of it), so people already on it keep it.
++ */
++@Service
++public class GradeService {
++
++    /** Every grade, in order. */
++    public static final List<String> GRADES = List.of("A", "B", "C");
++
++    private final RetiredGradeRepository retired;
++    private final SheetService sheets;
++    private final SheetRepository sheetRows;
++    private final ApplicationEventPublisher events;
++
++    public GradeService(RetiredGradeRepository retired, SheetService sheets, SheetRepository sheetRows,
++            ApplicationEventPublisher events) {
++        this.retired = retired;
++        this.sheets = sheets;
++        this.sheetRows = sheetRows;
++        this.events = events;
++    }
++
++    /** The sheet's retired grades. */
++    @Transactional(readOnly = true)
++    public Set<String> retired(String sheetId) {
++        return retired.findBySheetId(sheetId).stream().map(RetiredGrade::getGrade).collect(Collectors.toSet());
++    }
++
++    @Transactional(readOnly = true)
++    public boolean isRetired(String sheetId, String grade) {
++        return retired.existsBySheetIdAndGrade(sheetId, grade);
++    }
++
++    /** Refuses a choice of the grade when it is retired on the sheet. */
++    public void choosable(String sheetId, String grade) {
++        if (isRetired(sheetId, grade)) {
++            throw new GradeRefused("Grade " + grade + " is retired: it cannot be chosen.");
++        }
++    }
++
++    /** The grade to give by default: the sheet's default grade (A when none is set or it is retired). */
++    public String defaultGrade(String sheetId) {
++        String grade = sheets.settings(sheetId).defaultGrade();
++        return isRetired(sheetId, grade) ? "A" : grade;
++    }
++
++    /** Retire the grade; a grade not on the sheet's list or already retired is refused. */
++    @Transactional
++    public void retire(String sheetId, String user, String grade) {
++        if (!GRADES.contains(grade)) {
++            throw new GradeRefused("No such grade: " + grade + ".");
++        }
++        sheets.load(sheetId, user);
++        sheetRows.lockById(sheetId);
++        if (isRetired(sheetId, grade)) {
++            throw new GradeRefused("Grade " + grade + " is already retired.");
++        }
++        retired.saveAndFlush(new RetiredGrade(sheetId, grade));
++        events.publishEvent(new GradeRetired(sheetId, user, grade));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RetiredGrade.java b/src/main/java/net/officefloor/hq/app/rate/RetiredGrade.java
+new file mode 100644
+index 000000000..a2daaa21d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RetiredGrade.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A grade retired on a sheet: on the sheet at most once. */
++@Entity
++@Table(name = "retired_grade")
++public class RetiredGrade {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(nullable = false)
++    private String grade;
++
++    protected RetiredGrade() {
++    }
++
++    public RetiredGrade(String sheetId, String grade) {
++        this.sheetId = sheetId;
++        this.grade = grade;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getGrade() {
++        return grade;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RetiredGradeRepository.java b/src/main/java/net/officefloor/hq/app/rate/RetiredGradeRepository.java
+new file mode 100644
+index 000000000..808d18ccf
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RetiredGradeRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.rate;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface RetiredGradeRepository extends JpaRepository<RetiredGrade, Long> {
++
++    List<RetiredGrade> findBySheetId(String sheetId);
++
++    boolean existsBySheetIdAndGrade(String sheetId, String grade);
++}
+diff --git a/src/main/resources/db/migration/V110__retired_grade.sql b/src/main/resources/db/migration/V110__retired_grade.sql
+new file mode 100644
+index 000000000..ca5a2dc86
+--- /dev/null
++++ b/src/main/resources/db/migration/V110__retired_grade.sql
+@@ -0,0 +1,8 @@
++-- A sheet's retired grades: a grade, at most once per sheet. A retired grade cannot be chosen for a person;
++-- people already on it keep it.
++CREATE TABLE retired_grade (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    grade    VARCHAR(1)   NOT NULL,
++    CONSTRAINT retired_grade_unique UNIQUE (sheet_id, grade)
++);
