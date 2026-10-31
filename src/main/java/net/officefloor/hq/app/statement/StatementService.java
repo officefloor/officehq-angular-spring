@@ -15,6 +15,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -44,9 +46,12 @@ public class StatementService {
     private final SheetRepository sheetStore;
     private final Audit audit;
     private final Rollup rollup;
+    private final RoleService roles;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, PersonRepository people,
-            RateRepository rates, SheetService sheets, SheetRepository sheetStore, Audit audit, Rollup rollup) {
+            RateRepository rates, SheetService sheets, SheetRepository sheetStore, Audit audit, Rollup rollup,
+            RoleService roles) {
+        this.roles = roles;
         this.statements = statements;
         this.claims = claims;
         this.people = people;
@@ -121,6 +126,40 @@ public class StatementService {
         rollup.recordChanges(sheetId, user, before);
         List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         return new Taken(new Summary(personId, taken.size(), dueTotal, today), theirs);
+    }
+
+    /**
+     * A steward cancels a person's last statement: it is removed, and the claims it bound are live again. As each
+     * statement binds or unbinds every claim of its person, those are the person's stated claims; a figure a statement
+     * before it bound is not restored. Refused for anyone but a steward and for a person with no statement.
+     */
+    @Transactional
+    public Taken cancel(String sheetId, String user, long personId) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward cancels a statement");
+        }
+        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        if (taken.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " has no statement to cancel");
+        }
+        Rollup.Figures before = rollup.of(sheetId);
+        Statement last = taken.get(taken.size() - 1);
+        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId);
+        theirs.forEach(Claim::unbind);
+        claims.saveAllAndFlush(theirs);
+        statements.delete(last);
+        statements.flush();
+        audit.recordChangeOnCommit(sheetId, user, "STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name="
+                + person.getName() + " due-total=" + last.getDueTotal());
+        rollup.recordChanges(sheetId, user, before);
+        List<Statement> left = taken.subList(0, taken.size() - 1);
+        Statement previous = left.isEmpty() ? null : left.get(left.size() - 1);
+        return new Taken(new Summary(personId, left.size(), previous == null ? null : previous.getDueTotal(),
+                previous == null ? null : previous.getTakenOn()), theirs);
     }
 
     private static List<Rate> ratesOf(List<Rate> sheetRates, String grade) {

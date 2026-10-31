@@ -152,7 +152,7 @@ public class PeriodService {
             return;
         }
         periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
-                .filter(p -> !p.isClosed() && sheet.pastGrace(p.getToDate()))
+                .filter(p -> !p.isClosed() && !p.isSoftClosed() && sheet.pastGrace(p.getToDate()))
                 .sorted(Comparator.comparing(Period::getToDate))
                 .forEach(p -> closeAndRecord(sheet.getId(), user, p, " auto=yes"));
     }

@@ -185,6 +185,8 @@ function csvField(value: string): string {
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
             <button type="button" data-testid="person-statement" (click)="takeStatement(p)" [disabled]="stating() === p.id"
                     [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+            <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)" [disabled]="stating() === p.id"
+                    [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
             <label [attr.for]="'person-retire-date-' + p.id">Retire from</label>
             <input [id]="'person-retire-date-' + p.id" type="date" data-testid="person-retire-date" #retireDate />
             <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)" [disabled]="retiring() === p.id"
@@ -647,6 +649,33 @@ export class PeopleList {
       error: () => {
         this.stating.set(null);
         this.personError.set({ id: p.id, message: 'Could not take a statement of ' + p.name + '.' });
+      },
+    });
+  }
+
+  /** Cancel the person's last statement, then show the statement before it and their claims live again. */
+  protected cancelStatement(p: PersonView): void {
+    if (this.stating() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.stating.set(p.id);
+    this.statementsApi.cancel(sheet.id, p.id).subscribe({
+      next: ({ summary, claims }) => {
+        this.stating.set(null);
+        this.statements.update((map) => {
+          const next = new Map(map);
+          if (summary.count === 0) next.delete(summary.personId);
+          else next.set(summary.personId, summary);
+          return next;
+        });
+        const byId = new Map(claims.map((c) => [c.id, c]));
+        this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+      },
+      error: () => {
+        this.stating.set(null);
+        this.personError.set({ id: p.id, message: 'Could not cancel the last statement of ' + p.name + '.' });
       },
     });
   }

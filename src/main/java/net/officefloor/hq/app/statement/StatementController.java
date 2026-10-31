@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,5 +52,14 @@ public class StatementController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         StatementService.Taken taken = statements.take(sheetId, user, personId);
         return new TakenView(SummaryView.of(taken.summary()), taken.claims().stream().map(ClaimView::of).toList());
+    }
+
+    @DeleteMapping("/people/{personId}/statements/last")
+    public TakenView cancel(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        StatementService.Taken cancelled = statements.cancel(sheetId, user, personId);
+        return new TakenView(SummaryView.of(cancelled.summary()), cancelled.claims().stream().map(ClaimView::of).toList());
     }
 }

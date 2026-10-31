@@ -8,8 +8,8 @@ export interface StatementSummary {
   personId: number;
   count: number;
   /** The due-total with exactly two decimals, or "n/a" when the grade had no rate then. */
-  dueTotal: string;
-  date: string;
+  dueTotal: string | null;
+  date: string | null;
 }
 
 /** A statement just taken: the person's summary and their claims as it left them, newest first. */
@@ -30,6 +30,11 @@ export class Statements {
 
   take(sheetId: string, personId: number): Observable<StatementTaken> {
     return this.http.post<StatementTaken>(`${this.base(sheetId)}/people/${personId}/statements`, null);
+  }
+
+  /** Cancel the person's last statement: its claims are live again; the summary is of the statement before it. */
+  cancel(sheetId: string, personId: number): Observable<StatementTaken> {
+    return this.http.delete<StatementTaken>(`${this.base(sheetId)}/people/${personId}/statements/last`);
   }
 
   private base(sheetId: string): string {
