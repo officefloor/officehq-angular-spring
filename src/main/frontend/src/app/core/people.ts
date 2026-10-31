@@ -108,6 +108,11 @@ export class People {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/aliases`, { alias });
   }
 
+  /** Merge the person into another (a steward only): the person merged into, as saved. */
+  merge(sheetId: string, id: number, intoId: number): Observable<PersonView> {
+    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/merge`, { intoId });
+  }
+
   /** Give the selected people `grade` from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */
   bulkGrade(sheetId: string, ids: readonly number[], grade: Grade, from: string | null): Observable<BulkGradeView> {
     return this.http.post<BulkGradeView>(`${this.base(sheetId)}/bulk-grade`, { ids, grade, from });

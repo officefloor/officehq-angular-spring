@@ -92,6 +92,10 @@ public class PersonController {
     public record AliasForm(@Size(max = 200) String alias) {
     }
 
+    /** A merge: the person the merged one is merged into. */
+    public record MergeForm(@NotNull Long intoId) {
+    }
+
     /** A retirement: the date the person is retired from; missing takes the sheet's today. */
     public record Retirement(LocalDate from) {
     }
@@ -110,9 +114,12 @@ public class PersonController {
     private final PersonService people;
     private final SheetHistory history;
     private final RoleService roles;
+    private final PersonMergeService merges;
 
-    public PersonController(PersonService people, SheetHistory history, RoleService roles) {
+    public PersonController(PersonService people, SheetHistory history, RoleService roles,
+            PersonMergeService merges) {
         this.people = people;
+        this.merges = merges;
         this.history = history;
         this.roles = roles;
     }
@@ -196,6 +203,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody AliasForm request) {
         return PersonView.of(people.addAlias(sheetId, user, id, request.alias()), people.today(sheetId));
+    }
+
+    /** Merge the person into another of the sheet: the person merged into, as saved. */
+    @PostMapping("/{id}/merge")
+    public PersonView merge(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody MergeForm request) {
+        return PersonView.of(merges.merge(sheetId, user, id, request.intoId()), people.today(sheetId));
     }
 
     /** Put the person on hold over the dates given, alongside any holds they already have. */

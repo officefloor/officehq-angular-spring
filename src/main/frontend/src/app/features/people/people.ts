@@ -292,6 +292,15 @@ function csvField(value: string): string {
             </select>
             <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect.value)"
                     [disabled]="addingPatron() === p.id" [attr.aria-label]="'Add a patron of ' + p.name">Add patron</button>
+            <label [attr.for]="'person-merge-into-' + p.id">Merge into</label>
+            <select [id]="'person-merge-into-' + p.id" data-testid="person-merge-into" #mergeInto
+                    (change)="clearPersonError(p.id)">
+              @for (q of people(); track q.id) {
+                <option [value]="q.id">{{ q.name }}</option>
+              }
+            </select>
+            <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
+                    [disabled]="merging() === p.id" [attr.aria-label]="'Merge ' + p.name">Merge</button>
             — watched <span data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</span>
             <button type="button" data-testid="person-watch" (click)="toggleWatch(p)" [disabled]="watching() === p.id"
                     [attr.aria-pressed]="watched().has(p.id)" [attr.aria-label]="'Watch ' + p.name">Watch</button>
@@ -384,6 +393,8 @@ export class PeopleList {
     for (const pt of this.patrons()) byPerson.set(pt.personId, [...(byPerson.get(pt.personId) ?? []), pt.patronId]);
     return byPerson;
   });
+  /** The person being merged into another, so a second press waits for the first. */
+  protected readonly merging = signal<number | null>(null);
   /** The person an alias is being added to, so a second press waits for the first. */
   protected readonly aliasing = signal<number | null>(null);
   /** The error of the last action taken on a person's row, until the next action on that row. */
@@ -911,6 +922,26 @@ export class PeopleList {
       error: () => {
         this.retiring.set(null);
         this.personError.set({ id: p.id, message: 'Could not retire ' + p.name + '.' });
+      },
+    });
+  }
+
+  /** Merge the person into the chosen one; once merged the sheet is re-read, as everything on it may follow. */
+  protected merge(p: PersonView, intoId: string): void {
+    if (this.merging() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet || intoId === '') return;
+    this.merging.set(p.id);
+    this.api.merge(sheet.id, p.id, Number(intoId)).subscribe({
+      next: () => {
+        this.merging.set(null);
+        this.sheets.load(sheet.id).subscribe();
+      },
+      error: () => {
+        this.merging.set(null);
+        this.personError.set({ id: p.id, message: 'Could not merge ' + p.name + ' into that person.' });
       },
     });
   }
