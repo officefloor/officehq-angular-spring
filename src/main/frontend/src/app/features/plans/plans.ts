@@ -28,6 +28,7 @@ const DAY_PATTERN = /^\d{1,2}$/;
             }
             to <span data-testid="plan-end">{{ pl.end }}</span>
             — made <span data-testid="plan-generated">{{ pl.generated }}</span>
+            — next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
           </li>
         }
       </ul>

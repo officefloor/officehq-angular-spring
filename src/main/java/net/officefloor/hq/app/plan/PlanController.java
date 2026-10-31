@@ -24,14 +24,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class PlanController {
 
-    /** A plan as the screen shows it, with how many claims it has made so far. */
+    /** A plan as the screen shows it, with how many claims it has made so far and its next dates after the
+     *  sheet's today. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated) {
+            LocalDate end, int generated, List<LocalDate> nextDates) {
 
         public static PlanView of(PlanService.Counted c) {
             Plan p = c.plan();
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(), p.getEvery(),
-                    p.getDay(), p.getEnd(), c.generated());
+                    p.getDay(), p.getEnd(), c.generated(), c.nextDates());
         }
     }
 

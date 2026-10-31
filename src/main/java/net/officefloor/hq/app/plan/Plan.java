@@ -107,6 +107,32 @@ public class Plan {
         return dates;
     }
 
+    /** The plan's first {@code count} dates after {@code after} and on or before its end, in order. */
+    public List<LocalDate> nextDates(LocalDate after, int count) {
+        List<LocalDate> dates = new ArrayList<>();
+        if (day == null) {
+            LocalDate d = start;
+            if (d.isBefore(after)) {
+                long steps = (after.toEpochDay() - start.toEpochDay()) / every;
+                d = start.plusDays(steps * every);
+            }
+            for (; !d.isAfter(end) && dates.size() < count; d = d.plusDays(every)) {
+                if (d.isAfter(after)) {
+                    dates.add(d);
+                }
+            }
+            return dates;
+        }
+        YearMonth m = YearMonth.from(start.isAfter(after) ? start : after);
+        for (; !m.atDay(1).isAfter(end) && dates.size() < count; m = m.plusMonths(1)) {
+            LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
+            if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
+                dates.add(d);
+            }
+        }
+        return dates;
+    }
+
     public LocalDate getEnd() {
         return end;
     }

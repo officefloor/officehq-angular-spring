@@ -45,8 +45,11 @@ public class PlanService {
         this.audit = audit;
     }
 
-    /** A plan with how many claims it has made so far. */
-    public record Counted(Plan plan, int generated) {
+    /** How many next dates a plan shows. */
+    private static final int NEXT_DATES = 5;
+
+    /** A plan with how many claims it has made so far, and its next dates after the sheet's today. */
+    public record Counted(Plan plan, int generated, List<LocalDate> nextDates) {
     }
 
     /** What a generate did: the claims it made, in the order made, and every plan on the sheet as it is now. */
@@ -59,7 +62,9 @@ public class PlanService {
         List<Plan> all = plans.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, Long> counts = made.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList()).stream()
                 .collect(Collectors.groupingBy(PlanClaim::getPlanId, Collectors.counting()));
-        return all.stream().map(p -> new Counted(p, counts.getOrDefault(p.getId(), 0L).intValue())).toList();
+        LocalDate today = sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
+        return all.stream().map(p -> new Counted(p, counts.getOrDefault(p.getId(), 0L).intValue(),
+                today == null ? List.of() : p.nextDates(today, NEXT_DATES))).toList();
     }
 
     /** Add a plan for a person; a missing start takes the sheet's today. It runs either every so many days or
@@ -99,7 +104,7 @@ public class PlanService {
                 + " start=" + plan.getStart()
                 + (plan.getDay() != null ? " day=" + plan.getDay() : " every=" + plan.getEvery())
                 + " end=" + plan.getEnd());
-        return new Counted(plan, 0);
+        return new Counted(plan, 0, plan.nextDates(sheet.getToday(), NEXT_DATES));
     }
 
     /**

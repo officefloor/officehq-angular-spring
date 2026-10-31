@@ -4,7 +4,7 @@ import { Observable, tap } from 'rxjs';
 import { ClaimView } from './claims';
 
 /** A person's plan: an amount claimed on its start date and every `every` days after, or monthly on day `day` of each
- *  month from the start's, up to its end date, with how many claims it has made so far. */
+ *  month from the start's, up to its end date, with how many claims it has made so far and its next dates. */
 export interface PlanView {
   id: number;
   personId: number;
@@ -14,6 +14,8 @@ export interface PlanView {
   day: number | null;
   end: string;
   generated: number;
+  /** The first five plan dates after the sheet's today and on or before the end, as of the last (re)load. */
+  nextDates: string[];
 }
 
 /** A plan as its form submits it, with either an interval or a day of the month; a blank start takes the sheet's
