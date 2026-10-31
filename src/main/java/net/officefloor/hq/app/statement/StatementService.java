@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -20,7 +21,8 @@ import net.officefloor.hq.app.history.SheetState;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
+import net.officefloor.hq.app.rate.RateChains;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -47,7 +49,7 @@ public class StatementService {
     private final StatementRepository statements;
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RateChains rates;
     private final SheetService sheets;
     private final SheetRepository sheetStore;
     private final Audit audit;
@@ -56,7 +58,7 @@ public class StatementService {
     private final SheetHistory history;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, PersonRepository people,
-            RateRepository rates, SheetService sheets, SheetRepository sheetStore, Audit audit, Rollup rollup,
+            RateChains rates, SheetService sheets, SheetRepository sheetStore, Audit audit, Rollup rollup,
             RoleService roles, SheetHistory history) {
         this.roles = roles;
         this.history = history;
@@ -114,7 +116,7 @@ public class StatementService {
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId);
         Stated stated;
         if (asOf == null) {
-            stated = bind(sheet, rates.findBySheetId(sheetId), person, theirs, Function.identity(),
+            stated = bind(sheet, rates.of(sheetId), person, theirs, Function.identity(),
                     person::countsUnbound, theirs);
         } else {
             SheetState then = history.asOf(sheetId, asOf).orElse(null);
@@ -127,7 +129,7 @@ public class StatementService {
             Map<Long, Claim> claimsThen = new HashMap<>();
             then.claims().stream().filter(c -> c.personId() == personId)
                     .forEach(c -> claimsThen.put(c.id(), c.rebuild(sheetId)));
-            stated = bind(then.rebuildSheet(sheet, asOf), then.rebuildRates(sheetId), asThen, theirs,
+            stated = bind(then.rebuildSheet(sheet, asOf), ratesAsOf(sheetId, then, asOf), asThen, theirs,
                     c -> claimsThen.get(c.getId()), asThen::counts, claimsThen.values());
         }
         LocalDate takenOn = asOf != null ? asOf : today;
@@ -149,7 +151,7 @@ public class StatementService {
      * figure and unbind the rest, reading each as it stands on the sheet given ({@code asThen}; none when it was not
      * the person's then), with the person, the rates and the claims that decide its rounding as they stand there.
      */
-    private static Stated bind(Sheet sheet, List<Rate> sheetRates, Person person, List<Claim> theirs,
+    private static Stated bind(Sheet sheet, RateChain sheetRates, Person person, List<Claim> theirs,
             Function<Claim, Claim> asThen, BiPredicate<Claim, LocalDate> counts, Collection<Claim> roundingClaims) {
         LocalDate today = sheet.getToday();
         Set<String> grades = new HashSet<>(Set.of(person.gradeOn(today)));
@@ -164,7 +166,7 @@ public class StatementService {
             }
             BigDecimal fixed = then.getSettledDue() != null ? then.getSettledDue() : then.getBoundDue();
             BigDecimal figure = fixed != null || then.isBound() ? fixed
-                    : Rate.inForceOn(ratesOf(sheetRates, person.gradeOn(then.getDate())), then.getDate())
+                    : sheetRates.inForceOn(person.gradeOn(then.getDate()), then.getDate())
                             .map(rate -> ClaimService.liveFigure(then, rate.getRate(),
                                     sheet.roundingFor(ClaimService.roundingDate(then, roundingClaims))))
                             .orElse(null);
@@ -178,7 +180,7 @@ public class StatementService {
         }
         // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any
         // of their claims that count is at, and no claim that has a due, the person has no due-total.
-        boolean anyRate = grades.stream().anyMatch(g -> Rate.inForceOn(ratesOf(sheetRates, g), today).isPresent());
+        boolean anyRate = grades.stream().anyMatch(g -> sheetRates.inForceOn(g, today).isPresent());
         return new Stated(!anyRate && !anyDue ? "n/a" : sheet.capped(total).toPlainString(), counted);
     }
 
@@ -216,7 +218,11 @@ public class StatementService {
                 previous == null ? null : previous.getTakenOn()), theirs);
     }
 
-    private static List<Rate> ratesOf(List<Rate> sheetRates, String grade) {
-        return sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList();
+    /** The line of rates as it stood at the end of a date: the sheet's own then, then each of its ancestors' as
+     *  they stood then (none for one with no change made on it by then). */
+    private RateChain ratesAsOf(String sheetId, SheetState then, LocalDate asOf) {
+        return new RateChain(Stream.concat(Stream.of(then.rebuildRates(sheetId)),
+                rates.ancestorsOf(sheetId).stream().map(ancestor -> history.asOf(ancestor, asOf)
+                        .map(state -> state.rebuildRates(ancestor)).orElse(List.<Rate>of()))).toList());
     }
 }

@@ -41,12 +41,13 @@ public class SheetController {
      *  the entry date is null when it is off; gradeGrace is the grace days set per grade in force on the sheet's today;
      *  gradeProofThreshold is the proof threshold (two decimals) set per grade in force on the sheet's today;
      *  settleBatch is the number of the last settle batch, null when there has been none; the pot (two decimals) is null when there is none;
+     *  parent is the id of the sheet's parent sheet, null when it has none;
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
-            Map<String, String> gradeProofThreshold, Integer settleBatch, String pot) {
+            Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -64,7 +65,7 @@ public class SheetController {
                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
                     sheet.getEntryDate(), sheet.getGradeGrace(), sheet.getGradeProofThresholds(),
                     sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
-                    sheet.getPot() == null ? null : sheet.getPot().toPlainString());
+                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId());
         }
     }
 
@@ -117,6 +118,10 @@ public class SheetController {
 
     /** The sheet's pot as the form submits it; a missing one means none. */
     public record PotChange(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal pot) {
+    }
+
+    /** The sheet's parent as the form submits it: a sheet id; a missing (or blank) one means none. */
+    public record ParentChange(@Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]*") String parent) {
     }
 
     /** The sheet's cap as the form submits it; a missing one means none. */
@@ -275,6 +280,16 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PotChange request) {
         return SheetView.of(sheets.setPot(id, user, request.pot()));
+    }
+
+    /** Change the sheet's parent sheet. */
+    @PutMapping("/{id}/settings/parent")
+    public SheetView setParent(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ParentChange request) {
+        String parent = request.parent() == null || request.parent().isEmpty() ? null : request.parent();
+        return SheetView.of(sheets.setParent(id, user, parent));
     }
 
     /** Change the sheet's cap. */

@@ -208,6 +208,32 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's parent sheet (null: none), starting the sheet if it has never been loaded. Not dated. Refused
+     *  for the sheet itself, for a sheet never loaded, and for a sheet that has this one as an ancestor. */
+    @Transactional
+    public Sheet setParent(String id, String user, String parentId) {
+        if (parentId != null) {
+            if (parentId.equals(id)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A sheet cannot be its own parent");
+            }
+            if (!sheets.existsById(parentId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No sheet " + parentId + " has been loaded");
+            }
+            if (sheets.ancestorsOf(parentId, Integer.MAX_VALUE).contains(id)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Sheet " + parentId + " has this sheet as an ancestor");
+            }
+        }
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        Rollup.Figures before = rollup.of(id);
+        sheet.setParentId(parentId);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=parent value=" + (parentId == null ? "" : parentId));
+        rollup.recordChanges(id, user, before);
+        return saved;
+    }
+
     /** Record the sheet's cap (null: none) from a date (null: the sheet's today), starting the sheet if it has never
      *  been loaded. */
     @Transactional

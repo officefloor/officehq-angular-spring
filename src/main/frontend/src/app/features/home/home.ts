@@ -38,6 +38,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         </p>
 
         <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()" aria-label="Show the sheet as of a date">
+          <p>Parent sheet: <strong data-testid="sheet-parent">{{ sheet.parent ?? '' }}</strong></p>
           <p>As of: <strong data-testid="sheet-asof">{{ sheet.asOf ?? '' }}</strong></p>
           <label for="asof-date">Show as of</label>
           <input id="asof-date" type="date" data-testid="asof-date" formControlName="date" />

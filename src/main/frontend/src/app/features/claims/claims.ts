@@ -5,13 +5,13 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isDeferred, isOverdue, money, roundingDate } from '../../core/claims';
 import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
-import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
+import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateLine, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Sheets, graceOn } from '../../core/sheet';
 import { Templates } from '../../core/templates';
 import { VoidReasons } from '../../core/void-reasons';
 
-const NO_RATES: readonly RateView[] = [];
+const NO_RATES: RateLine = [];
 
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
 // the claims listed newest first.
@@ -191,7 +191,7 @@ export class PersonClaims {
   /** This person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
   /** The rates of each grade, in the order they take effect. */
-  readonly ratesByGrade = input.required<ReadonlyMap<Grade, readonly RateView[]>>();
+  readonly ratesByGrade = input.required<ReadonlyMap<Grade, RateLine>>();
   /** This person's grades: a claim is at the one in force on its date. */
   readonly grades = input.required<Pick<PersonView, 'grade' | 'grades'>>();
   /** The sheet's periods, by from-date. */

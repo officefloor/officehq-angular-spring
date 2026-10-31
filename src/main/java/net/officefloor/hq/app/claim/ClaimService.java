@@ -20,7 +20,7 @@ import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChains;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -49,7 +49,7 @@ public class ClaimService {
     private final PersonRepository people;
     private final SheetService sheets;
     private final SheetRepository sheetStore;
-    private final RateRepository rates;
+    private final RateChains rates;
     private final Audit audit;
     private final Rollup rollup;
     private final PeriodRepository periods;
@@ -61,7 +61,7 @@ public class ClaimService {
     private final SheetHistory history;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
+            SheetRepository sheetStore, RateChains rates, Audit audit, Rollup rollup, PeriodRepository periods,
             RoleService roles, ClaimSequenceRepository sequences, WatchService watches,
             HolidayService holidays, VoidReasonService voidReasons, SheetHistory history) {
         this.history = history;
@@ -703,7 +703,7 @@ public class ClaimService {
      *  no rate in force on its date. */
     private BigDecimal liveNow(Sheet sheet, Claim claim, Person person) {
         String sheetId = sheet.getId();
-        return Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
+        return rates.of(sheetId).inForceOn(person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getRate)
                 .map(rate -> liveFigure(claim, rate, sheet.roundingFor(roundingDate(claim,
                         claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, claim.getPersonId())))))

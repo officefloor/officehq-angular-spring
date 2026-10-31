@@ -73,6 +73,19 @@ public class RateController {
         return rates.list(sheetId).stream().map(RateView::of).toList();
     }
 
+    /** The rates of the sheet's ancestors, nearest first (its parent's, its parent's parent's, up to three levels
+     *  up), each by grade in the order they take effect: a grade with no rate in force on a date on the sheet takes
+     *  the first in force on that date up the line. As of a date, each as it stood then. */
+    @GetMapping("/inherited")
+    public List<List<RateView>> inherited(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return rates.ancestorsOf(sheetId).stream()
+                .map(ancestor -> asOf != null ? history.viewsAsOf(ancestor, asOf).rates()
+                        : rates.list(ancestor).stream().map(RateView::of).toList())
+                .toList();
+    }
+
     @PutMapping("/{grade}")
     public RateView set(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, forkJoin, map, tap } from 'rxjs';
 import { ClaimStatus, addDays, cents, isOverdue } from './claims';
 import { Grade } from './people';
 import { SheetView, Sheets, graceOn, settingOn } from './sheet';
@@ -29,6 +29,20 @@ export function rateOn(gradeRates: readonly RateView[], date: string): string | 
   let inForce: RateView | undefined;
   for (const r of gradeRates) if (r.from === null || r.from <= date) inForce = r;
   return inForce === undefined || (inForce.to !== null && inForce.to < date) ? undefined : inForce.rate;
+}
+
+/** A grade's rates on a sheet, then on each of its ancestors (its parent, its parent's parent, up to three levels
+ *  up), each in the order they take effect. */
+export type RateLine = readonly (readonly RateView[])[];
+
+/** The rate of a grade in force on a date (yyyy-mm-dd) along its line: the sheet's own, else the nearest ancestor's;
+ *  undefined when no sheet in the line has one. */
+export function rateOnLine(line: RateLine, date: string): string | undefined {
+  for (const gradeRates of line) {
+    const rate = rateOn(gradeRates, date);
+    if (rate !== undefined) return rate;
+  }
+  return undefined;
 }
 
 /** Rates in the order they take effect: the one with no from-date first, then by from-date. */
@@ -109,13 +123,13 @@ export function lateChargeCents(
 }
 
 /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
- *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date, with any late
+ *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date (the sheet's own, else its nearest ancestor's), with any late
  *  charge added on top of it, the sum raised to the floor in force on its date (a correction is not); null when it has none. Its live
  *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. `grade` is its
  *  person's grade in force on its date, whose grace days delay its late charge. */
 export function claimDueCents(
   c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null },
-  gradeRates: readonly RateView[],
+  gradeRates: RateLine,
   sheet: DueTerms,
   roundsOn: string,
   grade: Grade,
@@ -127,7 +141,7 @@ export function claimDueCents(
     if (c.statedDue === null) return null;
     figure = cents(c.statedDue);
   } else {
-    const rate = rateOn(gradeRates, c.date);
+    const rate = rateOnLine(gradeRates, c.date);
     if (rate === undefined) return null;
     figure = dueCents(cents(c.amount), rate, roundsHalfUp(roundsOn, sheet));
   }
@@ -136,34 +150,64 @@ export function claimDueCents(
 }
 
 
-// The rates set for each grade on the active sheet, by from-date; a grade with none has no rate.
+// The rates set for each grade on the active sheet, by from-date, and those of its ancestors; a grade with none on
+// any of them has no rate.
 @Injectable({ providedIn: 'root' })
 export class Rates {
   private readonly http = inject(HttpClient);
   private readonly sheets = inject(Sheets);
   private readonly list = signal<RateView[]>([]);
+  /** The rates of the active sheet's ancestors, nearest first. */
+  private readonly inherited = signal<RateView[][]>([]);
   /** The active sheet's rates of each grade, in the order they take effect. */
   readonly ratesByGrade = computed(() => {
     const byGrade = new Map<Grade, RateView[]>();
     for (const r of [...this.list()].sort(byFrom)) byGrade.set(r.grade, [...(byGrade.get(r.grade) ?? []), r]);
     return byGrade;
   });
-  /** The rate of each grade in force on the active sheet's today; a grade with none is missing. */
+  /** Each grade's line of rates: the active sheet's own, then each ancestor's, each in the order they take effect. */
+  readonly lineByGrade = computed(() => {
+    const levels = [this.list(), ...this.inherited()];
+    const grades = new Set(levels.flat().map((r) => r.grade));
+    const byGrade = new Map<Grade, RateView[][]>();
+    for (const grade of grades) {
+      byGrade.set(grade, levels.map((level) => level.filter((r) => r.grade === grade).sort(byFrom)));
+    }
+    return byGrade;
+  });
+  /** The rate of each grade in force on the active sheet's today, the sheet's own else its nearest ancestor's; a
+   *  grade with none is missing. */
   readonly byGrade = computed(() => {
     const today = this.sheets.current()?.today ?? '';
     const current = new Map<Grade, string>();
-    for (const [grade, rates] of this.ratesByGrade()) {
-      const rate = rateOn(rates, today);
+    for (const [grade, line] of this.lineByGrade()) {
+      const rate = rateOnLine(line, today);
       if (rate !== undefined) current.set(grade, rate);
     }
     return current;
   });
 
-  /** Re-read a sheet's rates from the store; null clears them. */
+  /** Re-read a sheet's rates, and its ancestors', from the store; null clears them. */
   load(sheetId: string | null): Observable<RateView[]> | null {
     this.list.set([]);
+    this.inherited.set([]);
     if (sheetId === null) return null;
-    return this.http.get<RateView[]>(this.base(sheetId)).pipe(tap((rates) => this.list.set(rates)));
+    return forkJoin([this.http.get<RateView[]>(this.base(sheetId)), this.fetchInherited(sheetId)]).pipe(
+      tap(([rates, inherited]) => {
+        this.list.set(rates);
+        this.inherited.set(inherited);
+      }),
+      map(([rates]) => rates),
+    );
+  }
+
+  /** Re-read the rates of a sheet's ancestors from the store (after its parent changes). */
+  loadInherited(sheetId: string): Observable<RateView[][]> {
+    return this.fetchInherited(sheetId).pipe(tap((inherited) => this.inherited.set(inherited)));
+  }
+
+  private fetchInherited(sheetId: string): Observable<RateView[][]> {
+    return this.http.get<RateView[][]>(`${this.base(sheetId)}/inherited`);
   }
 
   /** Set a grade's rate from a date (null: from the beginning of time) through a to-date (null: it does not end),

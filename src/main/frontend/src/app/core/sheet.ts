@@ -59,6 +59,9 @@ export interface SheetView {
   graceDays: number | null;
   /** The pot (two decimals), cut among the members of each balanced pool; null when there is none. Not dated. */
   pot: string | null;
+  /** The id of the sheet's parent sheet: a grade with no rate in force on a date on this sheet takes its parent's
+   *  (then its parent's parent's, up to three levels up); null when it has none. Not dated. */
+  parent: string | null;
   /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
   archived: boolean;
   /** The date (yyyy-mm-dd) the sheet is shown as of: it is as it stood at the end of that day, which stands in for
@@ -218,6 +221,13 @@ export class Sheets {
   setPot(id: string, pot: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/pot`, { pot })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's parent sheet; null means none. Not dated. */
+  setParent(id: string, parent: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/parent`, { parent })
       .pipe(tap((s) => this.active.set(s)));
   }
 

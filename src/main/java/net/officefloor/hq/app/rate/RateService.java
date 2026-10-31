@@ -22,8 +22,10 @@ public class RateService {
     private final SheetService sheets;
     private final Audit audit;
     private final Rollup rollup;
+    private final RateChains chains;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup) {
+    public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup, RateChains chains) {
+        this.chains = chains;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
@@ -36,6 +38,12 @@ public class RateService {
         return rates.findBySheetId(sheetId).stream()
                 .sorted(Comparator.comparing(Rate::getGrade).thenComparing(Rate.BY_FROM))
                 .toList();
+    }
+
+    /** The ids of the sheet's ancestors whose rates stand in for its own, nearest first. */
+    @Transactional(readOnly = true)
+    public List<String> ancestorsOf(String sheetId) {
+        return chains.ancestorsOf(sheetId);
     }
 
     /** What a candidate rate for a grade would change were it to apply on every date; nothing is stored. */

@@ -133,6 +133,8 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         sheet.setGraceDays(graceDays);
         sheet.setEntryDate(entryDate);
         sheet.setPot(pot);
+        // The parent is not dated: it is the one the sheet names now.
+        sheet.setParentId(live.getParentId());
         if (lastSettleBatch != null) {
             sheet.setLastSettleBatch(lastSettleBatch);
         }

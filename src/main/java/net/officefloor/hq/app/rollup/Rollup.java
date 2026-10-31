@@ -17,7 +17,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
+import net.officefloor.hq.app.rate.RateChains;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -45,10 +46,10 @@ public class Rollup {
     private final SheetRepository sheets;
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final RateRepository rates;
+    private final RateChains rates;
     private final Audit audit;
 
-    public Rollup(SheetRepository sheets, PersonRepository people, ClaimRepository claims, RateRepository rates,
+    public Rollup(SheetRepository sheets, PersonRepository people, ClaimRepository claims, RateChains rates,
             Audit audit) {
         this.sheets = sheets;
         this.people = people;
@@ -61,7 +62,7 @@ public class Rollup {
     public Figures of(String sheetId) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
-        List<Rate> sheetRates = rates.findBySheetId(sheetId);
+        RateChain sheetRates = rates.of(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<Long, PersonFigures> byPerson = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
@@ -83,7 +84,7 @@ public class Rollup {
                     .toList();
             boolean anyRate = today != null && Stream.concat(Stream.of(person.gradeOn(today)),
                             counting.stream().map(c -> person.gradeOn(c.getDate())))
-                    .anyMatch(grade -> Rate.inForceOn(ratesOf(sheetRates, grade), today).isPresent());
+                    .anyMatch(grade -> sheetRates.inForceOn(grade, today).isPresent());
             String due = NOT_AVAILABLE;
             if (!dues.isEmpty() || anyRate) {
                 BigDecimal sum = dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -122,7 +123,7 @@ public class Rollup {
      *  of {@code to} (a held person's open ones dated within a
      *  hold and not stated do not) due by in it, none counting as 0; every person on the sheet has one. */
     public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
-        List<Rate> sheetRates = rates.findBySheetId(sheetId);
+        RateChain sheetRates = rates.of(sheetId);
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
         Map<Long, Person> personOf = new LinkedHashMap<>();
@@ -154,9 +155,10 @@ public class Rollup {
      *  to apply to that grade on every date: a claim bound by a statement does not change and a settled one is not
      *  counted; a due of none counts as 0 in the sum. Nothing is stored. */
     public RatePreview preview(String sheetId, String grade, BigDecimal rate) {
-        List<Rate> sheetRates = rates.findBySheetId(sheetId);
-        List<Rate> candidate = Stream.concat(sheetRates.stream().filter(r -> !r.getGrade().equals(grade)),
-                Stream.of(new Rate(sheetId, grade, null, rate.setScale(2, RoundingMode.UNNECESSARY)))).toList();
+        RateChain sheetRates = rates.of(sheetId);
+        RateChain candidate = sheetRates.withOwn(Stream.concat(
+                sheetRates.levels().get(0).stream().filter(r -> !r.getGrade().equals(grade)),
+                Stream.of(new Rate(sheetId, grade, null, rate.setScale(2, RoundingMode.UNNECESSARY)))).toList());
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         Map<Long, Person> personOf = new LinkedHashMap<>();
         people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
@@ -204,23 +206,17 @@ public class Rollup {
         }
     }
 
-    /** The rates of one grade among a sheet's. */
-    private static List<Rate> ratesOf(List<Rate> sheetRates, String grade) {
-        return sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList();
-    }
-
     /** A claim's due: its settled figure, else its stated one (none while PENDING), else its amount at the rate in force on its date of
-     *  its person's grade in force on that date, rounded as the claim rounds (by the sheet's policy date); an overdue claim's late charge is added on top of the figure, and the
+     *  its person's grade in force on that date (the sheet's own, else its nearest ancestor's), rounded as the claim rounds (by the sheet's policy date); an overdue claim's late charge is added on top of the figure, and the
      *  sum is raised to the floor in force on its date unless it is a correction. */
-    private static BigDecimal dueOf(Claim claim, String grade, List<Rate> sheetRates, Sheet sheet, List<Claim> sheetClaims) {
-        List<Rate> gradeRates = ratesOf(sheetRates, grade);
+    private static BigDecimal dueOf(Claim claim, String grade, RateChain sheetRates, Sheet sheet, List<Claim> sheetClaims) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
         RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN
                 : sheet.roundingFor(ClaimService.roundingDate(claim, sheetClaims));
         BigDecimal figure = claim.isBound() ? claim.getBoundDue()
-                : Rate.inForceOn(gradeRates, claim.getDate())
+                : sheetRates.inForceOn(grade, claim.getDate())
                         .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), rounding))
                         .orElse(null);
         return figure == null || sheet == null ? figure

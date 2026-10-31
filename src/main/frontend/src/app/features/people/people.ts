@@ -7,7 +7,7 @@ import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsW
 import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
-import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
+import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents } from '../../core/rates';
 import { Sheets, graceOn } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { Watches } from '../../core/watches';
@@ -19,7 +19,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSum
 import { VoidReasons } from '../../core/void-reasons';
 
 const NO_CLAIMS: ClaimView[] = [];
-const NO_RATES: RateView[] = [];
+const NO_RATES: RateLine = [];
 
 /** The statuses the summary counts claims in, in the order it lists them. */
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
@@ -310,7 +310,7 @@ function csvField(value: string): string {
             @if (personError()?.id === p.id) {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
-            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.ratesByGrade()" [grades]="p"
+            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.lineByGrade()" [grades]="p"
                                [periods]="periods.list()" [holds]="p.holds" [retiredFrom]="p.retiredFrom" [others]="othersOf(p.id)"
                                [selected]="selectedClaims()" (selectToggled)="toggleSelected($event)"
                                (saved)="claimSaved($event)" />
@@ -735,7 +735,7 @@ export class PeopleList {
   /** A claim's due in whole cents, at the rates of its person's grade in force on its date; null with none. */
   private claimDue(p: PersonView, c: ClaimView, dueTerms: DueTerms): number | null {
     const grade = gradeOn(p, c.date);
-    return claimDueCents(c, this.rates.ratesByGrade().get(grade) ?? NO_RATES, dueTerms,
+    return claimDueCents(c, this.rates.lineByGrade().get(grade) ?? NO_RATES, dueTerms,
       roundingDate(c, this.claimsOf(p.id)), grade);
   }
 
