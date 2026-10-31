@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, PROOF_KINDS, ProofKind, cents, countsWithHolds, isDeferred, isOverdue, isReviewLate, money, roundingDate } from '../../core/claims';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, PROOF_KINDS, ProofKind, cents, countsClaimed, countsWithHolds, isDeferred, isOverdue, isReviewLate, money, roundingDate } from '../../core/claims';
 import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateLine, claimDueCents } from '../../core/rates';
@@ -260,7 +260,7 @@ export class PersonClaims {
   readonly selectToggled = output<{ id: number; selected: boolean }>();
 
   protected readonly notAvailable = NOT_AVAILABLE;
-  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '', this.retiredFrom())).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimed = computed(() => money(this.claims().filter(countsClaimed(this.sheets.current()?.today ?? '', this.retiredFrom())).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
   /** Whether the form was typed into since the edit button was pressed. */
   private typedSinceEdit = false;

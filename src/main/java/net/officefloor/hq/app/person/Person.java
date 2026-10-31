@@ -80,8 +80,8 @@ public class Person {
     @CollectionTable(name = "person_past_retirement", joinColumns = @JoinColumn(name = "person_id"))
     private List<PastRetirement> pastRetirements = new ArrayList<>();
 
-    /** The person's holds: their open claims dated within one, and not bound by a statement, count in no live
-     *  total. */
+    /** The person's holds: their open claims dated within one, and not bound by a statement, count in no live due
+     *  figure (they still count in what is claimed). */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<Hold> holds = new ArrayList<>();
@@ -327,6 +327,13 @@ public class Person {
      *  binds it. */
     public boolean counts(Claim claim, LocalDate today) {
         return claim.getStatus().counts() && (claim.isStated() || !heldOn(claim, today));
+    }
+
+    /** Whether a claim of this person counts in what they have claimed on the sheet's {@code today}: as in the live
+     *  totals, except that a hold (theirs or the claim's own) does not take it out. */
+    public boolean countsClaimed(Claim claim, LocalDate today) {
+        return claim.getStatus().counts()
+                && (claim.isStated() || !(claim.getStatus().isOpen() && retiredOn(today)));
     }
 
     /** Whether a claim of this person counts in the figures of a period ending {@code end}: by the status it had at

@@ -62,7 +62,7 @@ export interface ClaimView {
   remindedOn: string | null;
   /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
   waived: boolean;
-  /** Whether the claim is held: while held, an OPEN or PENDING claim no statement binds counts in no live total,
+  /** Whether the claim is held: while held, an OPEN or PENDING claim no statement binds counts in no live due figure (it still counts in what is claimed),
    *  as a held person's claims do. */
   held: boolean;
   /** The late charge its person's last statement binds with `statedDue`, with exactly two decimals; null when not
@@ -122,9 +122,9 @@ export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today
 
 /** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: dated within one
  *  of these holds or held itself, or its person's retirement date (null: not retired) reached by today. */
-function heldOn(c: ClaimView, holds: readonly HoldView[], today: string, retiredFrom: string | null): boolean {
+function heldOn(c: ClaimView, holds: readonly HoldView[], today: string, retiredFrom: string | null, ownHold = true): boolean {
   return (
-    c.held ||
+    (ownHold && c.held) ||
     (retiredFrom !== null && today !== '' && retiredFrom <= today) ||
     holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to))
   );
@@ -137,11 +137,18 @@ export function countsWithHolds(
   holds: readonly HoldView[],
   today: string,
   retiredFrom: string | null = null,
+  ownHold = true,
 ): (c: ClaimView) => boolean {
   return (c) =>
     counts(c) &&
     !isDeferred(c, today) &&
-    (c.stated || (c.status !== 'OPEN' && c.status !== 'PENDING') || !heldOn(c, holds, today, retiredFrom));
+    (c.stated || (c.status !== 'OPEN' && c.status !== 'PENDING') || !heldOn(c, holds, today, retiredFrom, ownHold));
+}
+
+/** Whether the claim counts in what its person has claimed on the sheet's today: as in the live totals, except
+ *  that a hold (the person's or the claim's own) does not take it out. */
+export function countsClaimed(today: string, retiredFrom: string | null = null): (c: ClaimView) => boolean {
+  return countsWithHolds([], today, retiredFrom, false);
 }
 
 /** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it: the last line dated on

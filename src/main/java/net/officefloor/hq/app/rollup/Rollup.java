@@ -81,8 +81,11 @@ public class Rollup {
                     .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
                             && !c.isDeferredOn(today))
                     .toList();
-            // Claimed leaves out corrections: claims that correct another.
-            BigDecimal claimed = counting.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
+            // Claimed leaves out corrections: claims that correct another; a held claim still counts in it.
+            BigDecimal claimed = sheetClaims.stream()
+                    .filter(c -> c.getPersonId().equals(person.getId()) && person.countsClaimed(c, today)
+                            && !c.isDeferredOn(today) && c.getCorrects() == null)
+                    .map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             claimedTotal = claimedTotal.add(claimed);
             // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade

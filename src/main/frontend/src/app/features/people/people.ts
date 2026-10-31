@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, statusAt } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, statusAt } from '../../core/claims';
 import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
@@ -685,8 +685,14 @@ export class PeopleList {
     const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds, today, p.retiredFrom)]));
     return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([], today))(c);
   });
+  /** Whether each claim counts in what is claimed: as in the live totals, except that a hold does not take it out. */
+  private readonly countsClaimedNow = computed(() => {
+    const today = this.todayNow();
+    const byPerson = new Map(this.people().map((p) => [p.id, countsClaimed(today, p.retiredFrom)]));
+    return (c: ClaimView) => (byPerson.get(c.personId) ?? countsClaimed(today))(c);
+  });
   protected readonly claimedTotal = computed(() =>
-    money(this.claims().filter(this.countsNow()).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)),
+    money(this.claims().filter(this.countsClaimedNow()).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)),
   );
   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none),
    *  at most the sheet's cap; null when neither their grade in force today nor the grade any of those claims is at has a rate in

@@ -588,8 +588,8 @@ public class ClaimService {
         return reminded;
     }
 
-    /** Hold an OPEN or PENDING claim, or release it when held: while held it counts in no live total unless a
-     *  statement binds it, as a held person's claims do. Refused for a claim in any other status. */
+    /** Hold an OPEN or PENDING claim, or release it when held: while held it counts in no live due figure
+     *  unless a statement binds it, as a held person's claims do, though it still counts in what is claimed. Refused for a claim in any other status. */
     @Transactional
     public Claim toggleHold(String sheetId, String user, long id) {
         sheets.load(sheetId, user);
@@ -601,10 +601,12 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot be held or released; only an OPEN or PENDING one can");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
         claim.setHeld(!claim.isHeld());
         Claim saved = claims.saveAndFlush(claim);
         audit.recordChangeOnCommit(sheetId, user,
                 entry(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", user, person, saved, saved.getNumber()));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
