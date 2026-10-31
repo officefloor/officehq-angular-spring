@@ -1,0 +1,64 @@
+{
+  "checkpoint": 238,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp238_merge-undo",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can undo the last merge into a person on the same sheet-today it was made (a button on\nthe row; PERSON_MERGE_UNDONE name=<the person restored> from=<the person merged into>): the merged\nperson is back at the end of the list with the claims that came from them (their numbers and\nstatus as they are now) and their own aliases, which leave the other's; patron and pool changes\nstay. Any later day, anyone else, or a person with no merge to undo is refused with an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can undo the last merge into a person on the same sheet-today it was made (a button on\nthe row; PERSON_MERGE_UNDONE name=<the person restored> from=<the person merged into>): the merged\nperson is back at the end of the list with the claims that came from them (their numbers and\nstatus as they are now) and their own aliases, which leave the other's; patron and pool changes\nstay. Any later day, anyone else, or a person with no merge to undo is refused with an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "50ff6a4d4042ed41ccf7e0cc0ff14615a97b86ea",
+  "reset_sha": "",
+  "preagent_sha": "9dad065ac5b12f391a49efd8ff1d0f68181a437e",
+  "prev_sha": "9dad065ac5b12f391a49efd8ff1d0f68181a437e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2971114000000001,
+    "input_tokens": 56,
+    "output_tokens": 19669,
+    "cache_read_tokens": 1511817,
+    "cache_creation_tokens": 75143,
+    "num_turns": 29,
+    "duration_ms": 425311,
+    "duration_api_ms": 192044,
+    "model": "claude-opus-5-5",
+    "session_id": "3385c889-3be6-4a5a-8b0b-ba780237de8e",
+    "stop_reason": "success",
+    "result_text": "The undo-merge feature is in, and all 4 tests in `bin/e2e` pass (the merge-undo test and the three other scenarios).\n\n**How it works:** each row now has an \"Undo last merge\" button (`person-merge-undo`). You press it on the row of the person someone was merged *into*, not the person who disappeared. The server then:\n- **Refuses** with the row's existing `person-error` if any of these is true: the user isn't a steward, they aren't the user who made the merge, it's no longer the same sheet-today, or that person's last merge was already undone (or they never had one).\n- **Restores** the merged person with their original id, at the end of the list. Their name, grades, terms, tags, holds, flag and approver come back, and their contact too unless someone else now has it.\n- **Moves their claims back**, keeping each claim's current number, status and amount, in their original order.\n- **Moves their aliases back.** Their name and own aliases are taken off the other person's alias list and given back to them.\n- **Leaves the rest alone:** patron, pool, crew, statement and period changes stay as the merge made them.\n- **Writes the audit line** `PERSON_MERGE_UNDONE sheet=\u2026 by=\u2026 name=<restored> from=<merged into>`, followed by the usual `ROLLUP` and `TOTALS` lines.\n\n**Choices I made where the request was silent:**\n- Only the *latest* merge into a person can be undone. Once it's undone, the button refuses rather than reaching back to an earlier merge.\n- If the restored person's name or an alias has since been taken by someone else on the sheet, the undo is refused.\n- Merges made before this change have no saved record, so they can't be undone.\n\n**Changes:**\n- **New:** migration `V114__person_merge.sql`, which adds a table recording each merge (who made it, the sheet-today, a JSON copy of the merged person, and the ids of the claims that moved). Also the `PersonMerge` entity and repository, and the `PersonMergeUndone` event.\n- **Server:** `PersonMergeService` now saves that record on every merge and has the new `undo` method. `PersonController` gets a `POST /{personId}/merge-undo` endpoint, `SheetAudit` writes the new audit line, and `Person` gets `removeAlias` plus getters for the flag fields.\n- **Front end:** the button and its handler in `features/people/people.ts`.\n\nI also created a `.run/` folder to hold the test log.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2971114000000001,
+        "num_turns": 29,
+        "duration_ms": 425311,
+        "duration_api_ms": 192044,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp238.agent.jsonl",
+  "agent_diff_file": "cp238.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
