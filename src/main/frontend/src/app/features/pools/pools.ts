@@ -15,6 +15,11 @@ type MemberForm = FormGroup<{
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/** A CSV field: quoted, with its quotes doubled, when it has a comma, quote or line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
+}
+
 // The sheet's pools: each has members chosen from the sheet's people and its other pools, with a share percent of it.
 @Component({
   selector: 'app-pools',
@@ -76,6 +81,9 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
           <p role="alert" data-testid="pool-form-error">{{ err }}</p>
         }
       </form>
+      <p>
+        <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools as CSV</button>
+      </p>
     </section>
   `,
 })
@@ -218,6 +226,29 @@ export class PoolsPanel {
         done();
         this.setError(poolId, 'Could not add that member: is it already in a pool, is the to-date before the from-date, would the pool contain itself, or would the chain of pools be over three deep?');
       },
+    });
+  }
+
+  /** Download the pools as CSV, re-read from the store: one line per member, pools and members in the order added. */
+  protected exportCsv(): void {
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.pools.refresh(sheet.id).subscribe({
+      next: (list) => {
+        const lines = [
+          ['pool', 'member', 'share', 'cut'],
+          ...list.flatMap((pool) => pool.members.map((m) => [
+            pool.name, m.memberPoolId !== null ? 'pool:' + m.name : m.name, m.share, m.cut ?? '',
+          ])),
+        ].map((fields) => fields.map(csvField).join(',') + '\n');
+        const url = URL.createObjectURL(new Blob(lines, { type: 'text/csv' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'pools-' + sheet.id + '.csv';
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url));
+      },
+      error: () => this.error.set('Could not read the pools.'),
     });
   }
 

@@ -50,6 +50,11 @@ export class Pools {
     return this.http.get<PoolView[]>(this.base(sheetId)).pipe(tap((list) => this.list.set(list)));
   }
 
+  /** Re-read a sheet's pools from the store, keeping the ones shown until they are in. */
+  refresh(sheetId: string): Observable<PoolView[]> {
+    return this.http.get<PoolView[]>(this.base(sheetId)).pipe(tap((list) => this.list.set(list)));
+  }
+
   /** Add a pool; refused when the name is blank or already a pool on the sheet. */
   add(sheetId: string, name: string): Observable<PoolView> {
     return this.http.post<PoolView>(this.base(sheetId), { name }).pipe(
