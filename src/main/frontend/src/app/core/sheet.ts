@@ -74,6 +74,9 @@ export interface SheetView {
   fiscalStartMonth: number;
   /** The pot (two decimals), cut among the members of each balanced pool that is a member of none; null when there is none. Not dated. */
   pot: string | null;
+  /** The sheet's proof kinds, comma separated (receipt, photo): while set, a claim above the proof threshold needs a
+   *  proof of each before it can be settled or approved; null when there are none. Not dated. */
+  proofKinds: string | null;
   /** The alert threshold (two decimals): a person whose due-total rises from at or below it to above it is alerted;
    *  null when it is off. Not dated. */
   alertThreshold: string | null;
@@ -265,6 +268,13 @@ export class Sheets {
   setPot(id: string, pot: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/pot`, { pot })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's proof kinds (comma separated); null means none. Not dated. */
+  setProofKinds(id: string, proofKinds: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/proof-kinds`, { proofKinds })
       .pipe(tap((s) => this.active.set(s)));
   }
 

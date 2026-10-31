@@ -264,6 +264,22 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's proof kinds (comma separated, each receipt or photo; null: none), starting the sheet if it has
+     *  never been loaded. Not dated. Refused for a kind listed more than once. */
+    @Transactional
+    public Sheet setProofKinds(String id, String user, String kinds) {
+        if (kinds != null && Arrays.stream(kinds.split(",")).distinct().count() != kinds.split(",").length) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A proof kind is listed more than once");
+        }
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setProofKinds(kinds);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=proof-kinds value=" + (kinds == null ? "" : kinds));
+        return saved;
+    }
+
     /** Set the sheet's parent sheet (null: none), starting the sheet if it has never been loaded. Not dated. Refused
      *  for the sheet itself, for a sheet never loaded, and for a sheet that has this one as an ancestor. */
     @Transactional

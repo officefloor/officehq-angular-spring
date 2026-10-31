@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isDeferred, isOverdue, isReviewLate, money, roundingDate } from '../../core/claims';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, PROOF_KINDS, ProofKind, cents, countsWithHolds, isDeferred, isOverdue, isReviewLate, money, roundingDate } from '../../core/claims';
 import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateLine, claimDueCents } from '../../core/rates';
@@ -22,7 +22,7 @@ const STATUS_ACTION: Partial<Record<ClaimStatus, string>> = {
   OPEN: 'open', SETTLED: 'settle', VOID: 'void', DELETED: 'delete', DRAFT: 'restore',
 };
 const UNNOTED = 'This claim\'s due is above the note threshold, so it needs a note before it can be opened.';
-const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a proof first.';
+const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a proof (one of each proof kind the sheet asks for) first.';
 
 @Component({
   selector: 'app-person-claims',
@@ -104,6 +104,16 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           <button type="button" data-testid="claim-redate" (click)="redate(c)"
                   [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
           — proofs <span data-testid="claim-proofs">{{ c.proofs }}</span>
+          (receipts <span data-testid="claim-proofs-receipt">{{ c.proofReceipts }}</span>,
+          photos <span data-testid="claim-proofs-photo">{{ c.proofPhotos }}</span>)
+          <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+          <select [id]="'claim-proof-kind-' + c.id" data-testid="claim-proof-kind"
+                  [value]="proofKinds()[c.id] ?? ''" (change)="proofKindChanged(c, $any($event.target).value)">
+            <option value="">Not chosen (receipt)</option>
+            @for (k of proofKindOptions; track k) {
+              <option [value]="k">{{ k }}</option>
+            }
+          </select>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           — reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
@@ -265,6 +275,9 @@ export class PersonClaims {
   protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
   /** The date typed to defer each OPEN claim until, by id. */
   protected readonly deferDates = signal<Readonly<Record<number, string>>>({});
+  /** The proof kind chosen for each claim's next proof; none chosen means a receipt. */
+  protected readonly proofKinds = signal<Readonly<Record<number, ProofKind | ''>>>({});
+  protected readonly proofKindOptions = PROOF_KINDS;
   /** The new date typed for each OPEN or PENDING claim, by id. */
   protected readonly newDates = signal<Readonly<Record<number, string>>>({});
   /** The amount typed to split off each OPEN claim, by id. */
@@ -483,12 +496,20 @@ export class PersonClaims {
     });
   }
 
+  protected proofKindChanged(c: ClaimView, kind: ProofKind | ''): void {
+    this.proofKinds.update((kinds) => ({ ...kinds, [c.id]: kind }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
   protected addProof(c: ClaimView): void {
     this.claimError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    this.api.addProof(sheet.id, c.id).subscribe({
-      next: (saved) => this.saved.emit(saved),
+    this.api.addProof(sheet.id, c.id, this.proofKinds()[c.id] || null).subscribe({
+      next: (saved) => {
+        this.proofKinds.update((kinds) => ({ ...kinds, [c.id]: '' }));
+        this.saved.emit(saved);
+      },
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 423

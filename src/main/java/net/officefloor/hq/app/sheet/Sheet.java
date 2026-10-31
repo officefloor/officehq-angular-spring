@@ -139,6 +139,11 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /** The sheet's proof kinds, comma separated (receipt, photo): while set, a claim above the proof threshold needs
+     *  a proof of each before it can be settled or approved; null means none. Not dated. */
+    @Column(name = "proof_kinds", length = 200)
+    private String proofKinds;
+
     /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -169,6 +174,7 @@ public class Sheet {
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
         copy.parentId = parentId;
+        copy.proofKinds = proofKinds;
         copy.lastSettleBatch = lastSettleBatch;
         return copy;
     }
@@ -401,6 +407,19 @@ public class Sheet {
 
     public void setAlertThreshold(BigDecimal alertThreshold) {
         this.alertThreshold = alertThreshold;
+    }
+
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
+    }
+
+    /** The sheet's proof kinds, in the order set; none when it sets none. */
+    public List<String> proofKindList() {
+        return proofKinds == null ? List.of() : Arrays.stream(proofKinds.split(",")).toList();
     }
 
     public String getParentId() {

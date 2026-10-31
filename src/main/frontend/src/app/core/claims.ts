@@ -10,6 +10,10 @@ import { HoldView, PersonView } from './people';
  *  a REVIEW claim can be VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
+/** The kinds a proof can be. */
+export const PROOF_KINDS = ['receipt', 'photo'] as const;
+export type ProofKind = typeof PROOF_KINDS[number];
+
 export interface ClaimView {
   id: number;
   personId: number;
@@ -44,6 +48,10 @@ export interface ClaimView {
   log: ClaimLogLine[];
   /** How many proofs have been given for the claim. */
   proofs: number;
+  /** How many of the claim's proofs are receipts. */
+  proofReceipts: number;
+  /** How many of the claim's proofs are photos. */
+  proofPhotos: number;
   /** The number of the claim this one was split off; null on any other claim. */
   splitFrom: string | null;
   /** The signed-in name of the user who has the claim's editor open, locking it for others; null when no one has. */
@@ -326,9 +334,10 @@ export class Claims {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/date`, { date });
   }
 
-  /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
-  addProof(sheetId: string, id: number): Observable<ClaimView> {
-    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/proofs`, {});
+  /** Raise a claim's proofs count by one, of a kind (null: none chosen, a receipt); refused for a SETTLED or VOID
+   *  claim. */
+  addProof(sheetId: string, id: number, kind: ProofKind | null): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/proofs`, { kind });
   }
 
   /** Add a line to a DRAFT claim; refused for a claim that is not a DRAFT, in a closed period or locked by another

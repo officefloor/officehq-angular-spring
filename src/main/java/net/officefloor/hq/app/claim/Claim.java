@@ -26,6 +26,11 @@ import org.hibernate.annotations.BatchSize;
 @Table(name = "claim")
 public class Claim {
 
+    /** The kinds a proof can be: a receipt (when none is chosen) or a photo. */
+    public static final String PROOF_RECEIPT = "receipt";
+    public static final String PROOF_PHOTO = "photo";
+    public static final List<String> PROOF_KINDS = List.of(PROOF_RECEIPT, PROOF_PHOTO);
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -137,6 +142,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of the claim's proofs are photos; the rest are receipts. */
+    @Column(name = "proof_photos", nullable = false)
+    private int proofPhotos;
+
     /** The signed-in name of the user who has the claim's editor open, locking it for other users until they save
      *  or cancel or the sheet's today changes; none when no one has. */
     @Column(name = "locked_by", length = 100)
@@ -207,6 +216,7 @@ public class Claim {
         copy.escalated = escalated;
         copy.waived = waived;
         copy.proofs = proofs;
+        copy.proofPhotos = proofPhotos;
         copy.lateEntry = lateEntry;
         log.forEach(l -> copy.log.add(new ClaimLogEntry(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
         comments.forEach(c -> copy.comments.add(new ClaimComment(c.getBy(), c.getOn(), c.getText())));
@@ -522,9 +532,26 @@ public class Claim {
         this.lateEntry = true;
     }
 
-    /** Count one more proof given for the claim. */
-    public void addProof() {
+    public int getProofPhotos() {
+        return proofPhotos;
+    }
+
+    /** How many of the claim's proofs are receipts. */
+    public int getProofReceipts() {
+        return proofs - proofPhotos;
+    }
+
+    /** How many of the claim's proofs are of a kind (receipt or photo). */
+    public int proofsOf(String kind) {
+        return PROOF_PHOTO.equals(kind) ? proofPhotos : getProofReceipts();
+    }
+
+    /** Count one more proof given for the claim, of a kind (receipt or photo). */
+    public void addProof(String kind) {
         proofs++;
+        if (PROOF_PHOTO.equals(kind)) {
+            proofPhotos++;
+        }
     }
 
     /** The status the claim had at the end of {@code day}, as its log records it: the last line dated on or before
