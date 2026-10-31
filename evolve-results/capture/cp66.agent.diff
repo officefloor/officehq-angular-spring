@@ -1,0 +1,180 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index a64bf9cf3..97f6d93ff 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -220,6 +220,11 @@ export class Claims {
+     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/defer`, { until });
+   }
+ 
++  /** A steward re-dates an OPEN or PENDING claim to `date` (yyyy-mm-dd). */
++  redate(sheetId: string, id: number, date: string): Observable<ClaimView> {
++    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/date`, { date });
++  }
++
+   /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
+   addProof(sheetId: string, id: number): Observable<ClaimView> {
+     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/proofs`, {});
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 3b4e0940d..8e4787e5c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -69,6 +69,11 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a
+                  [value]="deferDates()[c.id] ?? ''" (input)="deferDateChanged(c, $any($event.target).value)" />
+           <button type="button" data-testid="claim-defer" (click)="defer(c)"
+                   [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
++          <label [for]="'claim-date-new-' + c.id">New date</label>
++          <input [id]="'claim-date-new-' + c.id" type="date" data-testid="claim-date-new"
++                 [value]="newDates()[c.id] ?? ''" (input)="newDateChanged(c, $any($event.target).value)" />
++          <button type="button" data-testid="claim-redate" (click)="redate(c)"
++                  [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
+           — proofs <span data-testid="claim-proofs">{{ c.proofs }}</span>
+           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
+@@ -158,6 +163,8 @@ export class PersonClaims {
+   protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
+   /** The date typed to defer each OPEN claim until, by id. */
+   protected readonly deferDates = signal<Readonly<Record<number, string>>>({});
++  /** The new date typed for each OPEN or PENDING claim, by id. */
++  protected readonly newDates = signal<Readonly<Record<number, string>>>({});
+   /** The amount typed to split off each OPEN claim, by id. */
+   protected readonly splitAmounts = signal<Readonly<Record<number, string>>>({});
+   /** The reason typed to reject each PENDING claim, by id. */
+@@ -225,6 +232,38 @@ export class PersonClaims {
+     });
+   }
+ 
++  protected newDateChanged(c: ClaimView, date: string): void {
++    this.newDates.update((dates) => ({ ...dates, [c.id]: date }));
++    if (this.claimError()?.id === c.id) this.claimError.set(null);
++  }
++
++  protected redate(c: ClaimView): void {
++    this.claimError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const date = (this.newDates()[c.id] ?? '').trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.claimError.set({ id: c.id, message: 'Choose the new date of the claim.' });
++      return;
++    }
++    this.api.redate(sheet.id, c.id, date).subscribe({
++      next: (saved) => {
++        this.newDates.update((dates) => ({ ...dates, [c.id]: '' }));
++        this.saved.emit(saved);
++      },
++      error: (err: unknown) => this.claimError.set({
++        id: c.id,
++        message: err instanceof HttpErrorResponse && err.status === 403
++          ? 'Only a steward can re-date a claim.'
++          : err instanceof HttpErrorResponse && err.status === 423
++            ? 'This claim, or its new date, is inside a closed period.'
++            : err instanceof HttpErrorResponse && err.status === 422
++              ? `${this.personName()} retired before ${date}.`
++              : `A ${c.status} claim cannot be re-dated; only an OPEN or PENDING one can.`,
++      }),
++    });
++  }
++
+   protected splitAmountChanged(c: ClaimView, amount: string): void {
+     this.splitAmounts.update((amounts) => ({ ...amounts, [c.id]: amount }));
+     if (this.claimError()?.id === c.id) this.claimError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 93f2d3eb5..6f794ffcb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -84,6 +84,10 @@ public class ClaimController {
+     public record Deferral(@NotNull LocalDate until) {
+     }
+ 
++    /** The new date of an OPEN or PENDING claim. */
++    public record Redating(@NotNull LocalDate date) {
++    }
++
+     /** The person a claim is to move to. */
+     public record Reassignment(@NotNull Long personId) {
+     }
+@@ -192,6 +196,15 @@ public class ClaimController {
+         return ClaimView.of(claims.defer(sheetId, user, id, request.until()));
+     }
+ 
++    @PutMapping("/claims/{id}/date")
++    public ClaimView redate(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody Redating request) {
++        return ClaimView.of(claims.redate(sheetId, user, id, request.date()));
++    }
++
+     @PostMapping("/claims/{id}/proofs")
+     public ClaimView addProof(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 7f33567f0..a9b329510 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -253,6 +253,41 @@ public class ClaimService {
+         return deferred;
+     }
+ 
++    /** A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement binds
++     *  it to stays bound; its period follows the new date, and while the sheet numbers per period a move to another
++     *  period gives it the next number of its new period's sequence (its old number is never given again). Refused
++     *  for anyone but a steward, a claim in any other status, a claim dated inside a closed period, a new date inside
++     *  one and a new date after its person retired. */
++    @Transactional
++    public Claim redate(String sheetId, String user, long id, LocalDate date) {
++        sheets.load(sheetId, user);
++        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-dates a claim");
++        }
++        if (!claim.getStatus().isOpen()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be re-dated; only an OPEN or PENDING one can");
++        }
++        refuseIfClosed(sheetId, claim.getDate());
++        refuseIfClosed(sheetId, date);
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
++        refuseIfRetired(person, date);
++        Rollup.Figures before = rollup.of(sheetId);
++        LocalDate old = claim.getDate();
++        if (sheet.numbersPerPeriod() && !prefixOn(sheet, old).equals(prefixOn(sheet, date))) {
++            claim.setNumber(nextNumber(sheet, date));
++        }
++        claim.setDate(date);
++        Claim redated = claims.saveAndFlush(claim);
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REDATED", user, person, redated, redated.getNumber())
++                + " old=" + old + " new=" + date);
++        rollup.recordChanges(sheetId, user, before);
++        return redated;
++    }
++
+     /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim and one dated inside a closed
+      *  period. */
+     @Transactional
+@@ -489,8 +524,7 @@ public class ClaimService {
+         if (!sheet.numbersPerPeriod()) {
+             return String.valueOf(sheet.nextClaimNumber());
+         }
+-        String prefix = periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
+-                .filter(p -> p.contains(date)).map(Period::getName).findFirst().orElse(NO_PERIOD);
++        String prefix = prefixOn(sheet, date);
+         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(sheet.getId(), prefix)
+                 .orElseGet(() -> new ClaimSequence(sheet.getId(), prefix));
+         String number = sequence.next();
+@@ -498,6 +532,12 @@ public class ClaimService {
+         return number;
+     }
+ 
++    /** The prefix of the numbers given within the period a day is in: its name, or X in no period. */
++    private String prefixOn(Sheet sheet, LocalDate date) {
++        return periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
++                .filter(p -> p.contains(date)).map(Period::getName).findFirst().orElse(NO_PERIOD);
++    }
++
+     /** Refuse to settle or approve a claim with no proofs whose due is above the proof threshold in force on its
+      *  date (a claim with no due, or on a sheet with no threshold then, needs none). */
+     private static void refuseUnproven(Sheet sheet, Claim claim, BigDecimal due) {
