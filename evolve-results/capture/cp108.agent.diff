@@ -1,0 +1,64 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 15e3c484e..56dfd9745 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -769,24 +769,29 @@ export class PeopleList {
+     setTimeout(() => URL.revokeObjectURL(url));
+   }
+ 
+-  /** The person's patrons' names, sorted, comma and space separated. */
++  /** The person's patrons, each as <name> <share>, sorted by name, comma and space separated. */
+   protected patronsOf(personId: number): string {
+     const nameOf = new Map(this.people().map((q) => [q.id, q.name]));
+-    return (this.patronIdsByPerson().get(personId) ?? [])
+-      .map((id) => nameOf.get(id) ?? '')
+-      .sort((a, b) => a.localeCompare(b))
++    return patronShares(this.patronIdsByPerson().get(personId) ?? [])
++      .map(({ id, share }) => ({ name: nameOf.get(id) ?? '', share }))
++      .sort((a, b) => a.name.localeCompare(b.name))
++      .map(({ name, share }) => name + ' ' + money(share))
+       .join(', ');
+   }
+ 
+-  /** The person's backing: their patrons' settled figures over their SETTLED claims dated within the 90 days up to and
+-   *  including the sheet's today, added up; 0.00 with none. */
++  /** The person's backing: over their patrons, each patron's settled figures over their SETTLED claims dated within
++   *  the 90 days up to and including the sheet's today, times the patron's share divided by 100, added up and rounded
++   *  half to even; 0.00 with none. */
+   protected backingOf(personId: number): string {
+     const today = this.todayNow();
+     if (today === '') return money(0);
+     const from = new Date(Date.parse(today) - 89 * 86_400_000).toISOString().slice(0, 10);
+-    return money((this.patronIdsByPerson().get(personId) ?? []).reduce((sum, id) => sum + this.claimsOf(id)
+-      .filter((c) => c.status === 'SETTLED' && c.settledDue !== null && from <= c.date && c.date <= today)
+-      .reduce((s, c) => s + cents(c.settledDue ?? '0'), 0), 0));
++    // Figures in cents times shares in hundredths: the exact backing in ten-thousandths of a cent.
++    const scaled = patronShares(this.patronIdsByPerson().get(personId) ?? []).reduce((sum, { id, share }) => sum
++      + share * this.claimsOf(id)
++        .filter((c) => c.status === 'SETTLED' && c.settledDue !== null && from <= c.date && c.date <= today)
++        .reduce((s, c) => s + cents(c.settledDue ?? '0'), 0), 0);
++    return money(divideHalfEven(scaled, 10_000));
+   }
+ 
+   /** Start watching the person, or stop when the signed-in user already watches them. */
+@@ -1285,3 +1290,20 @@ export class PeopleList {
+     });
+   }
+ }
++
++/** Each patron's share in hundredths, in the order they were named: 100.00 split equally, each share rounded half to
++ *  even, with the remainder given to the first-named patron. */
++function patronShares(patronIds: number[]): { id: number; share: number }[] {
++  if (patronIds.length === 0) return [];
++  const each = divideHalfEven(10_000, patronIds.length);
++  const first = 10_000 - each * (patronIds.length - 1);
++  return patronIds.map((id, i) => ({ id, share: i === 0 ? first : each }));
++}
++
++/** An integer divided by a positive integer, rounded half to even. */
++function divideHalfEven(numerator: number, divisor: number): number {
++  const quotient = Math.floor(numerator / divisor);
++  const twice = 2 * (numerator - quotient * divisor);
++  if (twice > divisor || (twice === divisor && quotient % 2 !== 0)) return quotient + 1;
++  return quotient;
++}
