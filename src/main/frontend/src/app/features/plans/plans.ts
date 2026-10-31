@@ -7,6 +7,8 @@ import { Sheets } from '../../core/sheet';
 
 /** An interval the plan form accepts: a whole number of days. */
 const EVERY_PATTERN = /^\d{1,5}$/;
+/** A day of the month the plan form accepts: a whole number (1 to 31 is checked on submit). */
+const DAY_PATTERN = /^\d{1,2}$/;
 
 // A person's plans, and the form on their row that adds one.
 @Component({
@@ -19,7 +21,11 @@ const EVERY_PATTERN = /^\d{1,5}$/;
           <li [attr.data-testid]="'plan-row-' + pl.id">
             <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
             from <span data-testid="plan-start">{{ pl.start }}</span>
-            every <span data-testid="plan-every">{{ pl.every }}</span> days
+            @if (pl.day !== null) {
+              monthly on day <span data-testid="plan-day">{{ pl.day }}</span>
+            } @else {
+              every <span data-testid="plan-every">{{ pl.every }}</span> days
+            }
             to <span data-testid="plan-end">{{ pl.end }}</span>
             — made <span data-testid="plan-generated">{{ pl.generated }}</span>
           </li>
@@ -34,6 +40,9 @@ const EVERY_PATTERN = /^\d{1,5}$/;
       <input [id]="'plan-form-start-' + personId()" type="date" data-testid="plan-form-start" formControlName="start" />
       <label [for]="'plan-form-every-' + personId()">every (days)</label>
       <input [id]="'plan-form-every-' + personId()" data-testid="plan-form-every" formControlName="every"
+             inputmode="numeric" autocomplete="off" />
+      <label [for]="'plan-form-day-' + personId()">or monthly on day</label>
+      <input [id]="'plan-form-day-' + personId()" data-testid="plan-form-day" formControlName="day"
              inputmode="numeric" autocomplete="off" />
       <label [for]="'plan-form-end-' + personId()">end</label>
       <input [id]="'plan-form-end-' + personId()" type="date" data-testid="plan-form-end" formControlName="end" />
@@ -57,6 +66,7 @@ export class PersonPlans {
     amount: new FormControl('', { nonNullable: true }),
     start: new FormControl('', { nonNullable: true }),
     every: new FormControl('', { nonNullable: true }),
+    day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
   });
 
@@ -64,7 +74,7 @@ export class PersonPlans {
     // A (re)load of the sheet starts the form afresh.
     toObservable(this.sheets.loaded).pipe(takeUntilDestroyed()).subscribe(() => {
       this.error.set(null);
-      this.form.reset({ amount: '', start: '', every: '', end: '' }, { emitEvent: false });
+      this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
     });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
@@ -79,13 +89,22 @@ export class PersonPlans {
     const value = this.form.getRawValue();
     const amount = value.amount.trim();
     const every = value.every.trim();
+    const day = value.day.trim();
     const start = value.start.trim() === '' ? sheet.today : value.start.trim();
     if (!AMOUNT_PATTERN.test(amount)) {
       this.error.set('Type an amount of zero or more with up to two decimals.');
       return;
     }
-    if (!EVERY_PATTERN.test(every) || Number(every) < 1) {
+    if ((every === '') === (day === '')) {
+      this.error.set('Type either the days between claims or a day of the month.');
+      return;
+    }
+    if (every !== '' && (!EVERY_PATTERN.test(every) || Number(every) < 1)) {
       this.error.set('Type the days between claims as a whole number of 1 or more.');
+      return;
+    }
+    if (day !== '' && (!DAY_PATTERN.test(day) || Number(day) < 1 || Number(day) > 31)) {
+      this.error.set('Type the day of the month as a whole number from 1 to 31.');
       return;
     }
     if (value.end === '') {
@@ -97,11 +116,17 @@ export class PersonPlans {
       return;
     }
     this.saving.set(true);
-    this.plans.add(sheet.id, this.personId(), { amount, start: value.start === '' ? null : value.start, every: Number(every), end: value.end })
+    this.plans.add(sheet.id, this.personId(), {
+      amount,
+      start: value.start === '' ? null : value.start,
+      every: every === '' ? null : Number(every),
+      day: day === '' ? null : Number(day),
+      end: value.end,
+    })
       .subscribe({
         next: () => {
           this.saving.set(false);
-          this.form.reset({ amount: '', start: '', every: '', end: '' }, { emitEvent: false });
+          this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
         },
         error: () => {
           this.saving.set(false);

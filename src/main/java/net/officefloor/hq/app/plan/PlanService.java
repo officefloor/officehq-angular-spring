@@ -62,17 +62,24 @@ public class PlanService {
         return all.stream().map(p -> new Counted(p, counts.getOrDefault(p.getId(), 0L).intValue())).toList();
     }
 
-    /** Add a plan for a person; a missing start takes the sheet's today. Refused when the amount is one the claim
-     *  form refuses for a claim that corrects none (negative, or with more than two decimals), when the interval is
-     *  not a whole number of days of at least 1, or when the end is before the start. */
+    /** Add a plan for a person; a missing start takes the sheet's today. It runs either every so many days or
+     *  monthly on a day of the month, not both. Refused when the amount is one the claim form refuses for a claim
+     *  that corrects none (negative, or with more than two decimals), when the interval is not a whole number of days
+     *  of at least 1, when the day of the month is not 1 to 31, or when the end is before the start. */
     @Transactional
     public Counted add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
-            LocalDate end) {
+            Integer day, LocalDate end) {
         if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount is not negative, with up to two decimals");
         }
-        if (every == null || every < 1) {
+        if ((every == null) == (day == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan repeats every so many days or on a day of the month");
+        }
+        if (every != null && every < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan repeats every 1 day or more");
+        }
+        if (day != null && (day < 1 || day > 31)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's day of the month is 1 to 31");
         }
         if (end == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan has an end date");
@@ -86,18 +93,20 @@ public class PlanService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's end is not before its start");
         }
         Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount.setScale(2, RoundingMode.UNNECESSARY), from,
-                every, end));
+                every, day, end));
         audit.recordChangeOnCommit(sheetId, user, "PLAN_ADDED sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " amount=" + plan.getAmount().toPlainString()
-                + " start=" + plan.getStart() + " every=" + plan.getEvery() + " end=" + plan.getEnd());
+                + " start=" + plan.getStart()
+                + (plan.getDay() != null ? " day=" + plan.getDay() : " every=" + plan.getEvery())
+                + " end=" + plan.getEnd());
         return new Counted(plan, 0);
     }
 
     /**
      * Make, for every plan on the sheet in the order they were added, a DRAFT claim with the plan's amount for each
-     * plan date (its start, then every so many days) up to its end and the sheet's today that it has made none for
-     * yet, dated that day with an empty note, by the claim form's rules: a date the form refuses is skipped, and
-     * tried again the next time.
+     * plan date (its start, then every so many days; or its day in each month from the start's) up to its end and the
+     * sheet's today that it has made none for yet, dated that day with an empty note, by the claim form's rules: a date
+     * the form refuses is skipped, and tried again the next time.
      */
     @Transactional
     public Generated generate(String sheetId, String user) {
@@ -111,7 +120,7 @@ public class PlanService {
         List<Claim> added = new ArrayList<>();
         for (Plan plan : all) {
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
-            for (LocalDate d = plan.getStart(); !d.isAfter(last); d = d.plusDays(plan.getEvery())) {
+            for (LocalDate d : plan.datesUpTo(last)) {
                 if (done.contains(plan.getId() + "@" + d) || !claims.accepts(sheetId, plan.getPersonId(), d)) {
                     continue;
                 }

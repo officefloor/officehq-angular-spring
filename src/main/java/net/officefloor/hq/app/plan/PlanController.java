@@ -25,18 +25,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     /** A plan as the screen shows it, with how many claims it has made so far. */
-    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end,
-            int generated) {
+    public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, int generated) {
 
         public static PlanView of(PlanService.Counted c) {
             Plan p = c.plan();
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(), p.getEvery(),
-                    p.getEnd(), c.generated());
+                    p.getDay(), p.getEnd(), c.generated());
         }
     }
 
-    /** A plan as the form submits it; a missing start takes the sheet's today. */
-    public record PlanForm(@NotNull BigDecimal amount, LocalDate start, @NotNull Integer every,
+    /** A plan as the form submits it, with either an interval or a day of the month; a missing start takes the
+     *  sheet's today. */
+    public record PlanForm(@NotNull BigDecimal amount, LocalDate start, Integer every, Integer day,
             @NotNull LocalDate end) {
     }
 
@@ -63,7 +64,7 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PlanForm request) {
         return PlanView.of(plans.add(sheetId, user, personId, request.amount(), request.start(), request.every(),
-                request.end()));
+                request.day(), request.end()));
     }
 
     @PostMapping("/plans/generate")

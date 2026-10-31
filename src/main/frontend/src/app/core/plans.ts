@@ -3,23 +3,26 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { ClaimView } from './claims';
 
-/** A person's plan: an amount claimed on its start date and every `every` days after, up to its end date, with how
- *  many claims it has made so far. */
+/** A person's plan: an amount claimed on its start date and every `every` days after, or monthly on day `day` of each
+ *  month from the start's, up to its end date, with how many claims it has made so far. */
 export interface PlanView {
   id: number;
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  every: number | null;
+  day: number | null;
   end: string;
   generated: number;
 }
 
-/** A plan as its form submits it; a blank start takes the sheet's today. */
+/** A plan as its form submits it, with either an interval or a day of the month; a blank start takes the sheet's
+ *  today. */
 export interface PlanForm {
   amount: string;
   start: string | null;
-  every: number;
+  every: number | null;
+  day: number | null;
   end: string;
 }
 
