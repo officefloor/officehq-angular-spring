@@ -1,0 +1,64 @@
+{
+  "checkpoint": 69,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp69_claim-lock",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Opening a claim's editor (the edit button) now locks the claim for other users until the editor is\nsaved or cancelled (a cancel button on the claim) or the sheet's today changes; another user's edit\nbutton on a locked claim is refused with an error on the claim. A claim that cannot be edited is\nrefused at the edit button, as before, and takes no lock; a viewer's edit button is refused like any\naction of theirs. A claim in a closed period cannot be edited, so its edit button is refused as\nwell.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nOpening a claim's editor (the edit button) now locks the claim for other users until the editor is\nsaved or cancelled (a cancel button on the claim) or the sheet's today changes; another user's edit\nbutton on a locked claim is refused with an error on the claim. A claim that cannot be edited is\nrefused at the edit button, as before, and takes no lock; a viewer's edit button is refused like any\naction of theirs. A claim in a closed period cannot be edited, so its edit button is refused as\nwell.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1286b287b80d6d6d9cffb265f64a12039ac533bc",
+  "reset_sha": "",
+  "preagent_sha": "375d2639c956b87fd302b75f8646cbab0f224dae",
+  "prev_sha": "375d2639c956b87fd302b75f8646cbab0f224dae",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3865403999999995,
+    "input_tokens": 58,
+    "output_tokens": 21133,
+    "cache_read_tokens": 1719522,
+    "cache_creation_tokens": 77468,
+    "num_turns": 30,
+    "duration_ms": 1012094,
+    "duration_api_ms": 262507,
+    "model": "claude-opus-5-5",
+    "session_id": "73da1f85-b379-4f0e-8c63-34c6de20eefa",
+    "stop_reason": "success",
+    "result_text": "The claim lock is in place, and `bin/e2e` passes all 4 tests on two runs in a row.\n\n**What it does now**\n- Pressing a claim's edit button locks the claim to that user. The lock is released when they save, when they press cancel, or when the sheet's today changes to a different date.\n- Another user's edit button on a locked claim is refused with an error on the claim. If their screen already shows the lock, the refusal appears straight away; if not, the server refuses it.\n- The server also refuses a save on a claim someone else has locked.\n- A claim that isn't a draft, a claim in a closed period, and any edit by a viewer are all refused at the edit button. None of these takes a lock.\n- If you hold a lock and reload the sheet, your editor opens again on that claim. The test relies on this: it saves an editor that was opened before a reload.\n- Locking and unlocking write nothing to the audit file. Only a save writes its usual `CLAIM_EDITED` line.\n\n**Where the changes are**\n- **Stored data:** a new migration, `V46__claim_locked_by.sql`, adds a `locked_by` column to the claim table.\n- **Server:**\n  - New `POST` and `DELETE /api/sheets/{sheetId}/claims/{id}/lock` endpoints in `ClaimController`, with matching `lock`/`unlock` methods in `ClaimService`.\n  - `update` now refuses when someone else holds the lock, and clears the lock when it saves.\n  - `SheetService.setToday` releases every lock on the sheet when the date actually changes.\n  - Claims sent to the screen now include `lockedBy`.\n- **Front end:** the edit, cancel and reopen-on-reload behaviour is in `features/claims/claims.ts`, with `lock`/`unlock` calls added to `core/claims.ts`.\n\n**Behaviour you might not expect**\n- When the server takes a moment to answer, the editor opens empty at the click and fills in the claim's values once the lock is granted. It's done this way because the test starts typing straight after clicking. If you've already typed by then, your typing is kept.\n- If the server refuses the lock after you've started typing, the editor stays open. Saving it is then refused too.\n- A server refusal because someone else holds the lock gives a combined message: \"Another user is editing this claim, or it is no longer a draft.\" The server answers both cases the same way, so the screen can't tell them apart. When the lock is already visible on screen, the message names who holds it instead.\n- Locks don't expire on their own. If someone opens an editor and walks away, the claim stays locked until they cancel or save, or until the sheet's today changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3865403999999995,
+        "num_turns": 30,
+        "duration_ms": 1012094,
+        "duration_api_ms": 262507,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp69.agent.jsonl",
+  "agent_diff_file": "cp69.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
