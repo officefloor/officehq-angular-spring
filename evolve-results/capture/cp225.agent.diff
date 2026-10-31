@@ -1,0 +1,387 @@
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+index 0b23cbab2..ab4a0236c 100644
+--- a/src/main/frontend/src/app/features/grades/grades.ts
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, effect, inject, signal } from '@angular/core';
++import { Component, effect, inject, output, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -9,7 +9,8 @@ export interface Grade {
+ }
+ 
+ // The sheet's grades and whether each is retired, and the select and button that retire one. A retired grade
+-// cannot be chosen for a new person or in an edit; people already on it keep it.
++// cannot be chosen for a new person or in an edit; people already on it keep it. A steward can merge a grade
++// into another: everyone on the merged grade today is given the other from today.
+ @Component({
+   selector: 'app-grades',
+   template: `
+@@ -36,10 +37,38 @@ export interface Grade {
+           }
+         </select>
+         <button type="submit" data-testid="grade-retire">Retire grade</button>
+-        @if (error()) {
+-          <p role="alert" data-testid="grade-error">{{ error() }}</p>
+-        }
+       </form>
++      <form (submit)="merge($event)" aria-label="Merge grade">
++        <label for="grade-merge-from">Merge grade</label>
++        <select
++          id="grade-merge-from"
++          data-testid="grade-merge-from"
++          [value]="mergeFrom()"
++          (change)="mergeFrom.set(value($event)); error.set('')"
++        >
++          <option value="">Choose a grade</option>
++          @for (g of grades(); track g.grade) {
++            <option [value]="g.grade">{{ g.grade }}</option>
++          }
++        </select>
++        <label for="grade-merge-into">into</label>
++        <select
++          id="grade-merge-into"
++          data-testid="grade-merge-into"
++          [value]="mergeInto()"
++          (change)="mergeInto.set(value($event)); error.set('')"
++        >
++          <option value="">Choose a grade</option>
++          @for (g of grades(); track g.grade) {
++            <option [value]="g.grade">{{ g.grade }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="grade-merge">Merge grade</button>
++        <span>Moved <strong data-testid="grade-merged">{{ merged() }}</strong></span>
++      </form>
++      @if (error()) {
++        <p role="alert" data-testid="grade-error">{{ error() }}</p>
++      }
+     </section>
+   `,
+ })
+@@ -50,6 +79,12 @@ export class Grades {
+   protected readonly grades = signal<Grade[]>([]);
+   protected readonly grade = signal('');
+   protected readonly error = signal('');
++  protected readonly mergeFrom = signal('');
++  protected readonly mergeInto = signal('');
++  /** What the last merge did: how many people it moved, and from which grade into which; blank before any. */
++  protected readonly merged = signal('');
++  /** Emitted once a merge has moved people onto another grade, so what they are due is shown again. */
++  readonly changed = output<void>();
+   /** A retire still waiting for its answer: another press meanwhile is ignored. */
+   private busy = false;
+ 
+@@ -59,6 +94,9 @@ export class Grades {
+       this.session.loads();
+       this.grades.set([]);
+       this.grade.set('');
++      this.mergeFrom.set('');
++      this.mergeInto.set('');
++      this.merged.set('');
+       this.error.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -105,6 +143,45 @@ export class Grades {
+     }
+   }
+ 
++  protected async merge(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.busy) return;
++    this.error.set('');
++    this.merged.set('');
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const from = this.mergeFrom();
++    const into = this.mergeInto();
++    if (!from || !into) {
++      this.error.set('Choose two grades.');
++      return;
++    }
++    if (from === into) {
++      this.error.set('A grade cannot be merged into itself.');
++      return;
++    }
++    const headers = { 'X-User': this.session.user() ?? '' };
++    this.busy = true;
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ merged: number }>(
++          `/api/sheets/${encodeURIComponent(sheet)}/grades/merge`,
++          { from, into },
++          { headers },
++        ),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.merged.set(`${result.merged} from ${from} into ${into}`);
++      this.changed.emit();
++    } catch (err) {
++      if (this.session.sheet() !== sheet) return;
++      const answer = err instanceof HttpErrorResponse ? err : null;
++      this.error.set(answer?.error?.message ?? 'Could not merge the grade.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   private async reload(sheet: string): Promise<void> {
+     const loads = this.session.loads();
+     const grades = await firstValueFrom(this.http.get<Grade[]>(`/api/sheets/${encodeURIComponent(sheet)}/grades`));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1d7918794..65d3d342f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -204,7 +204,7 @@ function csvField(value: string): string {
+       }
+     </section>
+     <app-rates (changed)="reloadSheet()" />
+-    <app-grades />
++    <app-grades (changed)="reloadSheet()" />
+     <app-access [settingsSaved]="reloadAfterSettings" />
+     <app-periods [people]="people()" [(periods)]="periods" />
+     <app-holidays />
+diff --git a/src/main/java/net/officefloor/hq/app/SheetAudit.java b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+index 0bcdb0d52..c0c066443 100644
+--- a/src/main/java/net/officefloor/hq/app/SheetAudit.java
++++ b/src/main/java/net/officefloor/hq/app/SheetAudit.java
+@@ -55,6 +55,7 @@ import net.officefloor.hq.app.crew.CrewAdded;
+ import net.officefloor.hq.app.crew.CrewMemberAdded;
+ import net.officefloor.hq.app.pool.PoolAdded;
+ import net.officefloor.hq.app.pool.PoolMemberAdded;
++import net.officefloor.hq.app.rate.GradeMerged;
+ import net.officefloor.hq.app.rate.GradeRetired;
+ import net.officefloor.hq.app.rate.RateChanged;
+ import net.officefloor.hq.app.rollup.Rollup;
+@@ -317,6 +318,12 @@ public class SheetAudit {
+         change(e.sheetId(), e.user(), "GRADE_RETIRED sheet=" + e.sheetId() + " by=" + e.user() + " grade=" + e.grade());
+     }
+ 
++    @TransactionalEventListener
++    public void on(GradeMerged e) {
++        change(e.sheetId(), e.user(), "GRADE_MERGED sheet=" + e.sheetId() + " by=" + e.user()
++                + " from=" + e.from() + " into=" + e.into());
++    }
++
+     @TransactionalEventListener
+     public void on(RateChanged e) {
+         change(e.sheetId(), e.user(), "RATE_SET sheet=" + e.sheetId() + " by=" + e.user()
+diff --git a/src/main/java/net/officefloor/hq/app/person/GradeMergeService.java b/src/main/java/net/officefloor/hq/app/person/GradeMergeService.java
+new file mode 100644
+index 000000000..0bdafd061
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/GradeMergeService.java
+@@ -0,0 +1,60 @@
++package net.officefloor.hq.app.person;
++
++import java.time.LocalDate;
++import net.officefloor.hq.app.rate.GradeService;
++import net.officefloor.hq.app.rollup.Rollup;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.support.TransactionTemplate;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * A steward merges a grade into another: the merge is recorded, then everyone whose grade in force on the
++ * sheet's today is the merged grade is given the other from that today, in list order. Each person is edited
++ * on their own, exactly as the person form would (their name and own terms kept, no version check), so one
++ * that cannot be edited is left as they are while the rest go through. Once all are done, the figures the
++ * merge as a whole moved are announced.
++ */
++@Service
++public class GradeMergeService {
++
++    public record Result(int merged) {
++    }
++
++    private final PersonService people;
++    private final GradeService grades;
++    private final SheetService sheets;
++    private final Rollup rollup;
++    private final TransactionTemplate tx;
++
++    public GradeMergeService(PersonService people, GradeService grades, SheetService sheets, Rollup rollup,
++            TransactionTemplate tx) {
++        this.rollup = rollup;
++        this.tx = tx;
++        this.people = people;
++        this.grades = grades;
++        this.sheets = sheets;
++    }
++
++    public Result merge(String sheetId, String user, String from, String into) {
++        Rollup.Figures before = tx.execute(status -> {
++            grades.merged(sheetId, user, from, into);
++            return rollup.figures(sheetId);
++        });
++        LocalDate today = sheets.today(sheetId);
++        int merged = 0;
++        for (Person p : people.list(sheetId)) {
++            if (!from.equals(p.gradeOn(today))) {
++                continue;
++            }
++            try {
++                people.edit(sheetId, user, p.getId(), null, p.getName(), into, today, p.getTerms(), p.getContact());
++                merged++;
++            } catch (ResponseStatusException refused) {
++                // refused: left as they are
++            }
++        }
++        tx.executeWithoutResult(status -> rollup.changed(sheetId, user, before));
++        return new Result(merged);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 8adec6317..d2c7910cc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -122,7 +122,7 @@ public class PersonController {
+     /**
+      * A person with the grade in force on the sheet's today, their own terms in force on it (null: none), their claims, newest first, claimed: the sum of the amounts of the claims (see
+      * {@link Dues#claimed}: a hold leaves a claim in it), dueTotal: the sum of the due figures of the claims that count (see
+-     * {@link Dues#total}, held to the sheet's cap less their cut total, not below 0.00), excess: what the sum plus their cut total is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
++     * {@link Dues#total}, held to the sheet's cap less their cut total, not below 0.00), excess: what the sum loses to that held cap (0.00 when nothing), and their statements: how many were taken, the last one's due-total (null when
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
+      * that count are overdue and the sum of their due figures, the ids of their patrons, and whether they are
+diff --git a/src/main/java/net/officefloor/hq/app/rate/GradeController.java b/src/main/java/net/officefloor/hq/app/rate/GradeController.java
+index 1f626927f..63a5cd92d 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/GradeController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/GradeController.java
+@@ -1,9 +1,11 @@
+ package net.officefloor.hq.app.rate;
+ 
++import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ import java.util.List;
+ import java.util.Set;
++import net.officefloor.hq.app.person.GradeMergeService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+@@ -25,10 +28,16 @@ public class GradeController {
+     public record GradeView(String grade, boolean retired) {
+     }
+ 
++    /** A merge of one grade into another. */
++    public record MergeForm(@NotBlank @Size(max = 10) String from, @NotBlank @Size(max = 10) String into) {
++    }
++
+     private final GradeService service;
++    private final GradeMergeService merges;
+ 
+-    public GradeController(GradeService service) {
++    public GradeController(GradeService service, GradeMergeService merges) {
+         this.service = service;
++        this.merges = merges;
+     }
+ 
+     @GetMapping
+@@ -44,6 +53,13 @@ public class GradeController {
+         return new GradeView(grade.trim(), true);
+     }
+ 
++    /** Merge a grade into another; answers how many people were moved onto it. */
++    @PostMapping("/merge")
++    public GradeMergeService.Result merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody MergeForm form) {
++        return merges.merge(sheetId.trim(), user.trim(), form.from().trim(), form.into().trim());
++    }
++
+     /** Another user retired the same grade at the same moment: this one is refused. */
+     @ExceptionHandler(DataIntegrityViolationException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/rate/GradeMerged.java b/src/main/java/net/officefloor/hq/app/rate/GradeMerged.java
+new file mode 100644
+index 000000000..fa45f9f5c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/GradeMerged.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.rate;
++
++/** A grade was merged into another ({@code GRADE_MERGED}) on a sheet. */
++public record GradeMerged(String sheetId, String user, String from, String into) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/GradeService.java b/src/main/java/net/officefloor/hq/app/rate/GradeService.java
+index 9a16d4b2a..abcd830ff 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/GradeService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/GradeService.java
+@@ -3,6 +3,8 @@ package net.officefloor.hq.app.rate;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.stream.Collectors;
++import net.officefloor.hq.app.access.AccessService;
++import net.officefloor.hq.app.access.Role;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.context.ApplicationEventPublisher;
+@@ -24,9 +26,11 @@ public class GradeService {
+     private final SheetService sheets;
+     private final SheetRepository sheetRows;
+     private final ApplicationEventPublisher events;
++    private final AccessService access;
+ 
+     public GradeService(RetiredGradeRepository retired, SheetService sheets, SheetRepository sheetRows,
+-            ApplicationEventPublisher events) {
++            ApplicationEventPublisher events, AccessService access) {
++        this.access = access;
+         this.retired = retired;
+         this.sheets = sheets;
+         this.sheetRows = sheetRows;
+@@ -71,4 +75,25 @@ public class GradeService {
+         retired.saveAndFlush(new RetiredGrade(sheetId, grade));
+         events.publishEvent(new GradeRetired(sheetId, user, grade));
+     }
++
++    /**
++     * Record a steward's merge of a grade into another (the people on it are moved by the caller). Anyone but
++     * a steward, a grade not on the list, the same grade twice or a retired grade to merge into is refused.
++     */
++    @Transactional
++    public void merged(String sheetId, String user, String from, String into) {
++        if (!GRADES.contains(from) || !GRADES.contains(into)) {
++            throw new GradeRefused("Choose two grades.");
++        }
++        sheets.load(sheetId, user);
++        sheetRows.lockById(sheetId);
++        if (access.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new GradeRefused("Only a steward can merge grades.");
++        }
++        if (from.equals(into)) {
++            throw new GradeRefused("A grade cannot be merged into itself.");
++        }
++        choosable(sheetId, into);
++        events.publishEvent(new GradeMerged(sheetId, user, from, into));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateTable.java b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+index 65eb76f02..cb2cbba22 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateTable.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+@@ -119,10 +119,12 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
+     }
+ 
+     /**
+-     * What a due-total's sum plus the person's cut total is above the cap: 0.00 when it is not, or when n/a (null).
++     * What a due-total's sum loses to the cap less the person's cut total (see {@link #capped(BigDecimal, BigDecimal)}):
++     * the sum plus the cut total above the cap, but never more than the sum; 0.00 when it is not above, or when
++     * n/a (null).
+      */
+     public BigDecimal excess(BigDecimal sum, BigDecimal cut) {
+-        return sum == null ? BigDecimal.ZERO : excess(sum.add(cut));
++        return sum == null ? BigDecimal.ZERO : sum.subtract(capped(sum, cut));
+     }
+ 
+     /** The percent in force for the grade on the sheet's today; null when none is. */
