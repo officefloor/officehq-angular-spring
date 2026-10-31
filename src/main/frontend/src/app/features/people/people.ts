@@ -28,6 +28,15 @@ interface Overdue {
   cents: number;
 }
 const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
+
+/** The dues in whole cents of a person's OPEN and PENDING claims that count, by the claim's age on the sheet's
+ *  today: 0 to 30 days (a claim dated after today included), 31 to 60, and 61 or more. */
+interface Aged {
+  upTo30: number;
+  upTo60: number;
+  over60: number;
+}
+const NO_AGED: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
 /** A person's terms the form accepts: a whole number of days, 0 or more. */
 const TERMS_PATTERN = /^\d{1,5}$/;
 
@@ -176,6 +185,9 @@ function csvField(value: string): string {
             excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span>
             — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
             due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
+            — aged 0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) }}</span>
+            31–60 <span data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) }}</span>
+            61+ <span data-testid="person-aged-61">{{ money(agedOf(p.id).over60) }}</span>
             — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
             — last stated <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span>
             on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
@@ -379,6 +391,27 @@ export class PeopleList {
         count: overdue.length,
         cents: overdue.reduce((sum, c) => sum + (this.claimDue(p, c, dueTerms) ?? 0), 0),
       });
+    }
+    return byPerson;
+  });
+  /** Each person's aged dues: their OPEN and PENDING claims that count, by age in days on the sheet's today. */
+  private readonly agedByPerson = computed(() => {
+    const today = this.todayNow();
+    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+    const byPerson = new Map<number, Aged>();
+    for (const p of this.people()) {
+      const aged = { ...NO_AGED };
+      if (today) {
+        for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, today, p.retiredFrom))) {
+          if (c.status !== 'OPEN' && c.status !== 'PENDING') continue;
+          const due = this.claimDue(p, c, dueTerms) ?? 0;
+          const age = Math.round((Date.parse(today) - Date.parse(c.date)) / 86_400_000);
+          if (age <= 30) aged.upTo30 += due;
+          else if (age <= 60) aged.upTo60 += due;
+          else aged.over60 += due;
+        }
+      }
+      byPerson.set(p.id, aged);
     }
     return byPerson;
   });
@@ -656,6 +689,10 @@ export class PeopleList {
         });
       },
     });
+  }
+
+  protected agedOf(personId: number): Aged {
+    return this.agedByPerson().get(personId) ?? NO_AGED;
   }
 
   protected overdueOf(personId: number): Overdue {
