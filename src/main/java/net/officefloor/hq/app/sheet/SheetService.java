@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import net.officefloor.hq.app.asof.SheetPasts;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.statement.DayEnds;
@@ -97,6 +98,25 @@ public class SheetService {
         }
         seen.addAll(descendants(id));
         return List.copyOf(seen);
+    }
+
+    /**
+     * The ids of the sheets of the sheet's whole tree, among the sheets that exist: the sheet itself first, then
+     * the other sheets under its topmost ancestor (that ancestor, its children, theirs, and so on) by sheet id.
+     */
+    public List<String> wholeTree(String id) {
+        Set<String> seen = new LinkedHashSet<>(List.of(id));
+        String root = id;
+        for (String up = settings(id).parent(); up != null && sheets.existsById(up) && seen.add(up);
+                up = settings(up).parent()) {
+            root = up;
+        }
+        Set<String> others = new TreeSet<>(descendants(root));
+        others.add(root);
+        others.remove(id);
+        List<String> all = new ArrayList<>(List.of(id));
+        all.addAll(others);
+        return all;
     }
 
     /** The sheet's policy date as set; null when blank (the sheet's today is the policy date then). */

@@ -62,6 +62,12 @@ public class SheetController {
         return service.descendants(id.trim());
     }
 
+    /** The ids of the sheets of the sheet's whole tree: the sheet first, then the others by sheet id. */
+    @GetMapping("/{id}/whole-tree")
+    public List<String> wholeTree(@PathVariable @NotBlank @Size(max = 100) String id) {
+        return service.wholeTree(id.trim());
+    }
+
     @PutMapping("/{id}/today")
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody TodayChange change) {

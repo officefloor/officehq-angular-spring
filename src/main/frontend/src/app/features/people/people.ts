@@ -377,6 +377,7 @@ function csvField(value: string): string {
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
         <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
+        <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people as CSV</button>
       </p>
       <p>
         <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
@@ -2250,6 +2251,33 @@ export class People {
     const link = document.createElement('a');
     link.href = url;
     link.download = `people-${sheet}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
+  }
+
+  /** Download everyone on the sheets of the sheet's whole tree, as the store holds them now, as a CSV file: this
+   *  sheet's people first in list order, then each other sheet's by sheet id. */
+  protected async exportTree(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const loads = this.session.loads();
+    const ids = await firstValueFrom(
+      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/whole-tree`),
+    );
+    const people = await Promise.all(
+      ids.map((id) => firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(id)}/people`))),
+    );
+    if (this.session.sheet() !== sheet || this.session.loads() !== loads) return;
+    const lines = [
+      'sheet,name,grade,due-total',
+      ...ids.flatMap((id, i) =>
+        people[i].map((p) => [id, p.name, p.grade, p.dueTotal ?? 'n/a'].map(csvField).join(',')),
+      ),
+    ];
+    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `tree-${sheet}.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url));
   }
