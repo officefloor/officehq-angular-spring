@@ -1,0 +1,64 @@
+{
+  "checkpoint": 162,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp162_claim-timeline",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each claim can show its timeline: a button on the claim lists the audit lines about it, newest\nfirst, each as the file holds it: the lines carrying its number (number=<its number>), and for a\nclaim with no number the lines naming its person, amount and date together.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach claim can show its timeline: a button on the claim lists the audit lines about it, newest\nfirst, each as the file holds it: the lines carrying its number (number=<its number>), and for a\nclaim with no number the lines naming its person, amount and date together.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5dd0590a628b21524dcb70768e0ba33d0053876d",
+  "reset_sha": "",
+  "preagent_sha": "01d457db7de3240abac85a39616d8467eb08343e",
+  "prev_sha": "01d457db7de3240abac85a39616d8467eb08343e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7272106,
+    "input_tokens": 40,
+    "output_tokens": 7919,
+    "cache_read_tokens": 809953,
+    "cache_creation_tokens": 50835,
+    "num_turns": 20,
+    "duration_ms": 328630,
+    "duration_api_ms": 79510,
+    "model": "claude-opus-5-5",
+    "session_id": "8fb90ab7-d301-44ca-bc9c-60cc8abb8e8d",
+    "stop_reason": "success",
+    "result_text": "Each claim now has a **Timeline** button that lists the audit lines about it, newest first, exactly as the file holds them. `bin/e2e` passes all 4 tests (the timeline test and the three scenario tests).\n\n**Which lines show up:**\n- **A claim with a number:** every line carrying `number=<its number>`. The number has to match exactly, so `FY2026-1` doesn't pick up `FY2026-10`.\n- **A claim without a number:** lines whose `person=`, `amount=` and `date=` all match the claim and that carry no `number=` at all. That last rule isn't in the request; the test requires it. An unnumbered claim's timeline must leave out its sibling's `CLAIM_OPENED \u2026 number=FY2026-1` line, even though that line names the same person, amount and date.\n\n**Changes:**\n- **Server:** a new `Audit.claimLines(...)` method does the matching above. It is served by a new `GET /api/sheets/{sheetId}/claims/{id}/timeline` endpoint, through `ClaimService.timeline`. The endpoint only reads, so it writes nothing to the audit file.\n- **Front end:** the `claim-timeline` button and `claim-timeline-line` items are on each claim row, in `features/claims/claims.ts`. Each press clears the old lines and reads them again, so a second press shows what has changed since. If the read fails, the row's existing error message shows.\n\n**Limitations:** the matching uses the claim's current person name, amount and date.\n- If an unnumbered claim is edited to a different amount or date, its earlier lines drop out of its timeline.\n- If the person is renamed, lines recorded under the old name drop out too.\n- Two unnumbered claims with the same person, amount and date share the same lines (the test expects this).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7272106,
+        "num_turns": 20,
+        "duration_ms": 328630,
+        "duration_api_ms": 79510,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp162.agent.jsonl",
+  "agent_diff_file": "cp162.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
