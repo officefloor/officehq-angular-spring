@@ -57,27 +57,33 @@ public class ClaimService {
     }
 
     /** Add a claim for a person; a missing date takes the sheet's today, a missing note is empty. Refused
-     *  when its date is inside a closed period. */
+     *  when its date is inside a closed period, or when it is a correction that does not name a SETTLED claim of
+     *  the person. */
     @Transactional
-    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         sheets.load(sheetId, user);
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         refuseIfClosed(sheetId, date != null ? date : today);
         refuseIfRetired(person, date != null ? date : today);
+        refuseUnlessCorrects(sheetId, personId, amount, corrects);
         Rollup.Figures before = rollup.of(sheetId);
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note)));
+        Claim added = claims.saveAndFlush(
+                new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note), corrects));
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
 
-    /** Change a claim's amount, date and note; a missing date takes the sheet's today. Only a draft can be
-     *  changed: to change an open claim, void it and add a new one. Refused when its date, as it is or as it
-     *  would become, is inside a closed period. */
+    /** Change a claim's amount, date, note and the claim it corrects; a missing date takes the sheet's today. Only
+     *  a draft can be changed: to change an open claim, void it and add a new one. Refused when its date, as it is
+     *  or as it would become, is inside a closed period, or when it would be a correction that does not name a
+     *  SETTLED claim of its person. */
     @Transactional
-    public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         sheets.load(sheetId, user);
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -89,8 +95,10 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, date != null ? date : today);
         refuseIfRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(), date != null ? date : today);
+        refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
         Rollup.Figures before = rollup.of(sheetId);
         claim.setAmount(scaled(amount));
+        claim.setCorrects(corrects);
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
         Claim edited = claims.saveAndFlush(claim);
@@ -126,7 +134,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
-                .map(Rate::getRate).map(rate -> floored(dueOn(claim.getAmount(), rate), sheet.getFloor())).orElse(null);
+                .map(Rate::getRate).map(rate -> liveFigure(claim, rate, sheet.getFloor())).orElse(null);
         // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
         BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue() : live;
         BigDecimal due = figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
@@ -172,6 +180,24 @@ public class ClaimService {
         }
     }
 
+    /** Refuse a correction (a negative amount) that does not name, by number, a SETTLED claim of the same person,
+     *  and a claim that is not a correction but names one. */
+    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) {
+            if (corrects != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Only a correction (a negative amount) names a claim it corrects");
+            }
+            return;
+        }
+        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
+                .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
+        if (!settled) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A correction must name the number of a SETTLED claim of the same person");
+        }
+    }
+
     /** Refuse a change to a claim dated inside a closed period of the sheet. */
     private void refuseIfClosed(String sheetId, LocalDate date) {
         if (periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date, date)) {
@@ -200,15 +226,21 @@ public class ClaimService {
     }
 
     /** The late charge an OPEN claim has gained on its figure by the sheet's today: the sheet's late percent of
-     *  the figure for every full 30 days past the day it is due by, rounded as a due is; 0.00 when not overdue
-     *  or it has no figure. */
+     *  the figure for every full 30 days past the day it is due by, rounded as a due is; 0.00 when not overdue,
+     *  it has no figure, or it is a correction. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (figure == null || claim.getStatus() != ClaimStatus.OPEN) {
+        if (figure == null || claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
             return none;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday()) / 30;
         return periods <= 0 ? none : dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)));
+    }
+
+    /** A claim's live figure at a rate: its due on its amount, raised to the sheet's floor unless it is a correction. */
+    public static BigDecimal liveFigure(Claim claim, BigDecimal rate, BigDecimal floor) {
+        BigDecimal due = dueOn(claim.getAmount(), rate);
+        return claim.isCorrection() ? due : floored(due, floor);
     }
 
     /** A live due raised to the sheet's floor when it is below it. */

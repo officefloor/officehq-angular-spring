@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money } from '../../core/claims';
+import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money } from '../../core/claims';
 import { Grade, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
@@ -28,6 +28,9 @@ const NO_RATES: readonly RateView[] = [];
       <input [id]="fieldId('date')" type="date" data-testid="claim-form-date" formControlName="date" />
       <label [for]="fieldId('note')">Note</label>
       <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" autocomplete="off" />
+      <label [for]="fieldId('corrects')">Corrects claim No.</label>
+      <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects"
+             inputmode="numeric" autocomplete="off" />
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -47,6 +50,7 @@ const NO_RATES: readonly RateView[] = [];
           — overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           in period <span data-testid="claim-period">{{ periodOf(c) }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
@@ -100,6 +104,7 @@ export class PersonClaims {
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
+    corrects: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -157,13 +162,14 @@ export class PersonClaims {
       return;
     }
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects === null ? '' : String(c.corrects) },
+      { emitEvent: false });
     this.error.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ amount: '', date: '', note: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
     this.error.set(null);
   }
 
@@ -175,8 +181,19 @@ export class PersonClaims {
     if (!sheet) return;
     const value = this.form.getRawValue();
     const amount = value.amount.trim();
-    if (!AMOUNT_PATTERN.test(amount)) {
-      this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
+    if (!CLAIM_AMOUNT_PATTERN.test(amount)) {
+      this.error.set('Type an amount with up to two decimals; a negative one is a correction.');
+      return;
+    }
+    // A negative amount is a correction: it must name the number of a settled claim of this person.
+    const correction = amount.startsWith('-');
+    const corrects = value.corrects.trim();
+    if (correction && !/^\d+$/.test(corrects)) {
+      this.error.set('A negative amount is a correction: type the number of the settled claim it corrects.');
+      return;
+    }
+    if (!correction && corrects !== '') {
+      this.error.set('Only a negative amount (a correction) names a claim it corrects.');
       return;
     }
     const date = value.date.trim();
@@ -184,7 +201,7 @@ export class PersonClaims {
       this.error.set('Choose a date for the claim, or leave it blank for today.');
       return;
     }
-    const claim = { amount, date: date === '' ? null : date, note: value.note };
+    const claim = { amount, date: date === '' ? null : date, note: value.note, corrects: correction ? Number(corrects) : null };
     const id = this.editingId();
     this.saving.set(true);
     const request = id === null ? this.api.add(sheet.id, this.personId(), claim) : this.api.update(sheet.id, id, claim);
@@ -201,6 +218,8 @@ export class PersonClaims {
             ? 'That claim is dated inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? 'That claim is dated after the person retired.'
+            : correction && err instanceof HttpErrorResponse && err.status === 400
+              ? `Claim No. ${corrects} is not a settled claim of ${this.personName()}, so this cannot correct it.`
             : id !== null && err instanceof HttpErrorResponse && err.status === 409
               ? 'Only a draft claim can be edited. Void it and add a new one.'
               : id === null ? 'Could not add that claim.' : 'Could not save that claim.',

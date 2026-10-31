@@ -27,6 +27,9 @@ export interface ClaimView {
   /** The figure the claim had at its person's last statement, while bound by it, with exactly two
    *  decimals; null when not bound, or if it had no figure then (it then follows the rate). */
   statedDue: string | null;
+  /** The number of the SETTLED claim of the same person a correction (a negative amount) corrects; null on
+   *  any other claim. */
+  corrects: number | null;
 }
 
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */
@@ -50,11 +53,13 @@ export function isOverdue(c: Pick<ClaimView, 'date' | 'status'>, terms: number, 
   return c.status === 'OPEN' && dueBy(c, terms) < today;
 }
 
-/** A claim as the form submits it: a blank date takes the sheet's today. */
+/** A claim as the form submits it: a blank date takes the sheet's today. A negative amount is a correction,
+ *  which names in `corrects` the number of the claim it corrects. */
 export interface ClaimForm {
   amount: string;
   date: string | null;
   note: string;
+  corrects: number | null;
 }
 
 /** What a quick-add made: the person the claim is for, whether they were added by it, and the claim. */
@@ -67,15 +72,21 @@ export interface QuickAddView {
 /** An amount the form accepts: 0.00 or more, with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
 
-/** An amount ("12.3", "4") in whole cents, so sums are exact. */
+/** An amount the claim form accepts: AMOUNT_PATTERN, or a negative one (a correction). */
+export const CLAIM_AMOUNT_PATTERN = /^-?\d+(\.\d{1,2})?$/;
+
+/** An amount ("12.3", "4", "-0.5") in whole cents, so sums are exact. */
 export function cents(amount: string): number {
-  const [whole, frac = ''] = amount.split('.');
-  return Number(whole) * 100 + Number(frac.padEnd(2, '0').slice(0, 2));
+  const negative = amount.startsWith('-');
+  const [whole, frac = ''] = (negative ? amount.slice(1) : amount).split('.');
+  const total = Number(whole) * 100 + Number(frac.padEnd(2, '0').slice(0, 2));
+  return negative ? -total : total;
 }
 
-/** Whole cents as an amount with two decimals. */
+/** Whole cents as an amount with two decimals, e.g. "-0.30". */
 export function money(total: number): string {
-  return `${Math.trunc(total / 100)}.${String(total % 100).padStart(2, '0')}`;
+  const abs = Math.abs(total);
+  return `${total < 0 ? '-' : ''}${Math.trunc(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
 // The claims people on a sheet have made, listed newest first.

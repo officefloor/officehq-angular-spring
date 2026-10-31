@@ -134,7 +134,7 @@ public class Rollup {
     }
 
     /** A claim's due: its settled figure, else its stated one, else its amount at the rate in force on its date of
-     *  its person's grade in force on that date, raised to the sheet's floor; an overdue claim's late charge is added on top of the figure. */
+     *  its person's grade in force on that date, raised to the sheet's floor unless it is a correction; an overdue claim's late charge is added on top of the figure. */
     private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Sheet sheet) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
@@ -142,7 +142,7 @@ public class Rollup {
         BigDecimal floor = sheet == null ? null : sheet.getFloor();
         BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue()
                 : Rate.inForceOn(gradeRates, claim.getDate())
-                        .map(rate -> ClaimService.floored(ClaimService.dueOn(claim.getAmount(), rate.getRate()), floor))
+                        .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), floor))
                         .orElse(null);
         return figure == null || sheet == null ? figure : figure.add(ClaimService.lateCharge(claim, figure, sheet));
     }
