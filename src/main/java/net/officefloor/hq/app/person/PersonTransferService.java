@@ -4,9 +4,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -73,9 +78,12 @@ public class PersonTransferService {
      * tags, frozen figures and logs, listed in the order they had; each claim that had a number takes the other
      * sheet's next, in the order the claims were opened. Figures a statement bound are lost, and so are references,
      * settle batches and holds. They leave this sheet entirely: their statements, patron links (either way), pool
-     * memberships and watches are dropped. Refused for anyone but a steward, a retired person, a transfer to this
-     * sheet itself or to an archived sheet, and when the other sheet already has their name, one of their aliases (as
-     * a name or alias) or their contact.
+     * memberships and watches are dropped. When the other sheet already has a person with their name or one of
+     * their aliases (as a name or alias), they are merged into that person there, exactly as a merge does: their
+     * claims are listed after that person's, their name and aliases become that person's aliases and their contact is
+     * dropped. Refused for anyone but a steward, a retired person, a transfer to this sheet itself or to an archived
+     * sheet, when their names match more than one person there or a retired one, and, when not merged, when the other
+     * sheet already has their contact.
      */
     @Transactional
     public void transfer(String sheetId, String user, long id, String toSheetId) {
@@ -103,10 +111,17 @@ public class PersonTransferService {
         }
         List<String> names = new ArrayList<>(person.getAliases());
         names.add(0, person.getName());
-        if (names.stream().anyMatch(n -> people.findBySheetIdAndNameOrAliasIgnoreCase(target, n).isPresent())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That name or alias is already in use on sheet " + target);
+        List<Person> matches = names.stream().map(n -> people.findBySheetIdAndNameOrAliasIgnoreCase(target, n))
+                .flatMap(Optional::stream).filter(distinctBy(Person::getId)).toList();
+        if (matches.size() > 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Those names and aliases belong to more than one person on sheet " + target);
         }
-        if (person.getContact() != null
+        Person into = matches.isEmpty() ? null : matches.get(0);
+        if (into != null && into.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged");
+        }
+        if (into == null && person.getContact() != null
                 && people.existsBySheetIdAndContact(target, person.getContact().toLowerCase(Locale.ROOT))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That contact is already in use on sheet " + target);
         }
@@ -128,23 +143,49 @@ public class PersonTransferService {
         }
         sheetStore.save(to);
         long listed = claims.lastListed(target);
-        List<Claim> oldestFirst = new ArrayList<>(moving);
-        Collections.reverse(oldestFirst);
-        for (Claim claim : oldestFirst) {
-            claim.transferTo(target, person.getId(), ++listed, renumbered.get(claim.getNumber()),
+        // Merged claims are listed as a merge lists them, in the order they were added; otherwise in the order
+        // they had.
+        List<Claim> ordered = new ArrayList<>(moving);
+        if (into != null) {
+            ordered.sort(Comparator.comparing(Claim::getId));
+        } else {
+            Collections.reverse(ordered);
+        }
+        String name = person.getName();
+        List<String> aliases = List.copyOf(person.getAliases());
+        Long arriving = into == null ? person.getId() : into.getId();
+        for (Claim claim : ordered) {
+            claim.transferTo(target, arriving, ++listed, renumbered.get(claim.getNumber()),
                     claim.getCorrects() == null ? null : renumbered.getOrDefault(claim.getCorrects(), claim.getCorrects()),
                     claim.getSplitFrom() == null ? null : renumbered.getOrDefault(claim.getSplitFrom(), claim.getSplitFrom()));
         }
-        person.transferTo(target);
-        person.setPosition(people.findMaxPositionBySheetId(target) + 1);
-        people.saveAndFlush(person);
+        if (into == null) {
+            person.transferTo(target);
+            person.setPosition(people.findMaxPositionBySheetId(target) + 1);
+            people.saveAndFlush(person);
+        } else {
+            people.delete(person);
+            people.flush();
+            into.addAlias(name);
+            aliases.forEach(into::addAlias);
+            people.saveAndFlush(into);
+        }
         claims.saveAllAndFlush(moving);
 
         audit.recordChangeOnCommit(sheetId, user, "PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName() + " to=" + target);
+                + " name=" + name + " to=" + target);
         rollup.recordChanges(sheetId, user, before);
         audit.recordChangeOnCommit(target, user, "PERSON_TRANSFERRED sheet=" + target + " by=" + user
-                + " name=" + person.getName() + " from=" + sheetId);
+                + " name=" + name + " from=" + sheetId);
+        if (into != null) {
+            audit.recordChangeOnCommit(target, user, "PERSON_MERGED sheet=" + target + " by=" + user
+                    + " from=" + name + " into=" + into.getName());
+        }
         rollup.recordChanges(target, user, beforeThere);
+    }
+
+    private static <T> Predicate<T> distinctBy(Function<T, Object> key) {
+        Set<Object> seen = new HashSet<>();
+        return t -> seen.add(key.apply(t));
     }
 }

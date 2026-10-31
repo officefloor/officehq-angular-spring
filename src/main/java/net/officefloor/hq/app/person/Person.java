@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -180,9 +181,10 @@ public class Person {
         this.contact = contact;
     }
 
-    /** The person's aliases, sorted as names are compared: without regard to case. */
+    /** The person's aliases, sorted as names are compared: without regard to case (those differing only in case
+     *  in their natural order). */
     public List<String> getAliases() {
-        return aliases.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+        return aliases.stream().sorted(String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.naturalOrder())).toList();
     }
 
     public void addAlias(String alias) {
