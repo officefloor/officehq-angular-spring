@@ -212,7 +212,7 @@ function csvField(value: string): string {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.ratesByGrade()" [grades]="p"
-                               [periods]="periods.list()" [holds]="p.holds" [others]="othersOf(p.id)"
+                               [periods]="periods.list()" [holds]="p.holds" [retiredFrom]="p.retiredFrom" [others]="othersOf(p.id)"
                                [selected]="selectedClaims()" (selectToggled)="toggleSelected($event)"
                                (saved)="claimSaved($event)" />
           </li>
@@ -291,10 +291,11 @@ export class PeopleList {
   /** The sheet's today ('' before a sheet is loaded). */
   private readonly todayNow = computed(() => this.sheets.current()?.today ?? '');
   /** Whether each claim counts in the live totals: a deferred claim does not, nor do a person's open claims
-   *  dated within one of their holds and not bound by a statement. */
+   *  dated within one of their holds, or all of them once their retirement date is reached, when not bound by a
+   *  statement. */
   private readonly countsNow = computed(() => {
     const today = this.todayNow();
-    const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds, today)]));
+    const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds, today, p.retiredFrom)]));
     return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([], today))(c);
   });
   protected readonly claimedTotal = computed(() =>
@@ -319,7 +320,7 @@ export class PeopleList {
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
-      const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow()));
+      const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom));
       const grades = [this.gradeToday(p), ...counting.map((c) => gradeOn(p, c.date))];
       const dues = counting.map((c) => this.claimDue(p, c, dueTerms)).filter((due) => due !== null);
       if (!grades.some((g) => today.has(g)) && dues.length === 0) {
@@ -341,7 +342,7 @@ export class PeopleList {
     const byPerson = new Map<number, Overdue>();
     for (const p of this.people()) {
       const overdue = sheet
-        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds, sheet.today)(c) && isOverdue(c, sheet.today))
+        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds, sheet.today, p.retiredFrom)(c) && isOverdue(c, sheet.today))
         : NO_CLAIMS;
       byPerson.set(p.id, {
         count: overdue.length,
@@ -369,7 +370,7 @@ export class PeopleList {
       const live = new Map<number, number>(periods.map((pd) => [pd.id, 0]));
       for (const c of this.claimsOf(p.id)) {
         const period = periodOn(periods, c.date);
-        if (period && countsAtEndWithHolds(p.holds, this.todayNow(), period.to)(c)) {
+        if (period && countsAtEndWithHolds(p.holds, this.todayNow(), period.to, p.retiredFrom)(c)) {
           live.set(period.id, (live.get(period.id) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
         }
       }
@@ -394,7 +395,7 @@ export class PeopleList {
     const today = this.todayNow();
     const from = today ? new Date(Date.parse(today) - 29 * 86_400_000).toISOString().slice(0, 10) : '';
     return new Map(this.people().map((p) => [p.id, today !== '' && this.claimsOf(p.id).some((c) =>
-      (c.status === 'OPEN' || c.status === 'PENDING') && countsWithHolds(p.holds, today)(c)
+      (c.status === 'OPEN' || c.status === 'PENDING') && countsWithHolds(p.holds, today, p.retiredFrom)(c)
       && from <= c.date && c.date <= today)]));
   });
   /** Per grade: the people not retired on it today, their due-totals added up (skipping those with none), and how

@@ -148,13 +148,16 @@ export class PersonClaims {
   readonly others = input<readonly Pick<PersonView, 'id' | 'name'>[]>([]);
   /** The person's holds: their open claims dated within one, and not bound by a statement, count in no total. */
   readonly holds = input<readonly HoldView[]>([]);
+  /** The person's retirement date (null: not retired): once the sheet's today reaches it, their open claims not
+   *  bound by a statement count in no total. */
+  readonly retiredFrom = input<string | null>(null);
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input<ReadonlySet<number>>(new Set());
   readonly saved = output<ClaimView>();
   readonly selectToggled = output<{ id: number; selected: boolean }>();
 
   protected readonly notAvailable = NOT_AVAILABLE;
-  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '')).reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '', this.retiredFrom())).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
   /** Whether the form was typed into since the edit button was pressed. */
   private typedSinceEdit = false;

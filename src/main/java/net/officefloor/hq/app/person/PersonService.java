@@ -99,16 +99,19 @@ public class PersonService {
         return edited;
     }
 
-    /** Retire a person from a date; a missing date takes the sheet's today. They count as retired at once. */
+    /** Retire a person from a date; a missing date takes the sheet's today. They count as retired at once; the live
+     *  totals move with it once the sheet's today reaches the date. */
     @Transactional
     public Person retire(String sheetId, String user, long id, LocalDate from) {
         LocalDate today = sheets.load(sheetId, user).getToday();
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        Rollup.Figures before = rollup.of(sheetId);
         person.setRetiredFrom(from != null ? from : today);
         Person retired = save(person);
         audit.recordChangeOnCommit(sheetId, user, "PERSON_RETIRED sheet=" + sheetId + " by=" + user
                 + " name=" + retired.getName() + " from=" + retired.getRetiredFrom());
+        rollup.recordChanges(sheetId, user, before);
         return retired;
     }
 

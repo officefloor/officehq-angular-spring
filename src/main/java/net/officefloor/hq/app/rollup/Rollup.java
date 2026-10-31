@@ -68,7 +68,7 @@ public class Rollup {
         List<BigDecimal> overdueFigures = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counting = sheetClaims.stream()
-                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c)
+                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
                             && !c.isDeferredOn(today))
                     .toList();
             BigDecimal claimed = counting.stream().map(Claim::getAmount)
@@ -132,7 +132,7 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = personOf.get(claim.getPersonId());
-            if (person == null || !person.countsAtEnd(claim, to) || claim.isDeferredOn(today) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            if (person == null || !person.countsAtEnd(claim, to, today) || claim.isDeferredOn(today) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
             BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet, sheetClaims);

@@ -142,27 +142,35 @@ public class Person {
         holds.add(hold);
     }
 
-    /** Whether a claim of this person counts in the live totals: an OPEN or PENDING one dated within a hold does
-     *  not, unless a statement binds it. */
-    public boolean counts(Claim claim) {
-        return claim.getStatus().counts() && (claim.isStated() || !heldOn(claim));
+    /** Whether a claim of this person counts in the live totals on the sheet's {@code today}: an OPEN or PENDING one
+     *  dated within a hold, or any once {@code today} reaches the retirement date, does not, unless a statement
+     *  binds it. */
+    public boolean counts(Claim claim, LocalDate today) {
+        return claim.getStatus().counts() && (claim.isStated() || !heldOn(claim, today));
     }
 
     /** Whether a claim of this person counts in the figures of a period ending {@code end}: by the status it had at
-     *  the end of that day, left out when held as the live totals say. */
-    public boolean countsAtEnd(Claim claim, LocalDate end) {
+     *  the end of that day, left out when held or retired as the live totals on the sheet's {@code today} say. */
+    public boolean countsAtEnd(Claim claim, LocalDate end, LocalDate today) {
         ClaimStatus at = claim.statusAt(end);
-        return at != null && at.counts() && (claim.isStated() || !heldOn(claim));
+        return at != null && at.counts() && (claim.isStated() || !heldOn(claim, today));
     }
 
     /** Whether a claim of this person counts when no statement binds it, as a new statement finds it. */
-    public boolean countsUnbound(Claim claim) {
-        return claim.getStatus().counts() && !heldOn(claim);
+    public boolean countsUnbound(Claim claim, LocalDate today) {
+        return claim.getStatus().counts() && !heldOn(claim, today);
     }
 
-    /** Whether the claim is open and dated within one of the person's holds. */
-    private boolean heldOn(Claim claim) {
-        return claim.getStatus().isOpen() && holds.stream().anyMatch(h -> h.covers(claim.getDate()));
+    /** Whether the claim is open and dated within one of the person's holds, or open once {@code today} reaches
+     *  the person's retirement date. */
+    private boolean heldOn(Claim claim, LocalDate today) {
+        return claim.getStatus().isOpen()
+                && (retiredOn(today) || holds.stream().anyMatch(h -> h.covers(claim.getDate())));
+    }
+
+    /** Whether the retirement date is reached on {@code date}: set, and on or before it. */
+    public boolean retiredOn(LocalDate date) {
+        return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
     }
 
     /** Whether a claim dated {@code date} is refused: one dated after the retirement date. */

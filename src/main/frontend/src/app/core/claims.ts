@@ -70,15 +70,27 @@ export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today
   return c.status === 'OPEN' && c.deferredUntil !== null && today < c.deferredUntil;
 }
 
-/** Whether the claim counts in the live totals on the sheet's today for a person with these holds: a deferred
- *  one does not, nor does an OPEN or PENDING one dated within a hold, unless a statement binds it. */
-export function countsWithHolds(holds: readonly HoldView[], today: string): (c: ClaimView) => boolean {
+/** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: dated within one
+ *  of these holds, or its person's retirement date (null: not retired) reached by today. */
+function heldOn(c: ClaimView, holds: readonly HoldView[], today: string, retiredFrom: string | null): boolean {
+  return (
+    (retiredFrom !== null && today !== '' && retiredFrom <= today) ||
+    holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to))
+  );
+}
+
+/** Whether the claim counts in the live totals on the sheet's today for a person with these holds and retirement
+ *  date: a deferred one does not, nor does an OPEN or PENDING one dated within a hold or of a person whose
+ *  retirement date today has reached, unless a statement binds it. */
+export function countsWithHolds(
+  holds: readonly HoldView[],
+  today: string,
+  retiredFrom: string | null = null,
+): (c: ClaimView) => boolean {
   return (c) =>
     counts(c) &&
     !isDeferred(c, today) &&
-    (c.stated ||
-      (c.status !== 'OPEN' && c.status !== 'PENDING') ||
-      !holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)));
+    (c.stated || (c.status !== 'OPEN' && c.status !== 'PENDING') || !heldOn(c, holds, today, retiredFrom));
 }
 
 /** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it: the last line dated on
@@ -90,21 +102,20 @@ export function statusAt(c: Pick<ClaimView, 'log'>, day: string): ClaimStatus | 
 }
 
 /** Whether the claim counts in a period's figures for a person with these holds: by the status it had at the end
- *  of the period's last day (`end`), and left out when deferred or held as the live totals on the sheet's today
- *  say. */
+ *  of the period's last day (`end`), and left out when deferred, held or retired as the live totals on the sheet's
+ *  today say. */
 export function countsAtEndWithHolds(
   holds: readonly HoldView[],
   today: string,
   end: string,
+  retiredFrom: string | null = null,
 ): (c: ClaimView) => boolean {
   return (c) => {
     const status = statusAt(c, end);
     return (
       (status === 'OPEN' || status === 'PENDING' || status === 'SETTLED') &&
       !isDeferred(c, today) &&
-      (c.stated ||
-        (c.status !== 'OPEN' && c.status !== 'PENDING') ||
-        !holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)))
+      (c.stated || (c.status !== 'OPEN' && c.status !== 'PENDING') || !heldOn(c, holds, today, retiredFrom))
     );
   };
 }
