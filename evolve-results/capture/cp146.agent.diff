@@ -1,0 +1,360 @@
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index 59dd8e456..21fb03d97 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -62,6 +62,9 @@ export interface SheetView {
+   fiscalStartMonth: number;
+   /** The pot (two decimals), cut among the members of each balanced pool that is a member of none; null when there is none. Not dated. */
+   pot: string | null;
++  /** The alert threshold (two decimals): a person whose due-total rises from at or below it to above it is alerted;
++   *  null when it is off. Not dated. */
++  alertThreshold: string | null;
+   /** The id of the sheet's parent sheet: a grade with no rate in force on a date on this sheet takes its parent's
+    *  (then its parent's parent's, up to three levels up); null when it has none. Not dated. */
+   parent: string | null;
+@@ -239,6 +242,13 @@ export class Sheets {
+       .pipe(tap((s) => this.active.set(s)));
+   }
+ 
++  /** Change the active sheet's alert threshold; null means off. Not dated. */
++  setAlertThreshold(id: string, alertThreshold: string | null): Observable<SheetView> {
++    return this.http
++      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/alert-threshold`, { alertThreshold })
++      .pipe(tap((s) => this.active.set(s)));
++  }
++
+   /** Change the active sheet's parent sheet; null means none. Not dated. */
+   setParent(id: string, parent: string | null): Observable<SheetView> {
+     return this.http
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index b29089ee8..ddb9692dd 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -19,10 +19,10 @@ const SHEET_ID_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ /** A field of the settings form. */
+-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
++type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
+ 
+ /** A setting that carries a figure: it is saved from a from-date. */
+-type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'parent' | PermField>;
++type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | PermField>;
+ 
+ /** The from-date field of each dated setting. */
+ type FromField = `${DatedField}From`;
+@@ -49,7 +49,7 @@ function isDate(value: string): boolean {
+   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
+ }
+ 
+-// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, each grade's grace days, its late percent, its policy date, its period numbering from, its grace days (not dated), its pot (not dated), its parent sheet (not dated), its cap, its proof threshold, its note threshold, its permission matrix (not dated), and the role assigned to each user name.
++// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, each grade's grace days, its late percent, its policy date, its period numbering from, its grace days (not dated), its pot (not dated), its alert threshold (not dated), its parent sheet (not dated), its cap, its proof threshold, its note threshold, its permission matrix (not dated), and the role assigned to each user name.
+ @Component({
+   selector: 'app-settings',
+   imports: [ReactiveFormsModule],
+@@ -72,6 +72,7 @@ function isDate(value: string): boolean {
+       <p>Grace days: <span data-testid="setting-grace-days-current">{{ sheets.current()?.graceDays ?? '' }}</span></p>
+       <p>Fiscal year start month: <span data-testid="setting-fiscal-start-month-current">{{ sheets.current()?.fiscalStartMonth ?? '' }}</span></p>
+       <p>Pot: <span data-testid="setting-pot-current">{{ sheets.current()?.pot ?? '' }}</span></p>
++      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ sheets.current()?.alertThreshold ?? '' }}</span></p>
+       <p>Parent sheet: <span data-testid="setting-parent-current">{{ sheets.current()?.parent ?? '' }}</span></p>
+ 
+       <p>Cap: <span data-testid="setting-cap-current">{{ sheets.current()?.cap ?? '' }}</span></p>
+@@ -145,6 +146,9 @@ function isDate(value: string): boolean {
+         <label for="setting-pot">Pot (cut among the members of each balanced pool that is a member of none, by their shares; blank: none)</label>
+         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" (focus)="lastFocused = 'pot'"
+                inputmode="decimal" autocomplete="off" />
++        <label for="setting-alert-threshold">Alert threshold (a person whose due-total rises above this is alerted; blank: off)</label>
++        <input id="setting-alert-threshold" data-testid="setting-alert-threshold" formControlName="alertThreshold" (focus)="lastFocused = 'alertThreshold'"
++               inputmode="decimal" autocomplete="off" />
+         <label for="setting-parent">Parent sheet (a sheet id: a grade with no rate in force on a date here takes the parent's, up to three levels up; blank: none)</label>
+         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" (focus)="lastFocused = 'parent'"
+                autocomplete="off" />
+@@ -252,6 +256,7 @@ export class SettingsPanel {
+     graceDays: new FormControl('', { nonNullable: true }),
+     fiscalStartMonth: new FormControl('', { nonNullable: true }),
+     pot: new FormControl('', { nonNullable: true }),
++    alertThreshold: new FormControl('', { nonNullable: true }),
+     parent: new FormControl('', { nonNullable: true }),
+     cap: new FormControl('', { nonNullable: true }),
+     proofThreshold: new FormControl('', { nonNullable: true }),
+@@ -311,7 +316,7 @@ export class SettingsPanel {
+     this.settingsError.set(null);
+     const sheet = this.sheets.current();
+     if (!sheet) return;
+-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, fiscalStartMonth, pot, parent, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
++    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, fiscalStartMonth, pot, alertThreshold, parent, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
+     const limit = clerkLimit.value.trim();
+     const floorValue = floor.value.trim();
+     const termsValue = terms.value.trim();
+@@ -322,6 +327,7 @@ export class SettingsPanel {
+     const graceDaysValue = graceDays.value.trim();
+     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
+     const potValue = pot.value.trim();
++    const alertThresholdValue = alertThreshold.value.trim();
+     const parentValue = parent.value.trim();
+     const capValue = cap.value.trim();
+     const proofThresholdValue = proofThreshold.value.trim();
+@@ -331,7 +337,7 @@ export class SettingsPanel {
+     const unchanged = !this.settingsForm.dirty;
+     const controls = this.settingsForm.controls;
+     const isSaved = (field: SettingField) => controls[field].dirty
+-      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && field !== 'fiscalStartMonth' && field !== 'pot' && field !== 'parent' && !field.startsWith('perm_')
++      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && field !== 'fiscalStartMonth' && field !== 'pot' && field !== 'alertThreshold' && field !== 'parent' && !field.startsWith('perm_')
+         && controls[`${field as DatedField}From`].dirty)
+       || (unchanged && this.lastFocused === field);
+     const fromOf = (field: DatedField): string | null => controls[`${field}From` as FromField].value.trim() || null;
+@@ -344,6 +350,7 @@ export class SettingsPanel {
+     const saveGraceDays = isSaved('graceDays');
+     const saveFiscalStartMonth = isSaved('fiscalStartMonth');
+     const savePot = isSaved('pot');
++    const saveAlertThreshold = isSaved('alertThreshold');
+     const saveParent = isSaved('parent');
+     const saveLimit = isSaved('clerkLimit');
+     const saveCap = isSaved('cap');
+@@ -402,6 +409,10 @@ export class SettingsPanel {
+       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
+       return;
+     }
++    if (saveAlertThreshold && alertThresholdValue !== '' && !LIMIT_PATTERN.test(alertThresholdValue)) {
++      this.settingsError.set('Type an alert threshold of 0.00 or more, with up to two decimals, or leave it blank for off.');
++      return;
++    }
+     if (saveParent && parentValue !== '' && !SHEET_ID_PATTERN.test(parentValue)) {
+       this.settingsError.set('Type the id of a sheet that has been loaded, or leave it blank for no parent.');
+       return;
+@@ -452,6 +463,7 @@ export class SettingsPanel {
+     if (saveGraceDays) saves.push(this.sheets.setGraceDays(sheet.id, graceDaysValue === '' ? null : Number(graceDaysValue)));
+     if (saveFiscalStartMonth) saves.push(this.sheets.setFiscalStartMonth(sheet.id, Number(fiscalStartMonthValue)));
+     if (savePot) saves.push(this.sheets.setPot(sheet.id, potValue === '' ? null : potValue));
++    if (saveAlertThreshold) saves.push(this.sheets.setAlertThreshold(sheet.id, alertThresholdValue === '' ? null : alertThresholdValue));
+     if (saveParent) saves.push(this.sheets.setParent(sheet.id, parentValue === '' ? null : parentValue));
+     if (saveCap) saves.push(this.sheets.setCap(sheet.id, capValue === '' ? null : capValue, fromOf('cap')));
+     if (saveProofThreshold) saves.push(this.sheets.setProofThreshold(sheet.id, proofThresholdValue === '' ? null : proofThresholdValue, fromOf('proofThreshold')));
+@@ -475,7 +487,7 @@ export class SettingsPanel {
+ 
+   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
+   private resetSettings(sheet: SheetView | null): void {
+-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '',
++    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '',
+       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
+       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+index a23d432af..31a5d9f2d 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetState.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -31,7 +31,7 @@ import net.officefloor.hq.app.sheet.Sheet;
+ public record SheetState(List<SettingState> settings, LocalDate policyDate, List<RateState> rates,
+         List<PersonState> people, List<ClaimState> claims, Map<String, String> permissions,
+         LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate,
+-        Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth) {
++        Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth, BigDecimal alertThreshold) {
+ 
+     /** Each list the screen reads of the sheet, as it read it then; a person's grade there is the one in force on the
+      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
+@@ -110,7 +110,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+                         c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil(), c.getRemindedOn(), c.getRef(), c.getTags())).toList(),
+                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
+                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
+-                sheet.getPot(), sheet.getFiscalStartMonth());
++                sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold());
+     }
+ 
+     /** The people as the screen read them then, each with the grade in force on {@code today}. */
+@@ -142,6 +142,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+         sheet.setGraceDays(graceDays);
+         sheet.setEntryDate(entryDate);
+         sheet.setPot(pot);
++        sheet.setAlertThreshold(alertThreshold);
+         sheet.setFiscalStartMonth(fiscalStartMonth == null ? 1 : fiscalStartMonth);
+         // The parent is not dated: it is the one the sheet names now.
+         sheet.setParentId(live.getParentId());
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 7fd9b843d..00e3a6afb 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -186,7 +186,8 @@ public class Rollup {
+     /**
+      * Record, once the change commits, how the sheet's figures moved since {@code before}: a ROLLUP line
+      * for each person whose figures changed (one who did not exist before counting as changed), then a
+-     * TOTALS line if the sheet's totals changed. Nothing is recorded when no figure moved.
++     * TOTALS line if the sheet's totals changed, then the ALERT lines of the people who crossed the sheet's alert
++     * threshold (see {@link #recordAlerts}). Nothing is recorded when no figure moved.
+      */
+     public void recordChanges(String sheetId, String user, Figures before) {
+         Figures after = of(sheetId);
+@@ -204,6 +205,30 @@ public class Rollup {
+             audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total=" + after.claimedTotal()
+                     + " due-total=" + after.dueTotal() + " overdue-total=" + after.overdueTotal());
+         }
++        recordAlerts(sheetId, user, before, after);
++    }
++
++    /**
++     * Record, once the change commits, an ALERT line, in list order, for each person whose due-total went from at or
++     * below the sheet's alert threshold (or none, or not being on the sheet) to above it between {@code before} (null:
++     * nobody was) and {@code after}. Nothing is recorded while the threshold is off.
++     */
++    public void recordAlerts(String sheetId, String user, Figures before, Figures after) {
++        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
++        if (threshold == null) {
++            return;
++        }
++        after.people().forEach((id, figures) -> {
++            PersonFigures was = before == null ? null : before.people().get(id);
++            if (above(figures, threshold) && (was == null || !above(was, threshold))) {
++                audit.recordOnCommit("ALERT sheet=" + sheetId + " by=" + user + " name=" + figures.name()
++                        + " due-total=" + figures.dueTotal());
++            }
++        });
++    }
++
++    private static boolean above(PersonFigures figures, BigDecimal threshold) {
++        return !NOT_AVAILABLE.equals(figures.dueTotal()) && new BigDecimal(figures.dueTotal()).compareTo(threshold) > 0;
+     }
+ 
+     /** A claim's due: its settled figure, else its stated one (none while PENDING), else its amount at the rate in force on its date of
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 09d0ff326..91be4da27 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -113,6 +113,11 @@ public class Sheet {
+     @Column(name = "pot", precision = 14, scale = 2)
+     private BigDecimal pot;
+ 
++    /** The sheet's alert threshold (two decimals): a person whose due-total rises from at or below it to above it is
++     *  alerted; null means off. Not dated. */
++    @Column(name = "alert_threshold", precision = 14, scale = 2)
++    private BigDecimal alertThreshold;
++
+     /** The id of the sheet's parent sheet, whose rates (then its parent's, up to three levels up) stand in for a
+      *  grade with no rate in force on a date on this sheet; null means none. Not dated. */
+     @Column(name = "parent_id")
+@@ -144,6 +149,7 @@ public class Sheet {
+         copy.graceDays = graceDays;
+         copy.fiscalStartMonth = fiscalStartMonth;
+         copy.pot = pot;
++        copy.alertThreshold = alertThreshold;
+         copy.parentId = parentId;
+         copy.lastSettleBatch = lastSettleBatch;
+         return copy;
+@@ -355,6 +361,14 @@ public class Sheet {
+         this.pot = pot;
+     }
+ 
++    public BigDecimal getAlertThreshold() {
++        return alertThreshold;
++    }
++
++    public void setAlertThreshold(BigDecimal alertThreshold) {
++        this.alertThreshold = alertThreshold;
++    }
++
+     public String getParentId() {
+         return parentId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index bf89e7450..a93242584 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -203,6 +203,7 @@ public class SheetCloneService {
+                 + " overdue-total=" + f.overdueTotal()));
+         audit.recordOnCommit("TOTALS sheet=" + target + " by=" + user + " claimed-total=" + figures.claimedTotal()
+                 + " due-total=" + figures.dueTotal() + " overdue-total=" + figures.overdueTotal());
++        rollup.recordAlerts(target, user, null, figures);
+         return saved;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 7e018c588..4b90ea2c7 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -40,14 +40,15 @@ public class SheetController {
+      *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off; archived is whether the sheet is archived;
+      *  the entry date is null when it is off; gradeGrace is the grace days set per grade in force on the sheet's today;
+      *  gradeProofThreshold is the proof threshold (two decimals) set per grade in force on the sheet's today;
+-     *  settleBatch is the number of the last settle batch, null when there has been none; the pot (two decimals) is null when there is none;
++     *  settleBatch is the number of the last settle batch, null when there has been none; the pot (two decimals) is null when there is none, as is the alert threshold (two decimals) when it is off;
+      *  parent is the id of the sheet's parent sheet, null when it has none;
+      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
+     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
+             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
+-            Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth) {
++            Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
++            String alertThreshold) {
+ 
+         static SheetView of(Sheet sheet) {
+             return of(sheet, null);
+@@ -66,7 +67,8 @@ public class SheetController {
+                     sheet.getEntryDate(), sheet.getGradeGrace(), sheet.getGradeProofThresholds(),
+                     sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
+                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+-                    sheet.getFiscalStartMonth());
++                    sheet.getFiscalStartMonth(),
++                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString());
+         }
+     }
+ 
+@@ -125,6 +127,10 @@ public class SheetController {
+     public record PotChange(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal pot) {
+     }
+ 
++    /** The sheet's alert threshold as the form submits it; a missing one means off. */
++    public record AlertThresholdChange(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal alertThreshold) {
++    }
++
+     /** The sheet's parent as the form submits it: a sheet id; a missing (or blank) one means none. */
+     public record ParentChange(@Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]*") String parent) {
+     }
+@@ -311,6 +317,15 @@ public class SheetController {
+         return SheetView.of(sheets.setPot(id, user, request.pot()));
+     }
+ 
++    /** Change the sheet's alert threshold. */
++    @PutMapping("/{id}/settings/alert-threshold")
++    public SheetView setAlertThreshold(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody AlertThresholdChange request) {
++        return SheetView.of(sheets.setAlertThreshold(id, user, request.alertThreshold()));
++    }
++
+     /** Change the sheet's parent sheet. */
+     @PutMapping("/{id}/settings/parent")
+     public SheetView setParent(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index f2d1cab0d..e0b1a6bf5 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -220,6 +220,19 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** Set the sheet's alert threshold (null: off), starting the sheet if it has never been loaded. Not dated. */
++    @Transactional
++    public Sheet setAlertThreshold(String id, String user, BigDecimal threshold) {
++        load(id, user);
++        Sheet sheet = sheets.findLockedById(id).orElseThrow();
++        BigDecimal scaled = threshold == null ? null : threshold.setScale(2, RoundingMode.UNNECESSARY);
++        sheet.setAlertThreshold(scaled);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
++                + " key=alert-threshold value=" + (scaled == null ? "" : scaled.toPlainString()));
++        return saved;
++    }
++
+     /** Set the sheet's parent sheet (null: none), starting the sheet if it has never been loaded. Not dated. Refused
+      *  for the sheet itself, for a sheet never loaded, and for a sheet that has this one as an ancestor. */
+     @Transactional
+diff --git a/src/main/resources/db/migration/V79__sheet_alert_threshold.sql b/src/main/resources/db/migration/V79__sheet_alert_threshold.sql
+new file mode 100644
+index 000000000..62bedfd61
+--- /dev/null
++++ b/src/main/resources/db/migration/V79__sheet_alert_threshold.sql
+@@ -0,0 +1,3 @@
++-- The sheet's alert threshold (two decimals): a person whose due-total rises from at or below it to above it is
++-- recorded with an ALERT line. None means off. Not dated.
++ALTER TABLE sheet ADD COLUMN alert_threshold DECIMAL(14, 2);
