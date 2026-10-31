@@ -31,7 +31,7 @@ public class QuickAddService {
     }
 
     /**
-     * Add a DRAFT claim of {@code amount}, dated the sheet's today with an empty note, for the person
+     * Add a DRAFT claim of {@code amount}, dated the sheet's entry date while set, else its today, with an empty note, for the person
      * whose name matches {@code name} (trimmed, ignoring case); one not on the sheet is added first with
      * grade A. One change: when the claim is refused the person is not added and nothing is recorded.
      */

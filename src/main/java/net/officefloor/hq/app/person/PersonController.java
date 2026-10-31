@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.role.RoleService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -99,10 +100,12 @@ public class PersonController {
 
     private final PersonService people;
     private final SheetHistory history;
+    private final RoleService roles;
 
-    public PersonController(PersonService people, SheetHistory history) {
+    public PersonController(PersonService people, SheetHistory history, RoleService roles) {
         this.people = people;
         this.history = history;
+        this.roles = roles;
     }
 
     @GetMapping
@@ -146,6 +149,10 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody BulkGrade request) {
+        if (roles.isViewer(sheetId, user)) {
+            // A viewer's bulk action goes through with nothing done: no selected person is changed.
+            return new BulkGradeView(0, List.of());
+        }
         Set<Long> selected = new HashSet<>(request.ids());
         List<PersonView> changed = new ArrayList<>();
         for (Person person : people.list(sheetId)) {

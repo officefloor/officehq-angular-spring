@@ -152,6 +152,18 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's entry date (null: off), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setEntryDate(String id, String user, LocalDate entryDate) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setEntryDate(entryDate);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=entry-date value=" + (entryDate == null ? "" : entryDate));
+        return saved;
+    }
+
     /** Set the sheet's period numbering from (null: off), starting the sheet if it has never been loaded. */
     @Transactional
     public Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {

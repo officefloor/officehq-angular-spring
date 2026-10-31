@@ -38,7 +38,7 @@ public class PasteService {
 
     /**
      * Add a DRAFT claim per line of {@code text} (name,amount,date,note; the note may hold commas, a blank date
-     * takes the sheet's today, the note may be absent), in order, for the person on the sheet whose name matches
+     * takes the sheet's entry date while set, else its today, the note may be absent), in order, for the person on the sheet whose name matches
      * (trimmed, ignoring case). Each line is checked by exactly the claim form's rules; one change: when any line
      * is refused, nothing is added and nothing is recorded. Blank lines are skipped; a paste with no lines is
      * refused.

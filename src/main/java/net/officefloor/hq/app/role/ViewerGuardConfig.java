@@ -4,7 +4,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/** Puts the {@link ViewerGuard} in front of a sheet's API, except loading it and its bulk actions. */
+/** Puts the {@link ViewerGuard} in front of a sheet's API, except loading it and its bulk actions (on claims and on people). */
 @Configuration
 public class ViewerGuardConfig implements WebMvcConfigurer {
 
@@ -18,6 +18,7 @@ public class ViewerGuardConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(guard)
                 .addPathPatterns("/api/sheets/**")
-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*");
+                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
+                        "/api/sheets/*/people/bulk-*");
     }
 }

@@ -54,6 +54,9 @@ export interface SheetView {
   /** The date (yyyy-mm-dd) the sheet is shown as of: it is as it stood at the end of that day, which stands in for
    *  its today; null when it is shown as it is now. */
   asOf: string | null;
+  /** The sheet's entry date (yyyy-mm-dd): while set, a new claim given no date takes it in place of the sheet's
+   *  today; null: off. Not dated. */
+  entryDate: string | null;
 }
 
 /** The actions the permission matrix covers. */
@@ -158,6 +161,13 @@ export class Sheets {
   setPolicyDate(id: string, policyDate: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/policy-date`, { policyDate })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's entry date; null means off. Not dated. */
+  setEntryDate(id: string, entryDate: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/entry-date`, { entryDate })
       .pipe(tap((s) => this.active.set(s)));
   }
 

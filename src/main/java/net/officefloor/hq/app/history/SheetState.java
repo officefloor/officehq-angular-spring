@@ -28,7 +28,7 @@ import net.officefloor.hq.app.sheet.Sheet;
  *  as the screen reads it: its other settings, and each list the screen reads (see {@link Views}). */
 public record SheetState(List<SettingState> settings, LocalDate policyDate, List<RateState> rates,
         List<PersonState> people, List<ClaimState> claims, Map<String, String> permissions,
-        LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views) {
+        LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate) {
 
     /** Each list the screen reads of the sheet, as it read it then; a person's grade there is the one in force on the
      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
@@ -96,7 +96,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
                         c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil())).toList(),
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
-                sheet.isArchived(), views);
+                sheet.isArchived(), views, sheet.getEntryDate());
     }
 
     /** The people as the screen read them then, each with the grade in force on {@code today}. */
@@ -124,6 +124,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         }
         sheet.setPeriodNumberingFrom(periodNumberingFrom);
         sheet.setGraceDays(graceDays);
+        sheet.setEntryDate(entryDate);
         if (archived) {
             sheet.archive();
         }

@@ -88,6 +88,11 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The sheet's entry date: while set, a new claim given no date takes it in place of the sheet's today; null
+     *  means off. Not dated. */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the
      *  new today is closed; null means off. Not dated. */
     @Column(name = "grace_days")
@@ -241,6 +246,19 @@ public class Sheet {
 
     public void setPolicyDate(LocalDate policyDate) {
         this.policyDate = policyDate;
+    }
+
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
+    }
+
+    /** The date a new claim given no date takes: the entry date while set, else the sheet's today. */
+    public LocalDate defaultClaimDate() {
+        return entryDate != null ? entryDate : today;
     }
 
     public LocalDate getPeriodNumberingFrom() {

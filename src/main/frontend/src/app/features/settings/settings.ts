@@ -16,10 +16,10 @@ const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'graceDays' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
 
 /** A setting that carries a figure: it is saved from a from-date. */
-type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'graceDays' | PermField>;
+type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | PermField>;
 
 /** The from-date field of each dated setting. */
 type FromField = `${DatedField}From`;
@@ -56,6 +56,7 @@ function isDate(value: string): boolean {
       <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
       <p>Policy date: <span data-testid="setting-policy-date-current">{{ sheets.current()?.policyDate ?? '' }}</span></p>
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ sheets.current()?.periodNumberingFrom ?? '' }}</span></p>
+      <p>Entry date: <span data-testid="setting-entry-date-current">{{ sheets.current()?.entryDate ?? '' }}</span></p>
       <p>Grace days: <span data-testid="setting-grace-days-current">{{ sheets.current()?.graceDays ?? '' }}</span></p>
 
       <p>Cap: <span data-testid="setting-cap-current">{{ sheets.current()?.cap ?? '' }}</span></p>
@@ -105,6 +106,9 @@ function isDate(value: string): boolean {
                placeholder="yyyy-mm-dd" autocomplete="off" />
         <label for="setting-period-numbering-from">Period numbering from (from this day, a claim opened is numbered within its period; blank: off)</label>
         <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom" (focus)="lastFocused = 'periodNumberingFrom'"
+               placeholder="yyyy-mm-dd" autocomplete="off" />
+        <label for="setting-entry-date">Entry date (a new claim given no date takes it in place of today; blank: off)</label>
+        <input id="setting-entry-date" data-testid="setting-entry-date" formControlName="entryDate" (focus)="lastFocused = 'entryDate'"
                placeholder="yyyy-mm-dd" autocomplete="off" />
         <label for="setting-grace-days">Grace days (when today changes, an open period ended more than these days before it is closed; blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" (focus)="lastFocused = 'graceDays'"
@@ -195,6 +199,7 @@ export class SettingsPanel {
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+    entryDate: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
@@ -245,13 +250,14 @@ export class SettingsPanel {
     this.settingsError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
+    const entryDateValue = entryDate.value.trim();
     const graceDaysValue = graceDays.value.trim();
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
@@ -261,7 +267,7 @@ export class SettingsPanel {
     const unchanged = !this.settingsForm.dirty;
     const controls = this.settingsForm.controls;
     const isSaved = (field: SettingField) => controls[field].dirty
-      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'graceDays' && !field.startsWith('perm_')
+      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && !field.startsWith('perm_')
         && controls[`${field as DatedField}From`].dirty)
       || (unchanged && this.lastFocused === field);
     const fromOf = (field: DatedField): string | null => controls[`${field}From` as FromField].value.trim() || null;
@@ -270,6 +276,7 @@ export class SettingsPanel {
     const saveLatePct = isSaved('latePct');
     const savePolicyDate = isSaved('policyDate');
     const savePeriodNumberingFrom = isSaved('periodNumberingFrom');
+    const saveEntryDate = isSaved('entryDate');
     const saveGraceDays = isSaved('graceDays');
     const saveLimit = isSaved('clerkLimit');
     const saveCap = isSaved('cap');
@@ -304,6 +311,10 @@ export class SettingsPanel {
     if (savePeriodNumberingFrom && periodNumberingFromValue !== ''
         && !(DATE_PATTERN.test(periodNumberingFromValue) && isDate(periodNumberingFromValue))) {
       this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
+      return;
+    }
+    if (saveEntryDate && entryDateValue !== '' && !(DATE_PATTERN.test(entryDateValue) && isDate(entryDateValue))) {
+      this.settingsError.set('Type an entry date as yyyy-mm-dd, or leave it blank for off.');
       return;
     }
     if (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue)) {
@@ -345,6 +356,7 @@ export class SettingsPanel {
     if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue, fromOf('latePct')));
     if (savePolicyDate) saves.push(this.sheets.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue));
     if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
+    if (saveEntryDate) saves.push(this.sheets.setEntryDate(sheet.id, entryDateValue === '' ? null : entryDateValue));
     if (saveGraceDays) saves.push(this.sheets.setGraceDays(sheet.id, graceDaysValue === '' ? null : Number(graceDaysValue)));
     if (saveCap) saves.push(this.sheets.setCap(sheet.id, capValue === '' ? null : capValue, fromOf('cap')));
     if (saveProofThreshold) saves.push(this.sheets.setProofThreshold(sheet.id, proofThresholdValue === '' ? null : proofThresholdValue, fromOf('proofThreshold')));
@@ -365,7 +377,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', graceDays: String(sheet?.graceDays ?? ''), cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', noteThresholdFrom: '',
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', noteThresholdFrom: '',
       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
   }

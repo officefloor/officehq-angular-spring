@@ -84,7 +84,7 @@ public class ClaimService {
                 .toList();
     }
 
-    /** Add a claim for a person; a missing date takes the sheet's today, a missing note is empty. One dated inside a
+    /** Add a claim for a person; a missing date takes the sheet's entry date while set, else its today, a missing note is empty. One dated inside a
      *  soft-closed period is a late entry. Refused
      *  when its date is inside a closed period, or when it is a correction that does not name a SETTLED claim of
      *  the person. */
@@ -96,11 +96,11 @@ public class ClaimService {
         LocalDate today = sheet.getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        refuseIfClosed(sheetId, date != null ? date : today);
-        refuseIfRetired(person, date != null ? date : today);
+        LocalDate claimDate = date != null ? date : sheet.defaultClaimDate();
+        refuseIfClosed(sheetId, claimDate);
+        refuseIfRetired(person, claimDate);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
         Rollup.Figures before = rollup.of(sheetId);
-        LocalDate claimDate = date != null ? date : today;
         LocalDate dueBy = claimDate.plusDays(termsOf(sheet, person, claimDate));
         Claim claim = new Claim(sheetId, personId, scaled(amount), claimDate, dueBy, noteOf(note), corrects,
                 claims.lastListed(sheetId) + 1);
