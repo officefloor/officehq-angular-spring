@@ -18,6 +18,7 @@ import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.snapshot.PersonSnapshotService;
 import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.watch.WatchRepository;
 import org.springframework.http.HttpStatus;
@@ -41,12 +42,14 @@ public class PersonMergeService {
     private final Audit audit;
     private final Rollup rollup;
     private final PlanService plans;
+    private final PersonSnapshotService snapshots;
 
     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
             PoolMemberRepository poolMembers, StatementService statements, WatchRepository watches,
             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit, Rollup rollup,
-            PlanService plans) {
+            PlanService plans, PersonSnapshotService snapshots) {
         this.plans = plans;
+        this.snapshots = snapshots;
         this.people = people;
         this.claims = claims;
         this.patrons = patrons;
@@ -64,7 +67,7 @@ public class PersonMergeService {
      * A steward merges a person into another of the sheet. The merged person's claims move to the other, keeping
      * their numbers and dates, listed as the other's newest in the order they were added, each keeping any figure a
      * statement bound it to; their statements move to the other, whose count becomes their own plus the merged
-     * person's and whose last statement stays theirs (or, having none, becomes the merged person's last); their name and aliases become aliases of the other; their patrons are added to the
+     * person's and whose last statement stays theirs (or, having none, becomes the merged person's last), and so do their snapshot lines; their name and aliases become aliases of the other; their patrons are added to the
      * other's (never the other themselves, nor one twice), anyone naming them as patron names the other instead (once),
      * and their pool memberships move to the other (shares added where the other is already a member). Their
      * holds, watchers and contact are dropped with them. Refused for anyone but a steward, a merge into
@@ -130,6 +133,7 @@ public class PersonMergeService {
         poolMembers.flush();
 
         statements.move(sheetId, from.getId(), sheetId, into.getId());
+        snapshots.move(sheetId, from.getId(), sheetId, into.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         plans.reassign(from.getId(), into.getId());
         String fromName = from.getName();

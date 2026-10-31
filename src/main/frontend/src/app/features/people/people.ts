@@ -9,6 +9,7 @@ import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents } from '../../core/rates';
 import { Sheets, graceOn } from '../../core/sheet';
+import { SnapshotView, Snapshots } from '../../core/snapshots';
 import { StatementSummary, Statements } from '../../core/statements';
 import { Watches } from '../../core/watches';
 import { Session } from '../../core/session';
@@ -24,6 +25,14 @@ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSum
 import { VoidReasons } from '../../core/void-reasons';
 
 const NO_CLAIMS: ClaimView[] = [];
+const NO_SNAPSHOTS: SnapshotView[] = [];
+
+/** Snapshot lines by person, each person's in the order given (oldest first). */
+function byPerson(snapshots: SnapshotView[]): Map<number, SnapshotView[]> {
+  const map = new Map<number, SnapshotView[]>();
+  for (const s of snapshots) map.set(s.personId, [...(map.get(s.personId) ?? []), s]);
+  return map;
+}
 
 /** The keys the people list can be sorted on, on the screen only. */
 const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
@@ -333,6 +342,13 @@ function csvField(value: string): string {
             — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
             — last stated <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span>
             on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
+            @if (snapshotsOf(p.id).length > 0) {
+              <ul [attr.aria-label]="'Snapshots of ' + p.name">
+                @for (s of snapshotsOf(p.id); track $index) {
+                  <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal }}</li>
+                }
+              </ul>
+            }
             — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
             from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
             @if (p.pastRetirements?.length) {
@@ -424,6 +440,7 @@ export class PeopleList {
   protected readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
   private readonly statementsApi = inject(Statements);
+  private readonly snapshotsApi = inject(Snapshots);
   private readonly patronsApi = inject(Patrons);
   private readonly plansApi = inject(Plans);
   private readonly watchesApi = inject(Watches);
@@ -535,6 +552,8 @@ export class PeopleList {
   });
   /** Each person's statements, by person; one with none is missing. */
   private readonly statements = signal<Map<number, StatementSummary>>(new Map());
+  /** Each person's snapshot lines, oldest first, by person; one with none is missing. */
+  private readonly snapshots = signal<Map<number, SnapshotView[]>>(new Map());
   /** The person whose statement is being taken, so a second press waits for the first. */
   protected readonly stating = signal<number | null>(null);
   /** Every patron named on the sheet. */
@@ -903,6 +922,7 @@ export class PeopleList {
           this.bulkRedateResult.set(null);
           this.bulkRedateError.set(null);
           this.statements.set(new Map());
+          this.snapshots.set(new Map());
           this.descendants.set(NO_DESCENDANTS);
           this.patrons.set([]);
           this.watched.set(new Set());
@@ -924,23 +944,25 @@ export class PeopleList {
                 people: this.api.list(sheet.id),
                 claims: this.claimsApi.list(sheet.id),
                 statements: this.statementsApi.list(sheet.id),
+                snapshots: this.snapshotsApi.list(sheet.id),
                 patrons: this.patronsApi.list(sheet.id),
                 watched: this.watchesApi.list(sheet.id),
                 plans: this.plansApi.load(sheet.id),
                 descendants: this.consolidatedApi.descendants(sheet.id, this.sheets.asOf() !== null),
               })
-            : of({ people: [], claims: [], statements: [], patrons: [], watched: [], plans: [], descendants: NO_DESCENDANTS });
+            : of({ people: [], claims: [], statements: [], snapshots: [], patrons: [], watched: [], plans: [], descendants: NO_DESCENDANTS });
         }),
         takeUntilDestroyed(),
       )
       .subscribe({
-        next: ({ people, claims, statements, patrons, watched, descendants }) => {
+        next: ({ people, claims, statements, snapshots, patrons, watched, descendants }) => {
           this.descendants.set(descendants);
           this.patrons.set(patrons);
           this.watched.set(new Set(watched));
           this.people.set(people);
           this.claims.set(claims);
           this.statements.set(new Map(statements.map((s) => [s.personId, s])));
+          this.snapshots.set(byPerson(snapshots));
         },
       });
     // An error is removed as soon as its form is changed.
@@ -1105,6 +1127,10 @@ export class PeopleList {
 
   protected overdueOf(personId: number): Overdue {
     return this.overdueByPerson().get(personId) ?? NO_OVERDUE;
+  }
+
+  protected snapshotsOf(personId: number): SnapshotView[] {
+    return this.snapshots().get(personId) ?? NO_SNAPSHOTS;
   }
 
   protected statementOf(personId: number): StatementSummary | undefined {

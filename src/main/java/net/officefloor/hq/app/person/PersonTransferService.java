@@ -25,6 +25,7 @@ import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.snapshot.PersonSnapshotService;
 import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.watch.WatchRepository;
 import org.springframework.http.HttpStatus;
@@ -55,12 +56,14 @@ public class PersonTransferService {
     private final Audit audit;
     private final Rollup rollup;
     private final PlanService plans;
+    private final PersonSnapshotService snapshots;
 
     public PersonTransferService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
             PatronRepository patrons, PoolMemberRepository poolMembers, StatementService statements,
             WatchRepository watches, SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit,
-            Rollup rollup, PlanService plans) {
+            Rollup rollup, PlanService plans, PersonSnapshotService snapshots) {
         this.plans = plans;
+        this.snapshots = snapshots;
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
@@ -137,6 +140,7 @@ public class PersonTransferService {
                 .toList());
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
         statements.move(sheetId, person.getId(), target, into == null ? person.getId() : into.getId());
+        snapshots.move(sheetId, person.getId(), target, into == null ? person.getId() : into.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));
         plans.removeOf(person.getId());
         patrons.flush();

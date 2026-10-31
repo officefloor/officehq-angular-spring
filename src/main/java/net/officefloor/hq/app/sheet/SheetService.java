@@ -11,6 +11,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.snapshot.PersonSnapshotService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -28,11 +29,13 @@ public class SheetService {
 
     private final PeriodService periods;
     private final ClaimRepository claims;
+    private final PersonSnapshotService snapshots;
 
     // The period service loads sheets through this one, so it is taken lazily.
     public SheetService(SheetRepository sheets, Rollup rollup, Audit audit, @Lazy PeriodService periods,
-            ClaimRepository claims) {
+            ClaimRepository claims, PersonSnapshotService snapshots) {
         this.sheets = sheets;
+        this.snapshots = snapshots;
         this.claims = claims;
         this.rollup = rollup;
         this.audit = audit;
@@ -81,7 +84,7 @@ public class SheetService {
 
     /** Set the sheet's today, starting the sheet if it has never been loaded; then close every open period past its
      *  grace days. A change of today first records a SNAPSHOT line per person, in list order, with their due-total on
-     *  the day being left, and releases every claim editor's lock on the sheet. */
+     *  the day being left (kept as the person's snapshot line), and releases every claim editor's lock on the sheet. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         load(id, user);
@@ -89,8 +92,12 @@ public class SheetService {
         Rollup.Figures before = rollup.of(id);
         boolean changed = !today.equals(sheet.getToday());
         if (changed) {
-            before.people().values().forEach(figures -> audit.recordActingOnCommit(id, user, "SNAPSHOT sheet=" + id + " by=" + user
-                    + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
+            LocalDate left = sheet.getToday();
+            before.people().forEach((personId, figures) -> {
+                snapshots.record(id, personId, left, figures.dueTotal());
+                audit.recordActingOnCommit(id, user, "SNAPSHOT sheet=" + id + " by=" + user
+                        + " name=" + figures.name() + " due-total=" + figures.dueTotal());
+            });
         }
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
