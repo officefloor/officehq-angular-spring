@@ -1,0 +1,68 @@
+{
+  "checkpoint": 92,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp92_four-eyes-editor",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    88
+  ],
+  "replaced_tests": [
+    "cp88_compound-late-charge.spec.ts::compound late charge scenario 3"
+  ],
+  "request": {
+    "spec": "The user who last edited a claim (through the claim form or the row's amount entry) can no longer\nsettle or approve it, exactly as its opener cannot: the action is refused with an error on the\nclaim and nothing changes. Selecting claims to settle together follows the same rule.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe user who last edited a claim (through the claim form or the row's amount entry) can no longer\nsettle or approve it, exactly as its opener cannot: the action is refused with an error on the\nclaim and nothing changes. Selecting claims to settle together follows the same rule.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6bc56b41799867255ac42be84919be05196a2a73",
+  "reset_sha": "",
+  "preagent_sha": "53c7b11124bc8f7434ca1fe8bacabae5eb6d20b2",
+  "prev_sha": "53c7b11124bc8f7434ca1fe8bacabae5eb6d20b2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5985118,
+    "input_tokens": 26,
+    "output_tokens": 5184,
+    "cache_read_tokens": 509999,
+    "cache_creation_tokens": 49091,
+    "num_turns": 14,
+    "duration_ms": 194888,
+    "duration_api_ms": 53348,
+    "model": "claude-opus-5-5",
+    "session_id": "7a37ff39-1462-429b-8257-9a6212322f62",
+    "stop_reason": "success",
+    "result_text": "The person who last edited a claim now can't settle or approve it, the same way its opener can't. All 4 acceptance tests pass with `bin/e2e`.\n\n**What changed:**\n- **Stored data:** a new migration, `V57__claim_edited_by.sql`, adds an `edited_by` column to the claim table. When someone saves a claim through the claim form or the row's amount entry, their name is stored there. Each new edit replaces the previous name.\n- **Server (`ClaimService`):** settle and approve used to check only the opener. They now also refuse the last editor, with a 403 error, and nothing is written to the store or the audit file. Selecting claims to settle together runs each claim through the same settle check, so it follows the rule without extra code: a claim edited by the person settling is counted as refused.\n- **Claim data sent to the screen:** each claim now includes `editedBy`, and the sheet's history keeps it too.\n- **Front end (`claims.ts`):** a refused settle or approve now names the reason. For example, \"You last edited this claim, so someone else must settle it.\" The opener's messages are unchanged.\n\nClaims edited before this change have no editor recorded, so only the opener rule applies to them until they're edited again.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5985118,
+        "num_turns": 14,
+        "duration_ms": 194888,
+        "duration_api_ms": 53348,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp92.agent.jsonl",
+  "agent_diff_file": "cp92.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

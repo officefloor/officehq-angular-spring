@@ -1,0 +1,184 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 1a070ad3d..44c63a8f1 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -58,6 +58,9 @@ export interface ClaimView {
+   voidReason: string | null;
+   /** The claim's comments, oldest first. */
+   comments: ClaimComment[];
++  /** The signed-in name of the user who last edited the claim; null if no one has. Like its opener, they
++   *  cannot settle or approve it. */
++  editedBy: string | null;
+ }
+ 
+ /** A comment on a claim: the signed-in name of who wrote it, the sheet's today (yyyy-mm-dd) then, and its text. */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e85bb51ec..bebecf447 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -391,6 +391,8 @@ export class PersonClaims {
+           : err instanceof HttpErrorResponse && err.status === 403
+           ? status === 'SETTLED' && c.openedBy === this.session.user()
+             ? 'You opened this claim, so someone else must settle it.'
++            : status === 'SETTLED' && c.editedBy === this.session.user()
++            ? 'You last edited this claim, so someone else must settle it.'
+             : status === 'VOID' && c.status === 'SETTLED'
+               ? 'Only a steward may void a settled claim.'
+             : `Your role may not ${STATUS_ACTION[status] ?? 'move'} a claim.`
+@@ -478,6 +480,8 @@ export class PersonClaims {
+         message: err instanceof HttpErrorResponse && err.status === 403
+           ? c.openedBy === this.session.user()
+             ? 'You opened this claim, so another steward must approve it.'
++            : c.editedBy === this.session.user()
++            ? 'You last edited this claim, so another steward must approve it.'
+             : 'Only a steward can approve a claim.'
+           : this.refusal(err, c, 'approved'),
+       }),
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 2ae42ed9b..514dbab37 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -83,6 +83,10 @@ public class Claim {
+     @Column(name = "opened_by", length = 100)
+     private String openedBy;
+ 
++    /** The signed-in name of the user who last edited the claim; none while it has never been edited. */
++    @Column(name = "edited_by", length = 100)
++    private String editedBy;
++
+     /** Whether the claim is bound by its person's last statement. */
+     @Column(name = "stated", nullable = false)
+     private boolean stated;
+@@ -249,6 +253,19 @@ public class Claim {
+         this.openedBy = openedBy;
+     }
+ 
++    public String getEditedBy() {
++        return editedBy;
++    }
++
++    public void setEditedBy(String editedBy) {
++        this.editedBy = editedBy;
++    }
++
++    /** Whether this user opened the claim or last edited it: either way, they cannot settle or approve it. */
++    public boolean isOpenedOrEditedBy(String user) {
++        return user.equals(openedBy) || user.equals(editedBy);
++    }
++
+     public boolean isStated() {
+         return stated;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 975700778..b9e6764c1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -43,13 +43,13 @@ public class ClaimController {
+      * lateEntry is whether it was added while its period was soft-closed; remindedOn is the last day a reminder was
+      * written for it (null if never); tags are its tags, sorted (none when it has none); voidReason is the reason it
+      * was voided with (null when it was voided without one, or is not void); comments are its comments, oldest
+-     * first.
++     * first; editedBy is who last edited it (null if no one has).
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
+             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
+-            String voidReason, List<CommentLine> comments) {
++            String voidReason, List<CommentLine> comments, String editedBy) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -60,7 +60,7 @@ public class ClaimController {
+                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
+                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
+                     claim.getRemindedOn(), claim.getRef(), claim.tagList(), claim.getVoidReason(),
+-                    claim.getComments().stream().map(CommentLine::of).toList());
++                    claim.getComments().stream().map(CommentLine::of).toList(), claim.getEditedBy());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ea67d0960..0abf0db74 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -151,7 +151,7 @@ public class ClaimService {
+      *  a draft can be changed: to change an open claim, void it and add a new one. Its due-by stays as it was fixed.
+      *  Refused when its due-by is inside a closed period, or when it would be a correction that does not name a
+      *  SETTLED claim of its person, when its external reference is already used by another claim on the sheet, or
+-     *  while another user has its editor open. Saving releases its lock. */
++     *  while another user has its editor open. Saving releases its lock and records this user as its last editor. */
+     @Transactional
+     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
+             String corrects, String ref, String tags) {
+@@ -179,6 +179,7 @@ public class ClaimService {
+         claim.setDate(date != null ? date : today);
+         claim.setNote(noteOf(note));
+         claim.setLockedBy(null);
++        claim.setEditedBy(user);
+         Claim edited = claims.saveAndFlush(claim);
+         Person person = people.findByIdAndSheetId(edited.getPersonId(), sheetId).orElseThrow();
+         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
+@@ -193,7 +194,7 @@ public class ClaimService {
+      * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
+      * at the rate in force on its date of its person's grade in force on that date, as rates are now, with the late charge it has gained
+      * added on top, so later rate changes leave it as it is. The user
+-     * who opened a claim cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
++     * who opened a claim, or last edited it, cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
+      * makes it PENDING instead, for a steward to approve or reject (a claim with no due is within any limit); a
+      * steward settles anything. Opening, settling and voiding are each refused for a role the sheet's permission
+      * matrix does not allow. Only a steward may void a SETTLED claim, and only within {@value #SETTLED_VOID_DAYS}
+@@ -238,8 +239,9 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
+         }
+-        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
++        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who opened or last edited a claim cannot settle it");
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+         BigDecimal due = dueNow(sheet, claim, person);
+@@ -448,15 +450,16 @@ public class ClaimService {
+     }
+ 
+     /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
+-     *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim, for a
++     *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
+      *  claim that is not PENDING and for one due by inside a closed period. */
+     @Transactional
+     public Claim approve(String sheetId, String user, long id) {
+         sheets.load(sheetId, user);
+         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+         Claim claim = pendingClaim(sheetId, user, id);
+-        if (user.equals(claim.getOpenedBy())) {
+-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot approve it");
++        if (claim.isOpenedOrEditedBy(user)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who opened or last edited a claim cannot approve it");
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+         BigDecimal due = dueNow(sheet, claim, person);
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index 4599c81ea..cb70d29b3 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -154,7 +154,7 @@ public class SheetHistory {
+         return new ClaimView(c.id(), c.personId(), c.amount(), c.date(), c.note(), c.status(), c.number(),
+                 c.settledDue(), c.openedBy(), c.stated(), c.statedDue(), c.corrects(), c.dueBy(), c.deferredUntil(),
+                 c.log(), c.proofs(), c.splitFrom(), null, c.lateEntry(), c.remindedOn(), c.ref(), c.tags(),
+-                c.voidReason(), c.comments());
++                c.voidReason(), c.comments(), c.editedBy());
+     }
+ 
+     /** The lists the screen reads of the sheet as it stood at the end of a date; none when no change was made on it
+diff --git a/src/main/resources/db/migration/V57__claim_edited_by.sql b/src/main/resources/db/migration/V57__claim_edited_by.sql
+new file mode 100644
+index 000000000..0bdf5287d
+--- /dev/null
++++ b/src/main/resources/db/migration/V57__claim_edited_by.sql
+@@ -0,0 +1,3 @@
++-- The signed-in name of the user who last edited a claim (through the claim form or its row's amount entry);
++-- none while it has never been edited. Like its opener, that user cannot settle or approve it.
++ALTER TABLE claim ADD COLUMN edited_by VARCHAR(100);
