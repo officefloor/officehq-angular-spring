@@ -1,0 +1,115 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index d1d8a850b..696792a36 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -32,11 +32,29 @@ export const RATE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+ export const NOT_AVAILABLE = 'n/a';
+ 
+ /** The due on an amount (in whole cents) at a rate (a percent, e.g. "12.50"), in whole cents:
+- *  amount × rate / 100, rounded half up to the cent. Exact, whatever the size of the amount. */
++ *  amount × rate / 100, rounded half to even to the cent. Exact, whatever the size of the amount. */
+ export function dueCents(amountCents: number, rate: string): number {
+   const [whole, frac = ''] = rate.split('.');
+   const basisPoints = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0').slice(0, 2));
+-  return Number((BigInt(amountCents) * basisPoints + 5000n) / 10000n);
++  const product = BigInt(amountCents) * basisPoints;
++  const quotient = product / 10000n;
++  const remainder = product % 10000n;
++  const roundUp = remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n);
++  return Number(roundUp ? quotient + 1n : quotient);
++}
++
++/** A claim's due in whole cents: the figure fixed when it was settled, else its amount at its grade's
++ *  rate in force on its date; null when it has neither. */
++export function claimDueCents(c: { amount: string; date: string; settledDue: string | null }, gradeRates: readonly RateView[]): number | null {
++  if (c.settledDue !== null) return amountCents(c.settledDue);
++  const rate = rateOn(gradeRates, c.date);
++  return rate === undefined ? null : dueCents(amountCents(c.amount), rate);
++}
++
++/** An amount ("12.3", "4") in whole cents. */
++function amountCents(amount: string): number {
++  const [whole, frac = ''] = amount.split('.');
++  return Number(whole) * 100 + Number(frac.padEnd(2, '0').slice(0, 2));
+ }
+ 
+ // The rates set for each grade on the active sheet, by from-date; a grade with none has no rate.
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index b596b8d5d..66704e7ff 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -2,7 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
+ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, counts, money } from '../../core/claims';
+-import { NOT_AVAILABLE, RateView, dueCents, rateOn } from '../../core/rates';
++import { NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ 
+ // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
+@@ -91,8 +91,8 @@ export class PersonClaims {
+ 
+   protected dueOf(c: ClaimView): string {
+     if (c.settledDue !== null) return c.settledDue;
+-    const rate = rateOn(this.rates(), c.date);
+-    return rate === undefined ? NOT_AVAILABLE : money(dueCents(cents(c.amount), rate));
++    const due = claimDueCents(c, this.rates());
++    return due === null ? NOT_AVAILABLE : money(due);
+   }
+ 
+   protected changeStatus(c: ClaimView, status: ClaimStatus): void {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b4e5414e6..4e9dc80dc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,7 +5,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
+ import { forkJoin, of, switchMap } from 'rxjs';
+ import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
+ import { GRADES, Grade, People, PersonView } from '../../core/people';
+-import { NOT_AVAILABLE, RateView, Rates, dueCents } from '../../core/rates';
++import { NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ import { PersonClaims } from '../claims/claims';
+ 
+@@ -76,14 +76,20 @@ export class PeopleList {
+     return byPerson;
+   });
+   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+-  /** Each person's due-total in whole cents: their claimed times their grade's rate in force today; null when it has none. */
++  /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none);
++   *  null when their grade has no rate in force today and none of those claims keeps a settled figure. */
+   private readonly dueByPerson = computed(() => {
+-    const rates = this.rates.byGrade();
++    const today = this.rates.byGrade();
++    const ratesByGrade = this.rates.ratesByGrade();
+     const byPerson = new Map<number, number | null>();
+     for (const p of this.people()) {
+-      const rate = rates.get(p.grade);
+-      const claimed = this.claimsOf(p.id).filter(counts).reduce((sum, c) => sum + cents(c.amount), 0);
+-      byPerson.set(p.id, rate === undefined ? null : dueCents(claimed, rate));
++      const counting = this.claimsOf(p.id).filter(counts);
++      if (!today.has(p.grade) && !counting.some((c) => c.settledDue !== null)) {
++        byPerson.set(p.id, null);
++        continue;
++      }
++      const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
++      byPerson.set(p.id, counting.reduce((sum, c) => sum + (claimDueCents(c, gradeRates) ?? 0), 0));
+     }
+     return byPerson;
+   });
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 38594620f..5a3ef04bc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -120,9 +120,9 @@ public class ClaimService {
+                 + (number == null ? "" : " number=" + number);
+     }
+ 
+-    /** The due on an amount at a rate (a percent): amount × rate / 100, rounded half up to the cent. */
++    /** The due on an amount at a rate (a percent): amount × rate / 100, rounded half to even to the cent. */
+     private static BigDecimal dueOn(BigDecimal amount, BigDecimal rate) {
+-        return amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
++        return amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+     }
+ 
+     private static BigDecimal scaled(BigDecimal amount) {
