@@ -719,10 +719,15 @@ export class PeopleList {
       };
     });
   });
-  /** Per period: its due-total, as its row shows it. */
+  /** Per period: its due-total, as its row shows it, and its change from the period before it by start date (none
+   *  for the earliest). */
   protected readonly summaryByPeriod = computed<PeriodSummary[]>(() => {
     const due = this.dueByPeriod();
-    return this.periods.list().map((p) => ({ name: p.name, dueTotal: due.get(p.id) ?? '0.00' }));
+    const list = this.periods.list();
+    const byStart = [...list].sort((a, b) => a.from.localeCompare(b.from) || a.id - b.id);
+    const change = new Map(byStart.map((p, i) => [p.id, i === 0 ? ''
+      : money(cents(due.get(p.id) ?? '0.00') - cents(due.get(byStart[i - 1].id) ?? '0.00'))]));
+    return list.map((p) => ({ name: p.name, dueTotal: due.get(p.id) ?? '0.00', change: change.get(p.id) ?? '' }));
   });
   /** Per status: how many of the sheet's claims are in it. */
   protected readonly summaryByStatus = computed<StatusSummary[]>(() => {
