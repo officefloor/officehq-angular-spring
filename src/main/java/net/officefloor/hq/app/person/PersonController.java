@@ -24,6 +24,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.claim.Holds;
 import net.officefloor.hq.app.claim.Tags;
+import net.officefloor.hq.app.pool.Pools;
 import net.officefloor.hq.app.rate.Grades;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rate.RateTable;
@@ -121,7 +122,7 @@ public class PersonController {
     /**
      * A person with the grade in force on the sheet's today, their own terms in force on it (null: none), their claims, newest first, claimed: the sum of the amounts of the claims (see
      * {@link Dues#claimed}: a hold leaves a claim in it), dueTotal: the sum of the due figures of the claims that count (see
-     * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
+     * {@link Dues#total}, held to the sheet's cap less their cut total, not below 0.00), excess: what the sum plus their cut total is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
      * that count are overdue and the sum of their due figures, the ids of their patrons, and whether they are
@@ -158,6 +159,15 @@ public class PersonController {
         /** The person as shown, with their parts of the sheet's shared claims (see {@link Dues#parts}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
                 List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots, Dues.Parts parts) {
+            return of(person, claims, rates, statements, patrons, clashing, snapshots, parts, BigDecimal.ZERO);
+        }
+
+        /**
+         * The person as shown, with their parts of the sheet's shared claims and their cut total (see
+         * {@link Pools#personCuts}), which the cap covers along with their due-total.
+         */
+        public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
+                List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots, Dues.Parts parts, BigDecimal cut) {
             Grades grade = person::gradeOn;
             Holds held = person.leaves();
             BigDecimal claimed = Dues.claimed(claims, held, rates.today());
@@ -165,7 +175,7 @@ public class PersonController {
             BigDecimal score = Dues.score(grade, claims, rates, held);
             return new PersonView(person.getId(), person.getVersion(), person.getName(),
                     grade.on(rates.today()), person.termsOn(rates.today()), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
-                    money(Dues.total(grade, claims, rates, held, parts)), money(Dues.excess(grade, claims, rates, held, parts)),
+                    money(Dues.total(grade, claims, rates, held, parts, cut)), money(Dues.excess(grade, claims, rates, held, parts, cut)),
                     statements.count(),
                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
                     person.getRetiredFrom(), person.isHeld(),
@@ -268,10 +278,12 @@ public class PersonController {
     private final StatementService statements;
     private final PersonMergeService merges;
     private final PersonTransferService transfers;
+    private final Pools pools;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
             RateService rates, StatementService statements, PersonMergeService merges,
-            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire) {
+            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire, Pools pools) {
+        this.pools = pools;
         this.bulkRetire = bulkRetire;
         this.service = service;
         this.imports = imports;
@@ -295,12 +307,14 @@ public class PersonController {
         List<Person> everyone = service.list(sheet);
         Map<Long, Dues.Parts> parts = Person.parts(everyone,
                 bySheet.values().stream().flatMap(List::stream).toList(), table);
+        Map<Long, BigDecimal> cuts = pools.personCuts(sheet);
         return everyone.stream()
                 .map(p -> PersonView.of(p, bySheet.getOrDefault(p.getId(), List.of()), table,
                         stated.getOrDefault(p.getId(), Statements.NONE),
                         patrons.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()),
                         snapshots.getOrDefault(p.getId(), List.of()),
-                        parts.getOrDefault(p.getId(), Dues.Parts.NONE))).toList();
+                        parts.getOrDefault(p.getId(), Dues.Parts.NONE),
+                        cuts.getOrDefault(p.getId(), BigDecimal.ZERO))).toList();
     }
 
     /** The people of the sheet's tree whose name or an alias contains the text (see {@link PersonService#search}). */
@@ -511,7 +525,7 @@ public class PersonController {
         return PersonView.of(person, claims.forPerson(sheet, personId), table,
                 statements.forPerson(sheet, personId), service.patrons(sheet, personId),
                 service.clashing(sheet, person), service.snapshots(sheet, personId),
-                claims.parts(sheet, personId, table));
+                claims.parts(sheet, personId, table), pools.personCuts(sheet).getOrDefault(personId, BigDecimal.ZERO));
     }
 
     /** Another save took the name or contact first: the unique name or contact on the sheet refuses this one. */

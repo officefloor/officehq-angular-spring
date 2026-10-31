@@ -441,11 +441,13 @@ public class AccessService {
 
     /**
      * Record the sheet's pot, two decimals (null: none). Not dated: the value holds from the beginning of time,
-     * replacing the one it had.
+     * replacing the one it had. The pot moves the cuts the cap covers, so every figure it moves is announced.
      */
     @Transactional
     public void setPot(String sheetId, String user, String pot) {
+        Rollup.Figures before = rollup.figures(sheetId);
         setUndated(sheetId, user, POT, pot);
+        rollup.changed(sheetId, user, before);
     }
 
     /**

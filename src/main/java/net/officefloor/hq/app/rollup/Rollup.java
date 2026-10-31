@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.Pools;
 import net.officefloor.hq.app.rate.ParentRates;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rate.RateTable;
@@ -21,6 +22,7 @@ import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.DatedSettings;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetSettingRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
@@ -64,9 +66,13 @@ public class Rollup {
     private final SheetSettingRepository settings;
     private final ParentRates parents;
     private final ApplicationEventPublisher events;
+    /** The pools, for each person's cut total; looked up when needed, since the pools read the sheet through this. */
+    private final ObjectProvider<Pools> pools;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            SheetSettingRepository settings, ParentRates parents, ApplicationEventPublisher events) {
+            SheetSettingRepository settings, ParentRates parents, ApplicationEventPublisher events,
+            ObjectProvider<Pools> pools) {
+        this.pools = pools;
         this.parents = parents;
         this.settings = settings;
         this.people = people;
@@ -111,11 +117,13 @@ public class Rollup {
         List<Person> everyone = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, Dues.Parts> parts = Person.parts(everyone, bySheet.values().stream().flatMap(List::stream).toList(),
                 table);
+        Map<Long, BigDecimal> cuts = pools.getObject().personCuts(sheetId);
         for (Person person : everyone) {
             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
             BigDecimal claimed = Dues.claimed(theirs, person.leaves(), today);
             BigDecimal due = Dues.total(person::gradeOn, theirs, table, person.leaves(),
-                    parts.getOrDefault(person.getId(), Dues.Parts.NONE));
+                    parts.getOrDefault(person.getId(), Dues.Parts.NONE),
+                    cuts.getOrDefault(person.getId(), BigDecimal.ZERO));
             BigDecimal overdue = Dues.sum(person::gradeOn, Dues.overdue(theirs, person::gradeOn, table, person.leaves()), table);
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue.setScale(2, RoundingMode.HALF_UP));

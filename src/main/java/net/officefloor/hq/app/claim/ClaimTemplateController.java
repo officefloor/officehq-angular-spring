@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import net.officefloor.hq.app.pool.Pools;
 import java.math.RoundingMode;
 import java.util.List;
 import net.officefloor.hq.app.period.ClosedPeriodRefused;
@@ -64,9 +65,11 @@ public class ClaimTemplateController {
     private final PersonService people;
     private final RateService rates;
     private final StatementService statements;
+    private final Pools pools;
 
     public ClaimTemplateController(ClaimTemplates templates, ClaimService claims, PersonService people,
-            RateService rates, StatementService statements) {
+            RateService rates, StatementService statements, Pools pools) {
+        this.pools = pools;
         this.templates = templates;
         this.claims = claims;
         this.people = people;
@@ -99,7 +102,8 @@ public class ClaimTemplateController {
         RateTable table = rates.table(sheet);
         return PersonView.of(person, claims.forPerson(sheet, id), table,
                 statements.forPerson(sheet, id), people.patrons(sheet, id), people.clashing(sheet, person),
-                people.snapshots(sheet, id), claims.parts(sheet, id, table));
+                people.snapshots(sheet, id), claims.parts(sheet, id, table),
+                pools.personCuts(sheet).getOrDefault(id, BigDecimal.ZERO));
     }
 
     @ExceptionHandler(ClaimTemplateRefused.class)

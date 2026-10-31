@@ -105,6 +105,26 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
         return sum == null || cap == null || sum.compareTo(cap) <= 0 ? BigDecimal.ZERO : sum.subtract(cap);
     }
 
+    /**
+     * A due-total held to the cap less the person's cut total (not below 0.00): that when the sum is above it; as it
+     * is otherwise, or when n/a (null).
+     */
+    public BigDecimal capped(BigDecimal sum, BigDecimal cut) {
+        BigDecimal cap = cap();
+        if (sum == null || cap == null) {
+            return sum;
+        }
+        BigDecimal room = cap.subtract(cut).max(BigDecimal.ZERO);
+        return sum.compareTo(room) <= 0 ? sum : room;
+    }
+
+    /**
+     * What a due-total's sum plus the person's cut total is above the cap: 0.00 when it is not, or when n/a (null).
+     */
+    public BigDecimal excess(BigDecimal sum, BigDecimal cut) {
+        return sum == null ? BigDecimal.ZERO : excess(sum.add(cut));
+    }
+
     /** The percent in force for the grade on the sheet's today; null when none is. */
     public BigDecimal current(String grade) {
         return on(grade, today);

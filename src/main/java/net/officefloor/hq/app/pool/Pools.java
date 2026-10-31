@@ -98,6 +98,15 @@ public class Pools {
         return cuts(list(sheetId));
     }
 
+    /** Each person's cut total as the pools stand now, by person id: their cuts across every pool added up. */
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> personCuts(String sheetId) {
+        Map<Long, BigDecimal> cuts = new HashMap<>();
+        list(sheetId).forEach(p -> p.members().stream().filter(m -> m.personId() != null && m.cut() != null)
+                .forEach(m -> cuts.merge(m.personId(), m.cut(), BigDecimal::add)));
+        return cuts;
+    }
+
     private static Map<String, BigDecimal> cuts(List<Shown> shown) {
         Map<String, BigDecimal> cuts = new HashMap<>();
         shown.forEach(p -> p.members().stream().filter(m -> m.cut() != null)

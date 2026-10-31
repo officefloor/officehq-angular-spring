@@ -370,6 +370,21 @@ public final class Dues {
     }
 
     /**
+     * A person's due-total (see {@link #total}) with their {@link Parts} of shared claims, held to the sheet's cap
+     * less their cut total (see {@link RateTable#capped(BigDecimal, BigDecimal)}).
+     */
+    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts,
+            BigDecimal cut) {
+        return rates.capped(uncapped(grades, claims, rates, holds, parts), cut);
+    }
+
+    /** What a person's {@link #uncapped} sum with their {@link Parts} plus their cut total is above the sheet's cap. */
+    public static BigDecimal excess(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts,
+            BigDecimal cut) {
+        return rates.excess(uncapped(grades, claims, rates, holds, parts), cut);
+    }
+
+    /**
      * A person's {@link #uncapped} sum plus their {@link Parts} of shared claims; a holder of a part has a sum
      * (0.00 for their own claims) even when their own would be n/a.
      */

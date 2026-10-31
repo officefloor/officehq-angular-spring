@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import net.officefloor.hq.app.pool.Pools;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -149,11 +150,13 @@ public class ClaimController {
     private final Tags tags;
     private final SettleAsOfService settleAsOf;
     private final DuplicateClaims duplicates;
+    private final Pools pools;
 
     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
             BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
             BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags,
-            SettleAsOfService settleAsOf, DuplicateClaims duplicates) {
+            SettleAsOfService settleAsOf, DuplicateClaims duplicates, Pools pools) {
+        this.pools = pools;
         this.settleAsOf = settleAsOf;
         this.duplicates = duplicates;
         this.bulkReassign = bulkReassign;
@@ -495,7 +498,8 @@ public class ClaimController {
         return PersonView.of(person, claims.forPerson(sheetId, personId),
                 table, statements.forPerson(sheetId, personId), people.patrons(sheetId, personId),
                 people.clashing(sheetId, person), people.snapshots(sheetId, personId),
-                claims.parts(sheetId, personId, table));
+                claims.parts(sheetId, personId, table),
+                pools.personCuts(sheetId).getOrDefault(personId, BigDecimal.ZERO));
     }
 
     /** A claim due by a date inside a closed period: refused, nothing changed. */
