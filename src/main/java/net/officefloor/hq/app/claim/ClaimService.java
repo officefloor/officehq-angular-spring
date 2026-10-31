@@ -229,7 +229,8 @@ public class ClaimService {
      * who opened a claim, or last edited it, cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
      * makes it PENDING instead, for a steward to approve or reject (a claim with no due is within any limit); a
      * steward settles anything. Opening, settling and voiding are each refused for a role the sheet's permission
-     * matrix does not allow. Only a steward may void a SETTLED claim, and only within {@value #SETTLED_VOID_DAYS}
+     * matrix does not allow. Opening a claim whose due is above the review threshold in force on its date makes it
+     * REVIEW instead, with no number yet, recording who opened it. Only a steward may void a SETTLED claim, and only within {@value #SETTLED_VOID_DAYS}
      * days of the day its log records it settled, by the sheet's today; its frozen figure then leaves every total
      * and the audit line ends with it as reversed. A claim due by inside a closed period cannot move. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
@@ -290,10 +291,15 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, due)) {
             next = ClaimStatus.PENDING;
         }
+        if (next == ClaimStatus.OPEN && overReviewThreshold(sheet, claim, due)) {
+            next = ClaimStatus.REVIEW;
+        }
         Rollup.Figures before = rollup.of(sheetId);
         String number = claim.getNumber();
         claim.setStatus(next);
-        if (next == ClaimStatus.OPEN) {
+        if (next == ClaimStatus.REVIEW) {
+            claim.setOpenedBy(user);
+        } else if (next == ClaimStatus.OPEN) {
             number = nextNumber(sheet, claim.getDueBy());
             claim.setNumber(number);
             claim.setOpenedBy(user);
@@ -311,6 +317,7 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DELETED -> "CLAIM_DELETED";
             case DRAFT -> "CLAIM_RESTORED";
+            case REVIEW -> "CLAIM_REVIEW";
         };
         String line = entry(event, user, person, changed, number);
         if (next == ClaimStatus.SETTLED) {
@@ -588,6 +595,37 @@ public class ClaimService {
         return changed;
     }
 
+    /** A steward reviews a REVIEW claim: it becomes OPEN, taking its next number as opening it does, and keeps who
+     *  opened it. CLAIM_REVIEWED is recorded, then CLAIM_OPENED with its number. Refused for anyone but a steward,
+     *  for a claim that is not REVIEW, for one due by inside a closed period, and for one whose period's cap its
+     *  person already has that many open claims in. */
+    @Transactional
+    public Claim review(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim is not waiting for review");
+        }
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reviews a claim");
+        }
+        refuseOverCap(sheetId, claim);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
+        claim.setStatus(ClaimStatus.OPEN);
+        claim.setNumber(nextNumber(sheet, claim.getDueBy()));
+        claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
+        Claim changed = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REVIEWED", user, person, changed, null));
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_OPENED", user, person, changed, changed.getNumber()));
+        rollup.recordChanges(sheetId, user, before);
+        return changed;
+    }
+
     /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by its person's last
      *  statement if that statement included it. Refused for a clerk, for a claim that is not PENDING and for one
      *  due by inside a closed period. */
@@ -860,6 +898,13 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
                     "A claim whose due is above the note threshold of " + threshold + " needs a note first");
         }
+    }
+
+    /** Whether opening a claim makes it REVIEW: its due is above the review threshold in force on its date (a claim
+     *  with no due, or on a sheet with no threshold then, goes straight to OPEN). */
+    private static boolean overReviewThreshold(Sheet sheet, Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheet.reviewThresholdOn(claim.getDate());
+        return threshold != null && due != null && due.compareTo(threshold) > 0;
     }
 
     /** Whether a settle by this user must wait for a steward: they are a clerk and the due is above the sheet's

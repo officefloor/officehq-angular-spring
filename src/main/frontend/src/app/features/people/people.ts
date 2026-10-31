@@ -41,7 +41,7 @@ type SortKey = (typeof SORT_KEYS)[number];
 const NO_RATES: RateLine = [];
 
 /** The statuses the summary counts claims in, in the order it lists them. */
-const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 
 /** A count of overdue claims and their dues in whole cents. */
 interface Overdue {

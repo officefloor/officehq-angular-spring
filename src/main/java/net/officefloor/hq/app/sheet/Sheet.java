@@ -35,6 +35,7 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String REVIEW_THRESHOLD = "review-threshold";
     public static final String ROUNDING = "rounding";
 
     /** The rounding modes a sheet can set, by the value recorded. */
@@ -76,7 +77,7 @@ public class Sheet {
     private int lastSettleBatch;
 
     /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
-     *  grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C, note-threshold, rounding): each in force from its from-date until the next one's of the same key. */
+     *  grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C, note-threshold, review-threshold, rounding): each in force from its from-date until the next one's of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
@@ -436,6 +437,17 @@ public class Sheet {
     /** The note threshold in force on the sheet's today; null means none. */
     public BigDecimal getNoteThreshold() {
         return noteThresholdOn(today);
+    }
+
+    /** A claim dated on a day whose due is above the review threshold in force then (two decimals) goes to REVIEW
+     *  when opened, instead of OPEN; null means none. */
+    public BigDecimal reviewThresholdOn(LocalDate date) {
+        return amountOn(REVIEW_THRESHOLD, date, null);
+    }
+
+    /** The review threshold in force on the sheet's today; null means none. */
+    public BigDecimal getReviewThreshold() {
+        return reviewThresholdOn(today);
     }
 
     /** A person's due-total is at most this (two decimals), in force on the sheet's today; null means none. */

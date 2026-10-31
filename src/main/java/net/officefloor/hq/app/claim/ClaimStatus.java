@@ -4,20 +4,21 @@ package net.officefloor.hq.app.claim;
  *  steward may void a SETTLED one within a few days of its settlement. A clerk
  *  settling an OPEN claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects
  *  (OPEN again). A DRAFT claim can be DELETED, counting nowhere, and restored to a DRAFT on the sheet's today it was
- *  deleted. */
+ *  deleted. Opening a claim whose due is above the sheet's review threshold makes it REVIEW instead, counting
+ *  nowhere, until a steward reviews it (OPEN); a REVIEW claim can be VOID. */
 public enum ClaimStatus {
-    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
+    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED, REVIEW;
 
     /** Whether a claim in this status may move to {@code next} by a status change; approving or rejecting a
-     *  PENDING claim is not a status change. */
+     *  PENDING claim, or reviewing a REVIEW one, is not a status change. */
     public boolean canBecome(ClaimStatus next) {
         return switch (next) {
             case OPEN -> this == DRAFT;
             case SETTLED -> this == OPEN;
-            case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == SETTLED;
+            case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == SETTLED || this == REVIEW;
             case DELETED -> this == DRAFT;
             case DRAFT -> this == DELETED;
-            case PENDING -> false;
+            case PENDING, REVIEW -> false;
         };
     }
 

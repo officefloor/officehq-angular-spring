@@ -5,8 +5,10 @@ import { HoldView, PersonView } from './people';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID, as can a SETTLED
  *  one by a steward within 7 days of its settlement. A clerk settling a
- *  claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects (OPEN again). */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+ *  claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects (OPEN again). Opening a
+ *  claim whose due is above the review threshold makes it REVIEW, counting nowhere, until a steward reviews it (OPEN);
+ *  a REVIEW claim can be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 export interface ClaimView {
   id: number;
@@ -335,6 +337,11 @@ export class Claims {
   /** A steward approves a PENDING claim: it is SETTLED, its due fixed as it is now. */
   approve(sheetId: string, id: number): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/approve`, {});
+  }
+
+  /** A steward reviews a REVIEW claim: it is OPEN, with its number. */
+  review(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/review`, {});
   }
 
   /** A steward re-settles a SETTLED claim: its due fixed again as it would be today as an open, unbound claim. */

@@ -294,6 +294,13 @@ public class SheetService {
         return record(id, user, Sheet.NOTE_THRESHOLD, from, threshold == null ? null : scaled(threshold), false);
     }
 
+    /** Record the sheet's review threshold (null: none) from a date (null: the sheet's today), starting the sheet
+     *  if it has never been loaded. */
+    @Transactional
+    public Sheet setReviewThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
+        return record(id, user, Sheet.REVIEW_THRESHOLD, from, threshold == null ? null : scaled(threshold), false);
+    }
+
     /** Record the sheet's rounding mode (half-up or half-even; null: none) from a date (null: the sheet's today),
      *  starting the sheet if it has never been loaded. Refused for any other mode. */
     @Transactional

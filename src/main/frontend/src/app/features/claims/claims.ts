@@ -119,6 +119,8 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-approve" (click)="approve(c)"
                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <button type="button" data-testid="claim-review" (click)="review(c)"
+                  [attr.aria-label]="'Review claim of ' + c.amount + ' on ' + c.date">Review</button>
           <button type="button" data-testid="claim-resettle" (click)="resettle(c)"
                   [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
           <label [for]="'claim-reject-reason-' + c.id">Reason to reject</label>
@@ -573,6 +575,25 @@ export class PersonClaims {
             ? 'You last edited this claim, so another steward must approve it.'
             : 'Only a steward can approve a claim.'
           : this.refusal(err, c, 'approved'),
+      }),
+    });
+  }
+
+  protected review(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.api.review(sheet.id, c.id).subscribe({
+      next: (saved) => this.saved.emit(saved),
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can review a claim.'
+          : err instanceof HttpErrorResponse && err.status === 423
+            ? 'This claim is due by inside a closed period.'
+            : c.status === 'REVIEW'
+              ? 'This person already has as many open claims in this period as its cap allows.'
+              : `A ${c.status} claim cannot be reviewed; only a REVIEW one can.`,
       }),
     });
   }
