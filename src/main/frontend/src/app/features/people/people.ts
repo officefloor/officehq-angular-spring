@@ -124,6 +124,9 @@ function csvField(value: string): string {
             <span data-testid="person-name">{{ p.name }}</span>
             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
+            @for (pd of periods.list(); track pd.id) {
+              — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd.id) }}</span>
+            }
             excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span>
             — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
             due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
@@ -311,21 +314,33 @@ export class PeopleList {
       NO_OVERDUE,
     ),
   );
-  /** Each period's due-total, by period id: the dues of the claims that count whose date falls in it;
-   *  a closed period keeps the total fixed when it was closed. */
-  protected readonly dueByPeriod = computed(() => {
+  /** Each person's due-total for each period, in whole cents, by person id then period id: the dues of their claims
+   *  that count whose date falls in it (none counting as 0); a closed period keeps the figures fixed when it was
+   *  closed, 0 for a person added since. */
+  private readonly dueByPersonPeriod = computed(() => {
     const periods = this.periods.list();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
-    const personOf = new Map(this.people().map((p) => [p.id, p]));
-    const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
-    for (const c of this.claims().filter(this.countsNow())) {
-      const period = periodOn(periods, c.date);
-      const person = personOf.get(c.personId);
-      if (!period || !person) continue;
-      totals.set(period.id, (totals.get(period.id) ?? 0) + (this.claimDue(person, c, dueTerms) ?? 0));
+    const byPerson = new Map<number, Map<number, number>>();
+    for (const p of this.people()) {
+      const live = new Map<number, number>(periods.map((pd) => [pd.id, 0]));
+      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds))) {
+        const period = periodOn(periods, c.date);
+        if (period) live.set(period.id, (live.get(period.id) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
+      }
+      for (const pd of periods) {
+        if (pd.closed) live.set(pd.id, cents(pd.closedPersonTotals[String(p.id)] ?? '0.00'));
+      }
+      byPerson.set(p.id, live);
     }
-    const closed = new Map(periods.filter((p) => p.closedTotal !== null).map((p) => [p.id, p.closedTotal as string]));
-    return new Map([...totals].map(([id, total]) => [id, closed.get(id) ?? money(total)]));
+    return byPerson;
+  });
+  /** Each period's due-total, by period id: the sum of the people's figures for it. */
+  protected readonly dueByPeriod = computed(() => {
+    const totals = new Map<number, number>(this.periods.list().map((pd) => [pd.id, 0]));
+    for (const figures of this.dueByPersonPeriod().values()) {
+      for (const [id, due] of figures) totals.set(id, (totals.get(id) ?? 0) + due);
+    }
+    return new Map([...totals].map(([id, total]) => [id, money(total)]));
   });
   /** Per grade: the people not retired on it today and their due-totals added up, skipping those with none. */
   protected readonly summaryByGrade = computed<GradeSummary[]>(() => {
@@ -350,6 +365,10 @@ export class PeopleList {
     const claims = this.claims();
     return SUMMARY_STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
   });
+  /** A person's due-total for a period, with two decimals. */
+  protected periodDueOf(personId: number, periodId: number): string {
+    return money(this.dueByPersonPeriod().get(personId)?.get(periodId) ?? 0);
+  }
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion = 0;

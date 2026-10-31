@@ -84,9 +84,9 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
         }
-        BigDecimal total = rollup.dueTotalBetween(sheetId, period.getFromDate(), period.getToDate());
-        period.close(total);
+        period.close(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()));
         Period closed = periods.saveAndFlush(period);
+        BigDecimal total = closed.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
                 + " total=" + total.toPlainString());
         return closed;

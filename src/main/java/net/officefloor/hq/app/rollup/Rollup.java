@@ -101,14 +101,18 @@ public class Rollup {
                 overdueTotal.toPlainString());
     }
 
-    /** The due-total of the claims that count (a held person's open ones dated within a hold and not stated do not) dated from {@code from} to {@code to} inclusive, as the
-     *  screen shows a period's: each claim's due, none counting as 0. */
-    public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+    /** Each person's due-total for the dates from {@code from} to {@code to} inclusive, by person id, as the screen
+     *  shows a person's period figure: the dues of their claims that count (a held person's open ones dated within a
+     *  hold and not stated do not) dated in it, none counting as 0; every person on the sheet has one. */
+    public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
         List<Rate> sheetRates = rates.findBySheetId(sheetId);
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         Map<Long, Person> personOf = new LinkedHashMap<>();
-        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
+            personOf.put(p.getId(), p);
+            totals.put(p.getId(), BigDecimal.ZERO.setScale(2));
+        });
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = personOf.get(claim.getPersonId());
@@ -117,10 +121,10 @@ public class Rollup {
             }
             BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet, sheetClaims);
             if (due != null) {
-                total = total.add(due);
+                totals.merge(person.getId(), due, BigDecimal::add);
             }
         }
-        return total;
+        return totals;
     }
 
     /**
