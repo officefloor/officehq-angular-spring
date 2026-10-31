@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 
 /** A sheet: the unit everything else in the app is kept under, chosen by its id. */
 @Entity
@@ -20,13 +21,18 @@ public class Sheet {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    /** The sheet's today: used for every date-dependent decision and default instead of the clock. */
+    @Column(name = "today", nullable = false)
+    private LocalDate today;
+
     protected Sheet() {
     }
 
-    public Sheet(String id, String createdBy, Instant createdAt) {
+    public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
         this.id = id;
         this.createdBy = createdBy;
         this.createdAt = createdAt;
+        this.today = today;
     }
 
     public String getId() {
@@ -39,5 +45,13 @@ public class Sheet {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public LocalDate getToday() {
+        return today;
+    }
+
+    public void setToday(LocalDate today) {
+        this.today = today;
     }
 }

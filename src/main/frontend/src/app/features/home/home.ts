@@ -22,6 +22,16 @@ import { Sheets } from '../../core/sheet';
 
       @if (sheets.current(); as sheet) {
         <p>Sheet: <strong data-testid="sheet-current-id">{{ sheet.id }}</strong></p>
+        <p>Today: <strong data-testid="sheet-today">{{ sheet.today }}</strong></p>
+
+        <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Change the sheet's today">
+          <label for="sheet-today-input">Change today</label>
+          <input id="sheet-today-input" type="date" data-testid="sheet-today-input" formControlName="today" />
+          <button type="submit" data-testid="sheet-today-save" [disabled]="savingToday()">Set today</button>
+          @if (todayError(); as err) {
+            <p role="alert" data-testid="sheet-error">{{ err }}</p>
+          }
+        </form>
       } @else {
         <p data-testid="sheet-none">Load a sheet to begin.</p>
       }
@@ -47,14 +57,20 @@ export class Home {
   protected readonly sheetForm = new FormGroup({
     id: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
+  protected readonly todayForm = new FormGroup({
+    today: new FormControl('', { nonNullable: true, validators: Validators.required }),
+  });
   protected readonly signInError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
+  protected readonly todayError = signal<string | null>(null);
   protected readonly loading = signal(false);
+  protected readonly savingToday = signal(false);
 
   constructor() {
     // An error is removed as soon as its form is changed.
     this.signInForm.valueChanges.subscribe(() => this.signInError.set(null));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
+    this.todayForm.valueChanges.subscribe(() => this.todayError.set(null));
   }
 
   protected signIn(): void {
@@ -77,11 +93,34 @@ export class Home {
       return;
     }
     this.loading.set(true);
+    this.todayError.set(null);
     this.sheets.load(id).subscribe({
-      next: () => this.loading.set(false),
+      next: (sheet) => {
+        this.loading.set(false);
+        this.todayForm.setValue({ today: sheet.today }, { emitEvent: false });
+      },
       error: () => {
         this.loading.set(false);
         this.sheetError.set('Could not load that sheet.');
+      },
+    });
+  }
+
+  protected saveToday(): void {
+    this.todayError.set(null);
+    const sheet = this.sheets.current();
+    const today = this.todayForm.controls.today.value.trim();
+    if (!sheet) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+      this.todayError.set('Choose a date for today.');
+      return;
+    }
+    this.savingToday.set(true);
+    this.sheets.setToday(sheet.id, today).subscribe({
+      next: () => this.savingToday.set(false),
+      error: () => {
+        this.savingToday.set(false);
+        this.todayError.set('Could not change the sheet\'s today.');
       },
     });
   }

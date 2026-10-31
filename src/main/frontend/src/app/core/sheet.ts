@@ -4,6 +4,8 @@ import { Observable, tap } from 'rxjs';
 
 export interface SheetView {
   id: string;
+  /** The sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it, never the clock. */
+  today: string;
 }
 
 // The active sheet. Everything else in the app is kept per sheet; loading an id re-reads it from
@@ -17,6 +19,13 @@ export class Sheets {
   load(id: string): Observable<SheetView> {
     return this.http
       .post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null)
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's today. */
+  setToday(id: string, today: string): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/today`, { today })
       .pipe(tap((s) => this.active.set(s)));
   }
 }
