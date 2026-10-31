@@ -194,6 +194,11 @@ public class Person {
         return List.copyOf(grades);
     }
 
+    /** Every grade recorded as the one becomes the other, keeping its from-date. */
+    public void regrade(String from, String into) {
+        grades.replaceAll(g -> from.equals(g.getGrade()) ? new GradeFrom(into, g.getFromDate()) : g);
+    }
+
     /** Record the grade from the date, keeping the others; one already recorded from that date is replaced. */
     public void gradeFrom(String grade, LocalDate from) {
         grades.removeIf(g -> g.getFromDate() != null && Objects.equals(g.getFromDate(), from));

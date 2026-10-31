@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import net.officefloor.hq.app.rate.GradeService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -12,8 +14,9 @@ import org.springframework.web.server.ResponseStatusException;
  * A steward merges a grade into another: the merge is recorded, then everyone whose grade in force on the
  * sheet's today is the merged grade is given the other from that today, in list order. Each person is edited
  * on their own, exactly as the person form would (their name and own terms kept, no version check), so one
- * that cannot be edited is left as they are while the rest go through. Once all are done, the figures the
- * merge as a whole moved are announced.
+ * that cannot be edited is left as they are while the rest go through. The merge is retroactive: once all are
+ * done, every grade record of each person it moved that is the merged grade becomes the other, whatever its
+ * date, and then the figures the merge as a whole moved are announced.
  */
 @Service
 public class GradeMergeService {
@@ -22,16 +25,18 @@ public class GradeMergeService {
     }
 
     private final PersonService people;
+    private final PersonRepository personRows;
     private final GradeService grades;
     private final SheetService sheets;
     private final Rollup rollup;
     private final TransactionTemplate tx;
 
-    public GradeMergeService(PersonService people, GradeService grades, SheetService sheets, Rollup rollup,
+    public GradeMergeService(PersonService people, PersonRepository personRows, GradeService grades, SheetService sheets, Rollup rollup,
             TransactionTemplate tx) {
         this.rollup = rollup;
         this.tx = tx;
         this.people = people;
+        this.personRows = personRows;
         this.grades = grades;
         this.sheets = sheets;
     }
@@ -42,19 +47,25 @@ public class GradeMergeService {
             return rollup.figures(sheetId);
         });
         LocalDate today = sheets.today(sheetId);
-        int merged = 0;
+        List<Long> moved = new ArrayList<>();
         for (Person p : people.list(sheetId)) {
             if (!from.equals(p.gradeOn(today))) {
                 continue;
             }
             try {
                 people.edit(sheetId, user, p.getId(), null, p.getName(), into, today, p.getTerms(), p.getContact());
-                merged++;
+                moved.add(p.getId());
             } catch (ResponseStatusException refused) {
                 // refused: left as they are
             }
         }
-        tx.executeWithoutResult(status -> rollup.changed(sheetId, user, before));
-        return new Result(merged);
+        tx.executeWithoutResult(status -> {
+            for (Long id : moved) {
+                personRows.findByIdAndSheetId(id, sheetId).ifPresent(p -> p.regrade(from, into));
+            }
+            personRows.flush();
+            rollup.changed(sheetId, user, before);
+        });
+        return new Result(moved.size());
     }
 }
