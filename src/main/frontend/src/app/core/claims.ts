@@ -229,6 +229,13 @@ export interface BulkReassignView {
   claims: ClaimView[];
 }
 
+/** What a bulk re-date did: how many it re-dated and refused, and the claims it re-dated. */
+export interface BulkRedateView {
+  redated: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 /** An amount the form accepts: 0.00 or more, with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
 
@@ -365,6 +372,12 @@ export class Claims {
    *  as they are. */
   bulkReassign(sheetId: string, ids: readonly number[], personId: number): Observable<BulkReassignView> {
     return this.http.post<BulkReassignView>(`${this.base(sheetId)}/claims/bulk-reassign`, { ids, personId });
+  }
+
+  /** Re-date each of the claims to `date` (yyyy-mm-dd), in list order, as a single re-date would; the rest are
+   *  refused and left as they are. */
+  bulkRedate(sheetId: string, ids: readonly number[], date: string): Observable<BulkRedateView> {
+    return this.http.post<BulkRedateView>(`${this.base(sheetId)}/claims/bulk-redate`, { ids, date });
   }
 
   private base(sheetId: string): string {

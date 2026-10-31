@@ -166,6 +166,14 @@ public class ClaimController {
     public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims selected to be re-dated together, and their new date. */
+    public record BulkRedate(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull LocalDate date) {
+    }
+
+    /** What a bulk re-date did: how many it re-dated and refused, and the claims it re-dated, in the order re-dated. */
+    public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService claims;
     private final RoleService roles;
     private final SheetService sheets;
@@ -413,5 +421,34 @@ public class ClaimController {
             }
         }
         return new BulkReassignView(moved.size(), refused, moved);
+    }
+
+    /**
+     * Re-date each selected claim, one at a time in list order (people in the order listed, newest claim first
+     * within a person), by exactly the rules of re-dating one claim. Each that cannot be re-dated, or is not on the
+     * sheet, is refused and left as it is.
+     */
+    @PostMapping("/claims/bulk-redate")
+    public BulkRedateView bulkRedate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkRedate request) {
+        int selected = (int) request.ids().stream().distinct().count();
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+            // A viewer's bulk action, or one on an archived sheet, goes through with nothing done: every selected
+            // claim is refused.
+            return new BulkRedateView(0, selected, List.of());
+        }
+        List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+        int refused = selected - ordered.size();
+        List<ClaimView> redated = new ArrayList<>();
+        for (long id : ordered) {
+            try {
+                redated.add(ClaimView.of(claims.redate(sheetId, user, id, request.date())));
+            } catch (ResponseStatusException refusal) {
+                refused++;
+            }
+        }
+        return new BulkRedateView(redated.size(), refused, redated);
     }
 }
