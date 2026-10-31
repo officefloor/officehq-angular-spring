@@ -11,6 +11,7 @@ import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCe
 import { Sheets, graceOn } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { Watches } from '../../core/watches';
+import { Consolidated, DescendantFigures, NO_DESCENDANTS } from '../../core/consolidated';
 import { PersonClaims } from '../claims/claims';
 import { SheetHeader } from '../header/header';
 import { PeriodsPanel } from '../periods/periods';
@@ -80,6 +81,10 @@ function csvField(value: string): string {
 
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
+      <p>Consolidated over this sheet and its descendants:
+        people <strong data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</strong>,
+        due <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</strong>,
+        overdue <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</strong></p>
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong>
@@ -327,12 +332,15 @@ export class PeopleList {
   private readonly statementsApi = inject(Statements);
   private readonly patronsApi = inject(Patrons);
   private readonly watchesApi = inject(Watches);
+  private readonly consolidatedApi = inject(Consolidated);
   protected readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);
 
   protected readonly grades = GRADES;
   protected readonly money = money;
   protected readonly people = signal<PersonView[]>([]);
+  /** The figures of the sheet's descendants, as each of them shows its own, re-read on each (re)load. */
+  private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
   /** The people listed: retired people only while "show retired" is on. Totals still count everyone. */
   protected readonly listed = computed(() =>
     this.api.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
@@ -510,6 +518,15 @@ export class PeopleList {
   protected readonly dueTotal = computed(() =>
     money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
   );
+  /** The sheet's own people count, due-total and overdue-total, as shown here, added to its descendants'. */
+  protected readonly consolidated = computed(() => {
+    const d = this.descendants();
+    return {
+      peopleCount: this.people().length + d.peopleCount,
+      dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
+      overdueTotal: money(this.overdueTotals().cents + cents(d.overdueTotal)),
+    };
+  });
   /** Each person's overdue claims that count: how many, and their dues added up in whole cents (none counting as 0). */
   private readonly overdueByPerson = computed(() => {
     const sheet = this.sheets.current();
@@ -686,6 +703,7 @@ export class PeopleList {
           this.bulkReassignResult.set(null);
           this.bulkReassignError.set(null);
           this.statements.set(new Map());
+          this.descendants.set(NO_DESCENDANTS);
           this.patrons.set([]);
           this.watched.set(new Set());
           this.personError.set(null);
@@ -703,13 +721,15 @@ export class PeopleList {
                 statements: this.statementsApi.list(sheet.id),
                 patrons: this.patronsApi.list(sheet.id),
                 watched: this.watchesApi.list(sheet.id),
+                descendants: this.consolidatedApi.descendants(sheet.id),
               })
-            : of({ people: [], claims: [], statements: [], patrons: [], watched: [] });
+            : of({ people: [], claims: [], statements: [], patrons: [], watched: [], descendants: NO_DESCENDANTS });
         }),
         takeUntilDestroyed(),
       )
       .subscribe({
-        next: ({ people, claims, statements, patrons, watched }) => {
+        next: ({ people, claims, statements, patrons, watched, descendants }) => {
+          this.descendants.set(descendants);
           this.patrons.set(patrons);
           this.watched.set(new Set(watched));
           this.people.set(people);

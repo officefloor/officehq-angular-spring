@@ -782,6 +782,8 @@ export class PersonClaims {
     // A second submit before the first has answered is ignored, so it stores one record.
     if (this.saving()) return;
     this.error.set(null);
+    // Submitting the form is the next action on the person's claims, so a claim's error from the last one goes.
+    this.claimError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
     const value = this.form.getRawValue();
