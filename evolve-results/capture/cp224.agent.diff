@@ -1,0 +1,303 @@
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index ee769f084..6d67d4e57 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -441,11 +441,13 @@ public class AccessService {
+ 
+     /**
+      * Record the sheet's pot, two decimals (null: none). Not dated: the value holds from the beginning of time,
+-     * replacing the one it had.
++     * replacing the one it had. The pot moves the cuts the cap covers, so every figure it moves is announced.
+      */
+     @Transactional
+     public void setPot(String sheetId, String user, String pot) {
++        Rollup.Figures before = rollup.figures(sheetId);
+         setUndated(sheetId, user, POT, pot);
++        rollup.changed(sheetId, user, before);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index a713ac1cd..bb55b253c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
++import net.officefloor.hq.app.pool.Pools;
+ import java.time.LocalDate;
+ import java.util.LinkedHashSet;
+ import java.util.List;
+@@ -149,11 +150,13 @@ public class ClaimController {
+     private final Tags tags;
+     private final SettleAsOfService settleAsOf;
+     private final DuplicateClaims duplicates;
++    private final Pools pools;
+ 
+     public ClaimController(ClaimService claims, QuickAddService quick, PasteClaimsService paste, BulkOpenService bulkOpen,
+             BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
+             BulkVoidService bulkVoid, PersonService people, RateService rates, StatementService statements, Tags tags,
+-            SettleAsOfService settleAsOf, DuplicateClaims duplicates) {
++            SettleAsOfService settleAsOf, DuplicateClaims duplicates, Pools pools) {
++        this.pools = pools;
+         this.settleAsOf = settleAsOf;
+         this.duplicates = duplicates;
+         this.bulkReassign = bulkReassign;
+@@ -495,7 +498,8 @@ public class ClaimController {
+         return PersonView.of(person, claims.forPerson(sheetId, personId),
+                 table, statements.forPerson(sheetId, personId), people.patrons(sheetId, personId),
+                 people.clashing(sheetId, person), people.snapshots(sheetId, personId),
+-                claims.parts(sheetId, personId, table));
++                claims.parts(sheetId, personId, table),
++                pools.personCuts(sheetId).getOrDefault(personId, BigDecimal.ZERO));
+     }
+ 
+     /** A claim due by a date inside a closed period: refused, nothing changed. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimTemplateController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimTemplateController.java
+index 5f1b9cf9d..77888bff7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimTemplateController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimTemplateController.java
+@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
++import net.officefloor.hq.app.pool.Pools;
+ import java.math.RoundingMode;
+ import java.util.List;
+ import net.officefloor.hq.app.period.ClosedPeriodRefused;
+@@ -64,9 +65,11 @@ public class ClaimTemplateController {
+     private final PersonService people;
+     private final RateService rates;
+     private final StatementService statements;
++    private final Pools pools;
+ 
+     public ClaimTemplateController(ClaimTemplates templates, ClaimService claims, PersonService people,
+-            RateService rates, StatementService statements) {
++            RateService rates, StatementService statements, Pools pools) {
++        this.pools = pools;
+         this.templates = templates;
+         this.claims = claims;
+         this.people = people;
+@@ -99,7 +102,8 @@ public class ClaimTemplateController {
+         RateTable table = rates.table(sheet);
+         return PersonView.of(person, claims.forPerson(sheet, id), table,
+                 statements.forPerson(sheet, id), people.patrons(sheet, id), people.clashing(sheet, person),
+-                people.snapshots(sheet, id), claims.parts(sheet, id, table));
++                people.snapshots(sheet, id), claims.parts(sheet, id, table),
++                pools.personCuts(sheet).getOrDefault(id, BigDecimal.ZERO));
+     }
+ 
+     @ExceptionHandler(ClaimTemplateRefused.class)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 43e716081..57ff5efdd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -369,6 +369,21 @@ public final class Dues {
+         return rates.excess(uncapped(grades, claims, rates, holds, parts));
+     }
+ 
++    /**
++     * A person's due-total (see {@link #total}) with their {@link Parts} of shared claims, held to the sheet's cap
++     * less their cut total (see {@link RateTable#capped(BigDecimal, BigDecimal)}).
++     */
++    public static BigDecimal total(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts,
++            BigDecimal cut) {
++        return rates.capped(uncapped(grades, claims, rates, holds, parts), cut);
++    }
++
++    /** What a person's {@link #uncapped} sum with their {@link Parts} plus their cut total is above the sheet's cap. */
++    public static BigDecimal excess(Grades grades, List<Claim> claims, RateTable rates, Holds holds, Parts parts,
++            BigDecimal cut) {
++        return rates.excess(uncapped(grades, claims, rates, holds, parts), cut);
++    }
++
+     /**
+      * A person's {@link #uncapped} sum plus their {@link Parts} of shared claims; a holder of a part has a sum
+      * (0.00 for their own claims) even when their own would be n/a.
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index e78b45b8a..8adec6317 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -24,6 +24,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.claim.Holds;
+ import net.officefloor.hq.app.claim.Tags;
++import net.officefloor.hq.app.pool.Pools;
+ import net.officefloor.hq.app.rate.Grades;
+ import net.officefloor.hq.app.rate.RateService;
+ import net.officefloor.hq.app.rate.RateTable;
+@@ -121,7 +122,7 @@ public class PersonController {
+     /**
+      * A person with the grade in force on the sheet's today, their own terms in force on it (null: none), their claims, newest first, claimed: the sum of the amounts of the claims (see
+      * {@link Dues#claimed}: a hold leaves a claim in it), dueTotal: the sum of the due figures of the claims that count (see
+-     * {@link Dues#total}, held to the sheet's cap), excess: what the sum is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
++     * {@link Dues#total}, held to the sheet's cap less their cut total, not below 0.00), excess: what the sum plus their cut total is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
+      * there is none or it was n/a) and date (null when there is none), whether they are retired and
+      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
+      * that count are overdue and the sum of their due figures, the ids of their patrons, and whether they are
+@@ -158,6 +159,15 @@ public class PersonController {
+         /** The person as shown, with their parts of the sheet's shared claims (see {@link Dues#parts}). */
+         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
+                 List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots, Dues.Parts parts) {
++            return of(person, claims, rates, statements, patrons, clashing, snapshots, parts, BigDecimal.ZERO);
++        }
++
++        /**
++         * The person as shown, with their parts of the sheet's shared claims and their cut total (see
++         * {@link Pools#personCuts}), which the cap covers along with their due-total.
++         */
++        public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
++                List<Long> patrons, boolean clashing, List<PersonSnapshot> snapshots, Dues.Parts parts, BigDecimal cut) {
+             Grades grade = person::gradeOn;
+             Holds held = person.leaves();
+             BigDecimal claimed = Dues.claimed(claims, held, rates.today());
+@@ -165,7 +175,7 @@ public class PersonController {
+             BigDecimal score = Dues.score(grade, claims, rates, held);
+             return new PersonView(person.getId(), person.getVersion(), person.getName(),
+                     grade.on(rates.today()), person.termsOn(rates.today()), person.getContact(), Tags.list(person.getTags()), claims.stream().map(c -> ClaimView.of(c, grade, rates, held)).toList(), money(claimed),
+-                    money(Dues.total(grade, claims, rates, held, parts)), money(Dues.excess(grade, claims, rates, held, parts)),
++                    money(Dues.total(grade, claims, rates, held, parts, cut)), money(Dues.excess(grade, claims, rates, held, parts, cut)),
+                     statements.count(),
+                     money(statements.lastDueTotal()), statements.lastDate(), person.isRetired(),
+                     person.getRetiredFrom(), person.isHeld(),
+@@ -268,10 +278,12 @@ public class PersonController {
+     private final StatementService statements;
+     private final PersonMergeService merges;
+     private final PersonTransferService transfers;
++    private final Pools pools;
+ 
+     public PersonController(PersonService service, BulkGradeService bulkGrade, ClaimService claims,
+             RateService rates, StatementService statements, PersonMergeService merges,
+-            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire) {
++            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire, Pools pools) {
++        this.pools = pools;
+         this.bulkRetire = bulkRetire;
+         this.service = service;
+         this.imports = imports;
+@@ -295,12 +307,14 @@ public class PersonController {
+         List<Person> everyone = service.list(sheet);
+         Map<Long, Dues.Parts> parts = Person.parts(everyone,
+                 bySheet.values().stream().flatMap(List::stream).toList(), table);
++        Map<Long, BigDecimal> cuts = pools.personCuts(sheet);
+         return everyone.stream()
+                 .map(p -> PersonView.of(p, bySheet.getOrDefault(p.getId(), List.of()), table,
+                         stated.getOrDefault(p.getId(), Statements.NONE),
+                         patrons.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()),
+                         snapshots.getOrDefault(p.getId(), List.of()),
+-                        parts.getOrDefault(p.getId(), Dues.Parts.NONE))).toList();
++                        parts.getOrDefault(p.getId(), Dues.Parts.NONE),
++                        cuts.getOrDefault(p.getId(), BigDecimal.ZERO))).toList();
+     }
+ 
+     /** The people of the sheet's tree whose name or an alias contains the text (see {@link PersonService#search}). */
+@@ -511,7 +525,7 @@ public class PersonController {
+         return PersonView.of(person, claims.forPerson(sheet, personId), table,
+                 statements.forPerson(sheet, personId), service.patrons(sheet, personId),
+                 service.clashing(sheet, person), service.snapshots(sheet, personId),
+-                claims.parts(sheet, personId, table));
++                claims.parts(sheet, personId, table), pools.personCuts(sheet).getOrDefault(personId, BigDecimal.ZERO));
+     }
+ 
+     /** Another save took the name or contact first: the unique name or contact on the sheet refuses this one. */
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pools.java b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+index 1b7e457cb..0c7315afd 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/Pools.java
++++ b/src/main/java/net/officefloor/hq/app/pool/Pools.java
+@@ -98,6 +98,15 @@ public class Pools {
+         return cuts(list(sheetId));
+     }
+ 
++    /** Each person's cut total as the pools stand now, by person id: their cuts across every pool added up. */
++    @Transactional(readOnly = true)
++    public Map<Long, BigDecimal> personCuts(String sheetId) {
++        Map<Long, BigDecimal> cuts = new HashMap<>();
++        list(sheetId).forEach(p -> p.members().stream().filter(m -> m.personId() != null && m.cut() != null)
++                .forEach(m -> cuts.merge(m.personId(), m.cut(), BigDecimal::add)));
++        return cuts;
++    }
++
+     private static Map<String, BigDecimal> cuts(List<Shown> shown) {
+         Map<String, BigDecimal> cuts = new HashMap<>();
+         shown.forEach(p -> p.members().stream().filter(m -> m.cut() != null)
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateTable.java b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+index 7ca1a2008..65eb76f02 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateTable.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateTable.java
+@@ -105,6 +105,26 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
+         return sum == null || cap == null || sum.compareTo(cap) <= 0 ? BigDecimal.ZERO : sum.subtract(cap);
+     }
+ 
++    /**
++     * A due-total held to the cap less the person's cut total (not below 0.00): that when the sum is above it; as it
++     * is otherwise, or when n/a (null).
++     */
++    public BigDecimal capped(BigDecimal sum, BigDecimal cut) {
++        BigDecimal cap = cap();
++        if (sum == null || cap == null) {
++            return sum;
++        }
++        BigDecimal room = cap.subtract(cut).max(BigDecimal.ZERO);
++        return sum.compareTo(room) <= 0 ? sum : room;
++    }
++
++    /**
++     * What a due-total's sum plus the person's cut total is above the cap: 0.00 when it is not, or when n/a (null).
++     */
++    public BigDecimal excess(BigDecimal sum, BigDecimal cut) {
++        return sum == null ? BigDecimal.ZERO : excess(sum.add(cut));
++    }
++
+     /** The percent in force for the grade on the sheet's today; null when none is. */
+     public BigDecimal current(String grade) {
+         return on(grade, today);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 7863c6e24..901ea246c 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.Pools;
+ import net.officefloor.hq.app.rate.ParentRates;
+ import net.officefloor.hq.app.rate.RateRepository;
+ import net.officefloor.hq.app.rate.RateTable;
+@@ -21,6 +22,7 @@ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.DatedSettings;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetSettingRepository;
++import org.springframework.beans.factory.ObjectProvider;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.stereotype.Service;
+ 
+@@ -64,9 +66,13 @@ public class Rollup {
+     private final SheetSettingRepository settings;
+     private final ParentRates parents;
+     private final ApplicationEventPublisher events;
++    /** The pools, for each person's cut total; looked up when needed, since the pools read the sheet through this. */
++    private final ObjectProvider<Pools> pools;
+ 
+     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
+-            SheetSettingRepository settings, ParentRates parents, ApplicationEventPublisher events) {
++            SheetSettingRepository settings, ParentRates parents, ApplicationEventPublisher events,
++            ObjectProvider<Pools> pools) {
++        this.pools = pools;
+         this.parents = parents;
+         this.settings = settings;
+         this.people = people;
+@@ -111,11 +117,13 @@ public class Rollup {
+         List<Person> everyone = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+         Map<Long, Dues.Parts> parts = Person.parts(everyone, bySheet.values().stream().flatMap(List::stream).toList(),
+                 table);
++        Map<Long, BigDecimal> cuts = pools.getObject().personCuts(sheetId);
+         for (Person person : everyone) {
+             List<Claim> theirs = bySheet.getOrDefault(person.getId(), List.of());
+             BigDecimal claimed = Dues.claimed(theirs, person.leaves(), today);
+             BigDecimal due = Dues.total(person::gradeOn, theirs, table, person.leaves(),
+-                    parts.getOrDefault(person.getId(), Dues.Parts.NONE));
++                    parts.getOrDefault(person.getId(), Dues.Parts.NONE),
++                    cuts.getOrDefault(person.getId(), BigDecimal.ZERO));
+             BigDecimal overdue = Dues.sum(person::gradeOn, Dues.overdue(theirs, person::gradeOn, table, person.leaves()), table);
+             claimedTotal = claimedTotal.add(claimed);
+             overdues.add(overdue.setScale(2, RoundingMode.HALF_UP));
