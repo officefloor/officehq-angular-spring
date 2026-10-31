@@ -74,8 +74,8 @@ public class PoolService {
          *  is not balanced. A cut is the pot times the share over the shares of the members with a cut added up,
          *  rounded half to even to two decimals, 0.00 for a retired member, one held on the sheet's today or one whose
          *  dates do not include it (shown as no cut); what the
-         *  cuts fall short of (or over) the pot goes to the member with the largest share with a cut, the earliest
-         *  added on a tie, so the cuts total exactly the pot. When every member is retired there are none; when no
+         *  cuts fall short of (or over) the pot goes to the member with the smallest non-zero cut, the latest
+         *  added on a tie (the last member with a cut when no cut is non-zero), so the cuts total exactly the pot. When every member is retired there are none; when no
          *  member otherwise has a cut, each is 0.00. */
         public List<BigDecimal> cuts() {
             if (pot == null || !balanced() || (!members.isEmpty() && members.stream().allMatch(Member::retired))) {
@@ -89,13 +89,20 @@ public class PoolService {
             List<BigDecimal> cuts = new ArrayList<>(members.stream()
                     .map(m -> pot.multiply(m.cutShare()).divide(withCut, 2, RoundingMode.HALF_EVEN)).toList());
             BigDecimal remainder = pot.subtract(cuts.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add));
-            int largest = 0;
-            for (int i = 1; i < members.size(); i++) {
-                if (members.get(i).cutShare().compareTo(members.get(largest).cutShare()) > 0) {
-                    largest = i;
+            int smallest = -1;
+            int lastWithShare = -1;
+            for (int i = 0; i < members.size(); i++) {
+                if (members.get(i).cutShare().signum() == 0) {
+                    continue;
+                }
+                lastWithShare = i;
+                if (cuts.get(i).signum() != 0
+                        && (smallest < 0 || cuts.get(i).compareTo(cuts.get(smallest)) <= 0)) {
+                    smallest = i;
                 }
             }
-            cuts.set(largest, cuts.get(largest).add(remainder));
+            int to = smallest >= 0 ? smallest : lastWithShare;
+            cuts.set(to, cuts.get(to).add(remainder));
             return cuts;
         }
     }

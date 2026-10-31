@@ -674,8 +674,7 @@ public class ClaimService {
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         Rollup.Figures before = rollup.of(sheetId);
         claim.unbind();
-        if (claim.getStatus() != ClaimStatus.DRAFT && claim.getNumber() != null
-                && !claim.getPersonId().equals(to.getId())) {
+        if (claim.getStatus() != ClaimStatus.DRAFT && claim.getNumber() != null) {
             claim.setNumber(nextNumber(sheet, claim.getDueBy()));
         }
         claim.reassign(to.getId(), claims.lastListed(sheetId) + 1);
