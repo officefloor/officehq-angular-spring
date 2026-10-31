@@ -1,0 +1,57 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3ff6b42a8..c82705c08 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,6 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+-import { FigurePipe } from '../../core/figure';
++import { FigurePipe, formatFigure } from '../../core/figure';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Access } from '../access/access';
+@@ -682,6 +682,9 @@ function csvField(value: string): string {
+                 <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)">
+                   Download statement<span class="visually-hidden"> for {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="person-export" (click)="exportPerson(p)">
++                  Download row<span class="visually-hidden"> for {{ p.name }}</span>
++                </button>
+                 <label [for]="'person-retire-date-' + p.id">Retire {{ p.name }} from</label>
+                 <input
+                   #retireDate
+@@ -2490,6 +2493,34 @@ export class People {
+     setTimeout(() => URL.revokeObjectURL(url));
+   }
+ 
++  /** Download the person's row as it shows now, as a CSV file: one line per cell, each with the value as the row
++   *  shows it, columns hidden from the table included. */
++  protected exportPerson(p: Person): void {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const locale = this.session.locale();
++    const figure = (v: string) => String(formatFigure(v, locale));
++    const cells: [string, string][] = [
++      ['person-name', `${p.name} (${p.grade})`],
++      ['person-grade', p.grade],
++      ['person-claimed', figure(p.claimed)],
++      ['person-due-total', figure(p.dueTotal ?? 'n/a')],
++      ['person-statement-count', String(p.statementCount)],
++      ['person-overdue-total', figure(p.overdueTotal)],
++      ['person-hold', p.held ? 'yes' : 'no'],
++      ['person-retired', p.retired ? 'yes' : 'no'],
++      ['person-aliases', (p.aliases ?? []).join(', ')],
++      ['person-score', String(p.score)],
++    ];
++    const lines = ['cell,value', ...cells.map((c) => c.map(csvField).join(','))];
++    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
++    const link = document.createElement('a');
++    link.href = url;
++    link.download = `person-${sheet}-${p.id}.csv`;
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   /** After a refused stale edit: show the person as the store holds them now, in the row and the form. */
+   private async showCurrent(sheet: string, id: number): Promise<void> {
+     const loads = this.session.loads();
