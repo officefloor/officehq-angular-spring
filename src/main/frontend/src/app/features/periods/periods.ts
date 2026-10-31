@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { EMPTY, switchMap } from 'rxjs';
+import { EMPTY, Observable, switchMap } from 'rxjs';
 import { PeriodView, Periods } from '../../core/periods';
 import { Sheets } from '../../core/sheet';
 
@@ -20,9 +20,11 @@ import { Sheets } from '../../core/sheet';
             from <span data-testid="period-from">{{ p.from }}</span>
             to <span data-testid="period-to">{{ p.to }}</span>
             — due <span data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</span>
-            — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</span>
+            — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</span>
             <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
                     [attr.aria-label]="'Close period ' + p.name">Close</button>
+            <button type="button" data-testid="period-soft-close" (click)="softClose(p)" [disabled]="closing() === p.id"
+                    [attr.aria-label]="'Soft-close period ' + p.name">Soft close</button>
             <button type="button" data-testid="period-reopen" (click)="reopen(p)" [disabled]="closing() === p.id"
                     [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
             @if (periodError()?.id === p.id) {
@@ -111,12 +113,20 @@ export class PeriodsPanel {
   }
 
   protected close(p: PeriodView): void {
+    this.closeWith(p, (sheetId) => this.periods.close(sheetId, p.name));
+  }
+
+  protected softClose(p: PeriodView): void {
+    this.closeWith(p, (sheetId) => this.periods.softClose(sheetId, p.name));
+  }
+
+  private closeWith(p: PeriodView, action: (sheetId: string) => Observable<PeriodView>): void {
     if (this.closing() === p.id) return;
     this.periodError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
     this.closing.set(p.id);
-    this.periods.close(sheet.id, p.name).subscribe({
+    action(sheet.id).subscribe({
       next: () => this.closing.set(null),
       error: (err: unknown) => {
         this.closing.set(null);

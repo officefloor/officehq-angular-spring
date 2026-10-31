@@ -78,6 +78,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           split from No. <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
+          — late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <label [for]="'claim-split-amount-' + c.id">Amount to split off</label>
           <input [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal"
                  autocomplete="off" [value]="splitAmounts()[c.id] ?? ''"

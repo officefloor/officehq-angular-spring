@@ -12,9 +12,12 @@ export interface PeriodView {
   to: string;
   /** Whether the period is closed: no claim dated inside it can be added, edited or moved. */
   closed: boolean;
-  /** The due-total fixed when the period was closed, with exactly two decimals; null while open. */
+  /** Whether the period is soft-closed: its figures are fixed as for a close, but claims dated inside it can still
+   *  be added and changed. Never true together with closed. */
+  softClosed: boolean;
+  /** The due-total fixed when the period was closed or soft-closed, with exactly two decimals; null while open. */
   closedTotal: string | null;
-  /** Each person's due-total for the period, by person id, fixed when it was closed; empty while open. A person
+  /** Each person's due-total for the period, by person id, fixed when it was closed or soft-closed; empty while open. A person
    *  missing (added later) has 0.00. */
   closedPersonTotals: Record<string, string>;
 }
@@ -70,14 +73,22 @@ export class Periods {
       );
   }
 
-  /** Close a period, fixing its due-total; refused when it is already closed. */
+  /** Close a period, open or soft-closed, fixing its due-total afresh; refused when it is already closed. */
   close(sheetId: string, name: string): Observable<PeriodView> {
     return this.http
       .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/close`, {})
       .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
   }
 
-  /** Reopen a closed period, making its due-total live again; only a steward may. */
+  /** Soft-close an open period, fixing its figures while its claims can still be changed; refused when it is
+   *  already closed or soft-closed. */
+  softClose(sheetId: string, name: string): Observable<PeriodView> {
+    return this.http
+      .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/soft-close`, {})
+      .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
+  }
+
+  /** Reopen a closed or soft-closed period, making its due-total live again; only a steward may. */
   reopen(sheetId: string, name: string): Observable<PeriodView> {
     return this.http
       .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/reopen`, {})

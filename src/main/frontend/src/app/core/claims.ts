@@ -46,6 +46,8 @@ export interface ClaimView {
   splitFrom: string | null;
   /** The signed-in name of the user who has the claim's editor open, locking it for others; null when no one has. */
   lockedBy: string | null;
+  /** Whether the claim was added while the period its date is in was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's

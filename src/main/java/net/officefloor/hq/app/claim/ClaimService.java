@@ -84,7 +84,8 @@ public class ClaimService {
                 .toList();
     }
 
-    /** Add a claim for a person; a missing date takes the sheet's today, a missing note is empty. Refused
+    /** Add a claim for a person; a missing date takes the sheet's today, a missing note is empty. One dated inside a
+     *  soft-closed period is a late entry. Refused
      *  when its date is inside a closed period, or when it is a correction that does not name a SETTLED claim of
      *  the person. */
     @Transactional
@@ -101,10 +102,19 @@ public class ClaimService {
         Rollup.Figures before = rollup.of(sheetId);
         LocalDate claimDate = date != null ? date : today;
         LocalDate dueBy = claimDate.plusDays(termsOf(sheet, person, claimDate));
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), claimDate, dueBy,
-                noteOf(note), corrects, claims.lastListed(sheetId) + 1));
+        Claim claim = new Claim(sheetId, personId, scaled(amount), claimDate, dueBy, noteOf(note), corrects,
+                claims.lastListed(sheetId) + 1);
+        boolean late = periods.existsBySheetIdAndSoftClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(
+                sheetId, claimDate, claimDate);
+        if (late) {
+            claim.markLateEntry();
+        }
+        Claim added = claims.saveAndFlush(claim);
         added.logStatus(user, today, shownDue(sheet, added, person));
         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_ADDED", user, person, added, added.getNumber()));
+        if (late) {
+            audit.recordChangeOnCommit(sheetId, user, entry("LATE_ENTRY", user, person, added, null));
+        }
         rollup.recordChanges(sheetId, user, before);
         return added;
     }

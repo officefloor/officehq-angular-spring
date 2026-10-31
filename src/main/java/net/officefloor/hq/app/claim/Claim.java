@@ -98,6 +98,10 @@ public class Claim {
     @Column(name = "locked_by", length = 100)
     private String lockedBy;
 
+    /** Whether the claim was added while the period its date is in was soft-closed. */
+    @Column(name = "late_entry", nullable = false)
+    private boolean lateEntry;
+
     /** When the claim was listed under its person, in the sheet's order: given when it is added and again when it
      *  is reassigned, so a person's claims list newest first by it. */
     @Column(name = "listed", nullable = false)
@@ -289,6 +293,15 @@ public class Claim {
 
     public void setLockedBy(String lockedBy) {
         this.lockedBy = lockedBy;
+    }
+
+    public boolean isLateEntry() {
+        return lateEntry;
+    }
+
+    /** Mark the claim as added while its period was soft-closed. */
+    public void markLateEntry() {
+        this.lateEntry = true;
     }
 
     /** Count one more proof given for the claim. */

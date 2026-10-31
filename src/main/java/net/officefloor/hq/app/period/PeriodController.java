@@ -24,16 +24,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/periods")
 public class PeriodController {
 
-    /** A period as the screen shows it; closedTotal is its due-total fixed when it was closed (null while open), and
-     *  closedPersonTotals each person's, by person id, fixed then (empty while open; a person missing has 0.00). */
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal,
-            Map<Long, String> closedPersonTotals) {
+    /** A period as the screen shows it; softClosed is whether it is soft-closed; closedTotal is its due-total fixed
+     *  when it was closed or soft-closed (null while open), and closedPersonTotals each person's, by person id, fixed
+     *  then (empty while open; a person missing has 0.00). */
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+            String closedTotal, Map<Long, String> closedPersonTotals) {
 
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
-                    period.isClosed(), period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
+                    period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
                     personTotals);
         }
     }
@@ -88,6 +89,14 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) String name,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PeriodView.of(periods.close(sheetId, user, name));
+    }
+
+    @PostMapping("/{name}/soft-close")
+    public PeriodView softClose(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @NotBlank @Size(max = 100) String name,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(periods.softClose(sheetId, user, name));
     }
 
     @PostMapping("/{name}/reopen")

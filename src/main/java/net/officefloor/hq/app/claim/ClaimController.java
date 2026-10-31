@@ -37,12 +37,13 @@ public class ClaimController {
      * statedDue (null if it had no figure then, when it stays n/a, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
      * on any other claim); deferredUntil is the day it was deferred until (null if never deferred); log is its status log, oldest first;
      * proofs is how many proofs have been given for it; splitFrom is the number of the claim it was split off (null
-     * on any other claim); lockedBy is who has its editor open, locking it for other users (null when no one has).
+     * on any other claim); lockedBy is who has its editor open, locking it for other users (null when no one has);
+     * lateEntry is whether it was added while its period was soft-closed.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
-            String lockedBy) {
+            String lockedBy, boolean lateEntry) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -51,7 +52,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry());
         }
     }
 

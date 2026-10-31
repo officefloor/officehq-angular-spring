@@ -358,7 +358,7 @@ export class PeopleList {
   });
   /** Each person's due-total for each period, in whole cents, by person id then period id: the dues as shown now
    *  of their claims whose date falls in it and that counted by the status they had at the end of its last day
-   *  (none counting as 0); a closed period keeps the figures fixed when it was closed, 0 for a person added since. */
+   *  (none counting as 0); a closed or soft-closed period keeps the figures fixed when it was closed, 0 for a person added since. */
   private readonly dueByPersonPeriod = computed(() => {
     const periods = this.periods.list();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
@@ -372,7 +372,7 @@ export class PeopleList {
         }
       }
       for (const pd of periods) {
-        if (pd.closed) live.set(pd.id, cents(pd.closedPersonTotals[String(p.id)] ?? '0.00'));
+        if (pd.closed || pd.softClosed) live.set(pd.id, cents(pd.closedPersonTotals[String(p.id)] ?? '0.00'));
       }
       byPerson.set(p.id, live);
     }
