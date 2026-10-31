@@ -66,11 +66,19 @@ export class Periods {
   generate(sheetId: string, from: string | null, to: string): Observable<GenerateView> {
     return this.http
       .post<GenerateView>(`${this.base(sheetId)}/generate`, { from, to })
-      .pipe(
-        tap((made) =>
-          this.periods.update((list) => [...list, ...made.periods].sort((a, b) => (a.from < b.from ? -1 : 1))),
-        ),
-      );
+      .pipe(tap((made) => this.addMade(made)));
+  }
+
+  /** Generate the twelve monthly periods of the fiscal year starting in the given calendar year, from the first of
+   *  the sheet's fiscal start month, as {@link generate} does. */
+  generateFiscalYear(sheetId: string, year: number): Observable<GenerateView> {
+    return this.http
+      .post<GenerateView>(`${this.base(sheetId)}/generate-fy`, { year })
+      .pipe(tap((made) => this.addMade(made)));
+  }
+
+  private addMade(made: GenerateView): void {
+    this.periods.update((list) => [...list, ...made.periods].sort((a, b) => (a.from < b.from ? -1 : 1)));
   }
 
   /** Close a period, open or soft-closed, fixing its due-total afresh; refused when it is already closed. */

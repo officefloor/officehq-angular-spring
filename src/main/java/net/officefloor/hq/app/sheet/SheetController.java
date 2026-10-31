@@ -47,7 +47,7 @@ public class SheetController {
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
-            Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent) {
+            Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -65,7 +65,8 @@ public class SheetController {
                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
                     sheet.getEntryDate(), sheet.getGradeGrace(), sheet.getGradeProofThresholds(),
                     sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
-                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId());
+                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+                    sheet.getFiscalStartMonth());
         }
     }
 
@@ -114,6 +115,10 @@ public class SheetController {
 
     /** The sheet's grace days as the form submits them; missing ones mean off. */
     public record GraceDaysChange(@Min(0) @Max(36500) Integer graceDays) {
+    }
+
+    /** The sheet's fiscal year start month as the form submits it, 1 to 12. */
+    public record FiscalStartMonthChange(@NotNull @Min(1) @Max(12) Integer month) {
     }
 
     /** The sheet's pot as the form submits it; a missing one means none. */
@@ -286,6 +291,15 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody GraceDaysChange request) {
         return SheetView.of(sheets.setGraceDays(id, user, request.graceDays()));
+    }
+
+    /** Change the sheet's fiscal year start month. */
+    @PutMapping("/{id}/settings/fiscal-start-month")
+    public SheetView setFiscalStartMonth(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody FiscalStartMonthChange request) {
+        return SheetView.of(sheets.setFiscalStartMonth(id, user, request.month()));
     }
 
     /** Change the sheet's pot. */

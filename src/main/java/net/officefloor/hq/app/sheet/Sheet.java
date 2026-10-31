@@ -104,6 +104,11 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
+     *  named FY by the calendar year it starts in. Not dated. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** The sheet's pot (two decimals), cut among the members of each balanced pool that is a member of none; null means none. Not dated. */
     @Column(name = "pot", precision = 14, scale = 2)
     private BigDecimal pot;
@@ -137,6 +142,7 @@ public class Sheet {
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.entryDate = entryDate;
         copy.graceDays = graceDays;
+        copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
         copy.parentId = parentId;
         copy.lastSettleBatch = lastSettleBatch;
@@ -326,6 +332,19 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
+    }
+
+    /** The calendar year in which the fiscal year holding the date begins. */
+    public int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= fiscalStartMonth ? date.getYear() : date.getYear() - 1;
     }
 
     public BigDecimal getPot() {

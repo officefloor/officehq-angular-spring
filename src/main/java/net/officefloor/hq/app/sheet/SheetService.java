@@ -195,6 +195,18 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's fiscal year start month, 1 to 12, starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setFiscalStartMonth(String id, String user, int month) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setFiscalStartMonth(month);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=fiscal-start-month value=" + month);
+        return saved;
+    }
+
     /** Set the sheet's pot (null: none), starting the sheet if it has never been loaded. Not dated. */
     @Transactional
     public Sheet setPot(String id, String user, BigDecimal pot) {

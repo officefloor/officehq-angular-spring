@@ -57,6 +57,9 @@ export interface SheetView {
   /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the new
    *  today is closed; null: off. Not dated. */
   graceDays: number | null;
+  /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
+   *  named FY<yyyy> by the calendar year it starts in. Not dated. */
+  fiscalStartMonth: number;
   /** The pot (two decimals), cut among the members of each balanced pool that is a member of none; null when there is none. Not dated. */
   pot: string | null;
   /** The id of the sheet's parent sheet: a grade with no rate in force on a date on this sheet takes its parent's
@@ -219,6 +222,13 @@ export class Sheets {
   setGraceDays(id: string, graceDays: number | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/grace-days`, { graceDays })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's fiscal year start month, 1 to 12. Not dated. */
+  setFiscalStartMonth(id: string, month: number): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/fiscal-start-month`, { month })
       .pipe(tap((s) => this.active.set(s)));
   }
 

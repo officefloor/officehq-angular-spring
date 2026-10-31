@@ -20,6 +20,7 @@ import { Sheets } from '../../core/sheet';
             from <span data-testid="period-from">{{ p.from }}</span>
             to <span data-testid="period-to">{{ p.to }}</span>
             — due <span data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</span>
+            — <span data-testid="period-fy">{{ fiscalYearOf(p.from) }}</span>
             — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</span>
             <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
                     [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -53,6 +54,12 @@ import { Sheets } from '../../core/sheet';
         <label for="period-generate-to">To</label>
         <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
         <button type="submit" data-testid="period-generate" [disabled]="generating()">Generate monthly periods</button>
+        <label for="period-generate-fy-year">Fiscal year (the calendar year it starts in)</label>
+        <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year"
+               inputmode="numeric" autocomplete="off" />
+        <button type="button" data-testid="period-generate-fy" (click)="generateFiscalYear()" [disabled]="generating()">
+          Generate fiscal year
+        </button>
         @if (generated() !== null) {
           <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span> periods.</p>
         }
@@ -85,6 +92,7 @@ export class PeriodsPanel {
   protected readonly generateForm = new FormGroup({
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
+    year: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly form = new FormGroup({
@@ -110,6 +118,13 @@ export class PeriodsPanel {
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
     this.generateForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.generateError.set(null));
+  }
+
+  /** The fiscal year a date falls in, named FY<yyyy> by the calendar year its first day falls in. */
+  protected fiscalYearOf(date: string): string {
+    const start = this.sheets.current()?.fiscalStartMonth ?? 1;
+    const year = Number(date.slice(0, 4));
+    return `FY${Number(date.slice(5, 7)) >= start ? year : year - 1}`;
   }
 
   protected close(p: PeriodView): void {
@@ -242,6 +257,30 @@ export class PeriodsPanel {
             ? 'The to-date cannot be before the from-date.'
             : 'Could not generate the periods.',
         );
+      },
+    });
+  }
+
+  protected generateFiscalYear(): void {
+    if (this.generating()) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const year = this.generateForm.getRawValue().year.trim();
+    if (!/^\d{4}$/.test(year) || Number(year) < 1 || Number(year) > 9998) {
+      this.generateError.set('Type the fiscal year as the four-digit year it starts in.');
+      return;
+    }
+    this.generating.set(true);
+    this.periods.generateFiscalYear(sheet.id, Number(year)).subscribe({
+      next: (result) => {
+        this.generating.set(false);
+        this.generated.set(result.made);
+      },
+      error: () => {
+        this.generating.set(false);
+        this.generateError.set('Could not generate the fiscal year\'s periods.');
       },
     });
   }
