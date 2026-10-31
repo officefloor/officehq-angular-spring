@@ -37,15 +37,21 @@ public class PoolService {
     public record Member(Person person, Pool pool, BigDecimal share, boolean held, LocalDate from, LocalDate to,
             boolean inForce) {
 
-        /** What the share counts toward the pool's total: nothing once the person is retired, whatever the date, or
-         *  while the membership's dates do not include the sheet's today. */
+        /** What the share counts toward the pool's total: the share as given, retired or not, or nothing while the
+         *  membership's dates do not include the sheet's today. */
         public BigDecimal counted() {
-            return !inForce || (person != null && person.isRetired()) ? BigDecimal.ZERO.setScale(2) : share;
+            return !inForce ? BigDecimal.ZERO.setScale(2) : share;
         }
 
-        /** What the share counts toward the cuts: nothing while held on the sheet's today, else what it counts. */
+        /** Whether the member is a person that is retired, whatever the date. */
+        public boolean retired() {
+            return person != null && person.isRetired();
+        }
+
+        /** What the share counts toward the cuts: nothing once retired or while held on the sheet's today, else what
+         *  it counts; the others' cuts take up what it leaves. */
         public BigDecimal cutShare() {
-            return held ? BigDecimal.ZERO.setScale(2) : counted();
+            return held || retired() ? BigDecimal.ZERO.setScale(2) : counted();
         }
     }
 
@@ -53,8 +59,8 @@ public class PoolService {
      *  that is a member of none, else its cut in the pool above. */
     public record PoolWithMembers(Pool pool, List<Member> members, BigDecimal pot) {
 
-        /** The members' shares added up, a retired member's, or one whose dates do not include the sheet's today,
-         *  counting as 0.00. */
+        /** The members' shares added up, a retired member's as given, one whose dates do not include the sheet's
+         *  today counting as 0.00. */
         public BigDecimal totalShare() {
             return members.stream().map(Member::counted).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         }
@@ -69,9 +75,10 @@ public class PoolService {
          *  rounded half to even to two decimals, 0.00 for a retired member, one held on the sheet's today or one whose
          *  dates do not include it (shown as no cut); what the
          *  cuts fall short of (or over) the pot goes to the member with the largest share with a cut, the earliest
-         *  added on a tie, so the cuts total exactly the pot. When no member has a cut, each is 0.00. */
+         *  added on a tie, so the cuts total exactly the pot. When every member is retired there are none; when no
+         *  member otherwise has a cut, each is 0.00. */
         public List<BigDecimal> cuts() {
-            if (pot == null || !balanced()) {
+            if (pot == null || !balanced() || (!members.isEmpty() && members.stream().allMatch(Member::retired))) {
                 return null;
             }
             BigDecimal withCut = members.stream().map(Member::cutShare)

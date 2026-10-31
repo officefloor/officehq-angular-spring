@@ -14,7 +14,8 @@ export interface PoolMemberView {
   /** The person's name, or the member pool's. */
   name: string;
   share: string;
-  /** Retired as soon as a retirement date is set: their share then counts as 0.00 toward the total. */
+  /** Retired as soon as a retirement date is set: their share still counts toward the total, but they have a cut
+   *  of 0.00 and the others' cuts take up theirs; a pool whose every member is retired has no cuts. */
   retired: boolean;
   /** The first and last day the membership is in force (yyyy-mm-dd); null: no start, no end. Outside them, on the
    *  sheet's today, the member is left out of the pool's total share and has no cut. */
