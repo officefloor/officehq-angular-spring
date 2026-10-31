@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.Period;
@@ -56,11 +57,13 @@ public class ClaimService {
     private final WatchService watches;
     private final HolidayService holidays;
     private final VoidReasonService voidReasons;
+    private final SheetHistory history;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
             RoleService roles, ClaimSequenceRepository sequences, WatchService watches,
-            HolidayService holidays, VoidReasonService voidReasons) {
+            HolidayService holidays, VoidReasonService voidReasons, SheetHistory history) {
+        this.history = history;
         this.voidReasons = voidReasons;
         this.holidays = holidays;
         this.watches = watches;
@@ -291,6 +294,25 @@ public class ClaimService {
         }
         rollup.recordChanges(sheetId, user, before);
         return changed;
+    }
+
+    /** Make the claims just settled by a bulk settle the sheet's next settle batch, each keeping its number; none
+     *  is made when none was settled. The claims, as saved, in the order given. */
+    @Transactional
+    public List<Claim> markSettleBatch(String sheetId, List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        int batch = sheet.nextSettleBatch();
+        sheetStore.saveAndFlush(sheet);
+        List<Claim> marked = ids.stream().map(id -> {
+            Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow();
+            claim.setSettleBatch(batch);
+            return claims.saveAndFlush(claim);
+        }).toList();
+        history.keepOnCommit(sheetId);
+        return marked;
     }
 
     /** Defer an OPEN claim until a day after the sheet's today: until the sheet's today reaches that day it counts

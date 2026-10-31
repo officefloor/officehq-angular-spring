@@ -61,6 +61,8 @@ export interface ClaimView {
   /** The signed-in name of the user who last edited the claim; null if no one has. Like its opener, they
    *  cannot settle or approve it. */
   editedBy: string | null;
+  /** The number of the settle batch that settled the claim; null when it was not settled by one. */
+  batch: number | null;
 }
 
 /** A comment on a claim: the signed-in name of who wrote it, the sheet's today (yyyy-mm-dd) then, and its text. */
@@ -200,11 +202,14 @@ export interface BulkOpenView {
   claims: ClaimView[];
 }
 
-/** What a bulk settle did: how many it settled (PENDING ones included) and refused, and the claims it settled. */
+/** What a bulk settle did: how many it settled (PENDING ones included) and refused, the claims it settled, and the
+ *  settle batch they make. */
 export interface BulkSettleView {
   settled: number;
   refused: number;
   claims: ClaimView[];
+  /** The number of the settle batch it made; null when it settled none. */
+  batch: number | null;
 }
 
 /** What a bulk move did: how many it moved and refused, and the claims it moved. */

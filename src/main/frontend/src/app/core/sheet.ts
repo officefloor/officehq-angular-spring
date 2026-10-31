@@ -47,6 +47,8 @@ export interface SheetView {
   /** A claim whose due is above this (two decimals), in force on its date, cannot be opened while its note is
    *  empty; null: none. */
   noteThreshold: string | null;
+  /** The number of the last settle batch (a bulk settle that settled at least one claim); null when there has been none. */
+  settleBatch: number | null;
   /** Every dated value recorded for the settings that carry a figure. */
   settings: DatedSetting[];
   /** The permission matrix entries set: for an action, the roles that may take it (comma separated); an action
@@ -126,6 +128,11 @@ export class Sheets {
           this.lastLoad.set(s);
         }),
       );
+  }
+
+  /** Note a settle batch just made on the active sheet as its last. */
+  settleBatched(batch: number): void {
+    this.active.update((s) => (s ? { ...s, settleBatch: batch } : s));
   }
 
   /** Archive the active sheet (a steward only). */

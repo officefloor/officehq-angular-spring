@@ -178,6 +178,7 @@ function csvField(value: string): string {
         @if (bulkSettleError(); as err) {
           <span role="alert" data-testid="bulk-settle-error">{{ err }}</span>
         }
+        — last batch <span data-testid="bulk-settle-batch">{{ sheets.current()?.settleBatch ?? '' }}</span>
       </p>
 
       <p>
@@ -300,7 +301,7 @@ function csvField(value: string): string {
   `,
 })
 export class PeopleList {
-  private readonly sheets = inject(Sheets);
+  protected readonly sheets = inject(Sheets);
   protected readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
   private readonly statementsApi = inject(Statements);
@@ -1000,9 +1001,10 @@ export class PeopleList {
     if (!sheet) return;
     this.bulkSettling.set(true);
     this.claimsApi.bulkSettle(sheet.id, [...this.selectedClaims()]).subscribe({
-      next: ({ settled, refused, claims }) => {
+      next: ({ settled, refused, claims, batch }) => {
         this.bulkSettling.set(false);
         claims.forEach((c) => this.claimSaved(c));
+        if (batch !== null) this.sheets.settleBatched(batch);
         this.selectedClaims.set(new Set());
         this.bulkSettleResult.set({ settled, refused });
       },

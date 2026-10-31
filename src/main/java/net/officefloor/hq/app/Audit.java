@@ -75,6 +75,15 @@ public class Audit {
      */
     public void recordChangeOnCommit(String sheetId, String user, String entry) {
         history.keepOnCommit(sheetId);
+        recordActingOnCommit(sheetId, user, entry);
+    }
+
+    /**
+     * Append a record of what the user did on the sheet once the current transaction commits, ending it with
+     * {@code for=<steward>} while the user acts as a steward by that steward's delegation (on the sheet's today as it
+     * is when this is called), without keeping what the sheet holds in its history.
+     */
+    public void recordActingOnCommit(String sheetId, String user, String entry) {
         recordOnCommit(delegations.actingFor(sheetId, user).map(steward -> entry + " for=" + steward).orElse(entry));
     }
 

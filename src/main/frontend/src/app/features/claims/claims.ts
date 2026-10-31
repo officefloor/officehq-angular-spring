@@ -68,6 +68,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span>
           corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span>
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           — deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>

@@ -40,12 +40,13 @@ public class SheetController {
      *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off; archived is whether the sheet is archived;
      *  the entry date is null when it is off; gradeGrace is the grace days set per grade in force on the sheet's today;
      *  gradeProofThreshold is the proof threshold (two decimals) set per grade in force on the sheet's today;
+     *  settleBatch is the number of the last settle batch, null when there has been none;
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
-            Map<String, String> gradeProofThreshold) {
+            Map<String, String> gradeProofThreshold, Integer settleBatch) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -61,7 +62,8 @@ public class SheetController {
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
                     sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived(), asOf,
                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
-                    sheet.getEntryDate(), sheet.getGradeGrace(), sheet.getGradeProofThresholds());
+                    sheet.getEntryDate(), sheet.getGradeGrace(), sheet.getGradeProofThresholds(),
+                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
         }
     }
 

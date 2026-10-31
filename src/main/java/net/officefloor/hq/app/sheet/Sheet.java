@@ -65,6 +65,11 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
+    /** The number of the last settle batch on this sheet (a bulk settle that settled at least one claim); 0 before
+     *  the first. */
+    @Column(name = "last_settle_batch", nullable = false)
+    private int lastSettleBatch;
+
     /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
      *  grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C, note-threshold): each in force from its from-date until the next one's of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -381,5 +386,19 @@ public class Sheet {
     /** Take the next claim number on this sheet; it is never given out again. */
     public int nextClaimNumber() {
         return ++lastClaimNumber;
+    }
+
+    /** The number of the last settle batch on this sheet; 0 when there has been none. */
+    public int getLastSettleBatch() {
+        return lastSettleBatch;
+    }
+
+    public void setLastSettleBatch(int lastSettleBatch) {
+        this.lastSettleBatch = lastSettleBatch;
+    }
+
+    /** Take the next settle batch number on this sheet. */
+    public int nextSettleBatch() {
+        return ++lastSettleBatch;
     }
 }

@@ -89,7 +89,7 @@ public class SheetService {
         Rollup.Figures before = rollup.of(id);
         boolean changed = !today.equals(sheet.getToday());
         if (changed) {
-            before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
+            before.people().values().forEach(figures -> audit.recordActingOnCommit(id, user, "SNAPSHOT sheet=" + id + " by=" + user
                     + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
         }
         sheet.setToday(today);

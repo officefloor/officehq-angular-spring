@@ -92,6 +92,10 @@ public class Claim {
     @Column(name = "edited_by", length = 100)
     private String editedBy;
 
+    /** The number of the settle batch that settled the claim; none when it was not settled by one. */
+    @Column(name = "settle_batch")
+    private Integer settleBatch;
+
     /** Whether the claim is bound by its person's last statement. */
     @Column(name = "stated", nullable = false)
     private boolean stated;
@@ -277,6 +281,14 @@ public class Claim {
 
     public void setEditedBy(String editedBy) {
         this.editedBy = editedBy;
+    }
+
+    public Integer getSettleBatch() {
+        return settleBatch;
+    }
+
+    public void setSettleBatch(Integer settleBatch) {
+        this.settleBatch = settleBatch;
     }
 
     /** Whether this user opened the claim or last edited it: either way, they cannot settle or approve it. */

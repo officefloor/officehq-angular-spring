@@ -154,7 +154,7 @@ public class SheetHistory {
         return new ClaimView(c.id(), c.personId(), c.amount(), c.date(), c.note(), c.status(), c.number(),
                 c.settledDue(), c.openedBy(), c.stated(), c.statedDue(), c.corrects(), c.dueBy(), c.deferredUntil(),
                 c.log(), c.proofs(), c.splitFrom(), null, c.lateEntry(), c.remindedOn(), c.ref(), c.tags(),
-                c.voidReason(), c.comments(), c.editedBy());
+                c.voidReason(), c.comments(), c.editedBy(), c.batch());
     }
 
     /** The lists the screen reads of the sheet as it stood at the end of a date; none when no change was made on it
