@@ -8,6 +8,7 @@ import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Sheets, graceOn } from '../../core/sheet';
+import { Templates } from '../../core/templates';
 import { VoidReasons } from '../../core/void-reasons';
 
 const NO_RATES: readonly RateView[] = [];
@@ -49,6 +50,19 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
       }
     </form>
+
+    <p>
+      <label [for]="fieldId('template')">Template</label>
+      <select [id]="fieldId('template')" data-testid="claim-template-select" [value]="chosenTemplate()"
+              (change)="chooseTemplate($any($event.target).value)">
+        <option value="">Choose a template</option>
+        @for (t of templates.all(); track t.id) {
+          <option [value]="t.name" [selected]="t.name === chosenTemplate()">{{ t.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="claim-template-add" [disabled]="saving()" (click)="addFromTemplate()"
+              [attr.aria-label]="'Add a draft claim from the template for ' + personName()">Add from template</button>
+    </p>
 
     <ul [attr.aria-label]="'Claims of ' + personName()">
       @for (c of claims(); track c.id) {
@@ -220,6 +234,9 @@ export class PersonClaims {
   protected readonly voidReasons = inject(VoidReasons);
   /** The reason typed to reject each PENDING claim, by id. */
   protected readonly rejectReasons = signal<Readonly<Record<number, string>>>({});
+  protected readonly templates = inject(Templates);
+  /** The name of the template chosen to add a claim from. */
+  protected readonly chosenTemplate = signal('');
 
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
@@ -721,6 +738,44 @@ export class PersonClaims {
     this.editingId.set(null);
     this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '', tags: '' }, { emitEvent: false });
     this.error.set(null);
+  }
+
+  protected chooseTemplate(name: string): void {
+    this.chosenTemplate.set(name);
+    this.error.set(null);
+  }
+
+  /** Add a DRAFT claim with the chosen template's amount and note as they are now, with no date, by every rule of
+   *  the claim form. */
+  protected addFromTemplate(): void {
+    if (this.saving()) return;
+    this.error.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const name = this.chosenTemplate();
+    if (name === '') {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    this.saving.set(true);
+    this.templates.addClaim(sheet.id, this.personId(), name).subscribe({
+      next: (saved) => {
+        this.saving.set(false);
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => {
+        this.saving.set(false);
+        this.error.set(
+          err instanceof HttpErrorResponse && err.status === 423
+            ? 'That claim is due by inside a closed period.'
+            : err instanceof HttpErrorResponse && err.status === 422
+              ? 'That claim is dated after the person retired.'
+            : err instanceof HttpErrorResponse && err.status === 404
+              ? `There is no template named ${name} on this sheet.`
+              : 'Could not add a claim from that template.',
+        );
+      },
+    });
   }
 
   protected submit(): void {

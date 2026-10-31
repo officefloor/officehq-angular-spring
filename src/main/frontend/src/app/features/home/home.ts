@@ -8,13 +8,14 @@ import { HolidaysPanel } from '../holidays/holidays';
 import { PeopleList } from '../people/people';
 import { RatesPanel } from '../rates/rates';
 import { SettingsPanel } from '../settings/settings';
+import { TemplatesPanel } from '../templates/templates';
 import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 
 // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
 @Component({
   selector: 'app-home',
   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
-    VoidReasonsPanel, AuditPanel],
+    VoidReasonsPanel, TemplatesPanel, AuditPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -61,6 +62,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-delegations />
         <app-holidays />
         <app-void-reasons />
+        <app-templates />
         <app-people />
         <app-audit />
       } @else {
