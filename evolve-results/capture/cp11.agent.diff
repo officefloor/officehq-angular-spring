@@ -1,0 +1,511 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index f46999a4e..d1d8a850b 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -2,11 +2,27 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { Observable, tap } from 'rxjs';
+ import { Grade } from './people';
++import { Sheets } from './sheet';
+ 
+ export interface RateView {
+   grade: Grade;
+   /** The percent with exactly two decimals, e.g. "12.50". */
+   rate: string;
++  /** The day it takes effect (yyyy-mm-dd); null when it applies from the beginning of time. */
++  from: string | null;
++}
++
++/** The rate among a grade's rates (in the order they take effect) in force on a date (yyyy-mm-dd):
++ *  the one with the latest from-date on or before it; undefined when the date is before them all. */
++export function rateOn(gradeRates: readonly RateView[], date: string): string | undefined {
++  let inForce: string | undefined;
++  for (const r of gradeRates) if (r.from === null || r.from <= date) inForce = r.rate;
++  return inForce;
++}
++
++/** Rates in the order they take effect: the one with no from-date first, then by from-date. */
++function byFrom(a: RateView, b: RateView): number {
++  return a.from === b.from ? 0 : a.from === null ? -1 : b.from === null ? 1 : a.from < b.from ? -1 : 1;
+ }
+ 
+ /** A rate the form accepts: a percent of 0.00 or more, up to 999.99, with up to two decimals. */
+@@ -23,13 +39,28 @@ export function dueCents(amountCents: number, rate: string): number {
+   return Number((BigInt(amountCents) * basisPoints + 5000n) / 10000n);
+ }
+ 
+-// The rate set for each grade on the active sheet; a grade with none has no rate.
++// The rates set for each grade on the active sheet, by from-date; a grade with none has no rate.
+ @Injectable({ providedIn: 'root' })
+ export class Rates {
+   private readonly http = inject(HttpClient);
++  private readonly sheets = inject(Sheets);
+   private readonly list = signal<RateView[]>([]);
+-  /** The active sheet's rates by grade. */
+-  readonly byGrade = computed(() => new Map(this.list().map((r) => [r.grade, r.rate])));
++  /** The active sheet's rates of each grade, in the order they take effect. */
++  readonly ratesByGrade = computed(() => {
++    const byGrade = new Map<Grade, RateView[]>();
++    for (const r of [...this.list()].sort(byFrom)) byGrade.set(r.grade, [...(byGrade.get(r.grade) ?? []), r]);
++    return byGrade;
++  });
++  /** The rate of each grade in force on the active sheet's today; a grade with none is missing. */
++  readonly byGrade = computed(() => {
++    const today = this.sheets.current()?.today ?? '';
++    const current = new Map<Grade, string>();
++    for (const [grade, rates] of this.ratesByGrade()) {
++      const rate = rateOn(rates, today);
++      if (rate !== undefined) current.set(grade, rate);
++    }
++    return current;
++  });
+ 
+   /** Re-read a sheet's rates from the store; null clears them. */
+   load(sheetId: string | null): Observable<RateView[]> | null {
+@@ -38,10 +69,15 @@ export class Rates {
+     return this.http.get<RateView[]>(this.base(sheetId)).pipe(tap((rates) => this.list.set(rates)));
+   }
+ 
+-  set(sheetId: string, grade: Grade, rate: string): Observable<RateView> {
++  /** Set a grade's rate from a date (null: from the beginning of time), replacing the one it had from that date. */
++  set(sheetId: string, grade: Grade, rate: string, from: string | null): Observable<RateView> {
+     return this.http
+-      .put<RateView>(`${this.base(sheetId)}/${grade}`, { rate })
+-      .pipe(tap((saved) => this.list.update((list) => [...list.filter((r) => r.grade !== saved.grade), saved])));
++      .put<RateView>(`${this.base(sheetId)}/${grade}`, { rate, from })
++      .pipe(
++        tap((saved) =>
++          this.list.update((list) => [...list.filter((r) => r.grade !== saved.grade || r.from !== saved.from), saved]),
++        ),
++      );
+   }
+ 
+   private base(sheetId: string): string {
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index f4c264135..b596b8d5d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -2,7 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
+ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, counts, money } from '../../core/claims';
+-import { NOT_AVAILABLE, dueCents } from '../../core/rates';
++import { NOT_AVAILABLE, RateView, dueCents, rateOn } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ 
+ // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
+@@ -67,8 +67,8 @@ export class PersonClaims {
+   readonly personName = input.required<string>();
+   /** This person's claims, newest first. */
+   readonly claims = input.required<ClaimView[]>();
+-  /** The rate for this person's grade (a percent), or undefined when the grade has none. */
+-  readonly rate = input<string | undefined>();
++  /** The rates of this person's grade, in the order they take effect. */
++  readonly rates = input.required<readonly RateView[]>();
+   readonly saved = output<ClaimView>();
+ 
+   protected readonly claimed = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+@@ -91,7 +91,7 @@ export class PersonClaims {
+ 
+   protected dueOf(c: ClaimView): string {
+     if (c.settledDue !== null) return c.settledDue;
+-    const rate = this.rate();
++    const rate = rateOn(this.rates(), c.date);
+     return rate === undefined ? NOT_AVAILABLE : money(dueCents(cents(c.amount), rate));
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0d96987d5..b4e5414e6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,11 +5,12 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
+ import { forkJoin, of, switchMap } from 'rxjs';
+ import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
+ import { GRADES, Grade, People, PersonView } from '../../core/people';
+-import { NOT_AVAILABLE, Rates, dueCents } from '../../core/rates';
++import { NOT_AVAILABLE, RateView, Rates, dueCents } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ import { PersonClaims } from '../claims/claims';
+ 
+ const NO_CLAIMS: ClaimView[] = [];
++const NO_RATES: RateView[] = [];
+ 
+ // The people on the active sheet: one form to add a person or edit an existing one, the list with
+ // each person's claims and due-total, and the sheet's claimed-total and due-total.
+@@ -50,7 +51,7 @@ const NO_CLAIMS: ClaimView[] = [];
+             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
+             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
+                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
+-            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rate]="rates.byGrade().get(p.grade)"
++            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates.ratesByGrade().get(p.grade) ?? noRates"
+                                (saved)="claimSaved($event)" />
+           </li>
+         }
+@@ -65,6 +66,7 @@ export class PeopleList {
+   protected readonly rates = inject(Rates);
+ 
+   protected readonly grades = GRADES;
++  protected readonly noRates = NO_RATES;
+   protected readonly people = signal<PersonView[]>([]);
+   /** Every claim on the sheet, newest first. */
+   protected readonly claims = signal<ClaimView[]>([]);
+@@ -74,7 +76,7 @@ export class PeopleList {
+     return byPerson;
+   });
+   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+-  /** Each person's due-total in whole cents: their claimed times their grade's rate; null when it has none. */
++  /** Each person's due-total in whole cents: their claimed times their grade's rate in force today; null when it has none. */
+   private readonly dueByPerson = computed(() => {
+     const rates = this.rates.byGrade();
+     const byPerson = new Map<number, number | null>();
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 18c339681..9b95696e9 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -6,7 +6,7 @@ import { GRADES, Grade } from '../../core/people';
+ import { NOT_AVAILABLE, RATE_PATTERN, Rates } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ 
+-// The sheet's rate for each grade: the current rates and a form to set one.
++// The sheet's rates for each grade: the one in force today, each by from-date, and a form to set one.
+ @Component({
+   selector: 'app-rates',
+   imports: [ReactiveFormsModule],
+@@ -15,14 +15,15 @@ import { Sheets } from '../../core/sheet';
+       <h2 id="rates-heading">Rates</h2>
+       <ul aria-label="Rate for each grade">
+         @for (g of grades; track g) {
+-          @let rate = rates.byGrade().get(g);
+           <li>
+-            Grade {{ g }}: <span [attr.data-testid]="'rate-current-' + g">{{ rate ?? notAvailable }}</span>
+-            @if (rate !== undefined) {
+-              <span [attr.data-testid]="'rate-row-' + g + '-start'">
+-                (<span data-testid="rate-pct">{{ rate }}</span>%)
+-              </span>
+-            }
++            Grade {{ g }}, today: <span [attr.data-testid]="'rate-current-' + g">{{ rates.byGrade().get(g) ?? notAvailable }}</span>
++            <ul [attr.aria-label]="'Rates of grade ' + g">
++              @for (r of rates.ratesByGrade().get(g) ?? []; track r.from) {
++                <li [attr.data-testid]="'rate-row-' + g + '-' + (r.from ?? 'start')">
++                  <span data-testid="rate-pct">{{ r.rate }}</span>% from {{ r.from ?? 'the start' }}
++                </li>
++              }
++            </ul>
+           </li>
+         }
+       </ul>
+@@ -36,6 +37,8 @@ import { Sheets } from '../../core/sheet';
+         </select>
+         <label for="rate-form-pct">Rate (%)</label>
+         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" autocomplete="off" />
++        <label for="rate-form-from">From (blank: from the start)</label>
++        <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
+         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
+         @if (error(); as err) {
+           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
+@@ -56,6 +59,7 @@ export class RatesPanel {
+   protected readonly form = new FormGroup({
+     grade: new FormControl<Grade>('A', { nonNullable: true }),
+     pct: new FormControl('', { nonNullable: true }),
++    from: new FormControl('', { nonNullable: true }),
+   });
+ 
+   constructor() {
+@@ -77,17 +81,17 @@ export class RatesPanel {
+     this.error.set(null);
+     const sheet = this.sheets.current();
+     if (!sheet) return;
+-    const { grade, pct } = this.form.getRawValue();
++    const { grade, pct, from } = this.form.getRawValue();
+     const rate = pct.trim();
+     if (!RATE_PATTERN.test(rate)) {
+       this.error.set('Type a rate of 0.00 or more, with up to two decimals.');
+       return;
+     }
+     this.saving.set(true);
+-    this.rates.set(sheet.id, grade, rate).subscribe({
++    this.rates.set(sheet.id, grade, rate, from === '' ? null : from).subscribe({
+       next: () => {
+         this.saving.set(false);
+-        this.form.reset({ grade, pct: '' }, { emitEvent: false });
++        this.form.reset({ grade, pct: '', from: '' }, { emitEvent: false });
+       },
+       error: () => {
+         this.saving.set(false);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2d7089980..38594620f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -73,7 +73,7 @@ public class ClaimService {
+     /**
+      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
+      * claim gives it the sheet's next number; voiding it clears its number; settling it fixes its due
+-     * at its person's grade's rate now, so later rate changes leave it as it is. The sheet is locked
++     * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The sheet is locked
+      * first, so moves on one sheet are made one at a time and no number is given twice.
+      */
+     @Transactional
+@@ -95,7 +95,7 @@ public class ClaimService {
+         } else if (next == ClaimStatus.VOID) {
+             claim.setNumber(null);
+         } else if (next == ClaimStatus.SETTLED) {
+-            claim.setSettledDue(rates.findBySheetIdAndGrade(sheetId, person.getGrade())
++            claim.setSettledDue(Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
+                     .map(Rate::getRate).map(rate -> dueOn(claim.getAmount(), rate)).orElse(null));
+         }
+         Claim changed = claims.saveAndFlush(claim);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 04dda85ba..9575fa501 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -2,64 +2,64 @@ package net.officefloor.hq.app.rate;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+-import jakarta.persistence.IdClass;
+ import jakarta.persistence.Table;
+-import java.io.Serializable;
+ import java.math.BigDecimal;
+-import java.util.Objects;
++import java.time.LocalDate;
++import java.util.Comparator;
++import java.util.List;
++import java.util.Optional;
+ 
+-/** A sheet's rate for one grade: a percent with two decimals. */
++/** A sheet's rate for one grade: a percent with two decimals, in force from its from-date (or, with
++ *  none, from the beginning of time) until the grade's next rate takes over. */
+ @Entity
+ @Table(name = "rate")
+-@IdClass(Rate.Key.class)
+ public class Rate {
+ 
+-    /** The key of a rate: its sheet and grade. */
+-    public static class Key implements Serializable {
+-
+-        private String sheetId;
+-        private String grade;
+-
+-        public Key() {
+-        }
+-
+-        public Key(String sheetId, String grade) {
+-            this.sheetId = sheetId;
+-            this.grade = grade;
+-        }
+-
+-        @Override
+-        public boolean equals(Object other) {
+-            return other instanceof Key k && Objects.equals(sheetId, k.sheetId) && Objects.equals(grade, k.grade);
+-        }
+-
+-        @Override
+-        public int hashCode() {
+-            return Objects.hash(sheetId, grade);
+-        }
+-    }
++    /** Rates in the order they take effect: the one with no from-date first, then by from-date. */
++    public static final Comparator<Rate> BY_FROM =
++            Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder()));
+ 
+     @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
+     @Column(name = "sheet_id", nullable = false)
+     private String sheetId;
+ 
+-    @Id
+     @Column(name = "grade", nullable = false)
+     private String grade;
+ 
++    @Column(name = "from_date")
++    private LocalDate fromDate;
++
+     @Column(name = "rate", nullable = false)
+     private BigDecimal rate;
+ 
+     protected Rate() {
+     }
+ 
+-    public Rate(String sheetId, String grade, BigDecimal rate) {
++    public Rate(String sheetId, String grade, LocalDate fromDate, BigDecimal rate) {
+         this.sheetId = sheetId;
+         this.grade = grade;
++        this.fromDate = fromDate;
+         this.rate = rate;
+     }
+ 
++    /** The rate among a grade's rates in force on a date: the one with the latest from-date on or
++     *  before it; none when the date is before every one of them. */
++    public static Optional<Rate> inForceOn(List<Rate> gradeRates, LocalDate date) {
++        return gradeRates.stream()
++                .filter(r -> r.fromDate == null || !r.fromDate.isAfter(date))
++                .max(BY_FROM);
++    }
++
++    public Long getId() {
++        return id;
++    }
++
+     public String getSheetId() {
+         return sheetId;
+     }
+@@ -68,6 +68,11 @@ public class Rate {
+         return grade;
+     }
+ 
++    /** The day the rate takes effect; null when it applies from the beginning of time. */
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++
+     public BigDecimal getRate() {
+         return rate;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index e09e0ba19..c4f005914 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.List;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -18,22 +19,25 @@ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+-/** Rates on a sheet, one per grade. The caller's signed-in name comes in the {@code X-User} header. */
++/** Rates on a sheet: each grade's, by from-date. The caller's signed-in name comes in the {@code X-User} header. */
+ @RestController
+ @Validated
+ @RequestMapping("/api/sheets/{sheetId}/rates")
+ public class RateController {
+ 
+-    /** A grade's rate as the screen shows it: a percent with exactly two decimals. */
+-    public record RateView(String grade, String rate) {
++    /** A grade's rate as the screen shows it: a percent with exactly two decimals, and the day it
++     *  takes effect (null when it applies from the beginning of time). */
++    public record RateView(String grade, String rate, LocalDate from) {
+ 
+         static RateView of(Rate rate) {
+-            return new RateView(rate.getGrade(), rate.getRate().toPlainString());
++            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFromDate());
+         }
+     }
+ 
+-    /** A rate as the form submits it: a percent of 0.00 or more with up to two decimals. */
+-    public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal rate) {
++    /** A rate as the form submits it: a percent of 0.00 or more with up to two decimals, and an
++     *  optional from-date. */
++    public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal rate,
++            LocalDate from) {
+     }
+ 
+     private final RateService rates;
+@@ -54,6 +58,6 @@ public class RateController {
+             @PathVariable @Pattern(regexp = "[ABC]") String grade,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody RateForm request) {
+-        return RateView.of(rates.set(sheetId, user, grade, request.rate()));
++        return RateView.of(rates.set(sheetId, user, grade, request.from(), request.rate()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+index 9d7c21c31..6a356a155 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+@@ -1,12 +1,11 @@
+ package net.officefloor.hq.app.rate;
+ 
+ import java.util.List;
+-import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+-public interface RateRepository extends JpaRepository<Rate, Rate.Key> {
++public interface RateRepository extends JpaRepository<Rate, Long> {
+ 
+-    List<Rate> findBySheetIdOrderByGradeAsc(String sheetId);
++    List<Rate> findBySheetId(String sheetId);
+ 
+-    Optional<Rate> findBySheetIdAndGrade(String sheetId, String grade);
++    List<Rate> findBySheetIdAndGrade(String sheetId, String grade);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index f12ebf264..4ca3f9ebf 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -2,7 +2,10 @@ package net.officefloor.hq.app.rate;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.List;
++import java.util.Objects;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -22,22 +25,29 @@ public class RateService {
+         this.audit = audit;
+     }
+ 
+-    /** The rates set on the sheet, by grade. */
++    /** The rates set on the sheet, by grade, each grade's in the order they take effect. */
+     @Transactional(readOnly = true)
+     public List<Rate> list(String sheetId) {
+-        return rates.findBySheetIdOrderByGradeAsc(sheetId);
++        return rates.findBySheetId(sheetId).stream()
++                .sorted(Comparator.comparing(Rate::getGrade).thenComparing(Rate.BY_FROM))
++                .toList();
+     }
+ 
+-    /** Set a grade's rate, replacing any rate it had. */
++    /** Set a grade's rate from a date (null: from the beginning of time), replacing the rate it had
++     *  from that same date, if any. */
+     @Transactional
+-    public Rate set(String sheetId, String user, String grade, BigDecimal rate) {
++    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal rate) {
+         sheets.load(sheetId, user);
+         BigDecimal scaled = rate.setScale(2, RoundingMode.UNNECESSARY);
+-        Rate row = rates.findBySheetIdAndGrade(sheetId, grade).orElseGet(() -> new Rate(sheetId, grade, scaled));
++        Rate row = rates.findBySheetIdAndGrade(sheetId, grade).stream()
++                .filter(r -> Objects.equals(r.getFromDate(), from))
++                .findFirst()
++                .orElseGet(() -> new Rate(sheetId, grade, from, scaled));
+         row.setRate(scaled);
+         Rate saved = rates.saveAndFlush(row);
+         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
+-                + " grade=" + saved.getGrade() + " rate=" + saved.getRate().toPlainString());
++                + " grade=" + saved.getGrade() + " rate=" + saved.getRate().toPlainString()
++                + (from == null ? "" : " from=" + from));
+         return saved;
+     }
+ }
+diff --git a/src/main/resources/db/migration/V10__rate_from_date.sql b/src/main/resources/db/migration/V10__rate_from_date.sql
+new file mode 100644
+index 000000000..ba1ddbd7f
+--- /dev/null
++++ b/src/main/resources/db/migration/V10__rate_from_date.sql
+@@ -0,0 +1,14 @@
++-- A rate can carry a from-date: a grade may have several rates, each in force from its from-date
++-- until the next one's. A rate with no from-date applies from the beginning of time. A grade has at
++-- most one rate per from-date (and at most one with none).
++CREATE TABLE rate_dated (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    grade     VARCHAR(1)   NOT NULL,
++    from_date DATE,
++    rate      DECIMAL(5, 2) NOT NULL CHECK (rate >= 0),
++    CONSTRAINT rate_sheet_grade_from UNIQUE NULLS NOT DISTINCT (sheet_id, grade, from_date)
++);
++INSERT INTO rate_dated (sheet_id, grade, from_date, rate) SELECT sheet_id, grade, NULL, rate FROM rate;
++DROP TABLE rate;
++ALTER TABLE rate_dated RENAME TO rate;
