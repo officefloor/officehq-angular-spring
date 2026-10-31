@@ -1,0 +1,441 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index f4c37b57d..933938572 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -35,6 +35,8 @@ export interface ClaimView {
+   /** The day the claim is due by (yyyy-mm-dd): fixed when it was added, from its date and the terms of its
+    *  person's grade in force then. */
+   dueBy: string;
++  /** The day the claim was deferred until (yyyy-mm-dd); null if it was never deferred. */
++  deferredUntil: string | null;
+   /** The claim's status log, oldest first: a line for each status it has had, the DRAFT it was added as first. */
+   log: ClaimLogLine[];
+ }
+@@ -53,11 +55,18 @@ export function counts(c: ClaimView): boolean {
+   return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
+ }
+ 
+-/** Whether the claim counts in the live totals for a person with these holds: an OPEN or PENDING one dated
+- *  within a hold does not, unless a statement binds it. */
+-export function countsWithHolds(holds: readonly HoldView[]): (c: ClaimView) => boolean {
++/** Whether a claim is deferred on the sheet's today: OPEN and deferred until a later day. While deferred it
++ *  counts in no total, is not overdue and cannot be settled. */
++export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today: string): boolean {
++  return c.status === 'OPEN' && c.deferredUntil !== null && today < c.deferredUntil;
++}
++
++/** Whether the claim counts in the live totals on the sheet's today for a person with these holds: a deferred
++ *  one does not, nor does an OPEN or PENDING one dated within a hold, unless a statement binds it. */
++export function countsWithHolds(holds: readonly HoldView[], today: string): (c: ClaimView) => boolean {
+   return (c) =>
+     counts(c) &&
++    !isDeferred(c, today) &&
+     (c.stated ||
+       (c.status !== 'OPEN' && c.status !== 'PENDING') ||
+       !holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)));
+@@ -73,9 +82,9 @@ export function roundingDate(
+   return theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
+ }
+ 
+-/** Whether a claim is overdue on the sheet's today: OPEN or PENDING and due by a day before it. */
+-export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status'>, today: string): boolean {
+-  return (c.status === 'OPEN' || c.status === 'PENDING') && c.dueBy < today;
++/** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and due by a day before it. */
++export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil'>, today: string): boolean {
++  return (c.status === 'OPEN' || c.status === 'PENDING') && !isDeferred(c, today) && c.dueBy < today;
+ }
+ 
+ /** A claim as the form submits it: a blank date takes the sheet's today. A negative amount is a correction,
+@@ -167,6 +176,11 @@ export class Claims {
+     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/status`, { status });
+   }
+ 
++  /** Defer an OPEN claim until `until` (yyyy-mm-dd), a day after the sheet's today. */
++  defer(sheetId: string, id: number, until: string): Observable<ClaimView> {
++    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/defer`, { until });
++  }
++
+   /** A steward approves a PENDING claim: it is SETTLED, its due fixed as it is now. */
+   approve(sheetId: string, id: number): Observable<ClaimView> {
+     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/approve`, {});
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 56da91f1b..5ace75038 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -78,11 +78,11 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
+   return date < (sheet.policyDate ?? sheet.today);
+ }
+ 
+-/** The late charge an OPEN or PENDING claim has gained on its figure (in whole cents) by the sheet's today: the
++/** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure (in whole cents) by the sheet's today: the
+  *  late percent of the figure for every full 30 days past the day it is due by, rounded as the claim rounds.
+  *  A correction (a negative amount) gains none. */
+ export function lateChargeCents(
+-  c: { amount: string; date: string; dueBy: string; status: ClaimStatus },
++  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null },
+   figureCents: number,
+   sheet: DueTerms,
+ ): number {
+@@ -98,7 +98,7 @@ export function lateChargeCents(
+  *  floor in force on its date (a correction is not), with any late charge added on top of it; null when it has none. Its live
+  *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. */
+ export function claimDueCents(
+-  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; settledDue: string | null; stated: boolean; statedDue: string | null },
++  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null },
+   gradeRates: readonly RateView[],
+   sheet: DueTerms,
+   roundsOn: string,
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 1607365f7..d81795b46 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isOverdue, money, roundingDate } from '../../core/claims';
++import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isDeferred, isOverdue, money, roundingDate } from '../../core/claims';
+ import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
+ import { PeriodView, periodOn } from '../../core/periods';
+ import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
+@@ -57,6 +57,13 @@ const NO_RATES: readonly RateView[] = [];
+           <span data-testid="claim-status">{{ c.status }}</span>
+           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+           — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
++          — deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
++          until <span data-testid="claim-deferred-until">{{ deferredOf(c) ? c.deferredUntil : '' }}</span>
++          <label [for]="'claim-defer-date-' + c.id">Defer until</label>
++          <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date"
++                 [value]="deferDates()[c.id] ?? ''" (input)="deferDateChanged(c, $any($event.target).value)" />
++          <button type="button" data-testid="claim-defer" (click)="defer(c)"
++                  [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
+           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
+                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
+@@ -126,7 +133,7 @@ export class PersonClaims {
+   readonly selectToggled = output<{ id: number; selected: boolean }>();
+ 
+   protected readonly notAvailable = NOT_AVAILABLE;
+-  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds())).reduce((sum, c) => sum + cents(c.amount), 0)));
++  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '')).reduce((sum, c) => sum + cents(c.amount), 0)));
+   protected readonly editingId = signal<number | null>(null);
+   protected readonly error = signal<string | null>(null);
+   protected readonly saving = signal(false);
+@@ -134,6 +141,8 @@ export class PersonClaims {
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+   /** The person chosen to move each claim to, by claim id. */
+   protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
++  /** The date typed to defer each OPEN claim until, by id. */
++  protected readonly deferDates = signal<Readonly<Record<number, string>>>({});
+   /** The reason typed to reject each PENDING claim, by id. */
+   protected readonly rejectReasons = signal<Readonly<Record<number, string>>>({});
+ 
+@@ -164,6 +173,41 @@ export class PersonClaims {
+     return sheet !== null && isOverdue(c, sheet.today);
+   }
+ 
++  protected deferredOf(c: ClaimView): boolean {
++    const sheet = this.sheets.current();
++    return sheet !== null && isDeferred(c, sheet.today);
++  }
++
++  protected deferDateChanged(c: ClaimView, date: string): void {
++    this.deferDates.update((dates) => ({ ...dates, [c.id]: date }));
++    if (this.claimError()?.id === c.id) this.claimError.set(null);
++  }
++
++  protected defer(c: ClaimView): void {
++    this.claimError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const until = (this.deferDates()[c.id] ?? '').trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
++      this.claimError.set({ id: c.id, message: 'Choose the date to defer the claim until.' });
++      return;
++    }
++    this.api.defer(sheet.id, c.id, until).subscribe({
++      next: (saved) => {
++        this.deferDates.update((dates) => ({ ...dates, [c.id]: '' }));
++        this.saved.emit(saved);
++      },
++      error: (err: unknown) => this.claimError.set({
++        id: c.id,
++        message: err instanceof HttpErrorResponse && err.status === 423
++          ? 'This claim is dated inside a closed period.'
++          : err instanceof HttpErrorResponse && err.status === 400
++            ? `A claim is deferred to a day after today (${sheet.today}).`
++            : `A ${c.status} claim cannot be deferred; only an OPEN one can.`,
++      }),
++    });
++  }
++
+   protected periodOf(c: ClaimView): string {
+     return periodOn(this.periods(), c.date)?.name ?? '';
+   }
+@@ -180,7 +224,9 @@ export class PersonClaims {
+           ? 'You opened this claim, so someone else must settle it.'
+           : err instanceof HttpErrorResponse && err.status === 423
+             ? 'This claim is dated inside a closed period.'
+-            : `A ${c.status} claim cannot become ${status}.`,
++            : status === 'SETTLED' && this.deferredOf(c)
++              ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled before then.`
++              : `A ${c.status} claim cannot become ${status}.`,
+       }),
+     });
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index dae297bf0..6a20a58bf 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -260,11 +260,14 @@ export class PeopleList {
+     const people = this.people();
+     return new Map(people.map((p) => [p.id, people.filter((q) => q.id !== p.id)]));
+   });
+-  /** Whether each claim counts in the live totals: a person's open claims dated within one of their holds,
+-   *  and not bound by a statement, do not. */
++  /** The sheet's today ('' before a sheet is loaded). */
++  private readonly todayNow = computed(() => this.sheets.current()?.today ?? '');
++  /** Whether each claim counts in the live totals: a deferred claim does not, nor do a person's open claims
++   *  dated within one of their holds and not bound by a statement. */
+   private readonly countsNow = computed(() => {
+-    const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds)]));
+-    return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([]))(c);
++    const today = this.todayNow();
++    const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds, today)]));
++    return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([], today))(c);
+   });
+   protected readonly claimedTotal = computed(() =>
+     money(this.claims().filter(this.countsNow()).reduce((sum, c) => sum + cents(c.amount), 0)),
+@@ -288,7 +291,7 @@ export class PeopleList {
+     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+     const byPerson = new Map<number, number | null>();
+     for (const p of this.people()) {
+-      const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds));
++      const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow()));
+       const grades = [this.gradeToday(p), ...counting.map((c) => gradeOn(p, c.date))];
+       const dues = counting.map((c) => this.claimDue(p, c, dueTerms)).filter((due) => due !== null);
+       if (!grades.some((g) => today.has(g)) && dues.length === 0) {
+@@ -310,7 +313,7 @@ export class PeopleList {
+     const byPerson = new Map<number, Overdue>();
+     for (const p of this.people()) {
+       const overdue = sheet
+-        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds)(c) && isOverdue(c, sheet.today))
++        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds, sheet.today)(c) && isOverdue(c, sheet.today))
+         : NO_CLAIMS;
+       byPerson.set(p.id, {
+         count: overdue.length,
+@@ -335,7 +338,7 @@ export class PeopleList {
+     const byPerson = new Map<number, Map<number, number>>();
+     for (const p of this.people()) {
+       const live = new Map<number, number>(periods.map((pd) => [pd.id, 0]));
+-      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds))) {
++      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow()))) {
+         const period = periodOn(periods, c.date);
+         if (period) live.set(period.id, (live.get(period.id) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 8679bc2ff..fa75e855d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -80,6 +80,10 @@ public class Claim {
+     @Column(name = "corrects")
+     private String corrects;
+ 
++    /** The day an OPEN claim is deferred until; none if it was never deferred. */
++    @Column(name = "deferred_until")
++    private LocalDate deferredUntil;
++
+     /** When the claim was listed under its person, in the sheet's order: given when it is added and again when it
+      *  is reassigned, so a person's claims list newest first by it. */
+     @Column(name = "listed", nullable = false)
+@@ -234,6 +238,20 @@ public class Claim {
+         this.statedDue = null;
+     }
+ 
++    public LocalDate getDeferredUntil() {
++        return deferredUntil;
++    }
++
++    public void setDeferredUntil(LocalDate deferredUntil) {
++        this.deferredUntil = deferredUntil;
++    }
++
++    /** Whether the claim is deferred on this day: it is OPEN and deferred until a later day. While deferred it
++     *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. */
++    public boolean isDeferredOn(LocalDate today) {
++        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
++    }
++
+     /** The claim's status log, oldest first. */
+     public List<ClaimLogEntry> getLog() {
+         return Collections.unmodifiableList(log);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 864e2be2b..ec4284150 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -32,11 +32,11 @@ public class ClaimController {
+      * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
+      * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
+      * statedDue (null if it had no figure then, when it stays n/a, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
+-     * on any other claim); log is its status log, oldest first.
++     * on any other claim); deferredUntil is the day it was deferred until (null if never deferred); log is its status log, oldest first.
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+-            LocalDate dueBy, List<LogLine> log) {
++            LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -44,7 +44,7 @@ public class ClaimController {
+                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
+-                    claim.getDueBy(), claim.getLog().stream().map(LogLine::of).toList());
++                    claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList());
+         }
+     }
+ 
+@@ -75,6 +75,10 @@ public class ClaimController {
+     public record Rejection(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {
+     }
+ 
++    /** The day an OPEN claim is to be deferred until. */
++    public record Deferral(@NotNull LocalDate until) {
++    }
++
+     /** The person a claim is to move to. */
+     public record Reassignment(@NotNull Long personId) {
+     }
+@@ -162,6 +166,15 @@ public class ClaimController {
+         return ClaimView.of(claims.resettle(sheetId, user, id));
+     }
+ 
++    @PutMapping("/claims/{id}/defer")
++    public ClaimView defer(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody Deferral request) {
++        return ClaimView.of(claims.defer(sheetId, user, id, request.until()));
++    }
++
+     @PutMapping("/claims/{id}/person")
+     public ClaimView reassign(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8aff85825..ee1300c5b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -157,6 +157,10 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next);
+         }
++        if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheet.getToday())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
++        }
+         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
+         }
+@@ -193,6 +197,32 @@ public class ClaimService {
+         return changed;
+     }
+ 
++    /** Defer an OPEN claim until a day after the sheet's today: until the sheet's today reaches that day it counts
++     *  in no total, is not overdue, cannot be settled and is left unbound by a statement. Refused for a claim that
++     *  is not OPEN, a day not after today and a claim dated inside a closed period. */
++    @Transactional
++    public Claim defer(String sheetId, String user, long id, LocalDate until) {
++        sheets.load(sheetId, user);
++        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
++        refuseIfClosed(sheetId, claim.getDate());
++        if (claim.getStatus() != ClaimStatus.OPEN) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be deferred; only an OPEN one can");
++        }
++        if (!until.isAfter(sheet.getToday())) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A claim is deferred to a day after today");
++        }
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
++        Rollup.Figures before = rollup.of(sheetId);
++        claim.setDeferredUntil(until);
++        Claim deferred = claims.saveAndFlush(claim);
++        audit.recordOnCommit(entry("CLAIM_DEFERRED", user, person, deferred, deferred.getNumber()) + " until=" + until);
++        rollup.recordChanges(sheetId, user, before);
++        return deferred;
++    }
++
+     /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
+      *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim, for a
+      *  claim that is not PENDING and for one dated inside a closed period. */
+@@ -432,12 +462,12 @@ public class ClaimService {
+                 .map(Claim::getDate).findFirst().orElse(claim.getDate());
+     }
+ 
+-    /** The late charge an OPEN or PENDING claim has gained on its figure by the sheet's today: the late percent in force on its date of
++    /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure by the sheet's today: the late percent in force on its date of
+      *  the figure for every full 30 days past the day it is due by, rounded as the claim rounds; 0.00 when not overdue,
+      *  it has no figure, or it is a correction. */
+     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
+         BigDecimal none = BigDecimal.ZERO.setScale(2);
+-        if (!claim.getStatus().isOpen()) {
++        if (!claim.getStatus().isOpen() || claim.isDeferredOn(sheet.getToday())) {
+             return none;
+         }
+         return lateChargeAsOpen(claim, figure, sheet);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index d14439459..4dff90a46 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -66,7 +66,8 @@ public class Rollup {
+         BigDecimal overdueTotal = BigDecimal.ZERO.setScale(2);
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             List<Claim> counting = sheetClaims.stream()
+-                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c))
++                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c)
++                            && !c.isDeferredOn(today))
+                     .toList();
+             BigDecimal claimed = counting.stream().map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+@@ -107,6 +108,7 @@ public class Rollup {
+     public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
+         List<Rate> sheetRates = rates.findBySheetId(sheetId);
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
++        LocalDate today = sheet == null ? null : sheet.getToday();
+         Map<Long, Person> personOf = new LinkedHashMap<>();
+         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+         people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
+@@ -116,7 +118,7 @@ public class Rollup {
+         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+         for (Claim claim : sheetClaims) {
+             Person person = personOf.get(claim.getPersonId());
+-            if (person == null || !person.counts(claim) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
++            if (person == null || !person.counts(claim) || claim.isDeferredOn(today) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+                 continue;
+             }
+             BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet, sheetClaims);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 612f5a249..2d0e6a375 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -92,7 +92,7 @@ public class StatementService {
+         boolean anyDue = false;
+         int counted = 0;
+         for (Claim claim : theirs) {
+-            if (!person.countsUnbound(claim)) {
++            if (!person.countsUnbound(claim) || claim.isDeferredOn(today)) {
+                 claim.unbind();
+                 continue;
+             }
+diff --git a/src/main/resources/db/migration/V36__claim_deferred.sql b/src/main/resources/db/migration/V36__claim_deferred.sql
+new file mode 100644
+index 000000000..5d1e2ea6f
+--- /dev/null
++++ b/src/main/resources/db/migration/V36__claim_deferred.sql
+@@ -0,0 +1,3 @@
++-- An OPEN claim can be deferred to a day after the sheet's today: until the sheet's today reaches it the claim
++-- counts in no total, is not overdue, cannot be settled and is left unbound by a statement.
++ALTER TABLE claim ADD COLUMN deferred_until DATE;
