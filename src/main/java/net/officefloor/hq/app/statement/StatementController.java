@@ -24,11 +24,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class StatementController {
 
-    /** A person's statements: how many, and the last one's due-total ("n/a" when none could be given) and date. */
-    public record SummaryView(long personId, int count, String dueTotal, LocalDate date) {
+    /** A person's statements: how many, the last one's due-total ("n/a" when none could be given) and date, and a
+     *  line for each one standing, oldest first. */
+    public record SummaryView(long personId, int count, String dueTotal, LocalDate date, List<LineView> lines) {
 
         public static SummaryView of(StatementService.Summary summary) {
-            return new SummaryView(summary.personId(), summary.count(), summary.dueTotal(), summary.takenOn());
+            return new SummaryView(summary.personId(), summary.count(), summary.dueTotal(), summary.takenOn(),
+                    summary.lines().stream().map(LineView::of).toList());
+        }
+    }
+
+    /** A statement standing: its date and the due-total it records. */
+    public record LineView(LocalDate date, String dueTotal) {
+
+        public static LineView of(StatementService.Line line) {
+            return new LineView(line.takenOn(), line.dueTotal());
         }
     }
 

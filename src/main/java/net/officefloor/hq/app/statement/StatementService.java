@@ -2,7 +2,9 @@ package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -38,8 +40,12 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class StatementService {
 
-    /** What a person's statements come to: how many, and the last one's due-total and date. */
-    public record Summary(long personId, int count, String dueTotal, LocalDate takenOn) {
+    /** What a person's statements come to: how many, the last one's due-total and date, and each one standing. */
+    public record Summary(long personId, int count, String dueTotal, LocalDate takenOn, List<Line> lines) {
+    }
+
+    /** A statement standing: the date it is of and the due-total it records, as a line on its person. */
+    public record Line(LocalDate takenOn, String dueTotal) {
     }
 
     /** A statement just taken: the person's summary and their claims, newest first, as it left them. */
@@ -80,13 +86,18 @@ public class StatementService {
 
     /** The summary of each person who has had one of these statements (in the order taken) taken. */
     public static List<Summary> summarize(List<Statement> taken) {
-        Map<Long, Summary> byPerson = new LinkedHashMap<>();
-        for (Statement s : taken) {
-            Summary before = byPerson.get(s.getPersonId());
-            byPerson.put(s.getPersonId(),
-                    new Summary(s.getPersonId(), before == null ? 1 : before.count() + 1, s.getDueTotal(), s.getTakenOn()));
-        }
-        return List.copyOf(byPerson.values());
+        Map<Long, List<Statement>> byPerson = new LinkedHashMap<>();
+        taken.forEach(s -> byPerson.computeIfAbsent(s.getPersonId(), id -> new ArrayList<>()).add(s));
+        return byPerson.values().stream().map(StatementService::summaryOf).toList();
+    }
+
+    /** The summary of a person's statements (at least one, in the order taken): their lines are by date, those of
+     *  the same date in the order taken, so the statements a merge or a transfer brings over show among their own. */
+    private static Summary summaryOf(List<Statement> theirs) {
+        Statement last = theirs.get(theirs.size() - 1);
+        List<Line> lines = theirs.stream().sorted(Comparator.comparing(Statement::getTakenOn))
+                .map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
+        return new Summary(last.getPersonId(), theirs.size(), last.getDueTotal(), last.getTakenOn(), lines);
     }
 
     /**
@@ -159,8 +170,7 @@ public class StatementService {
         audit.recordChangeOnCommit(sheetId, user, "STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + stated.dueTotal() + " claims=" + stated.counted() + (asOf == null ? "" : " asof=" + asOf));
         rollup.recordChanges(sheetId, user, before);
-        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
-        return new Taken(new Summary(personId, taken.size(), stated.dueTotal(), takenOn), theirs);
+        return new Taken(summaryOf(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)), theirs);
     }
 
     /** What a statement came to: the due-total it records and how many claims it bound. */
@@ -234,9 +244,7 @@ public class StatementService {
                 + person.getName() + " due-total=" + last.getDueTotal());
         rollup.recordChanges(sheetId, user, before);
         List<Statement> left = taken.subList(0, taken.size() - 1);
-        Statement previous = left.isEmpty() ? null : left.get(left.size() - 1);
-        return new Taken(new Summary(personId, left.size(), previous == null ? null : previous.getDueTotal(),
-                previous == null ? null : previous.getTakenOn()), theirs);
+        return new Taken(left.isEmpty() ? new Summary(personId, 0, null, null, List.of()) : summaryOf(left), theirs);
     }
 
     /** The line of rates as it stood at the end of a date: the sheet's own then, then each of its ancestors' as

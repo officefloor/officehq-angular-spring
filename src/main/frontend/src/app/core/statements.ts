@@ -3,13 +3,22 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ClaimView } from './claims';
 
-/** What a person's statements come to: how many, and the last one's due-total and date (yyyy-mm-dd). */
+/** A statement standing: its date (yyyy-mm-dd) and the due-total it records (two decimals, or "n/a"). */
+export interface StatementLine {
+  date: string;
+  dueTotal: string;
+}
+
+/** What a person's statements come to: how many, the last one's due-total and date (yyyy-mm-dd), and a line for
+ *  each one standing, oldest first. */
 export interface StatementSummary {
   personId: number;
   count: number;
   /** The due-total with exactly two decimals, or "n/a" when the grade had no rate then. */
   dueTotal: string | null;
   date: string | null;
+  /** None in a view of the sheet as of a date kept before statements had lines. */
+  lines: StatementLine[] | null;
 }
 
 /** A statement just taken: the person's summary and their claims as it left them, newest first. */

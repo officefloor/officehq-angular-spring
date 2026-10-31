@@ -375,6 +375,13 @@ function csvField(value: string): string {
             @if (session.shows('statement-date')) {
                 on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
             }
+            @if (statementOf(p.id)?.lines?.length) {
+              <ul [attr.aria-label]="'Statements of ' + p.name">
+                @for (l of statementOf(p.id)?.lines ?? []; track $index) {
+                  <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal | figure }}</li>
+                }
+              </ul>
+            }
             @if (snapshotsOf(p.id).length > 0) {
               <ul [attr.aria-label]="'Snapshots of ' + p.name">
                 @for (s of snapshotsOf(p.id); track $index) {
