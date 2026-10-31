@@ -4,10 +4,10 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, isOverdue, money } from '../../core/claims';
-import { GRADES, Grade, People, PersonView } from '../../core/people';
+import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
-import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
+import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { PersonClaims } from '../claims/claims';
@@ -47,6 +47,10 @@ const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
             <option [value]="g">{{ g }}</option>
           }
         </select>
+        @if (editingId() !== null) {
+          <label for="person-form-grade-from">Grade from</label>
+          <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
+        }
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -79,7 +83,7 @@ const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
         @for (p of listed(); track p.id) {
           <li [attr.data-testid]="'person-row-' + p.id">
             <span data-testid="person-name">{{ p.name }}</span>
-            — grade <span data-testid="person-grade">{{ p.grade }}</span>
+            — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
             — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
             due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
@@ -116,7 +120,7 @@ const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
             @if (personError()?.id === p.id) {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
-            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates.ratesByGrade().get(p.grade) ?? noRates"
+            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.ratesByGrade()" [grades]="p"
                                [periods]="periods.list()" [held]="p.held"
                                (saved)="claimSaved($event)" />
           </li>
@@ -136,7 +140,6 @@ export class PeopleList {
 
   protected readonly grades = GRADES;
   protected readonly money = money;
-  protected readonly noRates = NO_RATES;
   protected readonly people = signal<PersonView[]>([]);
   /** The people listed: retired people only while "show retired" is on. Totals still count everyone. */
   protected readonly listed = computed(() =>
@@ -180,20 +183,20 @@ export class PeopleList {
     money(this.claims().filter(this.countsNow()).reduce((sum, c) => sum + cents(c.amount), 0)),
   );
   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none);
-   *  null when their grade has no rate in force today and none of those claims keeps a settled figure. */
+   *  null when neither their grade in force today nor the grade any of those claims is at has a rate in
+   *  force today, and none of those claims keeps a settled figure. */
   private readonly dueByPerson = computed(() => {
     const today = this.rates.byGrade();
-    const ratesByGrade = this.rates.ratesByGrade();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
       const counting = this.claimsOf(p.id).filter(countsWhile(p.held));
-      if (!today.has(p.grade) && !counting.some((c) => c.settledDue !== null || c.statedDue !== null)) {
+      const grades = [this.gradeToday(p), ...counting.map((c) => gradeOn(p, c.date))];
+      if (!grades.some((g) => today.has(g)) && !counting.some((c) => c.settledDue !== null || c.statedDue !== null)) {
         byPerson.set(p.id, null);
         continue;
       }
-      const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
-      byPerson.set(p.id, counting.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, dueTerms) ?? 0), 0));
+      byPerson.set(p.id, counting.reduce((sum, c) => sum + (this.claimDue(p, c, dueTerms) ?? 0), 0));
     }
     return byPerson;
   });
@@ -204,17 +207,15 @@ export class PeopleList {
   /** Each person's overdue claims that count: how many, and their dues added up in whole cents (none counting as 0). */
   private readonly overdueByPerson = computed(() => {
     const sheet = this.sheets.current();
-    const ratesByGrade = this.rates.ratesByGrade();
     const dueTerms = sheet ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, Overdue>();
     for (const p of this.people()) {
       const overdue = sheet
         ? this.claimsOf(p.id).filter((c) => countsWhile(p.held)(c) && isOverdue(c, sheet.terms, sheet.today))
         : NO_CLAIMS;
-      const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
       byPerson.set(p.id, {
         count: overdue.length,
-        cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, dueTerms) ?? 0), 0),
+        cents: overdue.reduce((sum, c) => sum + (this.claimDue(p, c, dueTerms) ?? 0), 0),
       });
     }
     return byPerson;
@@ -230,15 +231,14 @@ export class PeopleList {
    *  a closed period keeps the total fixed when it was closed. */
   protected readonly dueByPeriod = computed(() => {
     const periods = this.periods.list();
-    const ratesByGrade = this.rates.ratesByGrade();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
-    const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
+    const personOf = new Map(this.people().map((p) => [p.id, p]));
     const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
     for (const c of this.claims().filter(this.countsNow())) {
       const period = periodOn(periods, c.date);
-      const grade = gradeOf.get(c.personId);
-      if (!period || !grade) continue;
-      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, ratesByGrade.get(grade) ?? NO_RATES, dueTerms) ?? 0));
+      const person = personOf.get(c.personId);
+      if (!period || !person) continue;
+      totals.set(period.id, (totals.get(period.id) ?? 0) + (this.claimDue(person, c, dueTerms) ?? 0));
     }
     const closed = new Map(periods.filter((p) => p.closedTotal !== null).map((p) => [p.id, p.closedTotal as string]));
     return new Map([...totals].map(([id, total]) => [id, closed.get(id) ?? money(total)]));
@@ -252,6 +252,8 @@ export class PeopleList {
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: Validators.required }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
+    /** While editing: the date the grade is from (yyyy-mm-dd); blank takes the sheet's today. */
+    gradeFrom: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly quickError = signal<string | null>(null);
@@ -302,6 +304,16 @@ export class PeopleList {
 
   protected claimsOf(personId: number): ClaimView[] {
     return this.claimsByPerson().get(personId) ?? NO_CLAIMS;
+  }
+
+  /** The person's grade in force on the sheet's today. */
+  protected gradeToday(p: PersonView): Grade {
+    return gradeOn(p, this.sheets.current()?.today ?? '');
+  }
+
+  /** A claim's due in whole cents, at the rates of its person's grade in force on its date; null with none. */
+  private claimDue(p: PersonView, c: ClaimView, dueTerms: DueTerms): number | null {
+    return claimDueCents(c, this.rates.ratesByGrade().get(gradeOn(p, c.date)) ?? NO_RATES, dueTerms);
   }
 
   protected dueOf(p: PersonView): string {
@@ -475,13 +487,13 @@ export class PeopleList {
     this.patronError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '' }, { emitEvent: false });
     this.error.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '' }, { emitEvent: false });
     this.error.set(null);
   }
 
@@ -498,7 +510,10 @@ export class PeopleList {
     }
     const id = this.editingId();
     this.saving.set(true);
-    const request = id === null ? this.api.add(sheet.id, value) : this.api.update(sheet.id, id, this.editingVersion, value);
+    const request = id === null
+      ? this.api.add(sheet.id, { name: value.name, grade: value.grade })
+      : this.api.update(sheet.id, id, this.editingVersion,
+          { name: value.name, grade: value.grade, gradeFrom: value.gradeFrom === '' ? null : value.gradeFrom });
     request.subscribe({
       next: (saved) => {
         this.saving.set(false);
@@ -529,7 +544,7 @@ export class PeopleList {
         const current = people.find((p) => p.id === id);
         if (current && this.editingId() === id) {
           this.editingVersion = current.version;
-          this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '' }, { emitEvent: false });
         }
       },
     });

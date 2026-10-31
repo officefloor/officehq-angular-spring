@@ -23,12 +23,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade, long version, boolean retired, LocalDate retiredFrom,
-            boolean held) {
+    /** A person as listed: {@code grade} is the one in force on the sheet's today; {@code grades} all those
+     *  recorded, in the order they take effect. */
+    public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+            boolean retired, LocalDate retiredFrom, boolean held) {
 
-        public static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+        public static PersonView of(Person person, LocalDate today) {
+            return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                    person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld());
+        }
+    }
+
+    /** A grade recorded for a person, in force from {@code from} (null: from the beginning of time). */
+    public record GradeView(String grade, LocalDate from) {
+
+        static GradeView of(GradeFrom grade) {
+            return new GradeView(grade.getGrade(), grade.getFromDate());
         }
     }
 
@@ -38,10 +49,12 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
     }
 
-    /** An edit of a person: their new values and the version of the person the editor loaded. */
+    /** An edit of a person: their new values, the date the grade is from (missing: the sheet's today) and the
+     *  version of the person the editor loaded. */
     public record PersonEdit(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate gradeFrom,
             @NotNull Long version) {
     }
 
@@ -58,7 +71,8 @@ public class PersonController {
     @GetMapping
     public List<PersonView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
-        return people.list(sheetId).stream().map(PersonView::of).toList();
+        LocalDate today = people.today(sheetId);
+        return people.list(sheetId).stream().map(p -> PersonView.of(p, today)).toList();
     }
 
     @PostMapping
@@ -66,7 +80,8 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm request) {
-        return PersonView.of(people.add(sheetId, user, request.name(), request.grade()));
+        Person added = people.add(sheetId, user, request.name(), request.grade());
+        return PersonView.of(added, people.today(sheetId));
     }
 
     @PutMapping("/{id}")
@@ -75,7 +90,9 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonEdit request) {
-        return PersonView.of(people.update(sheetId, user, id, request.version(), request.name(), request.grade()));
+        Person edited = people.update(sheetId, user, id, request.version(), request.name(), request.grade(),
+                request.gradeFrom());
+        return PersonView.of(edited, people.today(sheetId));
     }
 
     @PostMapping("/{id}/retire")
@@ -84,7 +101,7 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody Retirement request) {
-        return PersonView.of(people.retire(sheetId, user, id, request.from()));
+        return PersonView.of(people.retire(sheetId, user, id, request.from()), people.today(sheetId));
     }
 
     /** Put the person on hold, or take them off hold when they are held. */
@@ -93,6 +110,6 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return PersonView.of(people.toggleHold(sheetId, user, id));
+        return PersonView.of(people.toggleHold(sheetId, user, id), people.today(sheetId));
     }
 }

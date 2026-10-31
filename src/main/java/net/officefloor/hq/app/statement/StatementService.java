@@ -2,9 +2,11 @@ package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -82,7 +84,8 @@ public class StatementService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         Rollup.Figures before = rollup.of(sheetId);
-        List<Rate> gradeRates = rates.findBySheetIdAndGrade(sheetId, person.getGrade());
+        List<Rate> sheetRates = rates.findBySheetId(sheetId);
+        Set<String> grades = new HashSet<>(Set.of(person.gradeOn(today)));
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
 
         BigDecimal total = BigDecimal.ZERO.setScale(2);
@@ -95,17 +98,20 @@ public class StatementService {
             }
             BigDecimal fixed = claim.getSettledDue() != null ? claim.getSettledDue() : claim.getStatedDue();
             BigDecimal figure = fixed != null ? fixed
-                    : Rate.inForceOn(gradeRates, claim.getDate())
+                    : Rate.inForceOn(ratesOf(sheetRates, person.gradeOn(claim.getDate())), claim.getDate())
                             .map(rate -> ClaimService.floored(ClaimService.dueOn(claim.getAmount(), rate.getRate()),
                                     sheet.getFloor()))
                             .orElse(null);
             anyFixed |= fixed != null;
+            grades.add(person.gradeOn(claim.getDate()));
             total = figure == null ? total : total.add(figure).add(ClaimService.lateCharge(claim, figure, sheet));
             claim.bind(figure);
             counted++;
         }
-        // As on screen: with no rate in force today and no fixed figure, the person has no due-total.
-        String dueTotal = Rate.inForceOn(gradeRates, today).isEmpty() && !anyFixed ? "n/a" : total.toPlainString();
+        // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any
+        // of their claims that count is at, and no fixed figure, the person has no due-total.
+        boolean anyRate = grades.stream().anyMatch(g -> Rate.inForceOn(ratesOf(sheetRates, g), today).isPresent());
+        String dueTotal = !anyRate && !anyFixed ? "n/a" : total.toPlainString();
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
@@ -113,5 +119,9 @@ public class StatementService {
         rollup.recordChanges(sheetId, user, before);
         List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         return new Taken(new Summary(personId, taken.size(), dueTotal, today), theirs);
+    }
+
+    private static List<Rate> ratesOf(List<Rate> sheetRates, String grade) {
+        return sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList();
     }
 }

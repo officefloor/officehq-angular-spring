@@ -104,7 +104,7 @@ public class ClaimService {
      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
      * claim gives it the sheet's next number and records who opened it; voiding it keeps its number, which is
      * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
-     * at its person's grade's rate in force on its date, as rates are now, with the late charge it has gained
+     * at the rate in force on its date of its person's grade in force on that date, as rates are now, with the late charge it has gained
      * added on top, so later rate changes leave it as it is. The user
      * who opened a claim cannot settle it, and a clerk can settle it only when that due is at or below the sheet's
      * clerk limit (a claim with no due is within any limit); a steward settles anything. A claim dated inside a closed period cannot move. The sheet is locked
@@ -125,7 +125,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
-        BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
+        BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
                 .map(Rate::getRate).map(rate -> floored(dueOn(claim.getAmount(), rate), sheet.getFloor())).orElse(null);
         // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
         BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue() : live;

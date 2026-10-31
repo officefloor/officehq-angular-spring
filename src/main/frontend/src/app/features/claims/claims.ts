@@ -3,10 +3,13 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money } from '../../core/claims';
+import { Grade, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 import { DEFAULT_TERMS, Sheets } from '../../core/sheet';
+
+const NO_RATES: readonly RateView[] = [];
 
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
 // the claims listed newest first.
@@ -76,8 +79,10 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
-  /** The rates of this person's grade, in the order they take effect. */
-  readonly rates = input.required<readonly RateView[]>();
+  /** The rates of each grade, in the order they take effect. */
+  readonly ratesByGrade = input.required<ReadonlyMap<Grade, readonly RateView[]>>();
+  /** This person's grades: a claim is at the one in force on its date. */
+  readonly grades = input.required<Pick<PersonView, 'grade' | 'grades'>>();
   /** The sheet's periods, by from-date. */
   readonly periods = input.required<readonly PeriodView[]>();
   /** Whether the person is on hold: their OPEN claims then count in no total. */
@@ -103,7 +108,8 @@ export class PersonClaims {
   }
 
   protected dueOf(c: ClaimView): string {
-    const due = claimDueCents(c, this.rates(), this.sheets.current() ?? DEFAULT_DUE_TERMS);
+    const rates = this.ratesByGrade().get(gradeOn(this.grades(), c.date)) ?? NO_RATES;
+    const due = claimDueCents(c, rates, this.sheets.current() ?? DEFAULT_DUE_TERMS);
     return due === null ? NOT_AVAILABLE : money(due);
   }
 

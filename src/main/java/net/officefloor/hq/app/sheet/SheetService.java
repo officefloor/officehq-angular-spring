@@ -37,6 +37,12 @@ public class SheetService {
         });
     }
 
+    /** The sheet's today, or null for a sheet never loaded. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String id) {
+        return sheets.findById(id).map(Sheet::getToday).orElse(null);
+    }
+
     /** Set the sheet's today, starting the sheet if it has never been loaded. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {

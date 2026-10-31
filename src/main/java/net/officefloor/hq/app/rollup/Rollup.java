@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -61,18 +62,21 @@ public class Rollup {
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            List<Rate> gradeRates = sheetRates.stream().filter(r -> r.getGrade().equals(person.getGrade())).toList();
             List<Claim> counting = sheetClaims.stream()
                     .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c.getStatus()))
                     .toList();
             BigDecimal claimed = counting.stream().map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             claimedTotal = claimedTotal.add(claimed);
-            // As on screen: with no rate in force today and no fixed figure, the person has no due-total.
+            // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade
+            // any of their claims is at, and no fixed figure, the person has no due-total.
             boolean anyFixed = counting.stream().anyMatch(c -> c.getSettledDue() != null || c.getStatedDue() != null);
+            boolean anyRate = today != null && Stream.concat(Stream.of(person.gradeOn(today)),
+                            counting.stream().map(c -> person.gradeOn(c.getDate())))
+                    .anyMatch(grade -> Rate.inForceOn(ratesOf(sheetRates, grade), today).isPresent());
             String due = NOT_AVAILABLE;
-            if (anyFixed || (today != null && Rate.inForceOn(gradeRates, today).isPresent())) {
-                BigDecimal total = counting.stream().map(c -> dueOf(c, gradeRates, sheet))
+            if (anyFixed || anyRate) {
+                BigDecimal total = counting.stream().map(c -> dueOf(c, ratesOf(sheetRates, person.gradeOn(c.getDate())), sheet))
                         .filter(Objects::nonNull)
                         .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
                 dueTotal = dueTotal.add(total);
@@ -96,8 +100,7 @@ public class Rollup {
             if (person == null || !person.counts(claim.getStatus()) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
-            String grade = person.getGrade();
-            BigDecimal due = dueOf(claim, sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList(), sheet);
+            BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet);
             if (due != null) {
                 total = total.add(due);
             }
@@ -125,8 +128,13 @@ public class Rollup {
         }
     }
 
-    /** A claim's due: its settled figure, else its stated one, else its amount at its grade's rate in force on its
-     *  date, raised to the sheet's floor; an overdue claim's late charge is added on top of the figure. */
+    /** The rates of one grade among a sheet's. */
+    private static List<Rate> ratesOf(List<Rate> sheetRates, String grade) {
+        return sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList();
+    }
+
+    /** A claim's due: its settled figure, else its stated one, else its amount at the rate in force on its date of
+     *  its person's grade in force on that date, raised to the sheet's floor; an overdue claim's late charge is added on top of the figure. */
     private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Sheet sheet) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
