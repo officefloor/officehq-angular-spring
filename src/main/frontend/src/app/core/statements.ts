@@ -28,7 +28,7 @@ export interface StatementTaken {
 }
 
 // The statements taken of people on a sheet. Taking one binds each of the person's claims that
-// count to the figure it has then, and unbinds the rest.
+// count to the figure it has then, late charge included, and unbinds the rest.
 @Injectable({ providedIn: 'root' })
 export class Statements {
   private readonly http = inject(HttpClient);

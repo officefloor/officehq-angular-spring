@@ -1079,11 +1079,16 @@ public class ClaimService {
     /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure by the sheet's today: for each
      *  full 30 days past its due-by plus its grade's grace days ({@code grade}: its person's grade in force on its
      *  date), the late percent in force on that boundary date (that day plus 30, 60, 90 ... days) of the figure
-     *  plus the charges of the boundaries before it (compounding), rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, it is a correction or its late charge was waived. */
+     *  plus the charges of the boundaries before it (compounding), rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, it is a correction or its late charge was waived. While a
+     *  statement binds the claim with a late charge, it is that charge, whatever the sheet's today. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet, String grade) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (!claim.getStatus().isOpen() || claim.isDeferredOn(sheet.getToday())) {
             return none;
+        }
+        // A statement binds the late charge with the figure: while bound, it no longer follows the sheet's today.
+        if (claim.isBound() && claim.getBoundLate() != null && !claim.isCorrection() && !claim.isWaived()) {
+            return claim.getBoundLate();
         }
         return lateChargeAsOpen(claim, figure, sheet, grade);
     }

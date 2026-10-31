@@ -104,6 +104,11 @@ public class Claim {
     @Column(name = "stated_due", precision = 14, scale = 2)
     private BigDecimal statedDue;
 
+    /** The late charge the claim had at its person's last statement, while bound by it; none if it had no figure
+     *  then, or was bound before late charges were bound (its late charge then follows the sheet's today). */
+    @Column(name = "stated_late", precision = 14, scale = 2)
+    private BigDecimal statedLate;
+
     /** The number of the SETTLED claim of the same person a correction corrects; none on any other claim. */
     @Column(name = "corrects")
     private String corrects;
@@ -393,16 +398,24 @@ public class Claim {
         return statedDue;
     }
 
-    /** Bind the claim to the figure it has at a statement. */
-    public void bind(BigDecimal figure) {
+    /** The late charge a statement binds the claim to now, with its figure; null when not bound, or bound with no
+     *  late charge bound (it then follows the sheet's today). */
+    public BigDecimal getBoundLate() {
+        return statedLate;
+    }
+
+    /** Bind the claim to the figure and the late charge it has at a statement. */
+    public void bind(BigDecimal figure, BigDecimal late) {
         this.stated = true;
         this.statedDue = figure;
+        this.statedLate = figure == null ? null : late;
     }
 
     /** Leave the claim unbound by a statement, so it is live again. */
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+        this.statedLate = null;
     }
 
     public String getSplitFrom() {

@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, forkJoin, map, tap } from 'rxjs';
-import { ClaimStatus, addDays, cents, isOverdue } from './claims';
+import { ClaimStatus, addDays, cents, isDeferred, isOverdue } from './claims';
 import { Grade } from './people';
 import { SheetView, Sheets, graceOn, settingOn } from './sheet';
 
@@ -167,7 +167,7 @@ export function lateChargeCents(
  *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. `grade` is its
  *  person's grade in force on its date, whose grace days delay its late charge. */
 export function claimDueCents(
-  c: { id?: number; amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null; waived?: boolean },
+  c: { id?: number; amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null; statedLate?: string | null; waived?: boolean },
   gradeRates: RateLine,
   sheet: DueTerms,
   roundsOn: string,
@@ -184,7 +184,13 @@ export function claimDueCents(
     if (rate === undefined) return null;
     figure = dueCents(cents(c.amount), rate, roundsHalfUp(roundsOn, sheet));
   }
-  const due = figure + lateChargeCents(c, figure, sheet, graceOn(sheet.settings, grade, c.date));
+  // A statement binds the late charge with the figure: while bound, it no longer follows the sheet's today.
+  const boundLate = c.stated && c.statedLate != null ? c.statedLate : null;
+  const charges = boundLate !== null && (c.status === 'OPEN' || c.status === 'PENDING')
+    && !isDeferred(c, sheet.today) && cents(c.amount) >= 0 && !c.waived;
+  const late = boundLate === null ? lateChargeCents(c, figure, sheet, graceOn(sheet.settings, grade, c.date))
+    : charges ? cents(boundLate) : 0;
+  const due = figure + late;
   return cents(c.amount) < 0 ? due : Math.max(due, cents(floorOn(sheet, c.date)));
 }
 

@@ -124,8 +124,9 @@ public class StatementService {
     /**
      * Take a statement of a person: record their due-total now (with the late charges their overdue claims have gained), bind each of their claims that counts
      * to the figure it has now (its settled figure, else the figure it is bound to, else its amount at
-     * its grade's rate in force on its date, not raised to the floor) and leave the rest unbound. A late charge is never
-     * bound: it keeps following the sheet's today, and the floor is applied last, to the figure with its charge. The sheet is locked first, so
+     * its grade's rate in force on its date, not raised to the floor) with the late charge it has now (the one it is bound to, else the one it has gained by the
+     * sheet's today), and leave the rest unbound. While bound, its late charge no longer follows the sheet's today; the
+     * floor is applied last, to the figure with its charge. The sheet is locked first, so
      * a statement is not taken while a claim on it changes.
      * <p>
      * Taken as of a date ({@code asOf}, on or before the sheet's today), it reads the sheet as it stood at the end of
@@ -203,10 +204,11 @@ public class StatementService {
                             .orElse(null);
             anyDue |= figure != null;
             grades.add(person.gradeOn(then.getDate()));
+            BigDecimal late = figure == null || then.getSettledDue() != null ? null
+                    : ClaimService.lateCharge(then, figure, sheet, person.gradeOn(then.getDate()));
             total = figure == null ? total
-                    : total.add(then.getSettledDue() != null ? figure
-                            : ClaimService.floored(then, figure.add(ClaimService.lateCharge(then, figure, sheet, person.gradeOn(then.getDate()))), sheet));
-            claim.bind(figure);
+                    : total.add(late == null ? figure : ClaimService.floored(then, figure.add(late), sheet));
+            claim.bind(figure, late);
             counted++;
         }
         // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any

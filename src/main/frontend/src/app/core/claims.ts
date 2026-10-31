@@ -54,6 +54,9 @@ export interface ClaimView {
   remindedOn: string | null;
   /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
   waived: boolean;
+  /** The late charge its person's last statement binds with `statedDue`, with exactly two decimals; null when not
+   *  bound, or bound with none (its late charge then follows the sheet's today). */
+  statedLate: string | null;
   /** The claim's external reference, unique on its sheet without regard to case; null when it has none. */
   ref: string | null;
   /** The claim's tags, sorted; empty when it has none. */
