@@ -22,6 +22,7 @@ import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Plans } from '../../core/plans';
 import { Pools } from '../../core/pools';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
+import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
 import { VoidReasons } from '../../core/void-reasons';
 
 const NO_CLAIMS: ClaimView[] = [];
@@ -87,7 +88,7 @@ function csvField(value: string): string {
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, PoolsPanel, PersonPlans, PlanGenerate],
+  imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, PersonPlans, PlanGenerate],
   template: `
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
@@ -96,6 +97,7 @@ function csvField(value: string): string {
     <app-pools [people]="people()" />
     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()"
                  [voidReasons]="summaryByVoidReason()" />
+    <app-classic-summary [periods]="classicByPeriod()" [dueTotal]="classicDueTotal()" />
 
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -771,7 +773,11 @@ export class PeopleList {
   /** Each person's due-total for each period, in whole cents, by person id then period id: the dues as shown now
    *  of their claims whose due-by falls in it and that counted by the status they had at the end of its last day
    *  (none counting as 0); a closed or soft-closed period keeps the figures fixed when it was closed, 0 for a person added since. */
-  private readonly dueByPersonPeriod = computed(() => {
+  private readonly dueByPersonPeriod = computed(() =>
+    this.figuresByPersonPeriod((p, end) => countsAtEndWithHolds(p.holds, this.todayNow(), end, p.retiredFrom)));
+  /** Each person's due-total for each period, by person id then period id, as `figuresByPersonPeriod` adds it up
+   *  with the claims that count chosen by `counting` for the person and the period's last day. */
+  private figuresByPersonPeriod(counting: (p: PersonView, end: string) => (c: ClaimView) => boolean) {
     const periods = this.periods.list();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, Map<number, number>>();
@@ -779,7 +785,7 @@ export class PeopleList {
       const live = new Map<number, number>(periods.map((pd) => [pd.id, 0]));
       for (const c of this.claimsOf(p.id)) {
         const period = periodOn(periods, c.dueBy);
-        if (period && countsAtEndWithHolds(p.holds, this.todayNow(), period.to, p.retiredFrom)(c)) {
+        if (period && counting(p, period.to)(c)) {
           live.set(period.id, (live.get(period.id) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
         }
       }
@@ -789,7 +795,22 @@ export class PeopleList {
       byPerson.set(p.id, live);
     }
     return byPerson;
+  }
+  /** The classic per-period figures: as the period's due-total, but each claim counted by its status now (OPEN,
+   *  PENDING and SETTLED count); a closed or soft-closed period keeps the figures fixed when it was closed. */
+  protected readonly classicByPeriod = computed<ClassicPeriod[]>(() => {
+    const totals = new Map<number, number>(this.periods.list().map((pd) => [pd.id, 0]));
+    const today = this.todayNow();
+    const figures = this.figuresByPersonPeriod((p) => countsWithHolds(p.holds, today, p.retiredFrom));
+    for (const byPeriod of figures.values()) {
+      for (const [id, due] of byPeriod) totals.set(id, (totals.get(id) ?? 0) + due);
+    }
+    return this.periods.list().map((pd) => ({ name: pd.name, dueTotal: money(totals.get(pd.id) ?? 0) }));
   });
+  /** The classic due-total: everyone's due-total added up, skipping those with none, with no trimming. */
+  protected readonly classicDueTotal = computed(() =>
+    money([...this.dueByPerson().values()].reduce<number>((sum, due) => sum + (due ?? 0), 0)),
+  );
   /** Each period's due-total, by period id: the sum of the people's figures for it. */
   protected readonly dueByPeriod = computed(() => {
     const totals = new Map<number, number>(this.periods.list().map((pd) => [pd.id, 0]));
