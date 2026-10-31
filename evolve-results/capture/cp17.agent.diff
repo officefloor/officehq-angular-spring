@@ -1,0 +1,527 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+new file mode 100644
+index 000000000..123156282
+--- /dev/null
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -0,0 +1,51 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { Observable, tap } from 'rxjs';
++
++export interface PeriodView {
++  id: number;
++  /** Unique on its sheet. */
++  name: string;
++  /** The first day of the period (yyyy-mm-dd), inclusive. */
++  from: string;
++  /** The last day of the period (yyyy-mm-dd), inclusive. */
++  to: string;
++}
++
++/** A period as the form submits it: a blank from-date takes the sheet's today. */
++export interface PeriodForm {
++  name: string;
++  from: string | null;
++  to: string;
++}
++
++/** The period whose dates contain a date (yyyy-mm-dd); undefined when none does. */
++export function periodOn(periods: readonly PeriodView[], date: string): PeriodView | undefined {
++  return periods.find((p) => p.from <= date && date <= p.to);
++}
++
++// The periods of the active sheet, by from-date; no two of them overlap.
++@Injectable({ providedIn: 'root' })
++export class Periods {
++  private readonly http = inject(HttpClient);
++  private readonly periods = signal<PeriodView[]>([]);
++  readonly list = this.periods.asReadonly();
++
++  /** Re-read a sheet's periods from the store; null clears them. */
++  load(sheetId: string | null): Observable<PeriodView[]> | null {
++    this.periods.set([]);
++    if (sheetId === null) return null;
++    return this.http.get<PeriodView[]>(this.base(sheetId)).pipe(tap((periods) => this.periods.set(periods)));
++  }
++
++  /** Add a period; refused when its name is in use, it ends before it starts, or it overlaps another. */
++  add(sheetId: string, period: PeriodForm): Observable<PeriodView> {
++    return this.http
++      .post<PeriodView>(this.base(sheetId), period)
++      .pipe(tap((saved) => this.periods.update((list) => [...list, saved].sort((a, b) => (a.from < b.from ? -1 : 1)))));
++  }
++
++  private base(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 44a7bec64..7a26316d3 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -3,6 +3,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
+ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, counts, money } from '../../core/claims';
++import { PeriodView, periodOn } from '../../core/periods';
+ import { NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ 
+@@ -38,6 +39,7 @@ import { Sheets } from '../../core/sheet';
+           <span data-testid="claim-amount">{{ c.amount }}</span>
+           on <span data-testid="claim-date">{{ c.date }}</span>
+           — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
++          in period <span data-testid="claim-period">{{ periodOf(c) }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span data-testid="claim-status">{{ c.status }}</span>
+           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+@@ -72,6 +74,8 @@ export class PersonClaims {
+   readonly claims = input.required<ClaimView[]>();
+   /** The rates of this person's grade, in the order they take effect. */
+   readonly rates = input.required<readonly RateView[]>();
++  /** The sheet's periods, by from-date. */
++  readonly periods = input.required<readonly PeriodView[]>();
+   readonly saved = output<ClaimView>();
+ 
+   protected readonly claimed = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+@@ -97,6 +101,10 @@ export class PersonClaims {
+     return due === null ? NOT_AVAILABLE : money(due);
+   }
+ 
++  protected periodOf(c: ClaimView): string {
++    return periodOn(this.periods(), c.date)?.name ?? '';
++  }
++
+   protected changeStatus(c: ClaimView, status: ClaimStatus): void {
+     this.claimError.set(null);
+     const sheet = this.sheets.current();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 019713089..94ebdca55 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,10 +5,12 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
+ import { forkJoin, of, switchMap } from 'rxjs';
+ import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
+ import { GRADES, Grade, People, PersonView } from '../../core/people';
++import { Periods, periodOn } from '../../core/periods';
+ import { NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ import { StatementSummary, Statements } from '../../core/statements';
+ import { PersonClaims } from '../claims/claims';
++import { PeriodsPanel } from '../periods/periods';
+ 
+ const NO_CLAIMS: ClaimView[] = [];
+ const NO_RATES: RateView[] = [];
+@@ -17,8 +19,10 @@ const NO_RATES: RateView[] = [];
+ // each person's claims and due-total, and the sheet's claimed-total and due-total.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims],
++  imports: [ReactiveFormsModule, PersonClaims, PeriodsPanel],
+   template: `
++    <app-periods [dueTotals]="dueByPeriod()" />
++
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+@@ -61,6 +65,7 @@ const NO_RATES: RateView[] = [];
+               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+             }
+             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates.ratesByGrade().get(p.grade) ?? noRates"
++                               [periods]="periods.list()"
+                                (saved)="claimSaved($event)" />
+           </li>
+         }
+@@ -74,6 +79,7 @@ export class PeopleList {
+   private readonly claimsApi = inject(Claims);
+   private readonly statementsApi = inject(Statements);
+   protected readonly rates = inject(Rates);
++  protected readonly periods = inject(Periods);
+ 
+   protected readonly grades = GRADES;
+   protected readonly noRates = NO_RATES;
+@@ -113,6 +119,20 @@ export class PeopleList {
+   protected readonly dueTotal = computed(() =>
+     money([...this.dueByPerson().values()].reduce<number>((sum, due) => sum + (due ?? 0), 0)),
+   );
++  /** Each period's due-total, by period id: the dues of the claims that count whose date falls in it. */
++  protected readonly dueByPeriod = computed(() => {
++    const periods = this.periods.list();
++    const ratesByGrade = this.rates.ratesByGrade();
++    const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
++    const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
++    for (const c of this.claims().filter(counts)) {
++      const period = periodOn(periods, c.date);
++      const grade = gradeOf.get(c.personId);
++      if (!period || !grade) continue;
++      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, ratesByGrade.get(grade) ?? NO_RATES) ?? 0));
++    }
++    return new Map([...totals].map(([id, total]) => [id, money(total)]));
++  });
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private editingVersion = 0;
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+new file mode 100644
+index 000000000..03fd12e7a
+--- /dev/null
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -0,0 +1,115 @@
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, inject, input, signal } from '@angular/core';
++import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { EMPTY, switchMap } from 'rxjs';
++import { Periods } from '../../core/periods';
++import { Sheets } from '../../core/sheet';
++
++// The sheet's periods, each with its due-total, and a form to add one.
++@Component({
++  selector: 'app-periods',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="periods-heading">
++      <h2 id="periods-heading">Periods</h2>
++      <ul aria-label="Periods of the sheet">
++        @for (p of periods.list(); track p.id) {
++          <li [attr.data-testid]="'period-row-' + p.name">
++            <span data-testid="period-name">{{ p.name }}</span>
++            from <span data-testid="period-from">{{ p.from }}</span>
++            to <span data-testid="period-to">{{ p.to }}</span>
++            — due <span data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</span>
++          </li>
++        }
++      </ul>
++
++      <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Add a period">
++        <label for="period-form-name">Name</label>
++        <input id="period-form-name" data-testid="period-form-name" formControlName="name" autocomplete="off" />
++        <label for="period-form-from">From (blank: today)</label>
++        <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
++        <label for="period-form-to">To</label>
++        <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
++        <button type="submit" data-testid="period-form-submit" [disabled]="saving()">Add period</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="period-form-error">{{ err }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class PeriodsPanel {
++  private readonly sheets = inject(Sheets);
++  protected readonly periods = inject(Periods);
++
++  /** Each period's due-total, with two decimals, by period id. */
++  readonly dueTotals = input.required<ReadonlyMap<number, string>>();
++
++  protected readonly error = signal<string | null>(null);
++  protected readonly saving = signal(false);
++
++  protected readonly form = new FormGroup({
++    name: new FormControl('', { nonNullable: true }),
++    from: new FormControl('', { nonNullable: true }),
++    to: new FormControl('', { nonNullable: true }),
++  });
++
++  constructor() {
++    // Each (re)load of a sheet re-reads its periods from the store.
++    toObservable(this.sheets.loaded)
++      .pipe(
++        switchMap((sheet) => {
++          this.error.set(null);
++          return this.periods.load(sheet?.id ?? null) ?? EMPTY;
++        }),
++        takeUntilDestroyed(),
++      )
++      .subscribe({ error: () => this.error.set('Could not read the periods.') });
++    // An error is removed as soon as its form is changed.
++    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
++  }
++
++  protected submit(): void {
++    // A second submit before the first has answered is ignored, so it stores one record.
++    if (this.saving()) return;
++    this.error.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const value = this.form.getRawValue();
++    const name = value.name.trim();
++    const from = value.from.trim();
++    const to = value.to.trim();
++    if (name === '') {
++      this.error.set('Type a name for the period.');
++      return;
++    }
++    if (from !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
++      this.error.set('Choose a from-date, or leave it blank for today.');
++      return;
++    }
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(to)) {
++      this.error.set('Choose a to-date for the period.');
++      return;
++    }
++    if (to < (from === '' ? sheet.today : from)) {
++      this.error.set('A period cannot end before it starts.');
++      return;
++    }
++    this.saving.set(true);
++    this.periods.add(sheet.id, { name, from: from === '' ? null : from, to }).subscribe({
++      next: () => {
++        this.saving.set(false);
++        this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
++      },
++      error: (err: unknown) => {
++        this.saving.set(false);
++        this.error.set(
++          err instanceof HttpErrorResponse && err.status === 409
++            ? 'That period’s name is in use, or it overlaps another period.'
++            : 'Could not add that period.',
++        );
++      },
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+new file mode 100644
+index 000000000..161cde614
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -0,0 +1,66 @@
++package net.officefloor.hq.app.period;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A period of a sheet: a name unique on the sheet, from and to dates inclusive. */
++@Entity
++@Table(name = "period")
++public class Period {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "name", nullable = false)
++    private String name;
++
++    @Column(name = "from_date", nullable = false)
++    private LocalDate fromDate;
++
++    @Column(name = "to_date", nullable = false)
++    private LocalDate toDate;
++
++    protected Period() {
++    }
++
++    public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate) {
++        this.sheetId = sheetId;
++        this.name = name;
++        this.fromDate = fromDate;
++        this.toDate = toDate;
++    }
++
++    /** Whether this period shares a day with the period from {@code from} to {@code to}. */
++    public boolean overlaps(LocalDate from, LocalDate to) {
++        return !fromDate.isAfter(to) && !from.isAfter(toDate);
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++
++    public LocalDate getToDate() {
++        return toDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+new file mode 100644
+index 000000000..59b34ab15
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.period;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Periods on a sheet. The caller's signed-in name comes in the {@code X-User} header. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/periods")
++public class PeriodController {
++
++    public record PeriodView(long id, String name, LocalDate from, LocalDate to) {
++
++        static PeriodView of(Period period) {
++            return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate());
++        }
++    }
++
++    /** A period as the form submits it: a name, and its from and to dates, inclusive; a blank
++     *  from-date takes the sheet's today. */
++    public record PeriodForm(@NotBlank @Size(max = 100) String name, LocalDate from, @NotNull LocalDate to) {
++    }
++
++    private final PeriodService periods;
++
++    public PeriodController(PeriodService periods) {
++        this.periods = periods;
++    }
++
++    @GetMapping
++    public List<PeriodView> list(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        return periods.list(sheetId).stream().map(PeriodView::of).toList();
++    }
++
++    @PostMapping
++    public PeriodView add(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody PeriodForm request) {
++        return PeriodView.of(periods.add(sheetId, user, request.name(), request.from(), request.to()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java b/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java
+new file mode 100644
+index 000000000..ccf718c39
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.period;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PeriodRepository extends JpaRepository<Period, Long> {
++
++    List<Period> findBySheetIdOrderByFromDateAsc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+new file mode 100644
+index 000000000..8eda72d69
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -0,0 +1,70 @@
++package net.officefloor.hq.app.period;
++
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The periods of a sheet. */
++@Service
++public class PeriodService {
++
++    private final PeriodRepository periods;
++    private final SheetService sheets;
++    private final SheetRepository sheetStore;
++    private final Audit audit;
++
++    public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit) {
++        this.periods = periods;
++        this.sheets = sheets;
++        this.sheetStore = sheetStore;
++        this.audit = audit;
++    }
++
++    /** The sheet's periods, by from-date. */
++    @Transactional(readOnly = true)
++    public List<Period> list(String sheetId) {
++        return periods.findBySheetIdOrderByFromDateAsc(sheetId);
++    }
++
++    /** Add a period; the name is stored trimmed. Refused when the name is in use on the sheet, the
++     *  to-date is before the from-date, or it shares a day with another period of the sheet. With no
++     *  from-date it starts on the sheet's today. */
++    @Transactional
++    public Period add(String sheetId, String user, String name, LocalDate fromDate, LocalDate to) {
++        sheets.load(sheetId, user);
++        // The sheet is locked so two periods added at the same moment cannot overlap.
++        LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
++        LocalDate from = fromDate != null ? fromDate : today;
++        String trimmed = name.trim();
++        if (to.isBefore(from)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A period cannot end before it starts");
++        }
++        List<Period> existing = periods.findBySheetIdOrderByFromDateAsc(sheetId);
++        if (existing.stream().anyMatch(p -> p.getName().equals(trimmed))) {
++            throw nameInUse();
++        }
++        if (existing.stream().anyMatch(p -> p.overlaps(from, to))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period overlaps another on this sheet");
++        }
++        Period added;
++        try {
++            added = periods.saveAndFlush(new Period(sheetId, trimmed, from, to));
++        } catch (DataIntegrityViolationException raced) {
++            throw nameInUse();
++        }
++        audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
++                + " from=" + added.getFromDate() + " to=" + added.getToDate());
++        return added;
++    }
++
++    private static ResponseStatusException nameInUse() {
++        return new ResponseStatusException(HttpStatus.CONFLICT, "That period name is already in use on this sheet");
++    }
++}
+diff --git a/src/main/resources/db/migration/V14__period.sql b/src/main/resources/db/migration/V14__period.sql
+new file mode 100644
+index 000000000..27ee7b688
+--- /dev/null
++++ b/src/main/resources/db/migration/V14__period.sql
+@@ -0,0 +1,12 @@
++-- Periods on a sheet: a name unique on the sheet and an inclusive from and to date. No two periods
++-- of a sheet overlap (checked when one is added, with the sheet locked); a claim belongs to the
++-- period whose dates contain its date, or to none.
++CREATE TABLE period (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    name      VARCHAR(100) NOT NULL,
++    from_date DATE         NOT NULL,
++    to_date   DATE         NOT NULL,
++    CONSTRAINT period_from_to CHECK (from_date <= to_date),
++    CONSTRAINT period_sheet_name UNIQUE (sheet_id, name)
++);
