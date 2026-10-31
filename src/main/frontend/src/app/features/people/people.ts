@@ -277,6 +277,27 @@ function csvField(value: string): string {
         }
       </p>
 
+      <p>
+        @if (voidReasons.all().length > 0) {
+          <label for="bulk-void-reason">Reason to void</label>
+          <select id="bulk-void-reason" data-testid="bulk-void-reason"
+                  [value]="bulkVoidReason()" (change)="bulkVoidReasonChanged($any($event.target).value)">
+            <option value="">Choose a reason</option>
+            @for (r of voidReasons.all(); track r.id) {
+              <option [value]="r.reason">{{ r.reason }}</option>
+            }
+          </select>
+        }
+        <button type="button" data-testid="bulk-void" (click)="bulkVoid()" [disabled]="bulkVoiding()">Void selected claims</button>
+        @if (bulkVoidResult(); as r) {
+          Voided <span data-testid="bulk-voided">{{ r.voided }}</span>,
+          refused <span data-testid="bulk-void-refused">{{ r.refused }}</span>
+        }
+        @if (bulkVoidError(); as err) {
+          <span role="alert" data-testid="bulk-void-error">{{ err }}</span>
+        }
+      </p>
+
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade the selected people">
         <label for="bulk-grade">Grade</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
@@ -613,6 +634,13 @@ export class PeopleList {
   protected readonly bulkRedateError = signal<string | null>(null);
   /** Whether a bulk re-date is running, so a second press waits for the first. */
   protected readonly bulkRedating = signal(false);
+  /** The reason from the sheet's list the selected claims are to be voided with, or '' for none. */
+  protected readonly bulkVoidReason = signal('');
+  /** What the last bulk void did, until the button is pressed again. */
+  protected readonly bulkVoidResult = signal<{ voided: number; refused: number } | null>(null);
+  protected readonly bulkVoidError = signal<string | null>(null);
+  /** Whether a bulk void is running, so a second press waits for the first. */
+  protected readonly bulkVoiding = signal(false);
   /** The ids of the people selected for a bulk action. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** How many people the last bulk grade changed; null while one runs or before any. */
@@ -957,7 +985,7 @@ export class PeopleList {
     if (sheet === null) return 0;
     return this.claims().filter((c) => isReviewLate(c, sheet.today, sheet.reviewSla)).length;
   });
-  private readonly voidReasons = inject(VoidReasons);
+  protected readonly voidReasons = inject(VoidReasons);
   /** Per reason on the sheet's list, how many VOID claims were voided with it. */
   protected readonly summaryByVoidReason = computed<VoidReasonSummary[]>(() => {
     const claims = this.claims();
@@ -1080,6 +1108,9 @@ export class PeopleList {
           this.bulkRedateDate.set('');
           this.bulkRedateResult.set(null);
           this.bulkRedateError.set(null);
+          this.bulkVoidReason.set('');
+          this.bulkVoidResult.set(null);
+          this.bulkVoidError.set(null);
           this.statements.set(new Map());
           this.snapshots.set(new Map());
           this.descendants.set(NO_DESCENDANTS);
@@ -1752,6 +1783,34 @@ export class PeopleList {
       error: () => {
         this.bulkRedating.set(false);
         this.bulkRedateError.set('Could not re-date the selected claims.');
+      },
+    });
+  }
+
+  protected bulkVoidReasonChanged(reason: string): void {
+    this.bulkVoidReason.set(reason);
+    this.bulkVoidError.set(null);
+  }
+
+  /** Void the selected claims together with the chosen reason, in list order, each as the row's void would; the rest are left as they are. */
+  protected bulkVoid(): void {
+    if (this.bulkVoiding()) return;
+    this.bulkVoidResult.set(null);
+    this.bulkVoidError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const reason = this.bulkVoidReason();
+    this.bulkVoiding.set(true);
+    this.claimsApi.bulkVoid(sheet.id, [...this.selectedClaims()], reason === '' ? null : reason).subscribe({
+      next: ({ voided, refused, claims }) => {
+        this.bulkVoiding.set(false);
+        claims.forEach((c) => this.claimSaved(c));
+        this.selectedClaims.set(new Set());
+        this.bulkVoidResult.set({ voided, refused });
+      },
+      error: () => {
+        this.bulkVoiding.set(false);
+        this.bulkVoidError.set('Could not void the selected claims.');
       },
     });
   }

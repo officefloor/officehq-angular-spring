@@ -270,6 +270,12 @@ export interface BulkRedateView {
   claims: ClaimView[];
 }
 
+export interface BulkVoidView {
+  voided: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 /** An amount the form accepts: 0.00 or more, with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
 
@@ -440,6 +446,10 @@ export class Claims {
    *  refused and left as they are. */
   bulkRedate(sheetId: string, ids: readonly number[], date: string): Observable<BulkRedateView> {
     return this.http.post<BulkRedateView>(`${this.base(sheetId)}/claims/bulk-redate`, { ids, date });
+  }
+
+  bulkVoid(sheetId: string, ids: readonly number[], reason: string | null): Observable<BulkVoidView> {
+    return this.http.post<BulkVoidView>(`${this.base(sheetId)}/claims/bulk-void`, { ids, reason });
   }
 
   private base(sheetId: string): string {

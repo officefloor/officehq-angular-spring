@@ -181,6 +181,14 @@ public class ClaimController {
     public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims selected to be voided together, and the reason from the sheet's list (none when not given). */
+    public record BulkVoid(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @Size(max = 200) String reason) {
+    }
+
+    /** What a bulk void did: how many it voided and refused, and the claims it voided, in the order voided. */
+    public record BulkVoidView(int voided, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService claims;
     private final RoleService roles;
     private final SheetService sheets;
@@ -505,5 +513,34 @@ public class ClaimController {
             }
         }
         return new BulkRedateView(redated.size(), refused, redated);
+    }
+
+    /**
+     * Void each selected claim with the reason, one at a time in list order (people in the order listed, newest claim
+     * first within a person), by exactly the rules of voiding one claim. Each that cannot be voided, or is not on the
+     * sheet, is refused and left as it is.
+     */
+    @PostMapping("/claims/bulk-void")
+    public BulkVoidView bulkVoid(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkVoid request) {
+        int selected = (int) request.ids().stream().distinct().count();
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+            // A viewer's bulk action, or one on an archived sheet, goes through with nothing done: every selected
+            // claim is refused.
+            return new BulkVoidView(0, selected, List.of());
+        }
+        List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+        int refused = selected - ordered.size();
+        List<ClaimView> voided = new ArrayList<>();
+        for (long id : ordered) {
+            try {
+                voided.add(ClaimView.of(claims.changeStatus(sheetId, user, id, ClaimStatus.VOID, request.reason())));
+            } catch (ResponseStatusException refusal) {
+                refused++;
+            }
+        }
+        return new BulkVoidView(voided.size(), refused, voided);
     }
 }
