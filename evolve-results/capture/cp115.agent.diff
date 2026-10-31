@@ -1,0 +1,514 @@
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index 5b58fbdd7..afede238d 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -1,18 +1,23 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject, signal } from '@angular/core';
+-import { Observable, tap } from 'rxjs';
++import { Observable, switchMap, tap } from 'rxjs';
+ 
+ /** A share percent the pool's row accepts: up to two decimals (more than 0.00 and at most 100.00 is checked apart). */
+ export const SHARE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+ 
+-/** A member of a pool: a person of the sheet with their share percent. */
++/** A member of a pool: a person of the sheet, or another pool of it, with its share percent. */
+ export interface PoolMemberView {
+-  personId: number;
++  /** The person that is the member; null when the member is a pool. */
++  personId: number | null;
++  /** The pool that is the member; null when the member is a person. */
++  memberPoolId: number | null;
++  /** The person's name, or the member pool's. */
+   name: string;
+   share: string;
+   /** Retired as soon as a retirement date is set: their share then counts as 0.00 toward the total. */
+   retired: boolean;
+-  /** Their cut of the sheet's pot (two decimals); null when there is no pot or the pool is not balanced. */
++  /** Their cut of the pool's pot (two decimals); null when the pool has no pot or is not balanced. A pool that is a
++   *  member of another has its cut there as its pot; one that is a member of none has the sheet's. */
+   cut: string | null;
+ }
+ 
+@@ -46,10 +51,14 @@ export class Pools {
+     );
+   }
+ 
+-  /** Add a person to a pool with a share; refused when they are already in it or the share is out of range. */
+-  addMember(sheetId: string, poolId: number, personId: number, share: string): Observable<PoolView> {
+-    return this.http.post<PoolView>(`${this.base(sheetId)}/${poolId}/members`, { personId, share }).pipe(
+-      tap((saved) => this.list.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))),
++  /** Add a person or another pool to a pool with a share; refused when the person is already in it, the share is
++   *  out of range, or the pool member is already in a pool, would contain itself or make a chain over three deep.
++   *  Every pool is re-read after, since a pool's pot follows its cut in the pool above. */
++  addMember(sheetId: string, poolId: number, member: { personId: number } | { memberPoolId: number },
++            share: string): Observable<PoolView[]> {
++    return this.http.post<PoolView>(`${this.base(sheetId)}/${poolId}/members`, { ...member, share }).pipe(
++      switchMap(() => this.http.get<PoolView[]>(this.base(sheetId))),
++      tap((list) => this.list.set(list)),
+     );
+   }
+ 
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index b413f5534..c8c395d70 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -57,7 +57,7 @@ export interface SheetView {
+   /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the new
+    *  today is closed; null: off. Not dated. */
+   graceDays: number | null;
+-  /** The pot (two decimals), cut among the members of each balanced pool; null when there is none. Not dated. */
++  /** The pot (two decimals), cut among the members of each balanced pool that is a member of none; null when there is none. Not dated. */
+   pot: string | null;
+   /** The id of the sheet's parent sheet: a grade with no rate in force on a date on this sheet takes its parent's
+    *  (then its parent's parent's, up to three levels up); null when it has none. Not dated. */
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 41370b61a..962c30770 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -3,12 +3,12 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { EMPTY, distinctUntilChanged, skip, switchMap } from 'rxjs';
+ import { PersonView } from '../../core/people';
+-import { Pools, SHARE_PATTERN } from '../../core/pools';
++import { PoolMemberView, Pools, SHARE_PATTERN } from '../../core/pools';
+ import { Sheets } from '../../core/sheet';
+ 
+ type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<string> }>;
+ 
+-// The sheet's pools: each has members chosen from the sheet's people, with a share percent of it.
++// The sheet's pools: each has members chosen from the sheet's people and its other pools, with a share percent of it.
+ @Component({
+   selector: 'app-pools',
+   imports: [ReactiveFormsModule],
+@@ -22,8 +22,8 @@ type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<
+             total share <span data-testid="pool-total-share">{{ pool.totalShare }}</span>,
+             balanced <span data-testid="pool-balanced">{{ pool.balanced ? 'yes' : 'no' }}</span>
+             <ul [attr.aria-label]="'Members of ' + pool.name">
+-              @for (m of pool.members; track m.personId) {
+-                <li [attr.data-testid]="'pool-member-' + pool.name + '-' + m.personId">
++              @for (m of pool.members; track memberKey(m)) {
++                <li [attr.data-testid]="'pool-member-' + pool.name + '-' + memberKey(m)">
+                   <span data-testid="pool-member-name">{{ m.name }}</span>:
+                   <span data-testid="pool-share">{{ m.share }}</span>,
+                   cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
+@@ -33,12 +33,15 @@ type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<
+             </ul>
+             <form [formGroup]="memberForm(pool.id)" (ngSubmit)="addMember(pool.id)"
+                   [attr.aria-label]="'Add a member to ' + pool.name">
+-              <label [attr.for]="'pool-member-select-' + pool.id">Person</label>
++              <label [attr.for]="'pool-member-select-' + pool.id">Member</label>
+               <select [id]="'pool-member-select-' + pool.id" data-testid="pool-member-select" formControlName="personId">
+-                <option value="">Choose a person</option>
++                <option value="">Choose a person or a pool</option>
+                 @for (p of people(); track p.id) {
+                   <option [value]="p.id">{{ p.name }}</option>
+                 }
++                @for (other of pools.all(); track other.id) {
++                  <option [value]="'pool:' + other.id">pool:{{ other.name }}</option>
++                }
+               </select>
+               <label [attr.for]="'pool-member-share-' + pool.id">Share %</label>
+               <input [id]="'pool-member-share-' + pool.id" data-testid="pool-member-share" formControlName="share"
+@@ -113,6 +116,11 @@ export class PoolsPanel {
+     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+   }
+ 
++  /** A member's key in its row's test id: the person's id, or pool-<name> for a pool. */
++  protected memberKey(m: PoolMemberView): string {
++    return m.memberPoolId !== null ? `pool-${m.name}` : String(m.personId);
++  }
++
+   /** The pool row's form to add a member, made the first time the row shows. */
+   protected memberForm(poolId: number): MemberForm {
+     let form = this.memberForms.get(poolId);
+@@ -160,7 +168,7 @@ export class PoolsPanel {
+     const value = this.memberForm(poolId).getRawValue();
+     const share = value.share.trim();
+     if (value.personId === '') {
+-      this.setError(poolId, 'Choose a person to add.');
++      this.setError(poolId, 'Choose a person or a pool to add.');
+       return;
+     }
+     if (!SHARE_PATTERN.test(share) || Number(share) <= 0 || Number(share) > 100) {
+@@ -173,14 +181,17 @@ export class PoolsPanel {
+       next.delete(poolId);
+       return next;
+     });
+-    this.pools.addMember(sheet.id, poolId, Number(value.personId), share).subscribe({
++    const member = value.personId.startsWith('pool:')
++      ? { memberPoolId: Number(value.personId.slice('pool:'.length)) }
++      : { personId: Number(value.personId) };
++    this.pools.addMember(sheet.id, poolId, member, share).subscribe({
+       next: () => {
+         done();
+         this.memberForm(poolId).reset({ personId: '', share: '' }, { emitEvent: false });
+       },
+       error: () => {
+         done();
+-        this.setError(poolId, 'Could not add that member: are they already in the pool?');
++        this.setError(poolId, 'Could not add that member: is it already in a pool, would the pool contain itself, or would the chain of pools be over three deep?');
+       },
+     });
+   }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 744726846..f34d7b296 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -138,7 +138,7 @@ function isDate(value: string): boolean {
+         <label for="setting-grace-days">Grace days (when today changes, an open period ended more than these days before it is closed; blank: off)</label>
+         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" (focus)="lastFocused = 'graceDays'"
+                inputmode="numeric" autocomplete="off" />
+-        <label for="setting-pot">Pot (cut among the members of each balanced pool by their shares; blank: none)</label>
++        <label for="setting-pot">Pot (cut among the members of each balanced pool that is a member of none, by their shares; blank: none)</label>
+         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" (focus)="lastFocused = 'pot'"
+                inputmode="decimal" autocomplete="off" />
+         <label for="setting-parent">Parent sheet (a sheet id: a grade with no rate in force on a date here takes the parent's, up to three levels up; blank: none)</label>
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 68ef8121f..2ff8a1cae 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -23,12 +23,19 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}/pools")
+ public class PoolController {
+ 
+-    /** A member as the pool's row shows it; cut is their cut of the sheet's pot, null when the pool shows none. */
+-    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
++    /** A member as the pool's row shows it: a person (personId) or another pool (memberPoolId, its name as the
++     *  name); cut is its cut of the pool's pot, null when the pool shows none. */
++    public record MemberView(Long personId, Long memberPoolId, String name, String share, boolean retired,
++            String cut) {
+ 
+         public static MemberView of(PoolService.Member m, BigDecimal cut) {
+-            return new MemberView(m.person().getId(), m.person().getName(), m.share().toPlainString(),
+-                    m.person().isRetired(), cut == null ? null : cut.toPlainString());
++            String shown = cut == null ? null : cut.toPlainString();
++            if (m.pool() != null) {
++                return new MemberView(null, m.pool().getId(), m.pool().getName(), m.share().toPlainString(), false,
++                        shown);
++            }
++            return new MemberView(m.person().getId(), null, m.person().getName(), m.share().toPlainString(),
++                    m.person().isRetired(), shown);
+         }
+     }
+ 
+@@ -48,8 +55,8 @@ public class PoolController {
+     public record PoolForm(@NotNull @Size(max = 200) String name) {
+     }
+ 
+-    /** A member as the pool's row submits it. */
+-    public record MemberForm(@NotNull Long personId, @NotNull BigDecimal share) {
++    /** A member as the pool's row submits it: a person or another pool of the sheet, exactly one given. */
++    public record MemberForm(Long personId, Long memberPoolId, @NotNull BigDecimal share) {
+     }
+ 
+     private final PoolService pools;
+@@ -78,6 +85,7 @@ public class PoolController {
+             @PathVariable long poolId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody MemberForm request) {
+-        return PoolView.of(pools.addMember(sheetId, user, poolId, request.personId(), request.share()));
++        return PoolView.of(pools.addMember(sheetId, user, poolId, request.personId(), request.memberPoolId(),
++                request.share()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+index 00e57df92..5acd344fb 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ 
+-/** A person's membership of a pool, with their share percent of it. */
++/** A membership of a pool, a person's or another pool's (exactly one is set), with its share percent of it. */
+ @Entity
+ @Table(name = "pool_member")
+ public class PoolMember {
+@@ -20,9 +20,12 @@ public class PoolMember {
+     @Column(name = "pool_id", nullable = false)
+     private Long poolId;
+ 
+-    @Column(name = "person_id", nullable = false)
++    @Column(name = "person_id")
+     private Long personId;
+ 
++    @Column(name = "member_pool_id")
++    private Long memberPoolId;
++
+     @Column(name = "share", nullable = false, precision = 5, scale = 2)
+     private BigDecimal share;
+ 
+@@ -35,6 +38,13 @@ public class PoolMember {
+         this.share = share;
+     }
+ 
++    /** A pool's membership of another pool. */
++    public static PoolMember ofPool(Long poolId, Long memberPoolId, BigDecimal share) {
++        PoolMember made = new PoolMember(poolId, null, share);
++        made.memberPoolId = memberPoolId;
++        return made;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -47,6 +57,11 @@ public class PoolMember {
+         return personId;
+     }
+ 
++    /** The pool that is the member; null when the member is a person. */
++    public Long getMemberPoolId() {
++        return memberPoolId;
++    }
++
+     public BigDecimal getShare() {
+         return share;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java b/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java
+index ccba66865..4cdfeacc1 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java
+@@ -11,6 +11,8 @@ public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
+ 
+     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
+ 
++    Optional<PoolMember> findByMemberPoolId(Long memberPoolId);
++
+     List<PoolMember> findByPersonIdOrderByIdAsc(Long personId);
+ 
+     Optional<PoolMember> findByPoolIdAndPersonId(Long poolId, Long personId);
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 8104fed0b..9c4a0352d 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.pool;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.util.ArrayList;
++import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.function.Function;
+@@ -26,16 +27,20 @@ public class PoolService {
+     /** The most a member's share can be, and what a balanced pool's shares total. */
+     public static final BigDecimal FULL = new BigDecimal("100.00");
+ 
+-    /** A member of a pool as it stands: the person, their share, and whether they are retired. */
+-    public record Member(Person person, BigDecimal share) {
++    /** The most pools a chain of pools, each a member of the next, can hold. */
++    public static final int MAX_DEPTH = 3;
++
++    /** A member of a pool as it stands: a person or another pool (exactly one is set), and its share. */
++    public record Member(Person person, Pool pool, BigDecimal share) {
+ 
+         /** What the share counts toward the pool's total: nothing once the person is retired, whatever the date. */
+         public BigDecimal counted() {
+-            return person.isRetired() ? BigDecimal.ZERO.setScale(2) : share;
++            return person != null && person.isRetired() ? BigDecimal.ZERO.setScale(2) : share;
+         }
+     }
+ 
+-    /** A pool with its members, in the order they were added, and the sheet's pot (null: none). */
++    /** A pool with its members, in the order they were added, and its pot (null: none): the sheet's pot for a pool
++     *  that is a member of none, else its cut in the pool above. */
+     public record PoolWithMembers(Pool pool, List<Member> members, BigDecimal pot) {
+ 
+         /** The members' shares added up, a retired member's counting as 0.00. */
+@@ -87,18 +92,65 @@ public class PoolService {
+         this.audit = audit;
+     }
+ 
+-    /** The sheet's pools, in the order they were added, each with its members. */
++    /** The sheet's pools, in the order they were added, each with its members and its pot. */
+     @Transactional(readOnly = true)
+     public List<PoolWithMembers> list(String sheetId) {
+         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
+-        BigDecimal pot = sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
++        BigDecimal sheetPot = sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
+         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
++        Map<Long, Pool> poolsById = list.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
+         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())
+                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
+-        return list.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()).stream()
+-                .filter(m -> byId.containsKey(m.getPersonId()))
+-                .map(m -> new Member(byId.get(m.getPersonId()), m.getShare())).toList(), pot)).toList();
++        Map<Long, List<Member>> membersOf = new HashMap<>();
++        Map<Long, Long> parentOf = new HashMap<>();
++        for (Pool p : list) {
++            List<Member> of = new ArrayList<>();
++            for (PoolMember m : byPool.getOrDefault(p.getId(), List.of())) {
++                if (m.getMemberPoolId() != null) {
++                    Pool child = poolsById.get(m.getMemberPoolId());
++                    if (child != null) {
++                        of.add(new Member(null, child, m.getShare()));
++                        parentOf.put(child.getId(), p.getId());
++                    }
++                } else if (byId.containsKey(m.getPersonId())) {
++                    of.add(new Member(byId.get(m.getPersonId()), null, m.getShare()));
++                }
++            }
++            membersOf.put(p.getId(), of);
++        }
++        Map<Long, PoolWithMembers> done = new HashMap<>();
++        return list.stream().map(p -> withPot(p.getId(), poolsById, membersOf, parentOf, sheetPot, done, 0)).toList();
++    }
++
++    /** The pool with its members and its pot: the sheet's pot when it is a member of none, else its cut in the pool
++     *  above (none when that pool shows no cuts). */
++    private static PoolWithMembers withPot(Long poolId, Map<Long, Pool> poolsById, Map<Long, List<Member>> membersOf,
++            Map<Long, Long> parentOf, BigDecimal sheetPot, Map<Long, PoolWithMembers> done, int depth) {
++        PoolWithMembers known = done.get(poolId);
++        if (known != null) {
++            return known;
++        }
++        Long parentId = parentOf.get(poolId);
++        BigDecimal pot = sheetPot;
++        if (parentId != null) {
++            pot = null;
++            if (depth <= poolsById.size()) {
++                PoolWithMembers parent = withPot(parentId, poolsById, membersOf, parentOf, sheetPot, done, depth + 1);
++                List<BigDecimal> cuts = parent.cuts();
++                if (cuts != null) {
++                    for (int i = 0; i < parent.members().size(); i++) {
++                        Pool member = parent.members().get(i).pool();
++                        if (member != null && member.getId().equals(poolId)) {
++                            pot = cuts.get(i);
++                        }
++                    }
++                }
++            }
++        }
++        PoolWithMembers made = new PoolWithMembers(poolsById.get(poolId), membersOf.get(poolId), pot);
++        done.put(poolId, made);
++        return made;
+     }
+ 
+     /** Add a pool by its name, trimmed; refused when blank or already a pool on the sheet. */
+@@ -124,10 +176,16 @@ public class PoolService {
+         return saved;
+     }
+ 
+-    /** Add a person of the sheet to the pool with a share percent; refused when the person is already in it,
+-     *  or the share is not more than 0.00 and at most 100.00 with up to two decimals. */
++    /** Add a member to the pool with a share percent: a person of the sheet (personId) or another pool of it
++     *  (memberPoolId), exactly one given. Refused when the share is not more than 0.00 and at most 100.00 with up to
++     *  two decimals, when the person is already in it, or when the pool member is already a member of a pool, would
++     *  contain itself through any chain, or would make a chain of pools more than three deep. */
+     @Transactional
+-    public PoolWithMembers addMember(String sheetId, String user, long poolId, long personId, BigDecimal share) {
++    public PoolWithMembers addMember(String sheetId, String user, long poolId, Long personId, Long memberPoolId,
++            BigDecimal share) {
++        if ((personId == null) == (memberPoolId == null)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A member is a person or a pool");
++        }
+         if (share == null || share.signum() <= 0 || share.compareTo(FULL) > 0
+                 || share.stripTrailingZeros().scale() > 2) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+@@ -138,18 +196,70 @@ public class PoolService {
+         sheetStore.findLockedById(sheetId).orElseThrow();
+         Pool pool = pools.findById(poolId).filter(p -> p.getSheetId().equals(sheetId))
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool on this sheet"));
+-        Person person = people.findById(personId).filter(p -> p.getSheetId().equals(sheetId))
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+-        if (members.existsByPoolIdAndPersonId(pool.getId(), personId)) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is already in the pool");
++        String name;
++        PoolMember member;
++        if (personId != null) {
++            Person person = people.findById(personId).filter(p -> p.getSheetId().equals(sheetId))
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++            if (members.existsByPoolIdAndPersonId(pool.getId(), personId)) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is already in the pool");
++            }
++            name = person.getName();
++            member = new PoolMember(pool.getId(), personId, scaled);
++        } else {
++            Pool child = pools.findById(memberPoolId).filter(p -> p.getSheetId().equals(sheetId))
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool on this sheet"));
++            checkNesting(sheetId, pool, child);
++            name = child.getName();
++            member = PoolMember.ofPool(pool.getId(), child.getId(), scaled);
+         }
+         try {
+-            members.saveAndFlush(new PoolMember(pool.getId(), personId, scaled));
++            members.saveAndFlush(member);
+         } catch (DataIntegrityViolationException raced) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is already in the pool");
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That member is already in a pool");
+         }
+         audit.recordChangeOnCommit(sheetId, user, "POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user
+-                + " pool=" + pool.getName() + " name=" + person.getName() + " share=" + scaled.toPlainString());
++                + " pool=" + pool.getName() + " name=" + name + " share=" + scaled.toPlainString());
+         return list(sheetId).stream().filter(p -> p.pool().getId().equals(pool.getId())).findFirst().orElseThrow();
+     }
++
++    /** Refuse making the child pool a member of the parent when it is already a member of a pool, when the parent
++     *  is the child or within it, or when the chain of pools would be more than {@link #MAX_DEPTH} deep. */
++    private void checkNesting(String sheetId, Pool parent, Pool child) {
++        if (members.findByMemberPoolId(child.getId()).isPresent()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
++        }
++        List<Long> ids = pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(Pool::getId).toList();
++        Map<Long, Long> parentOf = new HashMap<>();
++        Map<Long, List<Long>> childrenOf = new HashMap<>();
++        for (PoolMember m : members.findByPoolIdInOrderByIdAsc(ids)) {
++            if (m.getMemberPoolId() != null) {
++                parentOf.put(m.getMemberPoolId(), m.getPoolId());
++                childrenOf.computeIfAbsent(m.getPoolId(), k -> new ArrayList<>()).add(m.getMemberPoolId());
++            }
++        }
++        // How deep the parent sits: 1 for a pool that is a member of none.
++        int above = 0;
++        for (Long at = parent.getId(); at != null && above <= ids.size(); at = parentOf.get(at)) {
++            if (at.equals(child.getId())) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT, "A pool cannot contain itself");
++            }
++            above++;
++        }
++        if (above + height(child.getId(), childrenOf, 0, ids.size()) > MAX_DEPTH) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A chain of pools is at most " + MAX_DEPTH + " deep");
++        }
++    }
++
++    /** How many pools deep the chain below a pool goes, counting the pool itself. */
++    private static int height(Long poolId, Map<Long, List<Long>> childrenOf, int depth, int limit) {
++        int most = 0;
++        if (depth <= limit) {
++            for (Long c : childrenOf.getOrDefault(poolId, List.of())) {
++                most = Math.max(most, height(c, childrenOf, depth + 1, limit));
++            }
++        }
++        return 1 + most;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 7f3ae1d86..4ad640042 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -104,7 +104,7 @@ public class Sheet {
+     @Column(name = "grace_days")
+     private Integer graceDays;
+ 
+-    /** The sheet's pot (two decimals), cut among the members of each balanced pool; null means none. Not dated. */
++    /** The sheet's pot (two decimals), cut among the members of each balanced pool that is a member of none; null means none. Not dated. */
+     @Column(name = "pot", precision = 14, scale = 2)
+     private BigDecimal pot;
+ 
+diff --git a/src/main/resources/db/migration/V68__pool_member_pool.sql b/src/main/resources/db/migration/V68__pool_member_pool.sql
+new file mode 100644
+index 000000000..f0aab0ff0
+--- /dev/null
++++ b/src/main/resources/db/migration/V68__pool_member_pool.sql
+@@ -0,0 +1,9 @@
++-- A pool's member may instead be another pool of the sheet, with a share like a person's: exactly one of person_id
++-- and member_pool_id is set. A pool is a member of at most one pool, never of itself through any chain, and a chain
++-- of pools is at most three deep (checked by the app). A pool that is a member of another has no pot of its own: its
++-- pot is its cut in the pool above.
++ALTER TABLE pool_member ALTER COLUMN person_id SET NULL;
++ALTER TABLE pool_member ADD COLUMN member_pool_id BIGINT REFERENCES pool (id);
++ALTER TABLE pool_member ADD CONSTRAINT pool_member_one_kind
++    CHECK ((person_id IS NULL) <> (member_pool_id IS NULL));
++CREATE UNIQUE INDEX pool_member_member_pool ON pool_member (member_pool_id);
