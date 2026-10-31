@@ -376,6 +376,7 @@ function csvField(value: string): string {
       <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+        <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
       </p>
       <p>
         <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
@@ -2282,6 +2283,35 @@ export class People {
     const link = document.createElement('a');
     link.href = url;
     link.download = `claims-${sheet}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
+  }
+
+  /** Download the period figures as the store holds them now, as a CSV file: one line per person and period,
+   *  people in list order, periods in the order added, each figure and carried figure as the row shows it. */
+  protected async exportPeriods(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const loads = this.session.loads();
+    const [people, periods] = await Promise.all([
+      firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`)),
+      firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`)),
+    ]);
+    if (this.session.sheet() !== sheet || this.session.loads() !== loads) return;
+    this.people.set(people);
+    this.periods.set(periods);
+    const lines = [
+      'person,period,figure,carried',
+      ...people.flatMap((p) => {
+        const figures = personPeriodTotals(periods, p);
+        const carried = personPeriodCarried(periods, p);
+        return periods.map((pd) => [p.name, pd.name, figures[pd.id] ?? '', carried[pd.id] ?? ''].map(csvField).join(','));
+      }),
+    ];
+    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `periods-${sheet}.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url));
   }
