@@ -152,6 +152,13 @@ public class Claim {
     @BatchSize(size = 100)
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** The claim's lines, in the order added; while it has any, its amount is their totals added up. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_line", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    @BatchSize(size = 100)
+    private List<ClaimLine> lines = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -168,7 +175,7 @@ public class Claim {
     }
 
     /** A copy of the claim on another sheet for another person, unsaved and without a number yet: its status, frozen
-     *  figure, dates, terms, note, reference, tags, proofs, comments and log, listed where it was; no editor's lock,
+     *  figure, dates, terms, note, reference, tags, proofs, comments, lines and log, listed where it was; no editor's lock,
      *  and no figure a statement bound it to. */
     public Claim copyTo(String sheetId, Long personId) {
         Claim copy = new Claim(sheetId, personId, amount, date, dueBy, note, corrects, listed);
@@ -188,6 +195,7 @@ public class Claim {
         copy.lateEntry = lateEntry;
         log.forEach(l -> copy.log.add(new ClaimLogEntry(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
         comments.forEach(c -> copy.comments.add(new ClaimComment(c.getBy(), c.getOn(), c.getText())));
+        lines.forEach(l -> copy.lines.add(new ClaimLine(l.getLabel(), l.getQty(), l.getUnit())));
         return copy;
     }
 
@@ -524,5 +532,16 @@ public class Claim {
     /** Add a comment written by this user on this day. */
     public void comment(String user, LocalDate on, String text) {
         comments.add(new ClaimComment(user, on, text));
+    }
+
+    /** The claim's lines, in the order added. */
+    public List<ClaimLine> getLines() {
+        return Collections.unmodifiableList(lines);
+    }
+
+    /** Add a line; the claim's amount becomes its lines' totals added up. */
+    public void addLine(String label, int qty, BigDecimal unit) {
+        lines.add(new ClaimLine(label, qty, unit));
+        amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
     }
 }

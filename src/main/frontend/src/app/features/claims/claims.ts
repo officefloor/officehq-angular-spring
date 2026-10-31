@@ -169,6 +169,22 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? notAvailable }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+            @for (l of c.lines ?? []; track $index) {
+              <li data-testid="claim-lines-line">{{ l.label }} {{ l.qty }} x {{ l.unit }}</li>
+            }
+          </ol>
+          <label [for]="'claim-line-label-' + c.id">Line label</label>
+          <input [id]="'claim-line-label-' + c.id" data-testid="claim-line-label" autocomplete="off"
+                 [value]="lineDrafts()[c.id]?.label ?? ''" (input)="lineChanged(c, 'label', $any($event.target).value)" />
+          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+          <input [id]="'claim-line-qty-' + c.id" data-testid="claim-line-qty" inputmode="numeric" autocomplete="off"
+                 [value]="lineDrafts()[c.id]?.qty ?? ''" (input)="lineChanged(c, 'qty', $any($event.target).value)" />
+          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+          <input [id]="'claim-line-unit-' + c.id" data-testid="claim-line-unit" inputmode="decimal" autocomplete="off"
+                 [value]="lineDrafts()[c.id]?.unit ?? ''" (input)="lineChanged(c, 'unit', $any($event.target).value)" />
+          <button type="button" data-testid="claim-line-add" (click)="addLine(c)"
+                  [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date">Add line</button>
           <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
             @for (m of c.comments ?? []; track $index) {
               <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
@@ -223,6 +239,8 @@ export class PersonClaims {
   protected readonly saving = signal(false);
   /** The error of the last action taken on a claim's row, until the next action on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  /** The line typed for each claim, by id. */
+  protected readonly lineDrafts = signal<Readonly<Record<number, { label: string; qty: string; unit: string }>>>({});
   /** The comment typed for each claim, by id. */
   protected readonly commentTexts = signal<Readonly<Record<number, string>>>({});
   /** The person chosen to move each claim to, by claim id. */
@@ -452,6 +470,45 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 423
           ? 'This claim is due by inside a closed period.'
           : `A ${c.status} claim cannot be given a proof.`,
+      }),
+    });
+  }
+
+  protected lineChanged(c: ClaimView, field: 'label' | 'qty' | 'unit', value: string): void {
+    this.lineDrafts.update((drafts) => ({
+      ...drafts,
+      [c.id]: { ...(drafts[c.id] ?? { label: '', qty: '', unit: '' }), [field]: value },
+    }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected addLine(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const draft = this.lineDrafts()[c.id] ?? { label: '', qty: '', unit: '' };
+    const label = draft.label.trim();
+    const qty = draft.qty.trim();
+    const unit = draft.unit.trim();
+    if (label === '' || !/^[0-9]+$/.test(qty) || Number(qty) < 1 || !/^[0-9]+(\.[0-9]{1,2})?$/.test(unit)) {
+      this.claimError.set({
+        id: c.id,
+        message: 'A line needs a label, a whole quantity of at least 1 and a unit amount with up to two decimals.',
+      });
+      return;
+    }
+    this.api.addLine(sheet.id, c.id, { label, qty: Number(qty), unit }).subscribe({
+      next: (saved) => {
+        this.lineDrafts.update((drafts) => ({ ...drafts, [c.id]: { label: '', qty: '', unit: '' } }));
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 423
+          ? 'This claim is due by inside a closed period.'
+          : c.status === 'DRAFT'
+            ? 'This claim cannot be given a line now.'
+            : `A ${c.status} claim cannot be given a line.`,
       }),
     });
   }

@@ -177,7 +177,7 @@ public class ClaimService {
      *  a draft can be changed: to change an open claim, void it and add a new one. Its due-by stays as it was fixed.
      *  Refused when its due-by is inside a closed period, or when it would be a correction that does not name a
      *  SETTLED claim of its person, when its external reference is already used by another claim on the sheet, or
-     *  while another user has its editor open. Saving releases its lock and records this user as its last editor. */
+     *  while another user has its editor open, or when it has lines and another amount is given. Saving releases its lock and records this user as its last editor. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, String tags) {
@@ -193,6 +193,10 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(), date != null ? date : today);
         refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
+        if (!claim.getLines().isEmpty() && scaled(amount).compareTo(claim.getAmount()) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim with lines has the amount of its lines; it cannot be given another");
+        }
         String reference = refOf(ref);
         if (reference != null && claims.existsBySheetIdAndRefIgnoreCaseAndIdNot(sheetId, reference, claim.getId())) {
             throw refUsed(reference);
@@ -475,6 +479,44 @@ public class ClaimService {
         return proven;
     }
 
+    /** Add a line to a DRAFT claim: a label (trimmed, not blank), a quantity (at least 1) and a unit amount (two
+     *  decimals, not negative); its amount becomes its lines' totals added up. Adding a line edits the claim: this
+     *  user becomes its last editor. Refused for a claim that is not a DRAFT, one due by inside a closed period and
+     *  one another user has locked. */
+    @Transactional
+    public Claim addLine(String sheetId, String user, long id, String label, int qty, BigDecimal unit) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be given a line; only a DRAFT can");
+        }
+        refuseIfClosed(sheetId, claim.getDueBy());
+        refuseIfLockedByOther(claim, user);
+        String trimmed = label == null ? "" : label.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A line needs a label");
+        }
+        if (qty < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A line's quantity is at least 1");
+        }
+        if (unit.signum() < 0 || unit.stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A line's unit amount has two decimals");
+        }
+        BigDecimal unitAmount = unit.setScale(2, RoundingMode.UNNECESSARY);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
+        claim.addLine(trimmed, qty, unitAmount);
+        claim.setEditedBy(user);
+        Claim lined = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_LINE_ADDED", user, person, lined, lined.getNumber())
+                + " label=" + trimmed + " qty=" + qty + " unit=" + unitAmount.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return lined;
+    }
+
     /** Comment on a claim, as this user on the sheet's today. Refused for an empty comment. */
     @Transactional
     public Claim comment(String sheetId, String user, long id, String text) {
@@ -653,7 +695,7 @@ public class ClaimService {
      *  and note, the next number, opened by this user, a due-by fixed now from the terms in force on the date and
      *  naming the original as the claim it was split from, is listed as the person's newest; it is a late entry when
      *  the original is, and is numbered within the period of its own due-by. Refused for a claim
-     *  that is not OPEN or is deferred, one due by inside a closed period, an amount out of range, and a role the
+     *  that is not OPEN or is deferred, one with lines, one due by inside a closed period, an amount out of range, and a role the
      *  permission matrix does not allow to open a claim. */
     @Transactional
     public Split split(String sheetId, String user, long id, BigDecimal amount) {
@@ -668,6 +710,10 @@ public class ClaimService {
         }
         if (!sheet.allows("open", roles.roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not open a claim");
+        }
+        if (!claim.getLines().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim with lines has the amount of its lines; it cannot be split");
         }
         BigDecimal part = scaled(amount);
         if (part.signum() <= 0 || part.compareTo(claim.getAmount()) >= 0) {

@@ -44,13 +44,13 @@ public class ClaimController {
      * written for it (null if never); tags are its tags, sorted (none when it has none); voidReason is the reason it
      * was voided with (null when it was voided without one, or is not void); comments are its comments, oldest
      * first; editedBy is who last edited it (null if no one has); batch is the number of the settle batch that
-     * settled it (null when it was not settled by one).
+     * settled it (null when it was not settled by one); lines are its lines, in the order added.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
-            String voidReason, List<CommentLine> comments, String editedBy, Integer batch) {
+            String voidReason, List<CommentLine> comments, String editedBy, Integer batch, List<LineView> lines) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -62,7 +62,7 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), claim.tagList(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentLine::of).toList(), claim.getEditedBy(),
-                    claim.getSettleBatch());
+                    claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList());
         }
     }
 
@@ -82,6 +82,19 @@ public class ClaimController {
         public static CommentLine of(ClaimComment comment) {
             return new CommentLine(comment.getBy(), comment.getOn(), comment.getText());
         }
+    }
+
+    /** A line of a claim: its label, its quantity and its unit amount with exactly two decimals. */
+    public record LineView(String label, int qty, String unit) {
+
+        public static LineView of(ClaimLine line) {
+            return new LineView(line.getLabel(), line.getQty(), line.getUnit().toPlainString());
+        }
+    }
+
+    /** A line to add to a claim: a label, a quantity and a unit amount; the service refuses what is out of range. */
+    public record LineForm(@Size(max = 200) String label, @NotNull Integer qty,
+            @NotNull @Digits(integer = 12, fraction = 2) BigDecimal unit) {
     }
 
     /** A comment to add to a claim; an empty one is refused. */
@@ -271,6 +284,15 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(claims.addProof(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/lines")
+    public ClaimView addLine(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody LineForm request) {
+        return ClaimView.of(claims.addLine(sheetId, user, id, request.label(), request.qty(), request.unit()));
     }
 
     @PostMapping("/claims/{id}/comments")

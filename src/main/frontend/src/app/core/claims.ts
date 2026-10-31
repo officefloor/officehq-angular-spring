@@ -63,6 +63,16 @@ export interface ClaimView {
   editedBy: string | null;
   /** The number of the settle batch that settled the claim; null when it was not settled by one. */
   batch: number | null;
+  /** The claim's lines, in the order added; while it has any, its amount is their totals added up. */
+  lines: ClaimLine[];
+}
+
+/** A line of a claim: its label, its quantity (a whole number, at least 1) and its unit amount with exactly two
+ *  decimals. */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
 }
 
 /** A comment on a claim: the signed-in name of who wrote it, the sheet's today (yyyy-mm-dd) then, and its text. */
@@ -296,6 +306,12 @@ export class Claims {
   /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
   addProof(sheetId: string, id: number): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/proofs`, {});
+  }
+
+  /** Add a line to a DRAFT claim; refused for a claim that is not a DRAFT, in a closed period or locked by another
+   *  user, and for a blank label, a quantity below 1 or a unit amount with more than two decimals. */
+  addLine(sheetId: string, id: number, line: ClaimLine): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/lines`, line);
   }
 
   /** Comment on a claim as the signed-in user on the sheet's today; an empty comment is refused. */
