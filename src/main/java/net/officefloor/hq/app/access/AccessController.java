@@ -67,7 +67,7 @@ public class AccessController {
     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
-            String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
+            String permClose, String permReopen, String permToday, String entryDate, String graceA, String graceB, String graceC,
             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
             String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String pendingSla, String proofKinds,
             String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC, String scoreMid,
@@ -85,6 +85,7 @@ public class AccessController {
                     perm(dated, Permission.OPEN, today), perm(dated, Permission.SETTLE, today),
                     perm(dated, Permission.VOID, today), perm(dated, Permission.REASSIGN, today),
                     perm(dated, Permission.CLOSE, today), perm(dated, Permission.REOPEN, today),
+                    perm(dated, Permission.TODAY, today),
                     entryDate == null ? null : entryDate.toString(), text(grace(dated, "A", today)),
                     text(grace(dated, "B", today)), text(grace(dated, "C", today)),
                     text(dated.gradeProofThreshold("A", today)), text(dated.gradeProofThreshold("B", today)),
@@ -187,6 +188,7 @@ public class AccessController {
             @Pattern(regexp = Permission.ROLES) String permReassign,
             @Pattern(regexp = Permission.ROLES) String permClose,
             @Pattern(regexp = Permission.ROLES) String permReopen,
+            @Pattern(regexp = Permission.ROLES) String permToday,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String entryDate,
             @Pattern(regexp = "(\\d{1,5})?") String graceA,
             @Pattern(regexp = "(\\d{1,5})?") String graceB,
@@ -304,6 +306,7 @@ public class AccessController {
         permissions.put(Permission.REASSIGN, form.permReassign());
         permissions.put(Permission.CLOSE, form.permClose());
         permissions.put(Permission.REOPEN, form.permReopen());
+        permissions.put(Permission.TODAY, form.permToday());
         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
                 form.periodNumberingFrom(), form.graceDays(), gradeGrace, cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
                 dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold,

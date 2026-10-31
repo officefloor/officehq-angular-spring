@@ -6,7 +6,7 @@ import java.util.Set;
 /**
  * An action the sheet's permission matrix governs, with the roles that may take it when the matrix leaves
  * it blank (the standing rule): open, settle, void and close by clerk and steward; reassign and reopen by
- * steward. Its setting key is perm-&lt;action&gt;, its value a comma separated list of roles.
+ * steward; change the sheet's today by anyone but a viewer. Its setting key is perm-&lt;action&gt;, its value a comma separated list of roles.
  */
 public enum Permission {
     OPEN(EnumSet.of(Role.CLERK, Role.STEWARD)),
@@ -14,7 +14,8 @@ public enum Permission {
     VOID(EnumSet.of(Role.CLERK, Role.STEWARD)),
     REASSIGN(EnumSet.of(Role.STEWARD)),
     CLOSE(EnumSet.of(Role.CLERK, Role.STEWARD)),
-    REOPEN(EnumSet.of(Role.STEWARD));
+    REOPEN(EnumSet.of(Role.STEWARD)),
+    TODAY(EnumSet.of(Role.CLERK, Role.STEWARD));
 
     /** A permission value as written: blank, or roles separated by commas. */
     public static final String ROLES = "(\\s*(clerk|steward)\\s*(,\\s*(clerk|steward)\\s*)*)?";

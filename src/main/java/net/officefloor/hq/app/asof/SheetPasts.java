@@ -108,15 +108,24 @@ public class SheetPasts {
     /** Write the sheet down as it stands now, as at the end of the day given (the today it is leaving). */
     @Transactional
     public void record(String sheetId, LocalDate day) {
+        Rows rows = rows(sheetId);
+        if (rows == null) {
+            return;
+        }
+        pasts.saveAndFlush(new SheetPast(sheetId, day, json.writeValueAsString(rows)));
+    }
+
+    /** Every row of the sheet as it stands now; null when it was never started. */
+    private Rows rows(String sheetId) {
         List<Map<String, String>> sheet = select("SHEET", "id = ?", sheetId);
         if (sheet.isEmpty()) {
-            return;
+            return null;
         }
         Map<String, List<Map<String, String>>> tables = new LinkedHashMap<>();
         for (Scope scope : TABLES) {
             tables.put(scope.table(), select(scope.table(), scope.where(), sheetId));
         }
-        pasts.saveAndFlush(new SheetPast(sheetId, day, json.writeValueAsString(new Rows(sheet.get(0), tables))));
+        return new Rows(sheet.get(0), tables);
     }
 
     /**
@@ -125,12 +134,20 @@ public class SheetPasts {
      */
     public <T> T asOf(String sheetId, LocalDate date, Supplier<T> read) {
         ReentrantLock lock = shown.computeIfAbsent(sheetId, k -> new ReentrantLock());
+        boolean within = lock.isHeldByCurrentThread();
         lock.lock();
         try {
             return rolledBack.execute(status -> {
                 status.setRollbackOnly();
+                // within another as-of read (a pool's cuts at each period's end, in an as-of view) the sheet that
+                // read shows is put back afterwards, as the transaction they share is rolled back only at its end
+                Rows shownBefore = within ? rows(sheetId) : null;
                 put(sheetId, date);
-                return read.get();
+                T result = read.get();
+                if (shownBefore != null) {
+                    restore(sheetId, shownBefore);
+                }
+                return result;
             });
         } finally {
             lock.unlock();
@@ -184,6 +201,19 @@ public class SheetPasts {
             }
         }
         jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", date, sheetId);
+    }
+
+    /** Put every row of the sheet back as they were read ({@link #rows}), its today with them. */
+    private void restore(String sheetId, Rows rows) {
+        for (int i = TABLES.size() - 1; i >= 0; i--) {
+            Scope scope = TABLES.get(i);
+            jdbc.update("DELETE FROM " + scope.table() + " WHERE " + scope.where(), sheetId);
+        }
+        putSheet(sheetId, rows.sheet());
+        for (Scope scope : TABLES) {
+            rows.tables().getOrDefault(scope.table(), List.of()).forEach(row -> insert(scope.table(), row));
+        }
+        jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", rows.sheet().get("TODAY"), sheetId);
     }
 
     /** The sheet's own row as it was. */

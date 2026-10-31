@@ -69,6 +69,7 @@ interface Settings {
   permReassign: string | null;
   permClose: string | null;
   permReopen: string | null;
+  permToday: string | null;
   /** The days past a claim's due-by before a claim of grade A, B or C is overdue; null when the grade has none. */
   graceA: string | null;
   graceB: string | null;
@@ -113,16 +114,17 @@ type Dated = (typeof DATED)[number];
 const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', reviewThreshold: '', graceA: '', graceB: '', graceC: '', proofThresholdA: '', proofThresholdB: '', proofThresholdC: '', rounding: '', clerkLimitA: '', clerkLimitB: '', clerkLimitC: '' };
 /** The permission matrix: each action with its setting and the roles that take it when left blank. */
 const PERMS = [
-  { action: 'open', field: 'permOpen', standing: 'clerk, steward' },
-  { action: 'settle', field: 'permSettle', standing: 'clerk, steward' },
-  { action: 'void', field: 'permVoid', standing: 'clerk, steward' },
-  { action: 'reassign', field: 'permReassign', standing: 'steward' },
-  { action: 'close', field: 'permClose', standing: 'clerk, steward' },
-  { action: 'reopen', field: 'permReopen', standing: 'steward' },
+  { action: 'open', label: 'open', field: 'permOpen', standing: 'clerk, steward' },
+  { action: 'settle', label: 'settle', field: 'permSettle', standing: 'clerk, steward' },
+  { action: 'void', label: 'void', field: 'permVoid', standing: 'clerk, steward' },
+  { action: 'reassign', label: 'reassign', field: 'permReassign', standing: 'steward' },
+  { action: 'close', label: 'close', field: 'permClose', standing: 'clerk, steward' },
+  { action: 'reopen', label: 'reopen', field: 'permReopen', standing: 'steward' },
+  { action: 'today', label: "change the sheet's today", field: 'permToday', standing: 'anyone but a viewer' },
 ] as const;
 type Perm = (typeof PERMS)[number]['field'];
-const NO_PERMS: Record<Perm, string> = { permOpen: '', permSettle: '', permVoid: '', permReassign: '', permClose: '', permReopen: '' };
-const NO_PERMS_TOUCHED: Record<Perm, boolean> = { permOpen: false, permSettle: false, permVoid: false, permReassign: false, permClose: false, permReopen: false };
+const NO_PERMS: Record<Perm, string> = { permOpen: '', permSettle: '', permVoid: '', permReassign: '', permClose: '', permReopen: '', permToday: '' };
+const NO_PERMS_TOUCHED: Record<Perm, boolean> = { permOpen: false, permSettle: false, permVoid: false, permReassign: false, permClose: false, permReopen: false, permToday: false };
 const PERM_ROLES = /^\s*(clerk|steward)\s*(,\s*(clerk|steward)\s*)*$/;
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
@@ -277,7 +279,7 @@ const ROUNDING = /^(half-up|half-even)$/;
       <p>Note threshold <strong data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</strong></p>
       <p>Review threshold <strong data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</strong></p>
       @for (p of perms; track p.field) {
-        <p>Roles that may {{ p.action }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
+        <p>Roles that may {{ p.label }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
       }
       <form (submit)="saveSettings($event)" aria-label="Save settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
@@ -658,7 +660,7 @@ const ROUNDING = /^(half-up|half-even)$/;
           (input)="setFrom('reviewThreshold', value($event)); reviewThresholdTouched = true; settingsError.set('')"
         />
         @for (p of perms; track p.field) {
-          <label [for]="'setting-perm-' + p.action">Roles that may {{ p.action }}, comma separated (blank: {{ p.standing }})</label>
+          <label [for]="'setting-perm-' + p.action">Roles that may {{ p.label }}, comma separated (blank: {{ p.standing }})</label>
           <input
             [id]="'setting-perm-' + p.action"
             [attr.data-testid]="'setting-perm-' + p.action"
@@ -810,7 +812,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, permToday: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -1090,7 +1092,7 @@ export class Access {
     for (const p of PERMS) {
       const roles = perms[p.field].trim();
       if (this.permTouched[p.field] && roles !== '' && !PERM_ROLES.test(roles)) {
-        this.settingsError.set(`Enter the roles that may ${p.action} (clerk, steward), separated by commas, or leave it blank for ${p.standing}.`);
+        this.settingsError.set(`Enter the roles that may ${p.label} (clerk, steward), separated by commas, or leave it blank for ${p.standing}.`);
         return;
       }
     }

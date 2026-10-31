@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.access.Permission;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Sheet endpoints. The signed-in user's name comes in the {@code X-User} header. */
 @RestController
@@ -71,6 +74,9 @@ public class SheetController {
     @PutMapping("/{id}/today")
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody TodayChange change) {
+        if (!access.allows(id.trim(), user.trim(), Permission.TODAY)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not change the sheet's today.");
+        }
         return view(service.setToday(id.trim(), user.trim(), change.today()));
     }
 
