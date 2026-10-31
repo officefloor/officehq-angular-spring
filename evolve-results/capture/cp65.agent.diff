@@ -1,0 +1,144 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 5be7615ec..a64bf9cf3 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -3,7 +3,8 @@ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ import { HoldView, PersonView } from './people';
+ 
+-/** DRAFT when added, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID. A clerk settling a
++/** DRAFT when added, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID, as can a SETTLED
++ *  one by a steward within 7 days of its settlement. A clerk settling a
+  *  claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects (OPEN again). */
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e740bc514..3b4e0940d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -275,11 +275,15 @@ export class PersonClaims {
+         message: err instanceof HttpErrorResponse && err.status === 403
+           ? status === 'SETTLED' && c.openedBy === this.session.user()
+             ? 'You opened this claim, so someone else must settle it.'
++            : status === 'VOID' && c.status === 'SETTLED'
++              ? 'Only a steward may void a settled claim.'
+             : `Your role may not ${STATUS_ACTION[status] ?? 'move'} a claim.`
+           : err instanceof HttpErrorResponse && err.status === 423
+             ? 'This claim is dated inside a closed period.'
+             : err instanceof HttpErrorResponse && err.status === 428
+               ? UNPROVEN
++            : status === 'VOID' && c.status === 'SETTLED'
++              ? 'A settled claim can be voided only within 7 days of its settlement.'
+             : status === 'SETTLED' && this.deferredOf(c)
+               ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled before then.`
+               : `A ${c.status} claim cannot become ${status}.`,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 803f1255e..e0b3a96d1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -295,6 +295,17 @@ public class Claim {
+         return at;
+     }
+ 
++    /** The sheet's today on which the claim last became SETTLED, as its log records it; null when it never did. */
++    public LocalDate settledOn() {
++        LocalDate on = null;
++        for (ClaimLogEntry line : log) {
++            if (line.getStatus() == ClaimStatus.SETTLED) {
++                on = line.getOn();
++            }
++        }
++        return on;
++    }
++
+     /** The claim's status log, oldest first. */
+     public List<ClaimLogEntry> getLog() {
+         return Collections.unmodifiableList(log);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 438062f97..7f33567f0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -35,6 +35,9 @@ public class ClaimService {
+     /** The prefix of the numbers given within no period. */
+     private static final String NO_PERIOD = "X";
+ 
++    /** How many days after its settlement a steward may still void a SETTLED claim. */
++    static final int SETTLED_VOID_DAYS = 7;
++
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final SheetService sheets;
+@@ -147,7 +150,9 @@ public class ClaimService {
+      * who opened a claim cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
+      * makes it PENDING instead, for a steward to approve or reject (a claim with no due is within any limit); a
+      * steward settles anything. Opening, settling and voiding are each refused for a role the sheet's permission
+-     * matrix does not allow. A claim dated inside a closed period cannot move. The sheet is locked
++     * matrix does not allow. Only a steward may void a SETTLED claim, and only within {@value #SETTLED_VOID_DAYS}
++     * days of the day its log records it settled, by the sheet's today; its frozen figure then leaves every total
++     * and the audit line ends with it as reversed. A claim dated inside a closed period cannot move. The sheet is locked
+      * first, so moves on one sheet are made one at a time and no number is given twice.
+      */
+     @Transactional
+@@ -170,6 +175,10 @@ public class ClaimService {
+         if (action != null && !sheet.allows(action, roles.roleOf(sheetId, user))) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim");
+         }
++        boolean voidsSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
++        if (voidsSettled) {
++            refuseSettledVoid(sheet, user, claim);
++        }
+         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheet.getToday())) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
+@@ -207,6 +216,8 @@ public class ClaimService {
+         String line = entry(event, user, person, changed, number);
+         if (next == ClaimStatus.SETTLED) {
+             line += " due=" + dueText(changed);
++        } else if (voidsSettled) {
++            line += " reversed=" + dueText(changed);
+         }
+         audit.recordChangeOnCommit(sheetId, user, line);
+         if (next == ClaimStatus.SETTLED) {
+@@ -507,6 +518,20 @@ public class ClaimService {
+         return !Role.STEWARD.equals(roles.roleOf(sheet.getId(), user));
+     }
+ 
++    /** Refuse to void a SETTLED claim for anyone but a steward, and on a sheet's today more than
++     *  {@value #SETTLED_VOID_DAYS} days after (or before) the day its log records it settled. */
++    private void refuseSettledVoid(Sheet sheet, String user, Claim claim) {
++        if (!Role.STEWARD.equals(roles.roleOf(sheet.getId(), user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may void a SETTLED claim");
++        }
++        LocalDate settled = claim.settledOn();
++        LocalDate today = sheet.getToday();
++        if (settled == null || today.isBefore(settled) || today.isAfter(settled.plusDays(SETTLED_VOID_DAYS))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A SETTLED claim can be voided only within " + SETTLED_VOID_DAYS + " days of its settlement");
++        }
++    }
++
+     /** Refuse a correction (a negative amount) that does not name, by number, a SETTLED claim of the same person,
+      *  and a claim that is not a correction but names one. */
+     private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, String corrects) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index dbb866cd4..e4057ed47 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.claim;
+ 
+-/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID. A clerk
++/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID, and a
++ *  steward may void a SETTLED one within a few days of its settlement. A clerk
+  *  settling an OPEN claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects
+  *  (OPEN again). */
+ public enum ClaimStatus {
+@@ -12,7 +13,7 @@ public enum ClaimStatus {
+         return switch (next) {
+             case OPEN -> this == DRAFT;
+             case SETTLED -> this == OPEN;
+-            case VOID -> this == DRAFT || this == OPEN || this == PENDING;
++            case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == SETTLED;
+             case DRAFT, PENDING -> false;
+         };
+     }
