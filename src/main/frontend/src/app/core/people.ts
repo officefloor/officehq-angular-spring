@@ -69,6 +69,12 @@ export interface BulkGradeView {
   people: PersonView[];
 }
 
+/** What a bulk retire did: how many people it retired, and those people as saved. */
+export interface BulkRetireView {
+  retired: number;
+  people: PersonView[];
+}
+
 /** What an import did: how many people it added and updated, and those people, in line order. */
 export interface ImportView {
   added: number;
@@ -143,6 +149,11 @@ export class People {
   /** Give the selected people `grade` from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */
   bulkGrade(sheetId: string, ids: readonly number[], grade: Grade, from: string | null): Observable<BulkGradeView> {
     return this.http.post<BulkGradeView>(`${this.base(sheetId)}/bulk-grade`, { ids, grade, from });
+  }
+
+  /** Retire the selected people from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */
+  bulkRetire(sheetId: string, ids: readonly number[], from: string | null): Observable<BulkRetireView> {
+    return this.http.post<BulkRetireView>(`${this.base(sheetId)}/bulk-retire`, { ids, from });
   }
 
   private base(sheetId: string): string {

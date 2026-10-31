@@ -241,6 +241,15 @@ function csvField(value: string): string {
         }
       </form>
 
+      <form [formGroup]="bulkRetireForm" (ngSubmit)="bulkRetire()" aria-label="Retire the selected people">
+        <label for="bulk-retire-date">Retire from</label>
+        <input id="bulk-retire-date" type="date" data-testid="bulk-retire-date" formControlName="from" />
+        <button type="submit" data-testid="bulk-retire" [disabled]="bulkRetiring()">Retire selected people</button>
+        @if (bulkRetired() !== null) {
+          Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span>
+        }
+      </form>
+
       <ul data-testid="person-list">
         @for (p of listed(); track p.id) {
           <li [attr.data-testid]="'person-row-' + p.id">
@@ -411,6 +420,14 @@ export class PeopleList {
   /** The grade to give the selected people, and the date it is from (blank takes the sheet's today). */
   protected readonly bulkGradeForm = new FormGroup({
     grade: new FormControl<Grade>('A', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+  });
+  /** How many people the last bulk retire retired; null while one runs or before any. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  /** Whether a bulk retire is running, so a second press waits for the first. */
+  protected readonly bulkRetiring = signal(false);
+  /** The date the selected people are retired from (blank takes the sheet's today). */
+  protected readonly bulkRetireForm = new FormGroup({
     from: new FormControl('', { nonNullable: true }),
   });
   /** Each person's statements, by person; one with none is missing. */
@@ -761,6 +778,8 @@ export class PeopleList {
           this.selectedPeople.set(new Set());
           this.bulkGraded.set(null);
           this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
+          this.bulkRetired.set(null);
+          this.bulkRetireForm.reset({ from: '' }, { emitEvent: false });
           this.bulkOpenResult.set(null);
           this.bulkOpenError.set(null);
           this.bulkSettleResult.set(null);
@@ -1179,6 +1198,34 @@ export class PeopleList {
         this.bulkGrading.set(false);
         // The refusal shows on the first selected person's row.
         if (first !== undefined) this.personError.set({ id: first, message: 'Could not grade the selected people.' });
+      },
+    });
+  }
+
+  /** Retire the selected people together from a date, in list order, each as the row's retire would. */
+  protected bulkRetire(): void {
+    if (this.bulkRetiring()) return;
+    this.bulkRetired.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const ids = this.people().map((p) => p.id).filter((id) => this.selectedPeople().has(id));
+    const first = ids[0];
+    // A bulk retire is the next action on each selected row: no row's old error stays showing.
+    this.personError.set(null);
+    const { from } = this.bulkRetireForm.getRawValue();
+    this.bulkRetiring.set(true);
+    this.api.bulkRetire(sheet.id, ids, from === '' ? null : from).subscribe({
+      next: ({ retired, people }) => {
+        this.bulkRetiring.set(false);
+        const byId = new Map(people.map((p) => [p.id, p]));
+        this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
+        this.selectedPeople.set(new Set());
+        this.bulkRetired.set(retired);
+      },
+      error: () => {
+        this.bulkRetiring.set(false);
+        // The refusal shows on the first selected person's row.
+        if (first !== undefined) this.personError.set({ id: first, message: 'Could not retire the selected people.' });
       },
     });
   }

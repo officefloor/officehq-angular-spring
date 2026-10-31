@@ -124,6 +124,14 @@ public class PersonController {
     public record BulkGradeView(int changed, List<PersonView> people) {
     }
 
+    /** People selected to be retired together, from {@code from} (missing: the sheet's today). */
+    public record BulkRetire(@NotNull @Size(max = 1000) List<@NotNull Long> ids, LocalDate from) {
+    }
+
+    /** What a bulk retire did: how many people it retired, and those people as saved, in list order. */
+    public record BulkRetireView(int retired, List<PersonView> people) {
+    }
+
     private final PersonService people;
     private final SheetHistory history;
     private final RoleService roles;
@@ -200,6 +208,33 @@ public class PersonController {
             }
         }
         return new BulkGradeView(changed.size(), changed);
+    }
+
+    /**
+     * Retire the selected people together: each, in list order, is retired from the date given as the row's retire
+     * would; one not on the sheet, or refused, is skipped.
+     */
+    @PostMapping("/bulk-retire")
+    public BulkRetireView bulkRetire(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkRetire request) {
+        if (roles.isViewer(sheetId, user)) {
+            // A viewer's bulk action goes through with nothing done: no selected person is retired.
+            return new BulkRetireView(0, List.of());
+        }
+        Set<Long> selected = new HashSet<>(request.ids());
+        List<PersonView> retired = new ArrayList<>();
+        for (Person person : people.list(sheetId)) {
+            if (selected.contains(person.getId())) {
+                try {
+                    retired.add(view(sheetId, people.retire(sheetId, user, person.getId(), request.from())));
+                } catch (ResponseStatusException refusal) {
+                    // Refused for this person: they are left as they are.
+                }
+            }
+        }
+        return new BulkRetireView(retired.size(), retired);
     }
 
     /** Swap the person with the one above or below them: everyone on the sheet, in list order, as moved. */
