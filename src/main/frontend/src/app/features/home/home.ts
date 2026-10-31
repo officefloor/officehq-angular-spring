@@ -5,6 +5,7 @@ import { Sheets } from '../../core/sheet';
 import { AuditPanel } from '../audit/audit';
 import { DelegationsPanel } from '../delegations/delegations';
 import { HolidaysPanel } from '../holidays/holidays';
+import { NotesPanel } from '../notes/notes';
 import { PeopleList } from '../people/people';
 import { RatesPanel } from '../rates/rates';
 import { SearchPanel } from '../search/search';
@@ -16,7 +17,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
-    VoidReasonsPanel, TemplatesPanel, SearchPanel, AuditPanel],
+    VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -86,6 +87,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-holidays />
         <app-void-reasons />
         <app-templates />
+        <app-notes />
         <app-people />
         <app-search />
         <app-audit />
