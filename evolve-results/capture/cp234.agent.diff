@@ -1,0 +1,101 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8a0cc0ff1..256602b7a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -377,6 +377,7 @@ function csvField(value: string): string {
+         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+         <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
++        <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people as CSV</button>
+       </p>
+       <p>
+         <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+@@ -2254,6 +2255,33 @@ export class People {
+     setTimeout(() => URL.revokeObjectURL(url));
+   }
+ 
++  /** Download everyone on the sheets of the sheet's whole tree, as the store holds them now, as a CSV file: this
++   *  sheet's people first in list order, then each other sheet's by sheet id. */
++  protected async exportTree(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const loads = this.session.loads();
++    const ids = await firstValueFrom(
++      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/whole-tree`),
++    );
++    const people = await Promise.all(
++      ids.map((id) => firstValueFrom(this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(id)}/people`))),
++    );
++    if (this.session.sheet() !== sheet || this.session.loads() !== loads) return;
++    const lines = [
++      'sheet,name,grade,due-total',
++      ...ids.flatMap((id, i) =>
++        people[i].map((p) => [id, p.name, p.grade, p.dueTotal ?? 'n/a'].map(csvField).join(',')),
++      ),
++    ];
++    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
++    const link = document.createElement('a');
++    link.href = url;
++    link.download = `tree-${sheet}.csv`;
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   /** Download every claim on the sheet, retired people's included, as the store holds them now (as of the as-of
+    *  date while one is set, else with the preview figures while a preview date is set), as a CSV file:
+    *  people in list order, each person's claims oldest first, the figures as the screen shows them. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index c34bbf04b..39ab9e4ed 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -62,6 +62,12 @@ public class SheetController {
+         return service.descendants(id.trim());
+     }
+ 
++    /** The ids of the sheets of the sheet's whole tree: the sheet first, then the others by sheet id. */
++    @GetMapping("/{id}/whole-tree")
++    public List<String> wholeTree(@PathVariable @NotBlank @Size(max = 100) String id) {
++        return service.wholeTree(id.trim());
++    }
++
+     @PutMapping("/{id}/today")
+     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
+             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody TodayChange change) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index b292f1730..4c8e11724 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
+ import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Set;
++import java.util.TreeSet;
+ import net.officefloor.hq.app.asof.SheetPasts;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.statement.DayEnds;
+@@ -99,6 +100,25 @@ public class SheetService {
+         return List.copyOf(seen);
+     }
+ 
++    /**
++     * The ids of the sheets of the sheet's whole tree, among the sheets that exist: the sheet itself first, then
++     * the other sheets under its topmost ancestor (that ancestor, its children, theirs, and so on) by sheet id.
++     */
++    public List<String> wholeTree(String id) {
++        Set<String> seen = new LinkedHashSet<>(List.of(id));
++        String root = id;
++        for (String up = settings(id).parent(); up != null && sheets.existsById(up) && seen.add(up);
++                up = settings(up).parent()) {
++            root = up;
++        }
++        Set<String> others = new TreeSet<>(descendants(root));
++        others.add(root);
++        others.remove(id);
++        List<String> all = new ArrayList<>(List.of(id));
++        all.addAll(others);
++        return all;
++    }
++
+     /** The sheet's policy date as set; null when blank (the sheet's today is the policy date then). */
+     public LocalDate policyDate(String id) {
+         return sheets.findById(id).map(Sheet::getPolicyDate).orElse(null);
