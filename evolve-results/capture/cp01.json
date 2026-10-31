@@ -1,0 +1,64 @@
+{
+  "checkpoint": 1,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp01_signin-and-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Anyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAnyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a8c4d7a37eafb25c6e84bbb271813fd8195c9980",
+  "reset_sha": "",
+  "preagent_sha": "4c94f41cb0771c5d33fd1bbe165b751d61e82670",
+  "prev_sha": "4c94f41cb0771c5d33fd1bbe165b751d61e82670",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4926544,
+    "input_tokens": 24,
+    "output_tokens": 8985,
+    "cache_read_tokens": 341252,
+    "cache_creation_tokens": 30576,
+    "num_turns": 12,
+    "duration_ms": 260493,
+    "duration_api_ms": 76543,
+    "model": "claude-opus-5-5",
+    "session_id": "a6d55373-8f9a-4e7c-a889-e6dd94968e72",
+    "stop_reason": "success",
+    "result_text": "Sign-in and sheet loading are working, and `bin/e2e` passes (1 test).\n\n**How it works:**\n- **Sign-in:** at `/` you type a name (`signin-name`) and press `signin-submit`. The server checks the name isn't blank, trims it and sends it back. The screen then shows it in `current-user`, and every later request carries that name in an `X-User` header. A blank name shows `signin-error`.\n- **Sheets:** you type an id (`sheet-id-input`) and press `sheet-load`. The server reads the sheet from the store, or creates it if that id has never been loaded, so a new sheet starts empty. The screen shows the active id in `sheet-current-id`. If two users load a brand-new id at the same moment, only one sheet gets created. A blank or rejected id shows `sheet-load-error`, and each error disappears as soon as you edit its form.\n- **One screen:** the home page is now served at `/` itself; it used to redirect to `/home`. Any other path goes back to `/`.\n\n**What changed:**\n- **Database:** a new migration, `V1__sheet.sql`, adds a `sheet` table.\n- **Server:** a `Sheet` entity with its repository and service, plus `SheetController` (`POST /api/sheets/{id}/load`) and `SessionController` (`POST /api/session`).\n- **Front end:** `core/session.ts` and `core/sheet.ts` keep the signed-in user and active sheet, the header is added in `app.config.ts`, and the home screen is rewritten.\n\nThe first run failed because I'd wired the forms without the Angular form wrapper they need, so pressing the button reloaded the page. I fixed that and the second run passed.\n\nSheet ids are limited to letters, digits, `.`, `_` and `-`, at most 100 characters. Names are also capped at 100. Nothing is written to the audit file, since the test doesn't expect any records for this change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4926544,
+        "num_turns": 12,
+        "duration_ms": 260493,
+        "duration_api_ms": 76543,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
