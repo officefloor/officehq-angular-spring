@@ -33,7 +33,21 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         List<PersonState> people, List<ClaimState> claims, Map<String, String> permissions,
         LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate,
         Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth, BigDecimal alertThreshold,
-        Integer escalateAfter, Integer reviewSla, String proofKinds, List<AncestorState> ancestors) {
+        Integer escalateAfter, Integer reviewSla, String proofKinds, List<AncestorState> ancestors,
+        List<PoolState> pools, List<CrewState> crews) {
+
+    /** A pool as it stood, with its memberships in the order they were added (pools and crews are null in a state
+     *  kept before they were recorded). */
+    public record PoolState(long id, String name, List<PoolMemberState> members) {
+    }
+
+    /** A membership of a pool as it stood: a person's (personId) or another pool's (memberPoolId). */
+    public record PoolMemberState(Long personId, Long memberPoolId, BigDecimal share, LocalDate from, LocalDate to) {
+    }
+
+    /** A crew as it stood: its lead and its members' person ids, in the order they were added. */
+    public record CrewState(long id, String name, Long leadId, List<Long> members) {
+    }
 
     /** An ancestor's rates as they stood when the sheet's state was kept, nearest ancestor first: what the sheet then
      *  inherited (none recorded in a state kept before ancestors were). */
@@ -133,7 +147,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
 
     /** What the sheet holds now. */
     public static SheetState of(Sheet sheet, List<Rate> rates, List<Person> people, List<Claim> claims, Views views,
-            List<AncestorState> ancestors) {
+            List<AncestorState> ancestors, List<PoolState> pools, List<CrewState> crews) {
         return new SheetState(
                 sheet.getSettings().stream().map(s -> new SettingState(s.getKey(), s.getFrom(), s.getValue())).toList(),
                 sheet.getPolicyDate(),
@@ -146,7 +160,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),
-                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors);
+                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors, pools, crews);
     }
 
     /** The rates as they stand now. */

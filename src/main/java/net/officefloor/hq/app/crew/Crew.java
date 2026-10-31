@@ -34,6 +34,13 @@ public class Crew {
         this.leadId = leadId;
     }
 
+    /** The crew as it stood in the sheet's history, unsaved, with the id it had. */
+    public static Crew rebuilt(String sheetId, long id, String name, Long leadId) {
+        Crew crew = new Crew(sheetId, name, leadId);
+        crew.id = id;
+        return crew;
+    }
+
     public Long getId() {
         return id;
     }

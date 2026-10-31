@@ -25,6 +25,15 @@ export interface PoolMemberView {
    *  dates do not include the sheet's today. A pool that is a
    *  member of another has its cut there as its pot; one that is a member of none has the sheet's. */
   cut: string | null;
+  /** Their cut as it stood at the end of each period whose to-date is on or before the sheet's today, in the order
+   *  of the periods: the pool, its members, the pot and the holds as they were then; null when there was none. */
+  periodCuts: PeriodCutView[];
+}
+
+/** A member's cut at the end of a period: the period's name and the cut (two decimals; null: none then). */
+export interface PeriodCutView {
+  period: string;
+  cut: string | null;
 }
 
 /** A pool on the sheet: its members, their total share, and balanced when that is exactly 100.00. */

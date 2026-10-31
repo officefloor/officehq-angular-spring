@@ -30,16 +30,26 @@ public class PoolController {
      *  name), with the membership's from-date and to-date (null: none); cut is its cut of the pool's pot, null when
      *  the pool shows none or the membership's dates do not include the sheet's today. */
     public record MemberView(Long personId, Long memberPoolId, String name, String share, boolean retired,
-            String cut, LocalDate from, LocalDate to) {
+            String cut, LocalDate from, LocalDate to, List<PeriodCutView> periodCuts) {
 
-        public static MemberView of(PoolService.Member m, BigDecimal cut) {
+        public static MemberView of(PoolService.Member m, BigDecimal cut, List<PoolService.PeriodCut> periodCuts) {
             String shown = cut == null || !m.inForce() ? null : cut.toPlainString();
+            List<PeriodCutView> past = periodCuts.stream().map(PeriodCutView::of).toList();
             if (m.pool() != null) {
                 return new MemberView(null, m.pool().getId(), m.pool().getName(), m.share().toPlainString(), false,
-                        shown, m.from(), m.to());
+                        shown, m.from(), m.to(), past);
             }
             return new MemberView(m.person().getId(), null, m.person().getName(), m.share().toPlainString(),
-                    m.person().isRetired(), shown, m.from(), m.to());
+                    m.person().isRetired(), shown, m.from(), m.to(), past);
+        }
+    }
+
+    /** A member's cut as it stood at the end of a period whose to-date is on or before the sheet's today: the
+     *  period's name and the cut (null: none then). */
+    public record PeriodCutView(String period, String cut) {
+
+        public static PeriodCutView of(PoolService.PeriodCut c) {
+            return new PeriodCutView(c.period(), c.cut() == null ? null : c.cut().toPlainString());
         }
     }
 
@@ -49,10 +59,17 @@ public class PoolController {
             boolean crew) {
 
         public static PoolView of(PoolService.PoolWithMembers p) {
+            return of(new PoolService.PoolWithHistory(p, p.members().stream()
+                    .map(m -> List.<PoolService.PeriodCut>of()).toList()));
+        }
+
+        public static PoolView of(PoolService.PoolWithHistory h) {
+            PoolService.PoolWithMembers p = h.pool();
             List<BigDecimal> cuts = p.cuts();
             return new PoolView(p.pool().getId(), p.pool().getName(),
                     IntStream.range(0, p.members().size())
-                            .mapToObj(i -> MemberView.of(p.members().get(i), cuts == null ? null : cuts.get(i))).toList(),
+                            .mapToObj(i -> MemberView.of(p.members().get(i), cuts == null ? null : cuts.get(i),
+                                    h.periodCuts().get(i))).toList(),
                     p.totalShare().toPlainString(), p.balanced(), p.pool().isCrew());
         }
     }
@@ -78,7 +95,7 @@ public class PoolController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         // A sheet shown as of a date reads its pools with that date standing in for its today.
-        return pools.list(sheetId, asOf).stream().map(PoolView::of).toList();
+        return pools.listWithHistory(sheetId, asOf).stream().map(PoolView::of).toList();
     }
 
     @PostMapping

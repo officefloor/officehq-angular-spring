@@ -40,6 +40,9 @@ function csvField(value: string): string {
                   <span data-testid="pool-member-name">{{ m.name }}</span>:
                   <span data-testid="pool-share">{{ (m.share) | figure }}</span>,
                   cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span>
+                  @for (pc of m.periodCuts; track pc.period) {
+                    , {{ pc.period }} <span [attr.data-testid]="'pool-cut-' + pc.period">{{ (pc.cut ?? '') | figure }}</span>
+                  }
                   @if (m.from || m.to) { (from {{ m.from ?? 'any day' }} to {{ m.to ?? 'any day' }}) }
                   @if (m.retired) { (retired) }
                 </li>

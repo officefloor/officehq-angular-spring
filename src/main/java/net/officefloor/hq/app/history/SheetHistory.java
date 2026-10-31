@@ -7,10 +7,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewMemberRepository;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.patron.PatronController.PatronView;
 import net.officefloor.hq.app.patron.PatronRepository;
 import net.officefloor.hq.app.period.PeriodController.PeriodView;
@@ -18,6 +23,10 @@ import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.Pool;
+import net.officefloor.hq.app.pool.PoolMember;
+import net.officefloor.hq.app.pool.PoolMemberRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateController.RateView;
 import net.officefloor.hq.app.rate.RateChain;
@@ -66,11 +75,20 @@ public class SheetHistory {
     private final DelegationRepository delegations;
     private final HolidayRepository holidays;
     private final JsonMapper json;
+    private final PoolRepository pools;
+    private final PoolMemberRepository poolMembers;
+    private final CrewRepository crews;
+    private final CrewMemberRepository crewMembers;
 
     public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateChains rates,
             PersonRepository people, ClaimRepository claims, PeriodRepository periods, StatementRepository statements,
             PatronRepository patrons, WatchRepository watches, RoleRepository roles, DelegationRepository delegations,
-            HolidayRepository holidays, JsonMapper json) {
+            HolidayRepository holidays, JsonMapper json, PoolRepository pools, PoolMemberRepository poolMembers,
+            CrewRepository crews, CrewMemberRepository crewMembers) {
+        this.pools = pools;
+        this.poolMembers = poolMembers;
+        this.crews = crews;
+        this.crewMembers = crewMembers;
         this.snapshots = snapshots;
         this.sheets = sheets;
         this.rates = rates;
@@ -142,9 +160,32 @@ public class SheetHistory {
             List<Rate> ancestorRates = rates.ratesOf(ancestor);
             return new SheetState.AncestorState(ancestor, SheetState.statesOf(ancestorRates), viewsOf(ancestorRates));
         }).toList();
-        SheetState state = SheetState.of(sheet, sheetRates, sheetPeople, sheetClaims, views, ancestors);
+        SheetState state = SheetState.of(sheet, sheetRates, sheetPeople, sheetClaims, views, ancestors,
+                poolStates(sheetId), crewStates(sheetId));
         snapshots.deleteBySheetIdAndAsOf(sheetId, sheet.getToday());
         snapshots.saveAndFlush(new SheetSnapshot(sheetId, sheet.getToday(), json.writeValueAsString(state)));
+    }
+
+    /** The sheet's pools as they stand now, each with its memberships in the order they were added. */
+    private List<SheetState.PoolState> poolStates(String sheetId) {
+        List<Pool> sheetPools = pools.findBySheetIdOrderByIdAsc(sheetId);
+        Map<Long, List<PoolMember>> byPool = poolMembers.findByPoolIdInOrderByIdAsc(
+                sheetPools.stream().map(Pool::getId).toList()).stream()
+                .collect(Collectors.groupingBy(PoolMember::getPoolId));
+        return sheetPools.stream().map(p -> new SheetState.PoolState(p.getId(), p.getName(),
+                byPool.getOrDefault(p.getId(), List.of()).stream().map(m -> new SheetState.PoolMemberState(
+                        m.getPersonId(), m.getMemberPoolId(), m.getShare(), m.getFrom(), m.getTo())).toList()))
+                .toList();
+    }
+
+    /** The sheet's crews as they stand now, each with its members in the order they were added. */
+    private List<SheetState.CrewState> crewStates(String sheetId) {
+        List<Crew> sheetCrews = crews.findBySheetIdOrderByIdAsc(sheetId);
+        Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(
+                sheetCrews.stream().map(Crew::getId).toList()).stream()
+                .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        return sheetCrews.stream().map(c -> new SheetState.CrewState(c.getId(), c.getName(), c.getLeadId(),
+                byCrew.getOrDefault(c.getId(), List.of()).stream().map(CrewMember::getPersonId).toList())).toList();
     }
 
     /** The sheet as it stood at the end of a date; empty when no change was made on it by then. */

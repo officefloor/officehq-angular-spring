@@ -38,6 +38,13 @@ public class Pool {
         return pool;
     }
 
+    /** The pool as it stood in the sheet's history, unsaved, with the id it had. */
+    public static Pool rebuilt(String sheetId, long id, String name) {
+        Pool pool = new Pool(sheetId, name);
+        pool.id = id;
+        return pool;
+    }
+
     /** Whether this is the pool a crew is. */
     public boolean isCrew() {
         return id != null && id < 0;

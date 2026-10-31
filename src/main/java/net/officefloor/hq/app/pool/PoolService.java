@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,8 @@ import net.officefloor.hq.app.crew.CrewMemberRepository;
 import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.SheetState;
+import net.officefloor.hq.app.period.PeriodController.PeriodView;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -123,10 +126,12 @@ public class PoolService {
     private final SheetHistory history;
     private final CrewRepository crews;
     private final CrewMemberRepository crewMembers;
+    private final PeriodRepository periods;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
             SheetService sheets, SheetRepository sheetStore, Audit audit, SheetHistory history, CrewRepository crews,
-            CrewMemberRepository crewMembers) {
+            CrewMemberRepository crewMembers, PeriodRepository periods) {
+        this.periods = periods;
         this.history = history;
         this.crews = crews;
         this.crewMembers = crewMembers;
@@ -151,17 +156,129 @@ public class PoolService {
      *  and the pools and their memberships are as they are now. */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId, LocalDate on) {
-        List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
         Optional<SheetState> then = on == null ? Optional.empty() : history.asOf(sheetId, on);
         BigDecimal sheetPot = on != null ? then.map(SheetState::pot).orElse(null)
                 : sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
         LocalDate today = on != null ? on : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
         List<Person> sheetPeople = on != null ? then.map(s -> s.rebuildPeople(sheetId)).orElse(List.of())
                 : people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
-        Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
-        Map<Long, Pool> poolsById = new HashMap<>(list.stream().collect(Collectors.toMap(Pool::getId, Function.identity())));
+        List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())
                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
+        List<Crew> sheetCrews = crews.findBySheetIdOrderByIdAsc(sheetId);
+        Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(
+                sheetCrews.stream().map(Crew::getId).toList()).stream()
+                .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        return build(sheetId, list, byPool, sheetCrews, byCrew, sheetPeople, sheetPot, today);
+    }
+
+    /** The sheet's pools as they stood at the end of a date, that date standing in for the sheet's today: the pools,
+     *  their memberships, the crews, the pot and the people all as they were then (see {@link SheetHistory}); none
+     *  when no change was made on the sheet by then. A state kept before pools were recorded has them as they are
+     *  now. */
+    @Transactional(readOnly = true)
+    public List<PoolWithMembers> stoodOn(String sheetId, LocalDate date) {
+        Optional<SheetState> then = history.asOf(sheetId, date);
+        if (then.isEmpty()) {
+            return List.of();
+        }
+        SheetState state = then.get();
+        if (state.pools() == null || state.crews() == null) {
+            return list(sheetId, date);
+        }
+        List<Pool> list = new ArrayList<>();
+        Map<Long, List<PoolMember>> byPool = new HashMap<>();
+        for (SheetState.PoolState p : state.pools()) {
+            list.add(Pool.rebuilt(sheetId, p.id(), p.name()));
+            byPool.put(p.id(), p.members().stream().map(m -> {
+                PoolMember member = m.memberPoolId() != null ? PoolMember.ofPool(p.id(), m.memberPoolId(), m.share())
+                        : new PoolMember(p.id(), m.personId(), m.share());
+                member.setDates(m.from(), m.to());
+                return member;
+            }).toList());
+        }
+        List<Crew> sheetCrews = new ArrayList<>();
+        Map<Long, List<CrewMember>> byCrew = new HashMap<>();
+        for (SheetState.CrewState c : state.crews()) {
+            sheetCrews.add(Crew.rebuilt(sheetId, c.id(), c.name(), c.leadId()));
+            byCrew.put(c.id(), c.members().stream().map(id -> new CrewMember(c.id(), id)).toList());
+        }
+        return build(sheetId, list, byPool, sheetCrews, byCrew, state.rebuildPeople(sheetId), state.pot(), date);
+    }
+
+    /** A member's cut at the end of a period: the period's name and the cut (null: none). */
+    public record PeriodCut(String period, BigDecimal cut) {
+    }
+
+    /** A pool with, for each of its members in their order, the member's cut at the end of each period whose to-date
+     *  is on or before the sheet's today, in the order of the periods' from-dates. */
+    public record PoolWithHistory(PoolWithMembers pool, List<List<PeriodCut>> periodCuts) {
+    }
+
+    /** The sheet's pools as {@link #list(String, LocalDate)}, each member with its cut as it stood at the end of
+     *  each period whose to-date is on or before the sheet's today (or {@code on}): the pool, its members, the pot and
+     *  the holds as they were then, with that day as the sheet's today (see {@link #stoodOn}); none when the member
+     *  was not in the pool then, the pool showed no cuts or the membership was not in force on that day. */
+    @Transactional(readOnly = true)
+    public List<PoolWithHistory> listWithHistory(String sheetId, LocalDate on) {
+        List<PoolWithMembers> now = list(sheetId, on);
+        LocalDate today = on != null ? on : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
+        List<Map.Entry<String, LocalDate>> ended = new ArrayList<>();
+        if (today != null) {
+            if (on != null) {
+                history.viewsAsOf(sheetId, on).periods().stream().filter(p -> !p.to().isAfter(today))
+                        .sorted(Comparator.comparing(PeriodView::from))
+                        .forEach(p -> ended.add(Map.entry(p.name(), p.to())));
+            } else {
+                periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().filter(p -> !p.getToDate().isAfter(today))
+                        .forEach(p -> ended.add(Map.entry(p.getName(), p.getToDate())));
+            }
+        }
+        // Each ended period's cuts, by pool id then by member key.
+        List<Map<Long, Map<String, BigDecimal>>> cutsThen = new ArrayList<>();
+        Map<LocalDate, Map<Long, Map<String, BigDecimal>>> byDay = new HashMap<>();
+        for (Map.Entry<String, LocalDate> period : ended) {
+            cutsThen.add(byDay.computeIfAbsent(period.getValue(), day -> cutsOf(stoodOn(sheetId, day))));
+        }
+        return now.stream().map(p -> new PoolWithHistory(p, p.members().stream().map(m -> {
+            List<PeriodCut> cuts = new ArrayList<>();
+            for (int i = 0; i < ended.size(); i++) {
+                cuts.add(new PeriodCut(ended.get(i).getKey(),
+                        cutsThen.get(i).getOrDefault(p.pool().getId(), Map.of()).get(keyOf(m))));
+            }
+            return cuts;
+        }).toList())).toList();
+    }
+
+    /** Each pool's shown cuts, by pool id then by member key; a member with no cut shown is left out. */
+    private static Map<Long, Map<String, BigDecimal>> cutsOf(List<PoolWithMembers> list) {
+        Map<Long, Map<String, BigDecimal>> made = new HashMap<>();
+        for (PoolWithMembers p : list) {
+            List<BigDecimal> cuts = p.cuts();
+            Map<String, BigDecimal> of = new HashMap<>();
+            for (int i = 0; cuts != null && i < p.members().size(); i++) {
+                Member m = p.members().get(i);
+                if (cuts.get(i) != null && m.inForce()) {
+                    of.put(keyOf(m), cuts.get(i));
+                }
+            }
+            made.put(p.pool().getId(), of);
+        }
+        return made;
+    }
+
+    /** A member's key within its pool: the person's id, or pool-id for a pool. */
+    private static String keyOf(Member m) {
+        return m.pool() != null ? "pool-" + m.pool().getId() : String.valueOf(m.person().getId());
+    }
+
+    /** The pools with their members and pots, from the stored pools and memberships, the crews, the people (one not
+     *  among them is no member), the sheet's pot and the day standing in for the sheet's today. */
+    private static List<PoolWithMembers> build(String sheetId, List<Pool> list, Map<Long, List<PoolMember>> byPool,
+            List<Crew> sheetCrews, Map<Long, List<CrewMember>> byCrew, List<Person> sheetPeople,
+            BigDecimal sheetPot, LocalDate today) {
+        Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, Pool> poolsById = new HashMap<>(list.stream().collect(Collectors.toMap(Pool::getId, Function.identity())));
         Map<Long, List<Member>> membersOf = new HashMap<>();
         Map<Long, Long> parentOf = new HashMap<>();
         for (Pool p : list) {
@@ -182,10 +299,6 @@ public class PoolService {
             }
             membersOf.put(p.getId(), of);
         }
-        List<Crew> sheetCrews = crews.findBySheetIdOrderByIdAsc(sheetId);
-        Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(
-                sheetCrews.stream().map(Crew::getId).toList()).stream()
-                .collect(Collectors.groupingBy(CrewMember::getCrewId));
         list = new ArrayList<>(list);
         for (Crew c : sheetCrews) {
             Pool crewPool = Pool.ofCrew(sheetId, c.getId(), c.getName());
