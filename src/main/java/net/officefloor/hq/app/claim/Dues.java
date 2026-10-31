@@ -128,10 +128,19 @@ public final class Dues {
         return claim.getDueBy().plusDays(rates.settings().grace(grades.on(claim.getDate()), claim.getDate()));
     }
 
-    /** Whether the claim is deferred on the given today: OPEN and deferred until a date after it. */
+    /**
+     * Whether the claim is deferred on the given today: deferred until a date after it and not
+     * {@link #bound bound} by a statement, OPEN or (settled while a statement bound it) SETTLED. A deferral
+     * takes effect only once the binding ends: while bound the claim stays in the totals and can be settled.
+     */
     public static boolean deferred(Claim claim, LocalDate today) {
-        return claim.getStatus() == ClaimStatus.OPEN && claim.getDeferredUntil() != null
-                && today.isBefore(claim.getDeferredUntil());
+        return deferralPending(claim, today)
+                && (claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.SETTLED);
+    }
+
+    /** Whether the claim is deferred until a date after the given today and no statement binds it, whatever its status. */
+    public static boolean deferralPending(Claim claim, LocalDate today) {
+        return !bound(claim) && claim.getDeferredUntil() != null && today.isBefore(claim.getDeferredUntil());
     }
 
     /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */

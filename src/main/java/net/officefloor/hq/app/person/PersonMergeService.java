@@ -14,6 +14,7 @@ import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.crew.Crews;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -29,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
  * Merging a person into another on the same sheet. Only a steward may; merging a person into themselves, or
  * when either of them is retired, is refused. The merged person's claims move to the other (numbers and dates
  * kept, listed after the other's claims in the order they were added, each keeping any figure a statement
- * bound); their statements are carried to the other, who keeps their own last statement (or, having none,
+ * bound); their figures fixed for closed or soft-closed periods (and their opening balances) are added to the other's; their statements are carried to the other, who keeps their own last statement (or, having none,
  * takes the merged person's last) with the count of both; their name and aliases become the other's aliases; their patrons are added to the
  * other's (never the other themselves, no repeats); anyone naming them as patron names the other instead
  * (no repeats); their pool memberships move to the other, the shares added up (at most 100.00) where the
@@ -47,6 +48,7 @@ public class PersonMergeService {
     private final StatementService statements;
     private final PoolMemberRepository poolMembers;
     private final Crews crews;
+    private final PeriodRepository periods;
     private final AccessService access;
     private final SheetRepository sheetRows;
     private final Rollup rollup;
@@ -54,7 +56,7 @@ public class PersonMergeService {
 
     public PersonMergeService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, StatementService statements, PoolMemberRepository poolMembers,
-            Crews crews, AccessService access, SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
+            Crews crews, PeriodRepository periods, AccessService access, SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -62,6 +64,7 @@ public class PersonMergeService {
         this.statements = statements;
         this.poolMembers = poolMembers;
         this.crews = crews;
+        this.periods = periods;
         this.access = access;
         this.sheetRows = sheetRows;
         this.rollup = rollup;
@@ -105,6 +108,8 @@ public class PersonMergeService {
         crews.merge(personId, intoId);
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
         statements.carry(sheetId, personId, sheetId, intoId);
+        periods.findBySheetIdOrderByFromDateAsc(sheetId).forEach(p -> p.carryPerson(personId, intoId));
+        periods.flush();
         watches.flush();
         people.delete(from);
         people.flush();

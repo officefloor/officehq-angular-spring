@@ -287,7 +287,7 @@ public class PeriodService {
         claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> byId.containsKey(c.getPersonId()))
                 .filter(c -> within.stream().anyMatch(p -> p.contains(c.getDueBy())))
-                .filter(c -> c.getDeferredUntil() == null || !table.today().isBefore(c.getDeferredUntil()))
+                .filter(c -> !Dues.deferralPending(c, table.today()))
                 .filter(c -> Dues.countsAsOf(c, byId.get(c.getPersonId()).leaves(), table.today(), end))
                 .filter(c -> {
                     ClaimStatus then = Dues.statusAsOf(c, end);
@@ -381,7 +381,7 @@ public class PeriodService {
                 .filter(c -> byId.containsKey(c.getPersonId()))
                 .filter(c -> all.stream().anyMatch(home -> home.contains(c.getDueBy())
                         && home.getToDate().isBefore(period.getFromDate())))
-                .filter(c -> c.getDeferredUntil() == null || !table.today().isBefore(c.getDeferredUntil()))
+                .filter(c -> !Dues.deferralPending(c, table.today()))
                 .filter(c -> Dues.countsAsOf(c, byId.get(c.getPersonId()).leaves(), table.today(), period.getToDate()))
                 .filter(c -> {
                     ClaimStatus then = Dues.statusAsOf(c, period.getToDate());

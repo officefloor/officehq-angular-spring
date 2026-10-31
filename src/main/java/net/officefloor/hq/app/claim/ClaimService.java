@@ -563,7 +563,8 @@ public class ClaimService {
     /**
      * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it the claim
      * counts in no total, is not overdue, cannot be settled and no statement binds it (see
-     * {@link Dues#deferred}). A claim not OPEN, a date not after today, or a claim due by a date inside a closed
+     * {@link Dues#deferred}); a claim a statement binds is deferred only once the binding ends, staying in the
+     * totals and settleable until then. A claim not OPEN, a date not after today, or a claim due by a date inside a closed
      * period is refused and nothing changes. Returns the person it belongs to.
      */
     @Transactional

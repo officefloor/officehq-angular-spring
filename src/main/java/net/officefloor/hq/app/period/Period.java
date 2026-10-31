@@ -193,6 +193,23 @@ public class Period {
         }
     }
 
+    /**
+     * Carry a merged person's figures for the period to the person receiving them: their fixed due-total, fixed
+     * carried figure and opening balances are added to the receiver's. The period's own due-total is unchanged.
+     */
+    public void carryPerson(Long fromId, Long intoId) {
+        carry(personTotals, fromId, intoId);
+        carry(personCarried, fromId, intoId);
+        carry(personOpenings, fromId, intoId);
+    }
+
+    private static void carry(Map<Long, BigDecimal> figures, Long fromId, Long intoId) {
+        BigDecimal theirs = figures.remove(fromId);
+        if (theirs != null) {
+            figures.merge(intoId, theirs, BigDecimal::add);
+        }
+    }
+
     /** Close the period, fixing each person's due-total for it and its own, their sum. */
     public void close(Map<Long, BigDecimal> personTotals) {
         close(personTotals, Map.of(), false);
