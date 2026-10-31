@@ -73,7 +73,7 @@ public class ClaimService {
     /**
      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
      * claim gives it the sheet's next number; voiding it clears its number; settling it fixes its due
-     * at its person's grade's rate now, so later rate changes leave it as it is. The sheet is locked
+     * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
      */
     @Transactional
@@ -95,7 +95,7 @@ public class ClaimService {
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
         } else if (next == ClaimStatus.SETTLED) {
-            claim.setSettledDue(rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+            claim.setSettledDue(Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
                     .map(Rate::getRate).map(rate -> dueOn(claim.getAmount(), rate)).orElse(null));
         }
         Claim changed = claims.saveAndFlush(claim);

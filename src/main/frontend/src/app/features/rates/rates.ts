@@ -6,7 +6,7 @@ import { GRADES, Grade } from '../../core/people';
 import { NOT_AVAILABLE, RATE_PATTERN, Rates } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 
-// The sheet's rate for each grade: the current rates and a form to set one.
+// The sheet's rates for each grade: the one in force today, each by from-date, and a form to set one.
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -15,14 +15,15 @@ import { Sheets } from '../../core/sheet';
       <h2 id="rates-heading">Rates</h2>
       <ul aria-label="Rate for each grade">
         @for (g of grades; track g) {
-          @let rate = rates.byGrade().get(g);
           <li>
-            Grade {{ g }}: <span [attr.data-testid]="'rate-current-' + g">{{ rate ?? notAvailable }}</span>
-            @if (rate !== undefined) {
-              <span [attr.data-testid]="'rate-row-' + g + '-start'">
-                (<span data-testid="rate-pct">{{ rate }}</span>%)
-              </span>
-            }
+            Grade {{ g }}, today: <span [attr.data-testid]="'rate-current-' + g">{{ rates.byGrade().get(g) ?? notAvailable }}</span>
+            <ul [attr.aria-label]="'Rates of grade ' + g">
+              @for (r of rates.ratesByGrade().get(g) ?? []; track r.from) {
+                <li [attr.data-testid]="'rate-row-' + g + '-' + (r.from ?? 'start')">
+                  <span data-testid="rate-pct">{{ r.rate }}</span>% from {{ r.from ?? 'the start' }}
+                </li>
+              }
+            </ul>
           </li>
         }
       </ul>
@@ -36,6 +37,8 @@ import { Sheets } from '../../core/sheet';
         </select>
         <label for="rate-form-pct">Rate (%)</label>
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" autocomplete="off" />
+        <label for="rate-form-from">From (blank: from the start)</label>
+        <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
@@ -56,6 +59,7 @@ export class RatesPanel {
   protected readonly form = new FormGroup({
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -77,17 +81,17 @@ export class RatesPanel {
     this.error.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { grade, pct } = this.form.getRawValue();
+    const { grade, pct, from } = this.form.getRawValue();
     const rate = pct.trim();
     if (!RATE_PATTERN.test(rate)) {
       this.error.set('Type a rate of 0.00 or more, with up to two decimals.');
       return;
     }
     this.saving.set(true);
-    this.rates.set(sheet.id, grade, rate).subscribe({
+    this.rates.set(sheet.id, grade, rate, from === '' ? null : from).subscribe({
       next: () => {
         this.saving.set(false);
-        this.form.reset({ grade, pct: '' }, { emitEvent: false });
+        this.form.reset({ grade, pct: '', from: '' }, { emitEvent: false });
       },
       error: () => {
         this.saving.set(false);

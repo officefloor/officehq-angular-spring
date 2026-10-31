@@ -5,11 +5,12 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { forkJoin, of, switchMap } from 'rxjs';
 import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
-import { NOT_AVAILABLE, Rates, dueCents } from '../../core/rates';
+import { NOT_AVAILABLE, RateView, Rates, dueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 import { PersonClaims } from '../claims/claims';
 
 const NO_CLAIMS: ClaimView[] = [];
+const NO_RATES: RateView[] = [];
 
 // The people on the active sheet: one form to add a person or edit an existing one, the list with
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
@@ -50,7 +51,7 @@ const NO_CLAIMS: ClaimView[] = [];
             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
-            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rate]="rates.byGrade().get(p.grade)"
+            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates.ratesByGrade().get(p.grade) ?? noRates"
                                (saved)="claimSaved($event)" />
           </li>
         }
@@ -65,6 +66,7 @@ export class PeopleList {
   protected readonly rates = inject(Rates);
 
   protected readonly grades = GRADES;
+  protected readonly noRates = NO_RATES;
   protected readonly people = signal<PersonView[]>([]);
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
@@ -74,7 +76,7 @@ export class PeopleList {
     return byPerson;
   });
   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
-  /** Each person's due-total in whole cents: their claimed times their grade's rate; null when it has none. */
+  /** Each person's due-total in whole cents: their claimed times their grade's rate in force today; null when it has none. */
   private readonly dueByPerson = computed(() => {
     const rates = this.rates.byGrade();
     const byPerson = new Map<number, number | null>();

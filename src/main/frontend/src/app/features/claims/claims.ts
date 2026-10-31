@@ -2,7 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, counts, money } from '../../core/claims';
-import { NOT_AVAILABLE, dueCents } from '../../core/rates';
+import { NOT_AVAILABLE, RateView, dueCents, rateOn } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
@@ -67,8 +67,8 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
-  /** The rate for this person's grade (a percent), or undefined when the grade has none. */
-  readonly rate = input<string | undefined>();
+  /** The rates of this person's grade, in the order they take effect. */
+  readonly rates = input.required<readonly RateView[]>();
   readonly saved = output<ClaimView>();
 
   protected readonly claimed = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
@@ -91,7 +91,7 @@ export class PersonClaims {
 
   protected dueOf(c: ClaimView): string {
     if (c.settledDue !== null) return c.settledDue;
-    const rate = this.rate();
+    const rate = rateOn(this.rates(), c.date);
     return rate === undefined ? NOT_AVAILABLE : money(dueCents(cents(c.amount), rate));
   }
 

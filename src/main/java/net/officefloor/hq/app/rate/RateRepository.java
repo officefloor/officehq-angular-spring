@@ -1,12 +1,11 @@
 package net.officefloor.hq.app.rate;
 
 import java.util.List;
-import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface RateRepository extends JpaRepository<Rate, Rate.Key> {
+public interface RateRepository extends JpaRepository<Rate, Long> {
 
-    List<Rate> findBySheetIdOrderByGradeAsc(String sheetId);
+    List<Rate> findBySheetId(String sheetId);
 
-    Optional<Rate> findBySheetIdAndGrade(String sheetId, String grade);
+    List<Rate> findBySheetIdAndGrade(String sheetId, String grade);
 }
