@@ -138,6 +138,11 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: while held, an OPEN or PENDING claim no statement binds counts in no live total,
+     *  as a held person's claims do. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** How many proofs have been given for the claim. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -215,6 +220,7 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.waived = waived;
+        copy.held = held;
         copy.proofs = proofs;
         copy.proofPhotos = proofPhotos;
         copy.lateEntry = lateEntry;
@@ -509,6 +515,14 @@ public class Claim {
     /** Record that a steward waived the claim's late charge. */
     public void waive() {
         this.waived = true;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
     }
 
     public int getProofs() {

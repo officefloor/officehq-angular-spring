@@ -62,6 +62,9 @@ export interface ClaimView {
   remindedOn: string | null;
   /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
   waived: boolean;
+  /** Whether the claim is held: while held, an OPEN or PENDING claim no statement binds counts in no live total,
+   *  as a held person's claims do. */
+  held: boolean;
   /** The late charge its person's last statement binds with `statedDue`, with exactly two decimals; null when not
    *  bound, or bound with none (its late charge then follows the sheet's today). */
   statedLate: string | null;
@@ -118,9 +121,10 @@ export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today
 }
 
 /** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: dated within one
- *  of these holds, or its person's retirement date (null: not retired) reached by today. */
+ *  of these holds or held itself, or its person's retirement date (null: not retired) reached by today. */
 function heldOn(c: ClaimView, holds: readonly HoldView[], today: string, retiredFrom: string | null): boolean {
   return (
+    c.held ||
     (retiredFrom !== null && today !== '' && retiredFrom <= today) ||
     holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to))
   );
@@ -359,6 +363,11 @@ export class Claims {
   /** A steward waives an OPEN or PENDING claim's late charge; refused once it was waived. */
   waive(sheetId: string, id: number): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/waiver`, {});
+  }
+
+  /** Hold an OPEN or PENDING claim, or release it when held. */
+  toggleHold(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/hold`, {});
   }
 
   /** Write a reminder for an OPEN or PENDING claim, dated the sheet's today; refused once it was reminded today. */

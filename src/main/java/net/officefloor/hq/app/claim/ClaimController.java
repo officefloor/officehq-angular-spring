@@ -47,14 +47,14 @@ public class ClaimController {
      * settled it (null when it was not settled by one); lines are its lines, in the order added; waived is whether
      * a steward waived its late charge; statedLate is the late charge its person's last statement binds with
      * statedDue (null when not bound, or bound with none, when its late charge follows the sheet's today);
-     * proofReceipts and proofPhotos are how many of its proofs are of each kind.
+     * proofReceipts and proofPhotos are how many of its proofs are of each kind; held is whether it is held.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
             String voidReason, List<CommentLine> comments, String editedBy, Integer batch, List<LineView> lines,
-            boolean waived, String statedLate, int proofReceipts, int proofPhotos) {
+            boolean waived, String statedLate, int proofReceipts, int proofPhotos, boolean held) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -69,7 +69,7 @@ public class ClaimController {
                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(),
                     claim.isWaived(),
                     claim.getBoundLate() == null ? null : claim.getBoundLate().toPlainString(),
-                    claim.getProofReceipts(), claim.getProofPhotos());
+                    claim.getProofReceipts(), claim.getProofPhotos(), claim.isHeld());
         }
     }
 
@@ -354,6 +354,14 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(claims.waive(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/hold")
+    public ClaimView hold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(claims.toggleHold(sheetId, user, id));
     }
 
     @PutMapping("/claims/{id}/person")

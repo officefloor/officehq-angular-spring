@@ -108,7 +108,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     public record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
             String corrects, long listed, ClaimStatus status, String number, BigDecimal settledDue, boolean stated,
             BigDecimal statedDue, LocalDate deferredUntil, LocalDate remindedOn, String ref, String tags,
-            boolean waived, BigDecimal statedLate) {
+            boolean waived, BigDecimal statedLate, boolean held) {
 
         /** The claim as it stood then, unsaved. */
         public Claim rebuild(String sheetId) {
@@ -123,6 +123,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
             if (waived) {
                 claim.waive();
             }
+            claim.setHeld(held);
             if (stated) {
                 claim.bind(statedDue, statedLate);
             }
@@ -141,7 +142,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 claims.stream().map(c -> new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(),
                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
                         c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil(), c.getRemindedOn(), c.getRef(), c.getTags(),
-                        c.isWaived(), c.getBoundLate())).toList(),
+                        c.isWaived(), c.getBoundLate(), c.isHeld())).toList(),
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),

@@ -122,6 +122,9 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           — waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="claim-waive" (click)="waive(c)"
                   [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
+          — held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="claim-hold" (click)="toggleHold(c)"
+                  [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
           split from No. <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           — late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <label [for]="'claim-split-amount-' + c.id">Amount to split off</label>
@@ -628,6 +631,21 @@ export class PersonClaims {
           : c.status === 'OPEN' || c.status === 'PENDING'
             ? "This claim's late charge was already waived."
             : `A ${c.status} claim cannot be waived.`,
+      }),
+    });
+  }
+
+  protected toggleHold(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.api.toggleHold(sheet.id, c.id).subscribe({
+      next: (saved) => this.saved.emit(saved),
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'You may not hold or release this claim.'
+          : `A ${c.status} claim cannot be held or released.`,
       }),
     });
   }

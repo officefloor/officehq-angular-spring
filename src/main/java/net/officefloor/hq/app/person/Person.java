@@ -340,14 +340,15 @@ public class Person {
      *  an open claim a statement binds still counts once {@code today} reaches the retirement date. */
     public boolean countsUnbound(Claim claim, LocalDate today) {
         return claim.getStatus().counts() && !(claim.getStatus().isOpen()
-                && ((!claim.isStated() && retiredOn(today)) || holds.stream().anyMatch(h -> h.covers(claim.getDate()))));
+                && ((!claim.isStated() && retiredOn(today)) || claim.isHeld()
+                        || holds.stream().anyMatch(h -> h.covers(claim.getDate()))));
     }
 
-    /** Whether the claim is open and dated within one of the person's holds, or open once {@code today} reaches
+    /** Whether the claim is open and held itself or dated within one of the person's holds, or open once {@code today} reaches
      *  the person's retirement date. */
     private boolean heldOn(Claim claim, LocalDate today) {
         return claim.getStatus().isOpen()
-                && (retiredOn(today) || holds.stream().anyMatch(h -> h.covers(claim.getDate())));
+                && (retiredOn(today) || claim.isHeld() || holds.stream().anyMatch(h -> h.covers(claim.getDate())));
     }
 
     /** Whether a hold of the person is in force on {@code date}: one whose dates include it. */
