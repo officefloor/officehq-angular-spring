@@ -6,6 +6,8 @@ export interface SheetView {
   id: string;
   /** The sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it, never the clock. */
   today: string;
+  /** A clerk can settle a claim only when its due is at or below this (two decimals); null: no limit. */
+  clerkLimit: string | null;
 }
 
 // The active sheet. Everything else in the app is kept per sheet; loading an id re-reads it from
@@ -34,6 +36,13 @@ export class Sheets {
   setToday(id: string, today: string): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/today`, { today })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's settings; a null clerk limit means no limit. */
+  setSettings(id: string, clerkLimit: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit })
       .pipe(tap((s) => this.active.set(s)));
   }
 }

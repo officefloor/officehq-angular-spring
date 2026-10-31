@@ -5,6 +5,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, money } from '../../core/claims';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
+import { Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
 
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
@@ -66,6 +67,7 @@ import { Sheets } from '../../core/sheet';
 })
 export class PersonClaims {
   private readonly sheets = inject(Sheets);
+  private readonly session = inject(Session);
   private readonly api = inject(Claims);
 
   readonly personId = input.required<number>();
@@ -116,7 +118,9 @@ export class PersonClaims {
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 403
-          ? 'You opened this claim, so someone else must settle it.'
+          ? c.openedBy === this.session.user()
+            ? 'You opened this claim, so someone else must settle it.'
+            : 'Its due is above the clerk limit, so a steward must settle it.'
           : err instanceof HttpErrorResponse && err.status === 423
             ? 'This claim is dated inside a closed period.'
             : `A ${c.status} claim cannot become ${status}.`,

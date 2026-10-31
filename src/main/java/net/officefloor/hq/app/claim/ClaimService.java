@@ -10,6 +10,8 @@ import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -31,10 +33,13 @@ public class ClaimService {
     private final Audit audit;
     private final Rollup rollup;
     private final PeriodRepository periods;
+    private final RoleService roles;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods) {
+            SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
+            RoleService roles) {
         this.periods = periods;
+        this.roles = roles;
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
@@ -99,7 +104,8 @@ public class ClaimService {
      * claim gives it the sheet's next number and records who opened it; voiding it keeps its number, which is
      * never given again; settling it fixes its due
      * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The user
-     * who opened a claim cannot settle it. A claim dated inside a closed period cannot move. The sheet is locked
+     * who opened a claim cannot settle it, and a clerk can settle it only when that due is at or below the sheet's
+     * clerk limit (a claim with no due is within any limit); a steward settles anything. A claim dated inside a closed period cannot move. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
      */
     @Transactional
@@ -117,6 +123,11 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        BigDecimal due = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
+                .map(Rate::getRate).map(rate -> dueOn(claim.getAmount(), rate)).orElse(null);
+        if (next == ClaimStatus.SETTLED) {
+            refuseOverClerkLimit(sheet, user, due);
+        }
         Rollup.Figures before = rollup.of(sheetId);
         Integer number = claim.getNumber();
         claim.setStatus(next);
@@ -125,8 +136,7 @@ public class ClaimService {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
-            claim.setSettledDue(Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
-                    .map(Rate::getRate).map(rate -> dueOn(claim.getAmount(), rate)).orElse(null));
+            claim.setSettledDue(due);
         }
         Claim changed = claims.saveAndFlush(claim);
         String event = switch (next) {
@@ -142,6 +152,19 @@ public class ClaimService {
         audit.recordOnCommit(line);
         rollup.recordChanges(sheetId, user, before);
         return changed;
+    }
+
+    /** Refuse a clerk settling a claim whose due is above the sheet's clerk limit; a steward settles anything,
+     *  and a claim with no due is within any limit. */
+    private void refuseOverClerkLimit(Sheet sheet, String user, BigDecimal due) {
+        BigDecimal limit = sheet.getClerkLimit();
+        if (limit == null || due == null || due.compareTo(limit) <= 0) {
+            return;
+        }
+        if (!Role.STEWARD.equals(roles.roleOf(sheet.getId(), user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "A clerk cannot settle a claim whose due is above the clerk limit of " + limit.toPlainString());
+        }
     }
 
     /** Refuse a change to a claim dated inside a closed period of the sheet. */

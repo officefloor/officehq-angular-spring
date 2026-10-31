@@ -1,7 +1,10 @@
 package net.officefloor.hq.app.sheet;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -13,10 +16,12 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final Rollup rollup;
+    private final Audit audit;
 
-    public SheetService(SheetRepository sheets, Rollup rollup) {
+    public SheetService(SheetRepository sheets, Rollup rollup, Audit audit) {
         this.sheets = sheets;
         this.rollup = rollup;
+        this.audit = audit;
     }
 
     /** The sheet with this id, re-read from the store; started empty if it has never been loaded. */
@@ -40,6 +45,19 @@ public class SheetService {
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         rollup.recordChanges(id, user, before);
+        return saved;
+    }
+
+    /** Set the sheet's clerk limit (null: no limit), starting the sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setClerkLimit(String id, String user, BigDecimal limit) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setClerkLimit(scaled);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=clerk-limit value=" + (scaled == null ? "" : scaled.toPlainString()));
         return saved;
     }
 }
