@@ -6,6 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.role.Delegations;
 import org.springframework.beans.factory.annotation.Value;
@@ -85,6 +91,42 @@ public class Audit {
      */
     public void recordActingOnCommit(String sheetId, String user, String entry) {
         recordOnCommit(delegations.actingFor(sheetId, user).map(steward -> entry + " for=" + steward).orElse(entry));
+    }
+
+    /** A {@code name=} or {@code person=} field of a record: its value runs to the next field or the end. */
+    private static final Pattern PERSON_FIELD = Pattern.compile("(?:^| )(?:name|person)=(.*?)(?= [A-Za-z][\\w-]*=|$)");
+
+    /**
+     * The sheet's records exactly as the file holds them, newest first. With a name (compared trimmed and ignoring
+     * case, as names are) only the records carrying {@code name=<the name>} or {@code person=<the name>}; a blank or
+     * null name gives every record of the sheet.
+     */
+    public synchronized List<String> lines(String sheetId, String name) {
+        List<String> all = new ArrayList<>();
+        try {
+            if (Files.exists(file)) {
+                all.addAll(Files.readAllLines(file, StandardCharsets.UTF_8));
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        String sheetField = "sheet=" + sheetId;
+        String wanted = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        Collections.reverse(all);
+        return all.stream()
+                .filter(line -> List.of(line.split(" ")).contains(sheetField))
+                .filter(line -> wanted.isEmpty() || isAbout(line, wanted))
+                .toList();
+    }
+
+    private static boolean isAbout(String line, String wanted) {
+        Matcher m = PERSON_FIELD.matcher(line);
+        while (m.find()) {
+            if (m.group(1).trim().toLowerCase(Locale.ROOT).equals(wanted)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Truncate the audit file. */

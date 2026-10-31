@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
+import { AuditPanel } from '../audit/audit';
 import { DelegationsPanel } from '../delegations/delegations';
 import { HolidaysPanel } from '../holidays/holidays';
 import { PeopleList } from '../people/people';
@@ -13,7 +14,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
-    VoidReasonsPanel],
+    VoidReasonsPanel, AuditPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -61,6 +62,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-holidays />
         <app-void-reasons />
         <app-people />
+        <app-audit />
       } @else {
         <p data-testid="sheet-none">Load a sheet to begin.</p>
       }
