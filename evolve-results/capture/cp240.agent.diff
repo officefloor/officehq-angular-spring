@@ -1,0 +1,52 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 6ed1eb861..a9a1512d6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -344,11 +344,25 @@ public final class Dues {
+         return due.multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+     }
+ 
++    /**
++     * A holder's part of an unsettled shared claim: the claim's amount times their share divided by 100, times the
++     * rate of the holder's own grade in force on the claim's date divided by 100, rounded like the claim's figure;
++     * null when that grade has no rate then.
++     */
++    public static BigDecimal part(Claim claim, BigDecimal share, Grades holder, RateTable rates) {
++        BigDecimal pct = rates.on(holder.on(claim.getDate()), claim.getDate(), claim.getId());
++        return RateService.due(claim.getAmount().multiply(share).movePointLeft(2), pct,
++                rates.rounding(claim.isCorrection() ? claim.getRoundsBy() : claim.getDate()));
++    }
++
+     /**
+      * Everyone's {@link Parts} by person id: each shared claim that counts (see {@link #counts}, by its own person's
+-     * holds) and has a due figure (by its own person's grades) gives each holder their {@link #part} and takes the
+-     * same from its own person, as a settled part when it is SETTLED, else as an open part. A claim of a person
+-     * not given (null grades or holds) is skipped.
++     * holds) and has a due figure (by its own person's grades) gives each holder their part and takes the same from
++     * its own person, as a settled part when it is SETTLED, else as an open part. An unsettled claim's part is
++     * worked out per holder (see {@link #part(Claim, BigDecimal, Grades, RateTable)}; 0.00 when their grade has no
++     * rate, and then it does not make them a holder); a SETTLED claim keeps its parts as frozen, its settled due
++     * times each share (see {@link #part(BigDecimal, BigDecimal)}). A claim of a person not given (null grades or
++     * holds) is skipped.
+      */
+     public static Map<Long, Parts> parts(Collection<Claim> claims, Function<Long, Grades> grades,
+             Function<Long, Holds> holds, RateTable rates) {
+@@ -368,10 +382,14 @@ public final class Dues {
+             }
+             boolean settled = claim.getStatus() == ClaimStatus.SETTLED;
+             for (ClaimShare share : claim.getShares()) {
+-                BigDecimal part = part(due, share.getShare());
+-                parts.merge(share.getPersonId(), Parts.NONE.plus(part, settled, true),
+-                        (a, b) -> a.plus(b.total(), settled, true));
+-                parts.merge(claim.getPersonId(), Parts.NONE.plus(part.negate(), settled, false),
++                Grades holder = grades.apply(share.getPersonId());
++                BigDecimal part = settled ? part(due, share.getShare())
++                        : holder == null ? null : part(claim, share.getShare(), holder, rates);
++                boolean holding = part != null;
++                BigDecimal counted = holding ? part : BigDecimal.ZERO.setScale(2);
++                parts.merge(share.getPersonId(), Parts.NONE.plus(counted, settled, holding),
++                        (a, b) -> a.plus(b.total(), settled, b.holder()));
++                parts.merge(claim.getPersonId(), Parts.NONE.plus(counted.negate(), settled, false),
+                         (a, b) -> a.plus(b.total(), settled, false));
+             }
+         }
