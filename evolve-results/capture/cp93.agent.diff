@@ -1,0 +1,204 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 44c63a8f1..1bd4a00cb 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -207,6 +207,13 @@ export interface BulkSettleView {
+   claims: ClaimView[];
+ }
+ 
++/** What a bulk move did: how many it moved and refused, and the claims it moved. */
++export interface BulkReassignView {
++  reassigned: number;
++  refused: number;
++  claims: ClaimView[];
++}
++
+ /** An amount the form accepts: 0.00 or more, with up to two decimals. */
+ export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
+ 
+@@ -333,6 +340,12 @@ export class Claims {
+     return this.http.post<BulkSettleView>(`${this.base(sheetId)}/claims/bulk-settle`, { ids });
+   }
+ 
++  /** Move each of the claims to the person, in list order, as a single move would; the rest are refused and left
++   *  as they are. */
++  bulkReassign(sheetId: string, ids: readonly number[], personId: number): Observable<BulkReassignView> {
++    return this.http.post<BulkReassignView>(`${this.base(sheetId)}/claims/bulk-reassign`, { ids, personId });
++  }
++
+   private base(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 336422005..99c093b81 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -173,6 +173,25 @@ function csvField(value: string): string {
+         }
+       </p>
+ 
++      <p>
++        <label for="bulk-reassign-to">Move selected claims to</label>
++        <select id="bulk-reassign-to" data-testid="bulk-reassign-to"
++                [value]="bulkReassignTo()" (change)="bulkReassignToChanged($any($event.target).value)">
++          <option value="">Choose a person</option>
++          @for (p of listed(); track p.id) {
++            <option [value]="p.id">{{ p.name }}</option>
++          }
++        </select>
++        <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()" [disabled]="bulkReassigning()">Move selected claims</button>
++        @if (bulkReassignResult(); as r) {
++          Moved <span data-testid="bulk-reassigned">{{ r.reassigned }}</span>,
++          refused <span data-testid="bulk-reassign-refused">{{ r.refused }}</span>
++        }
++        @if (bulkReassignError(); as err) {
++          <span role="alert" data-testid="bulk-reassign-error">{{ err }}</span>
++        }
++      </p>
++
+       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade the selected people">
+         <label for="bulk-grade">Grade</label>
+         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+@@ -308,6 +327,13 @@ export class PeopleList {
+   protected readonly bulkSettleError = signal<string | null>(null);
+   /** Whether a bulk settle is running, so a second press waits for the first. */
+   protected readonly bulkSettling = signal(false);
++  /** The person the selected claims are to move to (an id), or '' before one is chosen. */
++  protected readonly bulkReassignTo = signal('');
++  /** What the last bulk move did, until the button is pressed again. */
++  protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
++  protected readonly bulkReassignError = signal<string | null>(null);
++  /** Whether a bulk move is running, so a second press waits for the first. */
++  protected readonly bulkReassigning = signal(false);
+   /** The ids of the people selected for a bulk action. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** How many people the last bulk grade changed; null while one runs or before any. */
+@@ -608,6 +634,9 @@ export class PeopleList {
+           this.bulkOpenError.set(null);
+           this.bulkSettleResult.set(null);
+           this.bulkSettleError.set(null);
++          this.bulkReassignTo.set('');
++          this.bulkReassignResult.set(null);
++          this.bulkReassignError.set(null);
+           this.statements.set(new Map());
+           this.patrons.set([]);
+           this.watched.set(new Set());
+@@ -963,6 +992,38 @@ export class PeopleList {
+     });
+   }
+ 
++  protected bulkReassignToChanged(personId: string): void {
++    this.bulkReassignTo.set(personId);
++    this.bulkReassignError.set(null);
++  }
++
++  /** Move the selected claims to the chosen person together, in list order, each by the rules of moving one; the rest are left as they are. */
++  protected bulkReassign(): void {
++    if (this.bulkReassigning()) return;
++    this.bulkReassignResult.set(null);
++    this.bulkReassignError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const to = Number(this.bulkReassignTo());
++    if (!to) {
++      this.bulkReassignError.set('Choose the person to move the selected claims to.');
++      return;
++    }
++    this.bulkReassigning.set(true);
++    this.claimsApi.bulkReassign(sheet.id, [...this.selectedClaims()], to).subscribe({
++      next: ({ reassigned, refused, claims }) => {
++        this.bulkReassigning.set(false);
++        claims.forEach((c) => this.claimSaved(c));
++        this.selectedClaims.set(new Set());
++        this.bulkReassignResult.set({ reassigned, refused });
++      },
++      error: () => {
++        this.bulkReassigning.set(false);
++        this.bulkReassignError.set('Could not move the selected claims.');
++      },
++    });
++  }
++
+   /** A claim as saved: a new one, or one moved to another person, is listed first (its person's newest). */
+   protected claimSaved(saved: ClaimView): void {
+     this.claims.update((list) => {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index b9e6764c1..f1122cfd3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -142,6 +142,14 @@ public class ClaimController {
+     public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
+     }
+ 
++    /** The claims selected to be moved together, and the person they are to move to. */
++    public record BulkReassign(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull Long personId) {
++    }
++
++    /** What a bulk move did: how many it moved and refused, and the claims it moved, in the order moved. */
++    public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
++    }
++
+     private final ClaimService claims;
+     private final RoleService roles;
+     private final SheetService sheets;
+@@ -354,4 +362,33 @@ public class ClaimController {
+         }
+         return new BulkSettleView(settled.size(), refused, settled);
+     }
++
++    /**
++     * Move each selected claim to the person, one at a time in list order (people in the order listed, newest claim
++     * first within a person), by exactly the rules of moving one claim. Each that cannot be moved, or is not on the
++     * sheet, is refused and left as it is.
++     */
++    @PostMapping("/claims/bulk-reassign")
++    public BulkReassignView bulkReassign(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkReassign request) {
++        int selected = (int) request.ids().stream().distinct().count();
++        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
++            // A viewer's bulk action, or one on an archived sheet, goes through with nothing done: every selected
++            // claim is refused.
++            return new BulkReassignView(0, selected, List.of());
++        }
++        List<Long> ordered = claims.inListOrder(sheetId, request.ids());
++        int refused = selected - ordered.size();
++        List<ClaimView> moved = new ArrayList<>();
++        for (long id : ordered) {
++            try {
++                moved.add(ClaimView.of(claims.reassign(sheetId, user, id, request.personId(), true)));
++            } catch (ResponseStatusException refusal) {
++                refused++;
++            }
++        }
++        return new BulkReassignView(moved.size(), refused, moved);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0abf0db74..598efad3f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -535,6 +535,13 @@ public class ClaimService {
+      *  correction the new person has no SETTLED claim of that number for. */
+     @Transactional
+     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
++        return reassign(sheetId, user, id, toPersonId, false);
++    }
++
++    /** Move a claim as {@link #reassign(String, String, long, long)} does, except that a bulk move also takes a
++     *  claim already of the person it is moved to (it is listed again as that person's newest). */
++    @Transactional
++    public Claim reassign(String sheetId, String user, long id, long toPersonId, boolean bulk) {
+         sheets.load(sheetId, user);
+         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+@@ -548,7 +555,7 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot be reassigned");
+         }
+-        if (claim.getPersonId().equals(to.getId())) {
++        if (!bulk && claim.getPersonId().equals(to.getId())) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is already " + to.getName() + "'s");
+         }
+         refuseIfClosed(sheetId, claim.getDueBy());
