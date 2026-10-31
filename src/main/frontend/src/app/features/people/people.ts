@@ -701,6 +701,11 @@ function csvField(value: string): string {
                     <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
                   }
                 </ul>
+                <ul aria-label="Timeline">
+                  @for (t of p.timeline; track $index) {
+                    <li data-testid="person-timeline-line">{{ t }}</li>
+                  }
+                </ul>
                 <ul aria-label="Snapshots">
                   @for (s of p.snapshots; track $index) {
                     <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal }}</li>

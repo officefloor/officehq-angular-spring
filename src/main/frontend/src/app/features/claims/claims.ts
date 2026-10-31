@@ -208,6 +208,8 @@ export interface PersonWithClaims {
   score: string;
   /** While both score thresholds are set: HIGH, MID or LOW by their score; null otherwise. */
   band: string | null;
+  /** One line per dated thing about the person, in date order: grade changes, claims, holds, retirements, unretirements. */
+  timeline: string[];
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
   /** Whether their name or an alias is another's on a sheet of the sheet's tree; every edit is refused until it is not. */

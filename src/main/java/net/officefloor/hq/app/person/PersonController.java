@@ -9,6 +9,8 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -140,7 +142,8 @@ public class PersonController {
      * their statement lines: one per statement still standing, in the order taken, and the reason of their flag
      * while it is in force on the sheet's today (null otherwise, see {@link Person#flagOn}), and their approver (null: none),
      * and their score (see {@link Dues#score}), a whole number, and their band while both score thresholds are set:
-     * HIGH when the score is at or above the high one, MID when at or above the mid one, else LOW (null otherwise).
+     * HIGH when the score is at or above the high one, MID when at or above the mid one, else LOW (null otherwise),
+     * and their timeline (see {@link #timeline}).
      */
     public record PersonView(long id, long version, String name, String grade, Integer terms, String contact,
             List<String> tags,
@@ -151,7 +154,7 @@ public class PersonController {
             String aged0to30, String aged31to60, String aged61, String settledTotal, String openTotal,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
             List<SnapshotView> snapshots, List<StatementLineView> statementLines, String flag,
-            String approver, String score, String band) {
+            String approver, String score, String band, List<String> timeline) {
 
         /** The person as shown, given the sheet's rates and whether they clash (see {@link PersonService#clashing}). */
         public static PersonView of(Person person, List<Claim> claims, RateTable rates, Statements statements,
@@ -198,7 +201,36 @@ public class PersonController {
                             .map(l -> new StatementLineView(l.date(), l.dueTotal() == null ? "n/a" : money(l.dueTotal())))
                             .toList(),
                     person.flagOn(rates.today()), person.getApprover(),
-                    score.toPlainString(), band(score, rates));
+                    score.toPlainString(), band(score, rates), timeline(person, claims));
+        }
+
+        /**
+         * One line per dated thing about the person, in date order, and on a date their grade changes, then
+         * claims, then holds, then retirements, then unretirements (lines of a kind in text order):
+         * {@code <date> grade <grade>}, {@code <date> claim <amount> <status>}, {@code <date> hold [to <date>]},
+         * {@code <date> retired} and {@code <date> unretired}. The first grade (no from-date) has no line.
+         */
+        static List<String> timeline(Person person, List<Claim> claims) {
+            record Entry(LocalDate date, int kind, String text) {
+            }
+            List<Entry> entries = new ArrayList<>();
+            person.getGrades().stream().filter(g -> g.getFromDate() != null)
+                    .forEach(g -> entries.add(new Entry(g.getFromDate(), 0, "grade " + g.getGrade())));
+            claims.forEach(c -> entries.add(new Entry(c.getDate(), 1,
+                    "claim " + money(c.getAmount()) + " " + c.getStatus())));
+            person.getHolds().forEach(h -> entries.add(new Entry(h.getFromDate(), 2,
+                    h.getToDate() == null ? "hold" : "hold to " + h.getToDate())));
+            person.getRetirements().forEach(r -> {
+                entries.add(new Entry(r.getFromDate(), 3, "retired"));
+                entries.add(new Entry(r.getToDate(), 4, "unretired"));
+            });
+            if (person.getRetiredFrom() != null) {
+                entries.add(new Entry(person.getRetiredFrom(), 3, "retired"));
+            }
+            return entries.stream().filter(e -> e.date() != null)
+                    .sorted(Comparator.comparing(Entry::date).thenComparingInt(Entry::kind)
+                            .thenComparing(Entry::text))
+                    .map(e -> e.date() + " " + e.text()).toList();
         }
 
         private static String band(BigDecimal score, RateTable rates) {
