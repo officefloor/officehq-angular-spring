@@ -1,0 +1,385 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index da86840ab..7e0064bec 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -6,20 +6,30 @@ import { Observable, tap } from 'rxjs';
+ export const LOCALES = ['en', 'de'] as const;
+ export type Locale = (typeof LOCALES)[number];
+ 
++/** The people-list columns a user may switch off on their screen. */
++export const COLUMNS = [
++  'claimed', 'due-total', 'statement-count', 'stated-total', 'statement-date', 'overdue-count', 'overdue-total',
++  'patrons', 'backing', 'hold', 'retired', 'terms', 'contact', 'aliases', 'excess',
++] as const;
++export type ColumnKey = (typeof COLUMNS)[number];
++
+ // Who is signed in. There is no password: a name is typed, the server checks it and echoes it back
+-// with the user's saved locale.
++// with the user's saved locale and the people-list columns they have switched off.
+ @Injectable({ providedIn: 'root' })
+ export class Session {
+   private readonly http = inject(HttpClient);
+   private readonly name = signal<string | null>(null);
+   private readonly chosenLocale = signal<Locale>('en');
+   readonly user = this.name.asReadonly();
++  private readonly hidden = signal<ReadonlySet<string>>(new Set());
+   readonly locale = this.chosenLocale.asReadonly();
++  readonly hiddenColumns = this.hidden.asReadonly();
+ 
+-  signIn(name: string): Observable<{ name: string; locale: Locale }> {
+-    return this.http.post<{ name: string; locale: Locale }>('/api/session', { name }).pipe(
++  signIn(name: string): Observable<{ name: string; locale: Locale; hiddenColumns: string[] }> {
++    return this.http.post<{ name: string; locale: Locale; hiddenColumns: string[] }>('/api/session', { name }).pipe(
+       tap((u) => {
+         this.chosenLocale.set(u.locale ?? 'en');
++        this.hidden.set(new Set(u.hiddenColumns ?? []));
+         this.name.set(u.name);
+       }),
+     );
+@@ -31,6 +41,20 @@ export class Session {
+       .put<{ locale: Locale }>('/api/session/locale', { locale })
+       .pipe(tap((l) => this.chosenLocale.set(l.locale)));
+   }
++
++  /** Whether the signed-in user's screen shows this people-list column. */
++  shows(column: ColumnKey): boolean {
++    return !this.hidden().has(column);
++  }
++
++  /** Switch a people-list column on or off for the signed-in user, and save the choice. */
++  setColumn(column: ColumnKey, on: boolean): void {
++    const next = new Set(this.hidden());
++    if (on) next.delete(column);
++    else next.add(column);
++    this.hidden.set(next);
++    this.http.put<{ hidden: string[] }>('/api/session/columns', { hidden: [...next] }).subscribe();
++  }
+ }
+ 
+ // Every API call carries the signed-in name in the X-User header.
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 92bab32f5..c21769403 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -28,7 +28,9 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a
+   selector: 'app-person-claims',
+   imports: [ReactiveFormsModule, FigurePipe],
+   template: `
+-    <p>Claimed: <span data-testid="person-claimed">{{ (claimed()) | figure }}</span></p>
++    @if (session.shows('claimed')) {
++      <p>Claimed: <span data-testid="person-claimed">{{ (claimed()) | figure }}</span></p>
++    }
+ 
+     <form [formGroup]="form" (ngSubmit)="submit()"
+           [attr.aria-label]="(editingId() === null ? 'Add a claim for ' : 'Edit a claim of ') + personName()">
+@@ -208,7 +210,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a
+ })
+ export class PersonClaims {
+   private readonly sheets = inject(Sheets);
+-  private readonly session = inject(Session);
++  protected readonly session = inject(Session);
+   private readonly api = inject(Claims);
+ 
+   readonly personId = input.required<number>();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index cf38a29c8..fed35ba00 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,7 +12,7 @@ import { Sheets, graceOn } from '../../core/sheet';
+ import { SnapshotView, Snapshots } from '../../core/snapshots';
+ import { StatementSummary, Statements } from '../../core/statements';
+ import { Watches } from '../../core/watches';
+-import { Session } from '../../core/session';
++import { COLUMNS, Session } from '../../core/session';
+ import { Consolidated, DescendantFigures, NO_DESCENDANTS } from '../../core/consolidated';
+ import { PersonClaims } from '../claims/claims';
+ import { SheetHeader } from '../header/header';
+@@ -298,6 +298,15 @@ function csvField(value: string): string {
+         </select>
+       </p>
+ 
++      <fieldset>
++        <legend>Columns shown</legend>
++        @for (c of columns; track c) {
++          <input [id]="'column-' + c" type="checkbox" [attr.data-testid]="'column-' + c"
++                 [checked]="session.shows(c)" (change)="session.setColumn(c, $any($event.target).checked)" />
++          <label [for]="'column-' + c">{{ c }}</label>
++        }
++      </fieldset>
++
+       <ul data-testid="person-list">
+         @for (p of shown(); track p.id) {
+           <li [attr.data-testid]="'person-row-' + p.id">
+@@ -318,10 +327,16 @@ function csvField(value: string): string {
+             </select>
+             <button type="button" data-testid="person-inline-grade-save" (click)="saveInlineGrade(p, inlineGrade.value)"
+                     [disabled]="inlineGrading() === p.id" [attr.aria-label]="'Save the grade of ' + p.name">Save grade</button>
+-            — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
+-            — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
++            @if (session.shows('terms')) {
++                — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
++            }
++            @if (session.shows('contact')) {
++                — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
++            }
+             — tags <span data-testid="person-tags">{{ p.tags.join(', ') }}</span>
+-            — aliases <span data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</span>
++            @if (session.shows('aliases')) {
++                — aliases <span data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</span>
++            }
+             — clashing <span data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</span>
+             — from <span data-testid="person-origin">{{ p.origin ?? '' }}</span>
+             <label [attr.for]="'person-alias-input-' + p.id">Alias</label>
+@@ -329,22 +344,36 @@ function csvField(value: string): string {
+                    (input)="clearPersonError(p.id)" />
+             <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
+                     [disabled]="aliasing() === p.id" [attr.aria-label]="'Add an alias of ' + p.name">Add alias</button>
+-            — due <span data-testid="person-due-total">{{ (dueOf(p)) | figure }}</span>
++            @if (session.shows('due-total')) {
++                — due <span data-testid="person-due-total">{{ (dueOf(p)) | figure }}</span>
++            }
+             @for (pd of periods.list(); track pd.id) {
+               — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (periodDueOf(p.id, pd.id)) | figure }}</span>
+             }
+             settled <span data-testid="person-settled-total">{{ (money(splitOf(p.id).settled)) | figure }}</span>
+             open <span data-testid="person-open-total">{{ (money(splitOf(p.id).open)) | figure }}</span>
+-            excess <span data-testid="person-excess">{{ (money(excessOf(p.id))) | figure }}</span>
++            @if (session.shows('excess')) {
++                excess <span data-testid="person-excess">{{ (money(excessOf(p.id))) | figure }}</span>
++            }
+             cut <span data-testid="person-cut-total">{{ (money(cutOf(p.id))) | figure }}</span>
+-            — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
+-            due <span data-testid="person-overdue-total">{{ (money(overdueOf(p.id).cents)) | figure }}</span>
++            @if (session.shows('overdue-count')) {
++                — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
++            }
++            @if (session.shows('overdue-total')) {
++                due <span data-testid="person-overdue-total">{{ (money(overdueOf(p.id).cents)) | figure }}</span>
++            }
+             — aged 0–30 <span data-testid="person-aged-0-30">{{ (money(agedOf(p.id).upTo30)) | figure }}</span>
+             31–60 <span data-testid="person-aged-31-60">{{ (money(agedOf(p.id).upTo60)) | figure }}</span>
+             61+ <span data-testid="person-aged-61">{{ (money(agedOf(p.id).over60)) | figure }}</span>
+-            — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+-            — last stated <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span>
+-            on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
++            @if (session.shows('statement-count')) {
++                — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
++            }
++            @if (session.shows('stated-total')) {
++                — last stated <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span>
++            }
++            @if (session.shows('statement-date')) {
++                on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
++            }
+             @if (snapshotsOf(p.id).length > 0) {
+               <ul [attr.aria-label]="'Snapshots of ' + p.name">
+                 @for (s of snapshotsOf(p.id); track $index) {
+@@ -352,7 +381,9 @@ function csvField(value: string): string {
+                 }
+               </ul>
+             }
+-            — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
++            @if (session.shows('retired')) {
++                — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
++            }
+             from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
+             @if (p.pastRetirements?.length) {
+               <ul [attr.aria-label]="'Past retirements of ' + p.name">
+@@ -361,7 +392,9 @@ function csvField(value: string): string {
+                 }
+               </ul>
+             }
+-            — on hold <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
++            @if (session.shows('hold')) {
++                — on hold <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
++            }
+             — active <span data-testid="person-active">{{ activeByPerson().get(p.id) ? 'yes' : 'no' }}</span>
+             @if (p.holds.length > 0) {
+               <ul [attr.aria-label]="'Holds of ' + p.name">
+@@ -393,8 +426,12 @@ function csvField(value: string): string {
+                     [attr.aria-label]="'Retire ' + p.name">Retire</button>
+             <button type="button" data-testid="person-unretire" (click)="unretire(p)" [disabled]="retiring() === p.id"
+                     [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
+-            — patrons <span data-testid="person-patrons">{{ patronsOf(p.id) }}</span>
+-            — backing <span data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</span>
++            @if (session.shows('patrons')) {
++                — patrons <span data-testid="person-patrons">{{ patronsOf(p.id) }}</span>
++            }
++            @if (session.shows('backing')) {
++                — backing <span data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</span>
++            }
+             <label [attr.for]="'person-patron-select-' + p.id">Patron</label>
+             <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
+                     (change)="patronError.set(null)">
+@@ -450,7 +487,8 @@ export class PeopleList {
+   private readonly consolidatedApi = inject(Consolidated);
+   protected readonly rates = inject(Rates);
+   protected readonly periods = inject(Periods);
+-  private readonly session = inject(Session);
++  protected readonly session = inject(Session);
++  protected readonly columns = COLUMNS;
+   /** The person on the sheet with the signed-in user's name, by name or alias as names are compared; null when none. */
+   protected readonly me = computed(() => {
+     const user = this.session.user()?.trim().toLowerCase();
+diff --git a/src/main/java/net/officefloor/hq/app/session/SessionController.java b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+index c3308eb03..f8de1b7ba 100644
+--- a/src/main/java/net/officefloor/hq/app/session/SessionController.java
++++ b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.util.List;
++
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
+ /**
+  * Sign-in by name: there is no password, the name is checked and echoed back trimmed, with the user's locale.
+  * The signed-in user's locale is read and chosen here too; it is kept per user and is not audited.
++ * So are the people-list columns the user has switched off on their screen.
+  */
+ @RestController
+ @Validated
+@@ -27,7 +30,7 @@ public class SessionController {
+     public record SignIn(@NotBlank @Size(max = 100) String name) {
+     }
+ 
+-    public record User(String name, String locale) {
++    public record User(String name, String locale, List<String> hiddenColumns) {
+     }
+ 
+     public record LocaleForm(@NotNull @Pattern(regexp = "en|de") String locale) {
+@@ -36,17 +39,28 @@ public class SessionController {
+     public record LocaleView(String locale) {
+     }
+ 
++    public record ColumnsForm(@NotNull List<@NotNull @Pattern(regexp = COLUMN_PATTERN) String> hidden) {
++    }
++
++    public record ColumnsView(List<String> hidden) {
++    }
++
++    private static final String COLUMN_PATTERN = "claimed|due-total|statement-count|stated-total|statement-date"
++            + "|overdue-count|overdue-total|patrons|backing|hold|retired|terms|contact|aliases|excess";
++
+     private final UserLocaleRepository locales;
++    private final UserColumnsRepository columns;
+ 
+-    public SessionController(UserLocaleRepository locales) {
++    public SessionController(UserLocaleRepository locales, UserColumnsRepository columns) {
+         this.locales = locales;
++        this.columns = columns;
+     }
+ 
+     @PostMapping
+     @Transactional(readOnly = true)
+     public User signIn(@Valid @RequestBody SignIn request) {
+         String name = request.name().trim();
+-        return new User(name, localeOf(name));
++        return new User(name, localeOf(name), hiddenOf(name));
+     }
+ 
+     @GetMapping("/locale")
+@@ -67,6 +81,22 @@ public class SessionController {
+         return new LocaleView(chosen.getLocale());
+     }
+ 
++    @PutMapping("/columns")
++    @Transactional
++    public ColumnsView setColumns(
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody ColumnsForm request) {
++        String name = user.trim();
++        UserColumns chosen = columns.findById(name).orElseGet(() -> new UserColumns(name));
++        chosen.setHidden(request.hidden());
++        columns.save(chosen);
++        return new ColumnsView(chosen.getHidden());
++    }
++
++    private List<String> hiddenOf(String user) {
++        return columns.findById(user).map(UserColumns::getHidden).orElse(List.of());
++    }
++
+     private String localeOf(String user) {
+         return locales.findById(user).map(UserLocale::getLocale).orElse(UserLocale.DEFAULT);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/session/UserColumns.java b/src/main/java/net/officefloor/hq/app/session/UserColumns.java
+new file mode 100644
+index 000000000..6a189ffbe
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/UserColumns.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.session;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++import java.util.Arrays;
++import java.util.List;
++
++/** The people-list columns a user has switched off on their screen. A user without a line sees them all. */
++@Entity
++@Table(name = "user_columns")
++public class UserColumns {
++
++    /** The people-list columns a user may switch off. */
++    public static final List<String> COLUMNS = List.of(
++            "claimed", "due-total", "statement-count", "stated-total", "statement-date", "overdue-count",
++            "overdue-total", "patrons", "backing", "hold", "retired", "terms", "contact", "aliases", "excess");
++
++    @Id
++    @Column(name = "user_name", nullable = false, length = 100)
++    private String userName;
++
++    @Column(name = "hidden", nullable = false, length = 500)
++    private String hidden;
++
++    protected UserColumns() {
++    }
++
++    public UserColumns(String userName) {
++        this.userName = userName;
++        this.hidden = "";
++    }
++
++    public String getUserName() {
++        return userName;
++    }
++
++    public List<String> getHidden() {
++        return hidden.isEmpty() ? List.of() : Arrays.asList(hidden.split(","));
++    }
++
++    /** Keeps the known columns only, in their list order, each once. */
++    public void setHidden(List<String> columns) {
++        this.hidden = String.join(",", COLUMNS.stream().filter(columns::contains).toList());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/session/UserColumnsRepository.java b/src/main/java/net/officefloor/hq/app/session/UserColumnsRepository.java
+new file mode 100644
+index 000000000..803087a4c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/UserColumnsRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.session;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UserColumnsRepository extends JpaRepository<UserColumns, String> {
++}
+diff --git a/src/main/resources/db/migration/V88__user_columns.sql b/src/main/resources/db/migration/V88__user_columns.sql
+new file mode 100644
+index 000000000..bdd511618
+--- /dev/null
++++ b/src/main/resources/db/migration/V88__user_columns.sql
+@@ -0,0 +1,6 @@
++-- The people-list columns a user has switched off on their screen, comma-separated. Kept per user
++-- across sheets, like their locale; a user with no line sees every column.
++CREATE TABLE user_columns (
++    user_name VARCHAR(100) PRIMARY KEY,
++    hidden VARCHAR(500) NOT NULL
++);
