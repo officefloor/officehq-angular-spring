@@ -129,6 +129,34 @@ public class Audit {
         return false;
     }
 
+    /**
+     * The sheet's records about one claim exactly as the file holds them, newest first: with a number, those carrying
+     * {@code number=<it>}; without, those naming its person (compared trimmed and ignoring case), amount and date
+     * together that carry no number.
+     */
+    public List<String> claimLines(String sheetId, String number, String person, String amount, String date) {
+        String wanted = person.trim().toLowerCase(Locale.ROOT);
+        return lines(sheetId, null).stream()
+                .filter(line -> number != null
+                        ? fieldValues(line, "number").contains(number)
+                        : fieldValues(line, "number").isEmpty()
+                                && fieldValues(line, "person").stream()
+                                        .anyMatch(v -> v.trim().toLowerCase(Locale.ROOT).equals(wanted))
+                                && fieldValues(line, "amount").contains(amount)
+                                && fieldValues(line, "date").contains(date))
+                .toList();
+    }
+
+    /** The values of a record's fields of that key: each runs to the next field or the end. */
+    private static List<String> fieldValues(String line, String key) {
+        Matcher m = Pattern.compile("(?:^| )" + Pattern.quote(key) + "=(.*?)(?= [A-Za-z][\\w-]*=|$)").matcher(line);
+        List<String> values = new ArrayList<>();
+        while (m.find()) {
+            values.add(m.group(1));
+        }
+        return values;
+    }
+
     /** Truncate the audit file. */
     public synchronized void clear() {
         try {

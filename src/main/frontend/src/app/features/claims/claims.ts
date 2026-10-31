@@ -169,6 +169,13 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
                     [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           }
+          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
+                  [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date">Timeline</button>
+          <ol [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of timelines()[c.id] ?? []; track $index) {
+              <li data-testid="claim-timeline-line">{{ line }}</li>
+            }
+          </ol>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? notAvailable }}</li>
@@ -246,6 +253,8 @@ export class PersonClaims {
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   /** The line typed for each claim, by id. */
   protected readonly lineDrafts = signal<Readonly<Record<number, { label: string; qty: string; unit: string }>>>({});
+  /** The audit lines shown as each claim's timeline, by id. */
+  protected readonly timelines = signal<Readonly<Record<number, readonly string[]>>>({});
   /** The comment typed for each claim, by id. */
   protected readonly commentTexts = signal<Readonly<Record<number, string>>>({});
   /** The person chosen to move each claim to, by claim id. */
@@ -543,6 +552,18 @@ export class PersonClaims {
           ? 'You may not comment on this claim.'
           : 'This claim cannot be commented on now.',
       }),
+    });
+  }
+
+  protected showTimeline(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    // The lines shown before are gone while the claim's timeline is read again.
+    this.timelines.update(({ [c.id]: _, ...rest }) => rest);
+    this.api.timeline(sheet.id, c.id).subscribe({
+      next: (lines) => this.timelines.update((all) => ({ ...all, [c.id]: lines })),
+      error: () => this.claimError.set({ id: c.id, message: 'Could not read the timeline of this claim.' }),
     });
   }
 

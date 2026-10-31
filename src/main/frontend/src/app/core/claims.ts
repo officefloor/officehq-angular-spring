@@ -329,6 +329,11 @@ export class Claims {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/comments`, { text });
   }
 
+  /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
+  timeline(sheetId: string, id: number): Observable<string[]> {
+    return this.http.get<string[]>(`${this.base(sheetId)}/claims/${id}/timeline`);
+  }
+
   /** Write a reminder for an OPEN or PENDING claim, dated the sheet's today; refused once it was reminded today. */
   remind(sheetId: string, id: number): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/reminders`, {});

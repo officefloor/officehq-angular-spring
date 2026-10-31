@@ -216,6 +216,14 @@ public class ClaimController {
                 request.corrects(), request.ref(), request.tags()));
     }
 
+    /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
+    @GetMapping("/claims/{id}/timeline")
+    public List<String> timeline(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id) {
+        return claims.timeline(sheetId, id);
+    }
+
     /** Open the claim's editor, locking it for other users. */
     @PostMapping("/claims/{id}/lock")
     public ClaimView lock(

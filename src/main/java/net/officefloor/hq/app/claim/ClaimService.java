@@ -90,6 +90,16 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
     }
 
+    /** The claim's timeline: the sheet's audit lines about it, newest first (see {@link Audit#claimLines}). */
+    @Transactional(readOnly = true)
+    public List<String> timeline(String sheetId, long id) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        return audit.claimLines(sheetId, claim.getNumber(), person.getName(), claim.getAmount().toPlainString(),
+                claim.getDate().toString());
+    }
+
     /** The ids of those given that are claims on the sheet, in list order: people in the order they are listed,
      *  each person's claims newest first. */
     @Transactional(readOnly = true)
