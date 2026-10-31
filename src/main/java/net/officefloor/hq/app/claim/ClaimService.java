@@ -66,14 +66,19 @@ public class ClaimService {
         return added;
     }
 
-    /** Change a claim's amount, date and note; a missing date takes the sheet's today. Refused when its
-     *  date, as it is or as it would become, is inside a closed period. */
+    /** Change a claim's amount, date and note; a missing date takes the sheet's today. Only a draft can be
+     *  changed: to change an open claim, void it and add a new one. Refused when its date, as it is or as it
+     *  would become, is inside a closed period. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
         sheets.load(sheetId, user);
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
+        }
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, date != null ? date : today);
         Rollup.Figures before = rollup.of(sheetId);
@@ -89,7 +94,8 @@ public class ClaimService {
 
     /**
      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
-     * claim gives it the sheet's next number and records who opened it; voiding it clears its number; settling it fixes its due
+     * claim gives it the sheet's next number and records who opened it; voiding it keeps its number, which is
+     * never given again; settling it fixes its due
      * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The user
      * who opened a claim cannot settle it. A claim dated inside a closed period cannot move. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
@@ -116,8 +122,6 @@ public class ClaimService {
             number = sheet.nextClaimNumber();
             claim.setNumber(number);
             claim.setOpenedBy(user);
-        } else if (next == ClaimStatus.VOID) {
-            claim.setNumber(null);
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
                     .map(Rate::getRate).map(rate -> dueOn(claim.getAmount(), rate)).orElse(null));
@@ -145,7 +149,7 @@ public class ClaimService {
         }
     }
 
-    /** An audit line about a claim; one with a number (or, once void, that had one) ends with it. */
+    /** An audit line about a claim; one with a number (a void claim keeps the one it had) ends with it. */
     private static String entry(String event, String user, Person person, Claim claim, Integer number) {
         return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()

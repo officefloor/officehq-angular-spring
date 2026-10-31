@@ -128,6 +128,11 @@ export class PersonClaims {
 
   protected edit(c: ClaimView): void {
     this.claimError.set(null);
+    // Only a draft can be edited; an open claim is changed by voiding it and adding a new one.
+    if (c.status !== 'DRAFT') {
+      this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be edited. Void it and add a new one.` });
+      return;
+    }
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
     this.error.set(null);
@@ -171,7 +176,9 @@ export class PersonClaims {
         this.error.set(
           err instanceof HttpErrorResponse && err.status === 423
             ? 'That claim is dated inside a closed period.'
-            : id === null ? 'Could not add that claim.' : 'Could not save that claim.',
+            : id !== null && err instanceof HttpErrorResponse && err.status === 409
+              ? 'Only a draft claim can be edited. Void it and add a new one.'
+              : id === null ? 'Could not add that claim.' : 'Could not save that claim.',
         );
       },
     });
