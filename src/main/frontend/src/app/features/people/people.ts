@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWithHolds, isOverdue, money, roundingDate } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsWithHolds, isOverdue, money, roundingDate } from '../../core/claims';
 import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
@@ -329,18 +329,20 @@ export class PeopleList {
       NO_OVERDUE,
     ),
   );
-  /** Each person's due-total for each period, in whole cents, by person id then period id: the dues of their claims
-   *  that count whose date falls in it (none counting as 0); a closed period keeps the figures fixed when it was
-   *  closed, 0 for a person added since. */
+  /** Each person's due-total for each period, in whole cents, by person id then period id: the dues as shown now
+   *  of their claims whose date falls in it and that counted by the status they had at the end of its last day
+   *  (none counting as 0); a closed period keeps the figures fixed when it was closed, 0 for a person added since. */
   private readonly dueByPersonPeriod = computed(() => {
     const periods = this.periods.list();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, Map<number, number>>();
     for (const p of this.people()) {
       const live = new Map<number, number>(periods.map((pd) => [pd.id, 0]));
-      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow()))) {
+      for (const c of this.claimsOf(p.id)) {
         const period = periodOn(periods, c.date);
-        if (period) live.set(period.id, (live.get(period.id) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
+        if (period && countsAtEndWithHolds(p.holds, this.todayNow(), period.to)(c)) {
+          live.set(period.id, (live.get(period.id) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
+        }
       }
       for (const pd of periods) {
         if (pd.closed) live.set(pd.id, cents(pd.closedPersonTotals[String(p.id)] ?? '0.00'));

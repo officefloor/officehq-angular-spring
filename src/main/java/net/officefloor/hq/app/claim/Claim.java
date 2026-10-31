@@ -265,6 +265,18 @@ public class Claim {
         proofs++;
     }
 
+    /** The status the claim had at the end of {@code day}, as its log records it: the last line dated on or before
+     *  it; null when the claim was added after it. */
+    public ClaimStatus statusAt(LocalDate day) {
+        ClaimStatus at = null;
+        for (ClaimLogEntry line : log) {
+            if (!line.getOn().isAfter(day)) {
+                at = line.getStatus();
+            }
+        }
+        return at;
+    }
+
     /** The claim's status log, oldest first. */
     public List<ClaimLogEntry> getLog() {
         return Collections.unmodifiableList(log);

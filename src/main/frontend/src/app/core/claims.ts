@@ -74,6 +74,34 @@ export function countsWithHolds(holds: readonly HoldView[], today: string): (c: 
       !holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)));
 }
 
+/** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it: the last line dated on
+ *  or before it; null when the claim was added after it. */
+export function statusAt(c: Pick<ClaimView, 'log'>, day: string): ClaimStatus | null {
+  let status: ClaimStatus | null = null;
+  for (const line of c.log) if (line.on <= day) status = line.status;
+  return status;
+}
+
+/** Whether the claim counts in a period's figures for a person with these holds: by the status it had at the end
+ *  of the period's last day (`end`), and left out when deferred or held as the live totals on the sheet's today
+ *  say. */
+export function countsAtEndWithHolds(
+  holds: readonly HoldView[],
+  today: string,
+  end: string,
+): (c: ClaimView) => boolean {
+  return (c) => {
+    const status = statusAt(c, end);
+    return (
+      (status === 'OPEN' || status === 'PENDING' || status === 'SETTLED') &&
+      !isDeferred(c, today) &&
+      (c.stated ||
+        (c.status !== 'OPEN' && c.status !== 'PENDING') ||
+        !holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)))
+    );
+  };
+}
+
 /** The date (yyyy-mm-dd) that decides how a claim's live figures round: its own, or for a correction the date
  *  of the claim of the same person it corrects, found among that person's claims. */
 export function roundingDate(

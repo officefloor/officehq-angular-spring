@@ -103,7 +103,8 @@ public class Rollup {
     }
 
     /** Each person's due-total for the dates from {@code from} to {@code to} inclusive, by person id, as the screen
-     *  shows a person's period figure: the dues of their claims that count (a held person's open ones dated within a
+     *  shows a person's period figure: the dues as shown now of their claims that counted by the status they had at the end
+     *  of {@code to} (a held person's open ones dated within a
      *  hold and not stated do not) dated in it, none counting as 0; every person on the sheet has one. */
     public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
         List<Rate> sheetRates = rates.findBySheetId(sheetId);
@@ -118,7 +119,7 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = personOf.get(claim.getPersonId());
-            if (person == null || !person.counts(claim) || claim.isDeferredOn(today) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            if (person == null || !person.countsAtEnd(claim, to) || claim.isDeferredOn(today) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
             BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet, sheetClaims);

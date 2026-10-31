@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimStatus;
 
 /** A person on a sheet: a name and a grade (A, B or C), dated: each grade is in force from its from-date. */
 @Entity
@@ -133,6 +134,13 @@ public class Person {
      *  not, unless a statement binds it. */
     public boolean counts(Claim claim) {
         return claim.getStatus().counts() && (claim.isStated() || !heldOn(claim));
+    }
+
+    /** Whether a claim of this person counts in the figures of a period ending {@code end}: by the status it had at
+     *  the end of that day, left out when held as the live totals say. */
+    public boolean countsAtEnd(Claim claim, LocalDate end) {
+        ClaimStatus at = claim.statusAt(end);
+        return at != null && at.counts() && (claim.isStated() || !heldOn(claim));
     }
 
     /** Whether a claim of this person counts when no statement binds it, as a new statement finds it. */
