@@ -2,11 +2,12 @@ import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
+import { PeopleList } from '../people/people';
 
 // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, PeopleList],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -32,6 +33,8 @@ import { Sheets } from '../../core/sheet';
             <p role="alert" data-testid="sheet-error">{{ err }}</p>
           }
         </form>
+
+        <app-people />
       } @else {
         <p data-testid="sheet-none">Load a sheet to begin.</p>
       }
