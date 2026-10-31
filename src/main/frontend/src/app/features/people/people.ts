@@ -91,6 +91,13 @@ function csvField(value: string): string {
           }
         </ul>
       }
+      @if (monthTotals().length > 0) {
+        <ul aria-label="Due by month">
+          @for (m of monthTotals(); track m.month) {
+            <li>{{ m.month }}: <span [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) }}</span></li>
+          }
+        </ul>
+      }
 
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
         <label for="person-form-name">Name</label>
@@ -459,6 +466,20 @@ export class PeopleList {
       }
     }
     return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
+  });
+  /** For every calendar month (yyyy-mm) any of the sheet's claims is dated in, in month order, the dues in whole
+   *  cents of the claims dated in it that count (none counting as 0). */
+  protected readonly monthTotals = computed(() => {
+    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+    const totals = new Map<string, number>();
+    for (const c of this.claims()) totals.set(c.date.slice(0, 7), 0);
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
+        const month = c.date.slice(0, 7);
+        totals.set(month, (totals.get(month) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
+      }
+    }
+    return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([month, cents]) => ({ month, cents }));
   });
   /** Everyone's due-total added up, skipping those with none, trimmed of the highest and lowest. */
   protected readonly dueTotal = computed(() =>
