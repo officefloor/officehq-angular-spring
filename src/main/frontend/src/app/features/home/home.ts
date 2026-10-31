@@ -32,6 +32,17 @@ import { SettingsPanel } from '../settings/settings';
           <button type="button" data-testid="sheet-archive" [disabled]="archiving()" (click)="archive()">Archive sheet</button>
         </p>
 
+        <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()" aria-label="Show the sheet as of a date">
+          <p>As of: <strong data-testid="sheet-asof">{{ sheet.asOf ?? '' }}</strong></p>
+          <label for="asof-date">Show as of</label>
+          <input id="asof-date" type="date" data-testid="asof-date" formControlName="date" />
+          <button type="submit" data-testid="asof-set" [disabled]="settingAsOf()">Set as of</button>
+          <button type="button" data-testid="asof-clear" [disabled]="settingAsOf()" (click)="clearAsOf()">Clear as of</button>
+          @if (asOfError(); as err) {
+            <p role="alert" data-testid="asof-error">{{ err }}</p>
+          }
+        </form>
+
         <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Change the sheet's today">
           <label for="sheet-today-input">Change today</label>
           <input id="sheet-today-input" type="date" data-testid="sheet-today-input" formControlName="today" />
@@ -73,18 +84,61 @@ export class Home {
   protected readonly todayForm = new FormGroup({
     today: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
+  /** The date to show the sheet as of. */
+  protected readonly asOfForm = new FormGroup({
+    date: new FormControl('', { nonNullable: true }),
+  });
   protected readonly signInError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayError = signal<string | null>(null);
   protected readonly loading = signal(false);
   protected readonly savingToday = signal(false);
   protected readonly archiving = signal(false);
+  protected readonly asOfError = signal<string | null>(null);
+  protected readonly settingAsOf = signal(false);
 
   constructor() {
     // An error is removed as soon as its form is changed.
     this.signInForm.valueChanges.subscribe(() => this.signInError.set(null));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.todayForm.valueChanges.subscribe(() => this.todayError.set(null));
+    this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(null));
+  }
+
+  /** Show the sheet as of the date typed: everything on screen as it stood at the end of that day. */
+  protected setAsOf(): void {
+    this.asOfError.set(null);
+    const date = this.asOfForm.controls.date.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.asOfError.set('Choose a date to show the sheet as of.');
+      return;
+    }
+    this.showAsOf(date);
+  }
+
+  /** Show the sheet as it is now again. */
+  protected clearAsOf(): void {
+    this.asOfError.set(null);
+    this.showAsOf(null);
+  }
+
+  private showAsOf(date: string | null): void {
+    // A second press before the first has answered is ignored.
+    if (this.settingAsOf()) return;
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.settingAsOf.set(true);
+    this.todayError.set(null);
+    this.sheets.setAsOf(sheet.id, date).subscribe({
+      next: (loaded) => {
+        this.settingAsOf.set(false);
+        this.todayForm.setValue({ today: loaded.today }, { emitEvent: false });
+      },
+      error: () => {
+        this.settingAsOf.set(false);
+        this.asOfError.set('Could not show the sheet as of that date.');
+      },
+    });
   }
 
   protected signIn(): void {

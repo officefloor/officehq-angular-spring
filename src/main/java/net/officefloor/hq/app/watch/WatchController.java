@@ -1,5 +1,8 @@
 package net.officefloor.hq.app.watch;
 
+import java.time.LocalDate;
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -32,15 +35,22 @@ public class WatchController {
 
     private final WatchService watches;
 
-    public WatchController(WatchService watches) {
+    private final SheetHistory history;
+
+    public WatchController(WatchService watches, SheetHistory history) {
         this.watches = watches;
+        this.history = history;
     }
 
     /** The ids of the people the caller watches. */
     @GetMapping("/watches")
     public List<Long> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.viewsAsOf(sheetId, asOf).watches().getOrDefault(user, List.of());
+        }
         return watches.list(sheetId, user).stream().map(Watch::getPersonId).toList();
     }
 

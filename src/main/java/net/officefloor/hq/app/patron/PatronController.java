@@ -1,5 +1,8 @@
 package net.officefloor.hq.app.patron;
 
+import java.time.LocalDate;
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -33,14 +36,20 @@ public class PatronController {
     }
 
     private final PatronService patrons;
+    private final SheetHistory history;
 
-    public PatronController(PatronService patrons) {
+    public PatronController(PatronService patrons, SheetHistory history) {
+        this.history = history;
         this.patrons = patrons;
     }
 
     @GetMapping("/patrons")
     public List<PatronView> list(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.viewsAsOf(sheetId, asOf).patrons();
+        }
         return patrons.list(sheetId).stream().map(PatronView::of).toList();
     }
 

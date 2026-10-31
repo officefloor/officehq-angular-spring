@@ -636,7 +636,7 @@ export class PeopleList {
   }
 
   /** Take a statement of the person, as of the date in its entry (blank: now), then show their summary and their
-   *  claims as it left them; the entry is cleared once it is taken. */
+   *  claims as it left them; the entry is cleared once it is taken or refused. */
   protected takeStatement(p: PersonView, asOf: HTMLInputElement): void {
     if (this.stating() === p.id) return;
     this.personError.set(null);
@@ -654,6 +654,7 @@ export class PeopleList {
       },
       error: () => {
         this.stating.set(null);
+        asOf.value = '';
         this.personError.set({ id: p.id, message: 'Could not take a statement of ' + p.name + '.' });
       },
     });

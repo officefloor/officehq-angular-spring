@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.role;
 
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -24,7 +26,7 @@ public class DelegationController {
     /** A delegation as the screen shows it. */
     public record DelegationView(long id, String user, String by, LocalDate from, LocalDate to) {
 
-        static DelegationView of(Delegation d) {
+        public static DelegationView of(Delegation d) {
             return new DelegationView(d.getId(), d.getUserName(), d.getDelegatedBy(), d.getFromDate(), d.getToDate());
         }
     }
@@ -35,14 +37,20 @@ public class DelegationController {
     }
 
     private final DelegationService delegations;
+    private final SheetHistory history;
 
-    public DelegationController(DelegationService delegations) {
+    public DelegationController(DelegationService delegations, SheetHistory history) {
+        this.history = history;
         this.delegations = delegations;
     }
 
     @GetMapping
     public List<DelegationView> list(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.viewsAsOf(sheetId, asOf).delegations();
+        }
         return delegations.list(sheetId).stream().map(DelegationView::of).toList();
     }
 

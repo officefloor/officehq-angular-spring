@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.sheet;
 
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -35,12 +37,18 @@ public class SheetController {
     /** A sheet as the screen shows it, each dated setting as it is in force on the sheet's today, with every dated value
      *  recorded; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
      *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off; the cap (two decimals) is null when there is none, as is the proof threshold (two decimals); the permissions are the
-     *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off; archived is whether the sheet is archived. */
+     *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off; archived is whether the sheet is archived;
+     *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived) {
+            List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
+            LocalDate asOf) {
 
         static SheetView of(Sheet sheet) {
+            return of(sheet, null);
+        }
+
+        static SheetView of(Sheet sheet, LocalDate asOf) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
@@ -48,7 +56,7 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     sheet.getSettings().stream().map(s -> new DatedSettingView(s.getKey(), s.getFrom(), s.getValue())).toList(),
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
-                    sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived());
+                    sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived(), asOf);
         }
     }
 
@@ -105,18 +113,23 @@ public class SheetController {
 
     private final SheetService sheets;
     private final RoleService roles;
+    private final SheetHistory history;
 
-    public SheetController(SheetService sheets, RoleService roles) {
+    public SheetController(SheetService sheets, RoleService roles, SheetHistory history) {
         this.sheets = sheets;
         this.roles = roles;
+        this.history = history;
     }
 
-    /** Load (re-read) a sheet by id, starting it empty if it has never been loaded. */
+    /** Load (re-read) a sheet by id, starting it empty if it has never been loaded; as it stood at the end of the
+     *  as-of date, when one is sent. */
     @PostMapping("/{id}/load")
     public SheetView load(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return SheetView.of(sheets.load(id, user));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        Sheet live = sheets.load(id, user);
+        return asOf == null ? SheetView.of(live) : SheetView.of(history.sheetAsOf(live, asOf), asOf);
     }
 
     /** Archive the sheet: a steward only. */

@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpInterceptorFn } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { Grade } from './people';
@@ -48,6 +48,9 @@ export interface SheetView {
   graceDays: number | null;
   /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
   archived: boolean;
+  /** The date (yyyy-mm-dd) the sheet is shown as of: it is as it stood at the end of that day, which stands in for
+   *  its today; null when it is shown as it is now. */
+  asOf: string | null;
 }
 
 /** The actions the permission matrix covers. */
@@ -84,6 +87,16 @@ export class Sheets {
   /** The sheet as last (re)loaded: set on each load only, so changing its today re-reads nothing. */
   private readonly lastLoad = signal<SheetView | null>(null);
   readonly loaded = this.lastLoad.asReadonly();
+  /** The date (yyyy-mm-dd) this screen shows the sheet as of; null: as it is now. Belongs to the screen, so loading a
+   *  sheet leaves it as it is; every read then answers as the sheet stood at the end of it, and every change is refused. */
+  private readonly asOfDate = signal<string | null>(null);
+  readonly asOf = this.asOfDate.asReadonly();
+
+  /** Show the sheet as of a date (null: as it is now), re-loading it so everything on screen is read that way. */
+  setAsOf(id: string, asOf: string | null): Observable<SheetView> {
+    this.asOfDate.set(asOf);
+    return this.load(id);
+  }
 
   load(id: string): Observable<SheetView> {
     return this.http
@@ -187,3 +200,9 @@ export class Sheets {
       .pipe(tap((s) => this.active.set(s)));
   }
 }
+
+// While the screen shows the sheet as of a date, every API call carries it in the X-As-Of header.
+export const asOfHeader: HttpInterceptorFn = (req, next) => {
+  const asOf = inject(Sheets).asOf();
+  return next(asOf ? req.clone({ setHeaders: { 'X-As-Of': asOf } }) : req);
+};

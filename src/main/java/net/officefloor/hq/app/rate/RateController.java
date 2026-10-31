@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.rate;
 
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -30,7 +32,7 @@ public class RateController {
      *  (null when it does not end). */
     public record RateView(String grade, String rate, LocalDate from, LocalDate to) {
 
-        static RateView of(Rate rate) {
+        public static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFromDate(),
                     rate.getToDate());
         }
@@ -43,14 +45,20 @@ public class RateController {
     }
 
     private final RateService rates;
+    private final SheetHistory history;
 
-    public RateController(RateService rates) {
+    public RateController(RateService rates, SheetHistory history) {
+        this.history = history;
         this.rates = rates;
     }
 
     @GetMapping
     public List<RateView> list(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.viewsAsOf(sheetId, asOf).rates();
+        }
         return rates.list(sheetId).stream().map(RateView::of).toList();
     }
 

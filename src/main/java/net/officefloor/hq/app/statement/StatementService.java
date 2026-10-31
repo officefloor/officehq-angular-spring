@@ -73,8 +73,13 @@ public class StatementService {
     /** The summary of each person on the sheet who has had a statement taken. */
     @Transactional(readOnly = true)
     public List<Summary> list(String sheetId) {
+        return summarize(statements.findBySheetIdOrderByIdAsc(sheetId));
+    }
+
+    /** The summary of each person who has had one of these statements (in the order taken) taken. */
+    public static List<Summary> summarize(List<Statement> taken) {
         Map<Long, Summary> byPerson = new LinkedHashMap<>();
-        for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Statement s : taken) {
             Summary before = byPerson.get(s.getPersonId());
             byPerson.put(s.getPersonId(),
                     new Summary(s.getPersonId(), before == null ? 1 : before.count() + 1, s.getDueTotal(), s.getTakenOn()));

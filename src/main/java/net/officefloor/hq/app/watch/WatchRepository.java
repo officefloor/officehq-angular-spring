@@ -10,5 +10,7 @@ public interface WatchRepository extends JpaRepository<Watch, Long> {
 
     List<Watch> findByPersonIdOrderByIdAsc(Long personId);
 
+    List<Watch> findBySheetIdOrderByIdAsc(String sheetId);
+
     Optional<Watch> findByPersonIdAndUserName(Long personId, String userName);
 }

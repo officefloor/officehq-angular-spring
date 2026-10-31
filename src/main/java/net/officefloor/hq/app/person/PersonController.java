@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.person;
 
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -81,14 +83,20 @@ public class PersonController {
     }
 
     private final PersonService people;
+    private final SheetHistory history;
 
-    public PersonController(PersonService people) {
+    public PersonController(PersonService people, SheetHistory history) {
         this.people = people;
+        this.history = history;
     }
 
     @GetMapping
     public List<PersonView> list(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.peopleAsOf(sheetId, asOf);
+        }
         LocalDate today = people.today(sheetId);
         return people.list(sheetId).stream().map(p -> PersonView.of(p, today)).toList();
     }

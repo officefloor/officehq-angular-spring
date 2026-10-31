@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.period;
 
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -30,7 +32,7 @@ public class PeriodController {
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
             String closedTotal, Map<Long, String> closedPersonTotals) {
 
-        static PeriodView of(Period period) {
+        public static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
@@ -54,14 +56,20 @@ public class PeriodController {
     }
 
     private final PeriodService periods;
+    private final SheetHistory history;
 
-    public PeriodController(PeriodService periods) {
+    public PeriodController(PeriodService periods, SheetHistory history) {
+        this.history = history;
         this.periods = periods;
     }
 
     @GetMapping
     public List<PeriodView> list(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.viewsAsOf(sheetId, asOf).periods();
+        }
         return periods.list(sheetId).stream().map(PeriodView::of).toList();
     }
 

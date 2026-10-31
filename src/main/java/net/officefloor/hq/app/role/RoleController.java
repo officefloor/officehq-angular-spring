@@ -1,5 +1,8 @@
 package net.officefloor.hq.app.role;
 
+import java.time.LocalDate;
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -24,7 +27,7 @@ public class RoleController {
     /** A user name's assigned role as the screen shows it. */
     public record RoleView(String user, String role) {
 
-        static RoleView of(Role role) {
+        public static RoleView of(Role role) {
             return new RoleView(role.getUserName(), role.getRole());
         }
     }
@@ -34,14 +37,20 @@ public class RoleController {
     }
 
     private final RoleService roles;
+    private final SheetHistory history;
 
-    public RoleController(RoleService roles) {
+    public RoleController(RoleService roles, SheetHistory history) {
+        this.history = history;
         this.roles = roles;
     }
 
     @GetMapping
     public List<RoleView> list(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.viewsAsOf(sheetId, asOf).roles();
+        }
         return roles.list(sheetId).stream().map(RoleView::of).toList();
     }
 

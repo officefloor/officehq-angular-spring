@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.claim;
 
+import org.springframework.format.annotation.DateTimeFormat;
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -123,16 +125,22 @@ public class ClaimController {
     private final ClaimService claims;
     private final RoleService roles;
     private final SheetService sheets;
+    private final SheetHistory history;
 
-    public ClaimController(ClaimService claims, RoleService roles, SheetService sheets) {
+    public ClaimController(ClaimService claims, RoleService roles, SheetService sheets, SheetHistory history) {
         this.sheets = sheets;
+        this.history = history;
         this.claims = claims;
         this.roles = roles;
     }
 
     @GetMapping("/claims")
     public List<ClaimView> list(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.viewsAsOf(sheetId, asOf).claims();
+        }
         return claims.list(sheetId).stream().map(ClaimView::of).toList();
     }
 

@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.statement;
 
+import net.officefloor.hq.app.history.SheetHistory;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -26,7 +27,7 @@ public class StatementController {
     /** A person's statements: how many, and the last one's due-total ("n/a" when none could be given) and date. */
     public record SummaryView(long personId, int count, String dueTotal, LocalDate date) {
 
-        static SummaryView of(StatementService.Summary summary) {
+        public static SummaryView of(StatementService.Summary summary) {
             return new SummaryView(summary.personId(), summary.count(), summary.dueTotal(), summary.takenOn());
         }
     }
@@ -36,14 +37,20 @@ public class StatementController {
     }
 
     private final StatementService statements;
+    private final SheetHistory history;
 
-    public StatementController(StatementService statements) {
+    public StatementController(StatementService statements, SheetHistory history) {
+        this.history = history;
         this.statements = statements;
     }
 
     @GetMapping("/statements")
     public List<SummaryView> list(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.viewsAsOf(sheetId, asOf).statements();
+        }
         return statements.list(sheetId).stream().map(SummaryView::of).toList();
     }
 
