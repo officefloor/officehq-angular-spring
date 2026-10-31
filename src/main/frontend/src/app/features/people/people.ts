@@ -12,7 +12,7 @@ import { Sheets, graceOn } from '../../core/sheet';
 import { SnapshotView, Snapshots } from '../../core/snapshots';
 import { StatementSummary, Statements } from '../../core/statements';
 import { Watches } from '../../core/watches';
-import { Session } from '../../core/session';
+import { COLUMNS, Session } from '../../core/session';
 import { Consolidated, DescendantFigures, NO_DESCENDANTS } from '../../core/consolidated';
 import { PersonClaims } from '../claims/claims';
 import { SheetHeader } from '../header/header';
@@ -298,6 +298,15 @@ function csvField(value: string): string {
         </select>
       </p>
 
+      <fieldset>
+        <legend>Columns shown</legend>
+        @for (c of columns; track c) {
+          <input [id]="'column-' + c" type="checkbox" [attr.data-testid]="'column-' + c"
+                 [checked]="session.shows(c)" (change)="session.setColumn(c, $any($event.target).checked)" />
+          <label [for]="'column-' + c">{{ c }}</label>
+        }
+      </fieldset>
+
       <ul data-testid="person-list">
         @for (p of shown(); track p.id) {
           <li [attr.data-testid]="'person-row-' + p.id">
@@ -318,10 +327,16 @@ function csvField(value: string): string {
             </select>
             <button type="button" data-testid="person-inline-grade-save" (click)="saveInlineGrade(p, inlineGrade.value)"
                     [disabled]="inlineGrading() === p.id" [attr.aria-label]="'Save the grade of ' + p.name">Save grade</button>
-            — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
-            — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
+            @if (session.shows('terms')) {
+                — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
+            }
+            @if (session.shows('contact')) {
+                — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
+            }
             — tags <span data-testid="person-tags">{{ p.tags.join(', ') }}</span>
-            — aliases <span data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</span>
+            @if (session.shows('aliases')) {
+                — aliases <span data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</span>
+            }
             — clashing <span data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</span>
             — from <span data-testid="person-origin">{{ p.origin ?? '' }}</span>
             <label [attr.for]="'person-alias-input-' + p.id">Alias</label>
@@ -329,22 +344,36 @@ function csvField(value: string): string {
                    (input)="clearPersonError(p.id)" />
             <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
                     [disabled]="aliasing() === p.id" [attr.aria-label]="'Add an alias of ' + p.name">Add alias</button>
-            — due <span data-testid="person-due-total">{{ (dueOf(p)) | figure }}</span>
+            @if (session.shows('due-total')) {
+                — due <span data-testid="person-due-total">{{ (dueOf(p)) | figure }}</span>
+            }
             @for (pd of periods.list(); track pd.id) {
               — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (periodDueOf(p.id, pd.id)) | figure }}</span>
             }
             settled <span data-testid="person-settled-total">{{ (money(splitOf(p.id).settled)) | figure }}</span>
             open <span data-testid="person-open-total">{{ (money(splitOf(p.id).open)) | figure }}</span>
-            excess <span data-testid="person-excess">{{ (money(excessOf(p.id))) | figure }}</span>
+            @if (session.shows('excess')) {
+                excess <span data-testid="person-excess">{{ (money(excessOf(p.id))) | figure }}</span>
+            }
             cut <span data-testid="person-cut-total">{{ (money(cutOf(p.id))) | figure }}</span>
-            — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
-            due <span data-testid="person-overdue-total">{{ (money(overdueOf(p.id).cents)) | figure }}</span>
+            @if (session.shows('overdue-count')) {
+                — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
+            }
+            @if (session.shows('overdue-total')) {
+                due <span data-testid="person-overdue-total">{{ (money(overdueOf(p.id).cents)) | figure }}</span>
+            }
             — aged 0–30 <span data-testid="person-aged-0-30">{{ (money(agedOf(p.id).upTo30)) | figure }}</span>
             31–60 <span data-testid="person-aged-31-60">{{ (money(agedOf(p.id).upTo60)) | figure }}</span>
             61+ <span data-testid="person-aged-61">{{ (money(agedOf(p.id).over60)) | figure }}</span>
-            — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
-            — last stated <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span>
-            on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
+            @if (session.shows('statement-count')) {
+                — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+            }
+            @if (session.shows('stated-total')) {
+                — last stated <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span>
+            }
+            @if (session.shows('statement-date')) {
+                on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
+            }
             @if (snapshotsOf(p.id).length > 0) {
               <ul [attr.aria-label]="'Snapshots of ' + p.name">
                 @for (s of snapshotsOf(p.id); track $index) {
@@ -352,7 +381,9 @@ function csvField(value: string): string {
                 }
               </ul>
             }
-            — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+            @if (session.shows('retired')) {
+                — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+            }
             from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
             @if (p.pastRetirements?.length) {
               <ul [attr.aria-label]="'Past retirements of ' + p.name">
@@ -361,7 +392,9 @@ function csvField(value: string): string {
                 }
               </ul>
             }
-            — on hold <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+            @if (session.shows('hold')) {
+                — on hold <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+            }
             — active <span data-testid="person-active">{{ activeByPerson().get(p.id) ? 'yes' : 'no' }}</span>
             @if (p.holds.length > 0) {
               <ul [attr.aria-label]="'Holds of ' + p.name">
@@ -393,8 +426,12 @@ function csvField(value: string): string {
                     [attr.aria-label]="'Retire ' + p.name">Retire</button>
             <button type="button" data-testid="person-unretire" (click)="unretire(p)" [disabled]="retiring() === p.id"
                     [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
-            — patrons <span data-testid="person-patrons">{{ patronsOf(p.id) }}</span>
-            — backing <span data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</span>
+            @if (session.shows('patrons')) {
+                — patrons <span data-testid="person-patrons">{{ patronsOf(p.id) }}</span>
+            }
+            @if (session.shows('backing')) {
+                — backing <span data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</span>
+            }
             <label [attr.for]="'person-patron-select-' + p.id">Patron</label>
             <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
                     (change)="patronError.set(null)">
@@ -450,7 +487,8 @@ export class PeopleList {
   private readonly consolidatedApi = inject(Consolidated);
   protected readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
+  protected readonly columns = COLUMNS;
   /** The person on the sheet with the signed-in user's name, by name or alias as names are compared; null when none. */
   protected readonly me = computed(() => {
     const user = this.session.user()?.trim().toLowerCase();

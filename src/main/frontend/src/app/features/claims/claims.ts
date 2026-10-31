@@ -28,7 +28,9 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule, FigurePipe],
   template: `
-    <p>Claimed: <span data-testid="person-claimed">{{ (claimed()) | figure }}</span></p>
+    @if (session.shows('claimed')) {
+      <p>Claimed: <span data-testid="person-claimed">{{ (claimed()) | figure }}</span></p>
+    }
 
     <form [formGroup]="form" (ngSubmit)="submit()"
           [attr.aria-label]="(editingId() === null ? 'Add a claim for ' : 'Edit a claim of ') + personName()">
@@ -208,7 +210,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
 })
 export class PersonClaims {
   private readonly sheets = inject(Sheets);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   private readonly api = inject(Claims);
 
   readonly personId = input.required<number>();
