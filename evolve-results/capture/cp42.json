@@ -1,0 +1,64 @@
+{
+  "checkpoint": 42,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp42_rate-end-dates",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A rate may carry a to-date as well as a from-date (RATE_SET gains to=<date> at the end when one\nwas given; a to-date before the from-date is refused). A rate applies through its to-date; a claim\ndated after the to-date of the rate that would apply to it, with no later rate in force on the\nclaim's date, has due n/a, and everything that reads due follows (a total skips it, a statement\nbinds n/a, the late charge has nothing to add to).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate may carry a to-date as well as a from-date (RATE_SET gains to=<date> at the end when one\nwas given; a to-date before the from-date is refused). A rate applies through its to-date; a claim\ndated after the to-date of the rate that would apply to it, with no later rate in force on the\nclaim's date, has due n/a, and everything that reads due follows (a total skips it, a statement\nbinds n/a, the late charge has nothing to add to).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "94efe578ad99cb92fa4969827d659599319bbfd9",
+  "reset_sha": "",
+  "preagent_sha": "a55936cac97ce447afb54350a790e0342337950e",
+  "prev_sha": "a55936cac97ce447afb54350a790e0342337950e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9733951999999999,
+    "input_tokens": 40,
+    "output_tokens": 12517,
+    "cache_read_tokens": 1006676,
+    "cache_creation_tokens": 65195,
+    "num_turns": 21,
+    "duration_ms": 439250,
+    "duration_api_ms": 140345,
+    "model": "claude-opus-5-5",
+    "session_id": "1113a092-ffcb-4c4d-b01b-b717ffb0ee4c",
+    "stop_reason": "success",
+    "result_text": "A rate can now carry a to-date, and `bin/e2e` passes: all 4 tests in the spec.\n\n**What changed**\n- **Stored data:** a new migration, `V32__rate_to_date.sql`, adds an optional `to_date` to the rate table, with a check that it is never before the from-date.\n- **Server:** the rate form and view carry `to`. A to-date before the from-date is refused: nothing is saved and nothing is audited. `RATE_SET` adds ` to=<date>` at the end of the line when one was given. `Rate.inForceOn` finds the rate with the latest from-date on or before the claim's date; if that rate has ended by then, there is no rate. An earlier rate does not take over again. Totals, statements, settling and the late charge all read rates through it, so they follow.\n- **Front end:** the rates form has a To field (`rate-form-to`), which is checked on the screen as well, and each rate row shows its end as `rate-to`. The screen's rate lookup (`rateOn`) uses the same rule as the server.\n\n**Two existing rules changed \u2014 please check these are what you want**\n1. **When a person's total shows n/a.** Before, a total was n/a when no rate for the person's grades applied today and no claim had a settled or stated figure. Now it is n/a only when no rate applies today *and none of their claims has a due*. The test needs this: Ada's claims are summed (3.00) even though grade A has no rate on the sheet's today. A side effect: a claim dated after today, priced by a rate that hasn't started yet, now counts towards the total where it used to give n/a.\n2. **A statement now binds n/a for good.** Before, a claim stated while it had no due went back to following the rate afterwards. Now it stays n/a after a later rate is set, which the test checks. This applies to every claim stated without a due, not only those whose rate had ended. Claims waiting for approval (PENDING) still follow the live rate, as before. This is done with a new `Claim.isBound()` on the server and the `stated` flag on the screen.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9733951999999999,
+        "num_turns": 21,
+        "duration_ms": 439250,
+        "duration_api_ms": 140345,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp42.agent.jsonl",
+  "agent_diff_file": "cp42.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
