@@ -71,7 +71,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span>
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
-          — deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
+          — deferred <span data-testid="claim-deferred">{{ deferralShown(c) ? 'yes' : 'no' }}</span>
           until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date"
@@ -266,6 +266,12 @@ export class PersonClaims {
   protected deferredOf(c: ClaimView): boolean {
     const sheet = this.sheets.current();
     return sheet !== null && isDeferred(c, sheet.today);
+  }
+
+  /** Whether the claim's deferral, whatever its status now, runs to a day after the sheet's today. */
+  protected deferralShown(c: ClaimView): boolean {
+    const sheet = this.sheets.current();
+    return sheet !== null && c.deferredUntil !== null && sheet.today < c.deferredUntil;
   }
 
   protected deferDateChanged(c: ClaimView, date: string): void {

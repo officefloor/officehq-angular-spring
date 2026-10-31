@@ -55,7 +55,8 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)
+                || people.findBySheetIdAndAliasIgnoreCase(sheetId, trimmed).isPresent()) {
             throw nameInUse();
         }
         String reach = contactOf(contact);
@@ -108,7 +109,8 @@ public class PersonService {
             throw changedSince();
         }
         String trimmed = name.trim();
-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)) {
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)
+                || people.findBySheetIdAndAliasIgnoreCase(sheetId, trimmed).isPresent()) {
             throw nameInUse();
         }
         String reach = contactOf(contact);
@@ -165,6 +167,27 @@ public class PersonService {
         audit.recordChangeOnCommit(sheetId, user, "PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " from=" + start);
         rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /** Give the person an alias, stored trimmed: refused when blank, or when it is, without regard to case, any
+     *  name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long id, String alias) {
+        sheets.load(sheetId, user);
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        String trimmed = alias == null ? "" : alias.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An alias cannot be blank");
+        }
+        if (people.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, trimmed).isPresent()) {
+            throw nameInUse();
+        }
+        person.addAlias(trimmed);
+        Person saved = save(person);
+        audit.recordChangeOnCommit(sheetId, user, "PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " alias=" + trimmed);
         return saved;
     }
 

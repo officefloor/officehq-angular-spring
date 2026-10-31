@@ -13,8 +13,10 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
@@ -55,6 +57,12 @@ public class Person {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<Hold> holds = new ArrayList<>();
+
+    /** The other names the person is found by, stored trimmed. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    @Column(name = "alias", nullable = false)
+    private Set<String> aliases = new HashSet<>();
 
     /** Raised on every save; an edit made from an older version is refused. */
     @Version
@@ -121,6 +129,15 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    /** The person's aliases, sorted as names are compared: without regard to case. */
+    public List<String> getAliases() {
+        return aliases.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    public void addAlias(String alias) {
+        aliases.add(alias);
     }
 
     public long getVersion() {

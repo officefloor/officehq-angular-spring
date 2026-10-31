@@ -35,13 +35,15 @@ public class PersonController {
     /** A person as listed: {@code grade} is the one in force on the sheet's today; {@code grades} all those
      *  recorded, in the order they take effect. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
-            long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact) {
+            long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
+            List<String> aliases) {
 
         public static PersonView of(Person person, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getTerms(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
-                    person.getHolds().stream().map(HoldView::of).toList(), person.getContact());
+                    person.getHolds().stream().map(HoldView::of).toList(), person.getContact(),
+                    person.getAliases());
         }
     }
 
@@ -84,6 +86,10 @@ public class PersonController {
             @Min(0) @Max(36500) Integer terms,
             @NotNull Long version,
             @Size(max = 200) String contact) {
+    }
+
+    /** An alias as the row submits it; stored trimmed, and refused when blank. */
+    public record AliasForm(@Size(max = 200) String alias) {
     }
 
     /** A retirement: the date the person is retired from; missing takes the sheet's today. */
@@ -180,6 +186,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody Retirement request) {
         return PersonView.of(people.retire(sheetId, user, id, request.from()), people.today(sheetId));
+    }
+
+    /** Give the person an alias. */
+    @PostMapping("/{id}/aliases")
+    public PersonView addAlias(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AliasForm request) {
+        return PersonView.of(people.addAlias(sheetId, user, id, request.alias()), people.today(sheetId));
     }
 
     /** Put the person on hold over the dates given, alongside any holds they already have. */

@@ -32,12 +32,12 @@ public class QuickAddService {
 
     /**
      * Add a DRAFT claim of {@code amount}, dated the sheet's entry date while set, else its today, with an empty note, for the person
-     * whose name matches {@code name} (trimmed, ignoring case); one not on the sheet is added first with
+     * whose name or an alias matches {@code name} (trimmed, ignoring case); one not on the sheet is added first with
      * grade A. One change: when the claim is refused the person is not added and nothing is recorded.
      */
     @Transactional
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
-        Person existing = people.findBySheetIdAndNameIgnoreCase(sheetId, name.trim()).orElse(null);
+        Person existing = people.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, name.trim()).orElse(null);
         Person person = existing != null ? existing : personService.add(sheetId, user, name, NEW_PERSON_GRADE);
         Claim claim = claims.add(sheetId, user, person.getId(), amount, null, "", null, null);
         return new Added(person, existing == null, claim);

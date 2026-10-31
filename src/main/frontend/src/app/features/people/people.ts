@@ -226,6 +226,12 @@ function csvField(value: string): string {
             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
             — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
             — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
+            — aliases <span data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</span>
+            <label [attr.for]="'person-alias-input-' + p.id">Alias</label>
+            <input [id]="'person-alias-input-' + p.id" data-testid="person-alias-input" #aliasInput autocomplete="off"
+                   (input)="clearPersonError(p.id)" />
+            <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
+                    [disabled]="aliasing() === p.id" [attr.aria-label]="'Add an alias of ' + p.name">Add alias</button>
             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
             @for (pd of periods.list(); track pd.id) {
               — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd.id) }}</span>
@@ -376,6 +382,8 @@ export class PeopleList {
     for (const pt of this.patrons()) byPerson.set(pt.personId, [...(byPerson.get(pt.personId) ?? []), pt.patronId]);
     return byPerson;
   });
+  /** The person an alias is being added to, so a second press waits for the first. */
+  protected readonly aliasing = signal<number | null>(null);
   /** The error of the last action taken on a person's row, until the next action on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   private readonly claimsByPerson = computed(() => {
@@ -901,6 +909,31 @@ export class PeopleList {
       error: () => {
         this.retiring.set(null);
         this.personError.set({ id: p.id, message: 'Could not retire ' + p.name + '.' });
+      },
+    });
+  }
+
+  /** Give the person the alias typed; a blank one is refused on the row. */
+  protected addAlias(p: PersonView, input: HTMLInputElement): void {
+    if (this.aliasing() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    if (input.value.trim() === '') {
+      this.personError.set({ id: p.id, message: 'An alias cannot be blank.' });
+      return;
+    }
+    this.aliasing.set(p.id);
+    this.api.addAlias(sheet.id, p.id, input.value).subscribe({
+      next: (saved) => {
+        this.aliasing.set(null);
+        input.value = '';
+        this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      },
+      error: () => {
+        this.aliasing.set(null);
+        this.personError.set({ id: p.id, message: 'That alias is already a name or alias on this sheet.' });
       },
     });
   }

@@ -40,6 +40,8 @@ export interface PersonView {
   holds: HoldView[];
   /** The person's contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
+  /** The other names the person is found by, sorted as names are compared; missing in an older snapshot. */
+  aliases?: string[] | null;
 }
 
 export interface PersonForm {
@@ -99,6 +101,11 @@ export class People {
   /** Put the person on hold from `from` (null takes the sheet's today) to `to` (null: no end). */
   hold(sheetId: string, id: number, from: string | null, to: string | null): Observable<PersonView> {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/hold`, { from, to });
+  }
+
+  /** Give the person an alias; refused when blank or already a name or alias on the sheet. */
+  addAlias(sheetId: string, id: number, alias: string): Observable<PersonView> {
+    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/aliases`, { alias });
   }
 
   /** Give the selected people `grade` from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */

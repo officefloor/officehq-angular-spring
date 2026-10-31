@@ -3,6 +3,8 @@ package net.officefloor.hq.app.person;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
@@ -15,6 +17,15 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     boolean existsBySheetIdAndNameIgnoreCase(String sheetId, String name);
 
     boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
+
+    /** The person on the sheet having {@code alias} as an alias, without regard to case. */
+    @Query("select p from Person p join p.aliases a where p.sheetId = :sheetId and lower(a) = lower(:alias)")
+    Optional<Person> findBySheetIdAndAliasIgnoreCase(@Param("sheetId") String sheetId, @Param("alias") String alias);
+
+    /** The person on the sheet named {@code name}, or else having it as an alias, without regard to case. */
+    default Optional<Person> findBySheetIdAndNameOrAliasIgnoreCase(String sheetId, String name) {
+        return findBySheetIdAndNameIgnoreCase(sheetId, name).or(() -> findBySheetIdAndAliasIgnoreCase(sheetId, name));
+    }
 
     boolean existsBySheetIdAndContact(String sheetId, String contact);
 
