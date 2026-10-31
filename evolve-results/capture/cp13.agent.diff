@@ -1,0 +1,139 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 9e79ea3b8..d91f45f22 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -19,6 +19,8 @@ export interface ClaimView {
+   /** The due fixed when the claim was settled, with exactly two decimals; null while it is not
+    *  settled, or if its grade had no rate then (its due then follows the rate as an open one does). */
+   settledDue: string | null;
++  /** The signed-in name of the user who opened the claim; null while a draft. */
++  openedBy: string | null;
+ }
+ 
+ /** Only OPEN and SETTLED claims count toward what is claimed and due. */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 66704e7ff..283250575 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,3 +1,4 @@
++import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+@@ -39,6 +40,7 @@ import { Sheets } from '../../core/sheet';
+           — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span data-testid="claim-status">{{ c.status }}</span>
++          opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
+                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
+@@ -101,7 +103,12 @@ export class PersonClaims {
+     if (!sheet) return;
+     this.api.changeStatus(sheet.id, c.id, status).subscribe({
+       next: (saved) => this.saved.emit(saved),
+-      error: () => this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot become ${status}.` }),
++      error: (err: unknown) => this.claimError.set({
++        id: c.id,
++        message: err instanceof HttpErrorResponse && err.status === 403
++          ? 'You opened this claim, so someone else must settle it.'
++          : `A ${c.status} claim cannot become ${status}.`,
++      }),
+     });
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 0065846e4..bc21226f4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -47,6 +47,10 @@ public class Claim {
+     @Column(name = "settled_due", precision = 14, scale = 2)
+     private BigDecimal settledDue;
+ 
++    /** The signed-in name of the user who opened the claim; none while a draft. */
++    @Column(name = "opened_by", length = 100)
++    private String openedBy;
++
+     protected Claim() {
+     }
+ 
+@@ -117,4 +121,12 @@ public class Claim {
+     public void setSettledDue(BigDecimal settledDue) {
+         this.settledDue = settledDue;
+     }
++
++    public String getOpenedBy() {
++        return openedBy;
++    }
++
++    public void setOpenedBy(String openedBy) {
++        this.openedBy = openedBy;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index d27599301..372a9a23a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -28,15 +28,17 @@ public class ClaimController {
+ 
+     /**
+      * A claim as the screen shows it; the amount is given with exactly two decimals, as is the due
+-     * fixed when it was settled (null while it is not settled, or if its grade had no rate then).
++     * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
++     * is who opened it (null while a draft).
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
+-            Integer number, String settledDue) {
++            Integer number, String settledDue, String openedBy) {
+ 
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+-                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
++                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
++                    claim.getOpenedBy());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5a3ef04bc..e8d02fb28 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -72,8 +72,9 @@ public class ClaimService {
+ 
+     /**
+      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
+-     * claim gives it the sheet's next number; voiding it clears its number; settling it fixes its due
+-     * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The sheet is locked
++     * claim gives it the sheet's next number and records who opened it; voiding it clears its number; settling it fixes its due
++     * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The user
++     * who opened a claim cannot settle it. The sheet is locked
+      * first, so moves on one sheet are made one at a time and no number is given twice.
+      */
+     @Transactional
+@@ -86,12 +87,16 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next);
+         }
++        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
++        }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+         Integer number = claim.getNumber();
+         claim.setStatus(next);
+         if (next == ClaimStatus.OPEN) {
+             number = sheet.nextClaimNumber();
+             claim.setNumber(number);
++            claim.setOpenedBy(user);
+         } else if (next == ClaimStatus.VOID) {
+             claim.setNumber(null);
+         } else if (next == ClaimStatus.SETTLED) {
+diff --git a/src/main/resources/db/migration/V11__claim_opened_by.sql b/src/main/resources/db/migration/V11__claim_opened_by.sql
+new file mode 100644
+index 000000000..09b0800bb
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__claim_opened_by.sql
+@@ -0,0 +1,3 @@
++-- The signed-in name of the user who opened a claim; none while it is a draft. The user who
++-- opened a claim cannot settle it.
++ALTER TABLE claim ADD COLUMN opened_by VARCHAR(100);
