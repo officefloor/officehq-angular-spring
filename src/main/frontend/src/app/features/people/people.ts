@@ -11,6 +11,7 @@ import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateView, Rates, claimDueCe
 import { Sheets } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { PersonClaims } from '../claims/claims';
+import { SheetHeader } from '../header/header';
 import { PeriodsPanel } from '../periods/periods';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary';
 
@@ -36,8 +37,10 @@ function csvField(value: string): string {
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, PeriodsPanel, SummaryPanel],
+  imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel],
   template: `
+    <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
+                [overdueTotal]="money(overdueTotals().cents)" />
     <app-periods [dueTotals]="dueByPeriod()" />
     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()" />
 
