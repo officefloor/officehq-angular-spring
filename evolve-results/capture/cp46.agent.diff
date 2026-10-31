@@ -1,0 +1,159 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 28f0430be..eca01522a 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -160,6 +160,11 @@ export class Claims {
+     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/approve`, {});
+   }
+ 
++  /** A steward re-settles a SETTLED claim: its due fixed again as it would be today as an open, unbound claim. */
++  resettle(sheetId: string, id: number): Observable<ClaimView> {
++    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/resettle`, {});
++  }
++
+   /** A steward rejects a PENDING claim with a reason: it is OPEN again. */
+   reject(sheetId: string, id: number, reason: string): Observable<ClaimView> {
+     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/reject`, { reason });
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 618aeddd5..1607365f7 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -63,6 +63,8 @@ const NO_RATES: readonly RateView[] = [];
+                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+           <button type="button" data-testid="claim-approve" (click)="approve(c)"
+                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
++          <button type="button" data-testid="claim-resettle" (click)="resettle(c)"
++                  [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
+           <label [for]="'claim-reject-reason-' + c.id">Reason to reject</label>
+           <input [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" autocomplete="off"
+                  [value]="rejectReasons()[c.id] ?? ''" (input)="reasonChanged(c, $any($event.target).value)" />
+@@ -200,6 +202,23 @@ export class PersonClaims {
+     });
+   }
+ 
++  protected resettle(c: ClaimView): void {
++    this.claimError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.api.resettle(sheet.id, c.id).subscribe({
++      next: (saved) => this.saved.emit(saved),
++      error: (err: unknown) => this.claimError.set({
++        id: c.id,
++        message: err instanceof HttpErrorResponse && err.status === 403
++          ? 'Only a steward can re-settle a claim.'
++          : err instanceof HttpErrorResponse && err.status === 423
++            ? 'This claim is dated inside a closed period.'
++            : `A ${c.status} claim cannot be re-settled; only a SETTLED one can.`,
++      }),
++    });
++  }
++
+   protected reasonChanged(c: ClaimView, reason: string): void {
+     this.rejectReasons.update((reasons) => ({ ...reasons, [c.id]: reason }));
+     if (this.claimError()?.id === c.id) this.claimError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 6eefc337c..864e2be2b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -154,6 +154,14 @@ public class ClaimController {
+         return ClaimView.of(claims.reject(sheetId, user, id, request.reason()));
+     }
+ 
++    @PutMapping("/claims/{id}/resettle")
++    public ClaimView resettle(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(claims.resettle(sheetId, user, id));
++    }
++
+     @PutMapping("/claims/{id}/person")
+     public ClaimView reassign(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e5c6105da..00d0376f4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -236,6 +236,38 @@ public class ClaimService {
+         return changed;
+     }
+ 
++    /** A steward re-settles a SETTLED claim: its due is fixed again at the figure it would have today as an open
++     *  claim bound by no statement (its live figure at today's rates, grades and floor, with the late charge it
++     *  would have gained by today on top), and its status log gains a SETTLED line. Refused for a clerk, for a
++     *  claim that is not SETTLED and for one dated inside a closed period. */
++    @Transactional
++    public Claim resettle(String sheetId, String user, long id) {
++        sheets.load(sheetId, user);
++        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
++        refuseIfClosed(sheetId, claim.getDate());
++        if (claim.getStatus() != ClaimStatus.SETTLED) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be re-settled; only a SETTLED one can");
++        }
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-settles a claim");
++        }
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
++        BigDecimal live = liveNow(sheet, claim, person);
++        BigDecimal due = live == null ? null : live.add(lateChargeAsOpen(claim, live, sheet));
++        Rollup.Figures before = rollup.of(sheetId);
++        String old = dueText(claim);
++        claim.setSettledDue(due);
++        claim.logStatus(user, sheet.getToday(), due);
++        Claim changed = claims.saveAndFlush(claim);
++        audit.recordOnCommit(entry("CLAIM_RESETTLED", user, person, changed, changed.getNumber())
++                + " old=" + old + " new=" + dueText(changed));
++        rollup.recordChanges(sheetId, user, before);
++        return changed;
++    }
++
+     /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
+      *  loses any figure a statement bound it to (it is live again until its new person's next statement), and is
+      *  listed as its new person's newest claim. Refused for a clerk, for a SETTLED or VOID claim, for a move to the
+@@ -292,15 +324,21 @@ public class ClaimService {
+     /** The due a claim would be settled at now: its bound figure, else its live one, with the late charge it has
+      *  gained on top; null when it has no figure. */
+     private BigDecimal dueNow(Sheet sheet, Claim claim, Person person) {
++        BigDecimal live = liveNow(sheet, claim, person);
++        // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
++        BigDecimal figure = claim.isBound() ? claim.getBoundDue() : live;
++        return figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
++    }
++
++    /** A claim's live figure as rates, grades and the floor are now, bound by no statement; null when its grade has
++     *  no rate in force on its date. */
++    private BigDecimal liveNow(Sheet sheet, Claim claim, Person person) {
+         String sheetId = sheet.getId();
+-        BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
++        return Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
+                 .map(Rate::getRate)
+                 .map(rate -> liveFigure(claim, rate, sheet.getFloor(), sheet.roundingFor(roundingDate(claim,
+                         claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, claim.getPersonId())))))
+                 .orElse(null);
+-        // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
+-        BigDecimal figure = claim.isBound() ? claim.getBoundDue() : live;
+-        return figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
+     }
+ 
+     /** The due a claim shows as it is now: the due fixed when it was settled, else the one it would be settled at. */
+@@ -399,7 +437,16 @@ public class ClaimService {
+      *  it has no figure, or it is a correction. */
+     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
+         BigDecimal none = BigDecimal.ZERO.setScale(2);
+-        if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
++        if (!claim.getStatus().isOpen()) {
++            return none;
++        }
++        return lateChargeAsOpen(claim, figure, sheet);
++    }
++
++    /** The late charge a claim would have gained on its figure by the sheet's today were it still open. */
++    private static BigDecimal lateChargeAsOpen(Claim claim, BigDecimal figure, Sheet sheet) {
++        BigDecimal none = BigDecimal.ZERO.setScale(2);
++        if (figure == null || claim.isCorrection()) {
+             return none;
+         }
+         long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / 30;
