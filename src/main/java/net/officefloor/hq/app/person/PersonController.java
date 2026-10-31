@@ -26,12 +26,13 @@ public class PersonController {
     /** A person as listed: {@code grade} is the one in force on the sheet's today; {@code grades} all those
      *  recorded, in the order they take effect. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
-            boolean retired, LocalDate retiredFrom, boolean held) {
+            boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds) {
 
         public static PersonView of(Person person, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
-                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(HoldView::of).toList());
         }
     }
 
@@ -41,6 +42,18 @@ public class PersonController {
         static GradeView of(GradeFrom grade) {
             return new GradeView(grade.getGrade(), grade.getFromDate());
         }
+    }
+
+    /** A hold on a person from {@code from} to {@code to}, both inclusive (a null to-date: no end). */
+    public record HoldView(LocalDate from, LocalDate to) {
+
+        static HoldView of(Hold hold) {
+            return new HoldView(hold.getFromDate(), hold.getToDate());
+        }
+    }
+
+    /** A hold as the form submits it: a missing from-date takes the sheet's today; a missing to-date has no end. */
+    public record HoldForm(LocalDate from, LocalDate to) {
     }
 
     /** A person's values as the form submits them; the name is stored with surrounding spaces removed. */
@@ -104,12 +117,13 @@ public class PersonController {
         return PersonView.of(people.retire(sheetId, user, id, request.from()), people.today(sheetId));
     }
 
-    /** Put the person on hold, or take them off hold when they are held. */
+    /** Put the person on hold over the dates given, alongside any holds they already have. */
     @PostMapping("/{id}/hold")
     public PersonView hold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return PersonView.of(people.toggleHold(sheetId, user, id), people.today(sheetId));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody HoldForm request) {
+        return PersonView.of(people.hold(sheetId, user, id, request.from(), request.to()), people.today(sheetId));
     }
 }

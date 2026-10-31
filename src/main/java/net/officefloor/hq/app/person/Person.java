@@ -15,7 +15,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.claim.Claim;
 
 /** A person on a sheet: a name and a grade (A, B or C), dated: each grade is in force from its from-date. */
 @Entity
@@ -41,9 +41,11 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: while held, their OPEN and PENDING claims count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** The person's holds: their open claims dated within one, and not bound by a statement, count in no live
+     *  total. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private List<Hold> holds = new ArrayList<>();
 
     /** Raised on every save; an edit made from an older version is refused. */
     @Version
@@ -113,17 +115,34 @@ public class Person {
         return retiredFrom != null;
     }
 
+    /** Whether the person has any hold, whatever its dates. */
     public boolean isHeld() {
-        return held;
+        return !holds.isEmpty();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** The holds recorded, in the order they start. */
+    public List<Hold> getHolds() {
+        return holds.stream().sorted(Hold.BY_FROM).toList();
     }
 
-    /** Whether a claim of this person in {@code status} counts in the live totals: while held, only SETTLED ones do (not OPEN or PENDING ones). */
-    public boolean counts(ClaimStatus status) {
-        return held ? status == ClaimStatus.SETTLED : status.counts();
+    public void addHold(Hold hold) {
+        holds.add(hold);
+    }
+
+    /** Whether a claim of this person counts in the live totals: an OPEN or PENDING one dated within a hold does
+     *  not, unless a statement binds it. */
+    public boolean counts(Claim claim) {
+        return claim.getStatus().counts() && (claim.isStated() || !heldOn(claim));
+    }
+
+    /** Whether a claim of this person counts when no statement binds it, as a new statement finds it. */
+    public boolean countsUnbound(Claim claim) {
+        return claim.getStatus().counts() && !heldOn(claim);
+    }
+
+    /** Whether the claim is open and dated within one of the person's holds. */
+    private boolean heldOn(Claim claim) {
+        return claim.getStatus().isOpen() && holds.stream().anyMatch(h -> h.covers(claim.getDate()));
     }
 
     /** Whether a claim dated {@code date} is refused: one dated after the retirement date. */

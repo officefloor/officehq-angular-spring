@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, isOverdue, money, roundingDate } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWithHolds, isOverdue, money, roundingDate } from '../../core/claims';
 import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
@@ -118,8 +118,21 @@ function csvField(value: string): string {
             — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
             from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
             — on hold <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
-            <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)" [disabled]="holding() === p.id"
-                    [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
+            @if (p.holds.length > 0) {
+              <ul [attr.aria-label]="'Holds of ' + p.name">
+                @for (h of p.holds; track $index) {
+                  <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'no end' }}</li>
+                }
+              </ul>
+            }
+            <label [attr.for]="'person-hold-from-' + p.id">Hold from</label>
+            <input [id]="'person-hold-from-' + p.id" type="date" data-testid="person-hold-from" #holdFrom
+                   (input)="clearPersonError(p.id)" />
+            <label [attr.for]="'person-hold-to-' + p.id">to</label>
+            <input [id]="'person-hold-to-' + p.id" type="date" data-testid="person-hold-to" #holdTo
+                   (input)="clearPersonError(p.id)" />
+            <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
+                    [disabled]="holding() === p.id" [attr.aria-label]="'Hold ' + p.name">Hold</button>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
             <button type="button" data-testid="person-statement" (click)="takeStatement(p)" [disabled]="stating() === p.id"
@@ -146,7 +159,7 @@ function csvField(value: string): string {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.ratesByGrade()" [grades]="p"
-                               [periods]="periods.list()" [held]="p.held" [others]="othersOf(p.id)"
+                               [periods]="periods.list()" [holds]="p.holds" [others]="othersOf(p.id)"
                                [selected]="selectedClaims()" (selectToggled)="toggleSelected($event)"
                                (saved)="claimSaved($event)" />
           </li>
@@ -173,7 +186,7 @@ export class PeopleList {
   );
   /** The person being retired, so a second press waits for the first. */
   protected readonly retiring = signal<number | null>(null);
-  /** The person being held or released, so a second press waits for the first. */
+  /** The person a hold is being added to, so a second press waits for the first. */
   protected readonly holding = signal<number | null>(null);
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
@@ -212,10 +225,11 @@ export class PeopleList {
     const people = this.people();
     return new Map(people.map((p) => [p.id, people.filter((q) => q.id !== p.id)]));
   });
-  /** Whether each claim counts in the live totals: a held person's OPEN claims do not. */
+  /** Whether each claim counts in the live totals: a person's open claims dated within one of their holds,
+   *  and not bound by a statement, do not. */
   private readonly countsNow = computed(() => {
-    const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
-    return (c: ClaimView) => countsWhile(held.has(c.personId))(c);
+    const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds)]));
+    return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([]))(c);
   });
   protected readonly claimedTotal = computed(() =>
     money(this.claims().filter(this.countsNow()).reduce((sum, c) => sum + cents(c.amount), 0)),
@@ -228,7 +242,7 @@ export class PeopleList {
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
-      const counting = this.claimsOf(p.id).filter(countsWhile(p.held));
+      const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds));
       const grades = [this.gradeToday(p), ...counting.map((c) => gradeOn(p, c.date))];
       if (!grades.some((g) => today.has(g)) && !counting.some((c) => c.settledDue !== null || c.statedDue !== null)) {
         byPerson.set(p.id, null);
@@ -249,7 +263,7 @@ export class PeopleList {
     const byPerson = new Map<number, Overdue>();
     for (const p of this.people()) {
       const overdue = sheet
-        ? this.claimsOf(p.id).filter((c) => countsWhile(p.held)(c) && isOverdue(c, sheet.today))
+        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds)(c) && isOverdue(c, sheet.today))
         : NO_CLAIMS;
       byPerson.set(p.id, {
         count: overdue.length,
@@ -493,24 +507,29 @@ export class PeopleList {
     });
   }
 
-  /** Put the person on hold, or take them off hold when held. */
-  protected toggleHold(p: PersonView): void {
+  /** Put the person on hold over the dates given: a blank from-date takes the sheet's today, a blank to-date has no end. */
+  protected hold(p: PersonView, from: string, to: string): void {
     if (this.holding() === p.id) return;
     this.personError.set(null);
     this.patronError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
     this.holding.set(p.id);
-    this.api.toggleHold(sheet.id, p.id).subscribe({
+    this.api.hold(sheet.id, p.id, from === '' ? null : from, to === '' ? null : to).subscribe({
       next: (saved) => {
         this.holding.set(null);
         this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
       },
       error: () => {
         this.holding.set(null);
-        this.personError.set({ id: p.id, message: 'Could not ' + (p.held ? 'release ' : 'hold ') + p.name + '.' });
+        this.personError.set({ id: p.id, message: 'Could not hold ' + p.name + ' over those dates.' });
       },
     });
+  }
+
+  /** Clear the error shown on a person's row once its form is changed. */
+  protected clearPersonError(id: number): void {
+    if (this.personError()?.id === id) this.personError.set(null);
   }
 
   protected toggleSelected({ id, selected }: { id: number; selected: boolean }): void {

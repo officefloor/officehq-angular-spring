@@ -12,6 +12,12 @@ export interface GradeFrom {
   from: string | null;
 }
 
+/** A hold on a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; a null to-date has no end. */
+export interface HoldView {
+  from: string;
+  to: string | null;
+}
+
 export interface PersonView {
   id: number;
   name: string;
@@ -25,8 +31,11 @@ export interface PersonView {
   retired: boolean;
   /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
   retiredFrom: string | null;
-  /** On hold: their OPEN claims count in no live total; their SETTLED ones still do. */
+  /** Whether the person has any hold, whatever its dates. */
   held: boolean;
+  /** The person's holds, in the order they start: their open claims dated within one, and not bound by a
+   *  statement, count in no live total. */
+  holds: HoldView[];
 }
 
 export interface PersonForm {
@@ -73,9 +82,9 @@ export class People {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/retire`, { from });
   }
 
-  /** Put the person on hold, or take them off hold when held. */
-  toggleHold(sheetId: string, id: number): Observable<PersonView> {
-    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/hold`, {});
+  /** Put the person on hold from `from` (null takes the sheet's today) to `to` (null: no end). */
+  hold(sheetId: string, id: number, from: string | null, to: string | null): Observable<PersonView> {
+    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/hold`, { from, to });
   }
 
   private base(sheetId: string): string {

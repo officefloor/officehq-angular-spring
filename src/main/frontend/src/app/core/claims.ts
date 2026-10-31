@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { PersonView } from './people';
+import { HoldView, PersonView } from './people';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID. A clerk settling a
  *  claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects (OPEN again). */
@@ -53,9 +53,14 @@ export function counts(c: ClaimView): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
 }
 
-/** Whether the claim counts in the live totals for a person held or not: while held, only SETTLED ones do. */
-export function countsWhile(held: boolean): (c: ClaimView) => boolean {
-  return held ? (c) => c.status === 'SETTLED' : counts;
+/** Whether the claim counts in the live totals for a person with these holds: an OPEN or PENDING one dated
+ *  within a hold does not, unless a statement binds it. */
+export function countsWithHolds(holds: readonly HoldView[]): (c: ClaimView) => boolean {
+  return (c) =>
+    counts(c) &&
+    (c.stated ||
+      (c.status !== 'OPEN' && c.status !== 'PENDING') ||
+      !holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)));
 }
 
 /** The date (yyyy-mm-dd) that decides how a claim's live figures round: its own, or for a correction the date

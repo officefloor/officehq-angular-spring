@@ -2,8 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, isOverdue, money, roundingDate } from '../../core/claims';
-import { Grade, PersonView, gradeOn } from '../../core/people';
+import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isOverdue, money, roundingDate } from '../../core/claims';
+import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -116,15 +116,15 @@ export class PersonClaims {
   readonly periods = input.required<readonly PeriodView[]>();
   /** The other people on the sheet a claim can be moved to. */
   readonly others = input<readonly Pick<PersonView, 'id' | 'name'>[]>([]);
-  /** Whether the person is on hold: their OPEN and PENDING claims then count in no total. */
-  readonly held = input(false);
+  /** The person's holds: their open claims dated within one, and not bound by a statement, count in no total. */
+  readonly holds = input<readonly HoldView[]>([]);
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input<ReadonlySet<number>>(new Set());
   readonly saved = output<ClaimView>();
   readonly selectToggled = output<{ id: number; selected: boolean }>();
 
   protected readonly notAvailable = NOT_AVAILABLE;
-  protected readonly claimed = computed(() => money(this.claims().filter(countsWhile(this.held())).reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds())).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);

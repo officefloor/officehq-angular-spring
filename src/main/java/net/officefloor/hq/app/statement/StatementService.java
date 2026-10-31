@@ -92,7 +92,7 @@ public class StatementService {
         boolean anyFixed = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!person.counts(claim.getStatus())) {
+            if (!person.countsUnbound(claim)) {
                 claim.unbind();
                 continue;
             }

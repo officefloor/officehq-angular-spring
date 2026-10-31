@@ -97,17 +97,22 @@ public class PersonService {
         return retired;
     }
 
-    /** Put the person on hold, or release them when held; the live totals move with it. */
+    /** Put the person on hold from {@code from} (null: the sheet's today) to {@code to} (null: no end), alongside
+     *  any holds they have already; the live totals move with it. A to-date before the from-date is refused. */
     @Transactional
-    public Person toggleHold(String sheetId, String user, long id) {
-        sheets.load(sheetId, user);
+    public Person hold(String sheetId, String user, long id, LocalDate from, LocalDate to) {
+        LocalDate today = sheets.load(sheetId, user).getToday();
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        LocalDate start = from != null ? from : today;
+        if (to != null && to.isBefore(start)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts");
+        }
         Rollup.Figures before = rollup.of(sheetId);
-        person.setHeld(!person.isHeld());
+        person.addHold(new Hold(start, to));
         Person saved = save(person);
-        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
-                + " by=" + user + " name=" + saved.getName());
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " from=" + start);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

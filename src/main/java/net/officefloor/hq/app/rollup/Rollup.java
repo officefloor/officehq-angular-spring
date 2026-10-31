@@ -64,7 +64,7 @@ public class Rollup {
         BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counting = sheetClaims.stream()
-                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c.getStatus()))
+                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c))
                     .toList();
             BigDecimal claimed = counting.stream().map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -88,7 +88,7 @@ public class Rollup {
         return new Figures(byPerson, claimedTotal.toPlainString(), dueTotal.toPlainString());
     }
 
-    /** The due-total of the claims that count (a held person's OPEN ones do not) dated from {@code from} to {@code to} inclusive, as the
+    /** The due-total of the claims that count (a held person's open ones dated within a hold and not stated do not) dated from {@code from} to {@code to} inclusive, as the
      *  screen shows a period's: each claim's due, none counting as 0. */
     public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
         List<Rate> sheetRates = rates.findBySheetId(sheetId);
@@ -99,7 +99,7 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = personOf.get(claim.getPersonId());
-            if (person == null || !person.counts(claim.getStatus()) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            if (person == null || !person.counts(claim) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
             BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet, sheetClaims);
