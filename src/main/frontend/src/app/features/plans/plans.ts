@@ -321,7 +321,7 @@ export class PersonPlans {
 
   /** The plan's next dates after the sheet's today, comma and space separated. */
   protected nextDates(plan: Plan): string {
-    const today = this.session.today();
+    const today = this.session.shownDay();
     return today ? nextPlanDates(plan, today).join(', ') : '';
   }
 

@@ -68,6 +68,19 @@ import { People } from '../people/people';
             <button type="submit" data-testid="asof-set">Set as of</button>
             <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
           </form>
+          <form (submit)="setPreview($event)" aria-label="Preview date">
+            <p>Preview <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></p>
+            <label for="preview-date">Preview the sheet as if today were</label>
+            <input
+              id="preview-date"
+              type="date"
+              data-testid="preview-date"
+              [value]="previewInput()"
+              (input)="previewInput.set(value($event)); sheetError.set('')"
+            />
+            <button type="submit" data-testid="preview-set">Set preview</button>
+            <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
+          </form>
           <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
           <p>
             Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
@@ -112,6 +125,7 @@ export class Home {
   protected readonly sheetError = signal('');
   protected readonly todayInput = signal('');
   protected readonly asOfInput = signal('');
+  protected readonly previewInput = signal('');
   protected readonly cloneInput = signal('');
   protected readonly locales = LOCALES;
   /** The locale chosen in the select; it follows the user's saved locale until changed. */
@@ -218,6 +232,22 @@ export class Home {
     } catch {
       this.sheetError.set('Could not show the sheet as of that date.');
     }
+  }
+
+  protected setPreview(e: Event): void {
+    e.preventDefault();
+    this.sheetError.set('');
+    const date = this.previewInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.sheetError.set('Enter a date to preview the sheet as.');
+      return;
+    }
+    this.session.setPreview(date);
+  }
+
+  protected clearPreview(): void {
+    this.sheetError.set('');
+    this.session.setPreview(null);
   }
 
   protected async saveToday(e: Event): Promise<void> {

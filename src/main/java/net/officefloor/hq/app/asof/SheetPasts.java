@@ -137,6 +137,28 @@ public class SheetPasts {
         }
     }
 
+    /**
+     * Run the read with the sheet's current records and the date as its today; nothing the read does is kept,
+     * and nothing a change of today does (snapshots, scores, closing) happens.
+     */
+    public <T> T preview(String sheetId, LocalDate date, Supplier<T> read) {
+        ReentrantLock lock = shown.computeIfAbsent(sheetId, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return rolledBack.execute(status -> {
+                status.setRollbackOnly();
+                // the sheet's lock first, as every change takes it
+                if (!jdbc.queryForList("SELECT today FROM sheet WHERE id = ? FOR UPDATE", LocalDate.class, sheetId)
+                        .isEmpty()) {
+                    jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", date, sheetId);
+                }
+                return read.get();
+            });
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private void put(String sheetId, LocalDate date) {
         // take the sheet's lock first, as every change does, so a change under way is waited for, not deadlocked on
         List<LocalDate> today = jdbc.queryForList("SELECT today FROM sheet WHERE id = ? FOR UPDATE", LocalDate.class,

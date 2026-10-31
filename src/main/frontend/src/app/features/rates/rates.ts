@@ -213,10 +213,10 @@ export class Rates {
    * Per grade, the rate in force on the sheet's today: the one with the latest from-date on or before it,
    * unless its to-date is before today (it has ended); with none, the parent sheet's, then its parent's.
    */
-  protected readonly current = computed<Record<string, string>>(() => this.inForceOn(this.session.today() ?? ''));
+  protected readonly current = computed<Record<string, string>>(() => this.inForceOn(this.session.shownDay() ?? ''));
   /** Each month (yyyy-mm) of the sheet's today's calendar year, with the rates in force on its first day, as `current` is found. */
   protected readonly calendar = computed<{ month: string; rates: Record<string, string> }[]>(() => {
-    const year = (this.session.today() ?? '').slice(0, 4);
+    const year = (this.session.shownDay() ?? '').slice(0, 4);
     if (!/^\d{4}$/.test(year)) return [];
     return Array.from({ length: 12 }, (_, i) => {
       const month = `${year}-${String(i + 1).padStart(2, '0')}`;

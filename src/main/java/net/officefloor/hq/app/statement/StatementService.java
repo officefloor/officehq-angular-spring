@@ -96,6 +96,7 @@ public class StatementService {
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         Person then;
         Map<Long, Claim> claimsThen;
+        Map<Long, Dues.Parts> parts;
         if (on.isBefore(table.today())) {
             DayEnds.SheetThen sheetThen = dayEnds.asOf(sheetId, on)
                     .filter(t -> t.people().containsKey(personId))
@@ -104,13 +105,18 @@ public class StatementService {
             then = sheetThen.people().get(personId);
             claimsThen = sheetThen.claimsOf(personId);
             table = sheetThen.table();
+            parts = Person.parts(sheetThen.people().values(),
+                    sheetThen.claims().values().stream().flatMap(c -> c.values().stream()).toList(), table);
         } else {
             then = person;
             claimsThen = new LinkedHashMap<>();
             theirs.forEach(c -> claimsThen.put(c.getId(), c));
+            parts = Person.parts(people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+                    claims.findBySheetIdOrderByIdDesc(sheetId), table);
         }
         Rollup.Figures before = rollup.figures(sheetId);
-        BigDecimal dueTotal = Dues.total(then::gradeOn, List.copyOf(claimsThen.values()), table, then.leaves());
+        BigDecimal dueTotal = Dues.total(then::gradeOn, List.copyOf(claimsThen.values()), table, then.leaves(),
+                parts.getOrDefault(personId, Dues.Parts.NONE));
         int counting = 0;
         for (Claim claim : theirs) {
             Claim stood = claimsThen.get(claim.getId());
