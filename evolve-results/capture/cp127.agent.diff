@@ -1,0 +1,68 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index f029dc8f4..a1205090d 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -2,7 +2,8 @@ import { Component, input } from '@angular/core';
+ import { StatusSummary } from '../summary/summary';
+ 
+ // The sheet's counters, always on show: its people (retired included), its claims per status and
+-// its due-total and overdue-total. Each repeats a figure shown elsewhere and is fed from the same source.
++// its due-total and overdue-total,
++// and the signed-in user's own due-total and overdue-total. Each repeats a figure shown elsewhere and is fed from the same source.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -14,6 +15,8 @@ import { StatusSummary } from '../summary/summary';
+         }
+         <li>Due: <strong data-testid="header-due-total">{{ dueTotal() }}</strong></li>
+         <li>Overdue: <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></li>
++        <li>My due: <strong data-testid="my-due-total">{{ myDueTotal() }}</strong></li>
++        <li>My overdue: <strong data-testid="my-overdue-total">{{ myOverdueTotal() }}</strong></li>
+       </ul>
+     </header>
+   `,
+@@ -23,4 +26,7 @@ export class SheetHeader {
+   readonly statuses = input.required<readonly StatusSummary[]>();
+   readonly dueTotal = input.required<string>();
+   readonly overdueTotal = input.required<string>();
++  /** The signed-in user's own person's due-total and overdue-total; blank when no person has their name. */
++  readonly myDueTotal = input.required<string>();
++  readonly myOverdueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e2f3ad710..03e48ef7a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -11,6 +11,7 @@ import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCe
+ import { Sheets, graceOn } from '../../core/sheet';
+ import { StatementSummary, Statements } from '../../core/statements';
+ import { Watches } from '../../core/watches';
++import { Session } from '../../core/session';
+ import { Consolidated, DescendantFigures, NO_DESCENDANTS } from '../../core/consolidated';
+ import { PersonClaims } from '../claims/claims';
+ import { SheetHeader } from '../header/header';
+@@ -74,7 +75,8 @@ function csvField(value: string): string {
+   imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, PoolsPanel],
+   template: `
+     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
+-                [overdueTotal]="money(overdueTotals().cents)" />
++                [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
++                [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''" />
+     <app-periods [dueTotals]="dueByPeriod()" />
+     <app-pools [people]="people()" />
+     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()"
+@@ -382,6 +384,14 @@ export class PeopleList {
+   private readonly consolidatedApi = inject(Consolidated);
+   protected readonly rates = inject(Rates);
+   protected readonly periods = inject(Periods);
++  private readonly session = inject(Session);
++  /** The person on the sheet with the signed-in user's name, by name or alias as names are compared; null when none. */
++  protected readonly me = computed(() => {
++    const user = this.session.user()?.trim().toLowerCase();
++    if (!user) return null;
++    return this.people().find((p) =>
++      p.name.toLowerCase() === user || (p.aliases ?? []).some((a) => a.toLowerCase() === user)) ?? null;
++  });
+   private readonly pools = inject(Pools);
+ 
+   protected readonly grades = GRADES;
