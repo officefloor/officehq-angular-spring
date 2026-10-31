@@ -1,0 +1,64 @@
+{
+  "checkpoint": 117,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp117_list-positions",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People have a position in the list. Up and down buttons on the row swap the person with the one\nabove or below (PERSON_MOVED name=<name> position=<new position, counting from 1>); the top row\ncannot move up nor the bottom row down (refused with an error on the row). The list, the rollup lines\nand every action that works in list order follow the positions. New people go to the end.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople have a position in the list. Up and down buttons on the row swap the person with the one\nabove or below (PERSON_MOVED name=<name> position=<new position, counting from 1>); the top row\ncannot move up nor the bottom row down (refused with an error on the row). The list, the rollup lines\nand every action that works in list order follow the positions. New people go to the end.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "245dbdfa758248c0760d68bcb2a738629edd2c95",
+  "reset_sha": "",
+  "preagent_sha": "87d9f61b1100a4574d1298db97d268966236d366",
+  "prev_sha": "87d9f61b1100a4574d1298db97d268966236d366",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4021455999999999,
+    "input_tokens": 12,
+    "output_tokens": 1717,
+    "cache_read_tokens": 484935,
+    "cache_creation_tokens": 5618,
+    "num_turns": 5,
+    "duration_ms": 264756,
+    "duration_api_ms": 196128,
+    "model": "claude-opus-5-5",
+    "session_id": "5bffcada-b162-4ef2-a487-f1745f208808",
+    "stop_reason": "success",
+    "result_text": "People now have a position in the list, and each row has Up and Down buttons. All 4 tests in `bin/e2e` pass.\n\n**Stored data**\n- A new migration, `V69__person_position.sql`, adds a `position` column. People already on a sheet are numbered in the order they were added, so existing lists look the same.\n- New people go to the end of the list. A person transferred to another sheet goes to the end of that sheet's list.\n\n**Server**\n- Everything that read people in the order they were added now reads them by position. That covers the list, the rollup lines, pools and sheet snapshots.\n- Bulk open, bulk settle and bulk reassign handle claims in list order. Bulk grade already used the list order, so it follows positions too.\n- The move endpoint is `POST /people/{id}/move` with `{direction: \"up\"|\"down\"}`. It swaps the person with the one next to them and writes `PERSON_MOVED name=<name> position=<n>`, counting from 1.\n- Moving the top person up or the bottom person down is refused with a 409, and nothing is written to the store or the audit file.\n- The sheet is locked during a move, so moves by two users happen one at a time.\n- A move doesn't count as an edit of the person, so someone with that person's editor open can still save.\n\n**Front end**\n- Each row has `person-move-up` and `person-move-down` buttons. A successful move shows the new order; a refused one shows `person-error` on the row.\n- One fix along the way: a bulk grade used to clear the error only on the first selected row. A refused move left an error showing on another selected row, which made the bulk grade look refused. It now clears every row's error when it runs.\n\n**Limitation:** moves count everyone on the sheet, including retired people, who are hidden unless \"show retired\" is on. So if the person just above or below is hidden, pressing the button swaps with that hidden person and nothing visibly changes. The tests don't cover this case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4021455999999999,
+        "num_turns": 5,
+        "duration_ms": 264756,
+        "duration_api_ms": 196128,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp117.agent.jsonl",
+  "agent_diff_file": "cp117.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
