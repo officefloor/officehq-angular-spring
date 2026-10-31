@@ -142,6 +142,14 @@ public class ClaimController {
     public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims selected to be moved together, and the person they are to move to. */
+    public record BulkReassign(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull Long personId) {
+    }
+
+    /** What a bulk move did: how many it moved and refused, and the claims it moved, in the order moved. */
+    public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService claims;
     private final RoleService roles;
     private final SheetService sheets;
@@ -353,5 +361,34 @@ public class ClaimController {
             }
         }
         return new BulkSettleView(settled.size(), refused, settled);
+    }
+
+    /**
+     * Move each selected claim to the person, one at a time in list order (people in the order listed, newest claim
+     * first within a person), by exactly the rules of moving one claim. Each that cannot be moved, or is not on the
+     * sheet, is refused and left as it is.
+     */
+    @PostMapping("/claims/bulk-reassign")
+    public BulkReassignView bulkReassign(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkReassign request) {
+        int selected = (int) request.ids().stream().distinct().count();
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+            // A viewer's bulk action, or one on an archived sheet, goes through with nothing done: every selected
+            // claim is refused.
+            return new BulkReassignView(0, selected, List.of());
+        }
+        List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+        int refused = selected - ordered.size();
+        List<ClaimView> moved = new ArrayList<>();
+        for (long id : ordered) {
+            try {
+                moved.add(ClaimView.of(claims.reassign(sheetId, user, id, request.personId(), true)));
+            } catch (ResponseStatusException refusal) {
+                refused++;
+            }
+        }
+        return new BulkReassignView(moved.size(), refused, moved);
     }
 }

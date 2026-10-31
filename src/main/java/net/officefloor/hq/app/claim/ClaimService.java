@@ -535,6 +535,13 @@ public class ClaimService {
      *  correction the new person has no SETTLED claim of that number for. */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
+        return reassign(sheetId, user, id, toPersonId, false);
+    }
+
+    /** Move a claim as {@link #reassign(String, String, long, long)} does, except that a bulk move also takes a
+     *  claim already of the person it is moved to (it is listed again as that person's newest). */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long id, long toPersonId, boolean bulk) {
         sheets.load(sheetId, user);
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -548,7 +555,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be reassigned");
         }
-        if (claim.getPersonId().equals(to.getId())) {
+        if (!bulk && claim.getPersonId().equals(to.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is already " + to.getName() + "'s");
         }
         refuseIfClosed(sheetId, claim.getDueBy());

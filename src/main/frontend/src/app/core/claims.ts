@@ -207,6 +207,13 @@ export interface BulkSettleView {
   claims: ClaimView[];
 }
 
+/** What a bulk move did: how many it moved and refused, and the claims it moved. */
+export interface BulkReassignView {
+  reassigned: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 /** An amount the form accepts: 0.00 or more, with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
 
@@ -331,6 +338,12 @@ export class Claims {
    *  and left as they are. */
   bulkSettle(sheetId: string, ids: readonly number[]): Observable<BulkSettleView> {
     return this.http.post<BulkSettleView>(`${this.base(sheetId)}/claims/bulk-settle`, { ids });
+  }
+
+  /** Move each of the claims to the person, in list order, as a single move would; the rest are refused and left
+   *  as they are. */
+  bulkReassign(sheetId: string, ids: readonly number[], personId: number): Observable<BulkReassignView> {
+    return this.http.post<BulkReassignView>(`${this.base(sheetId)}/claims/bulk-reassign`, { ids, personId });
   }
 
   private base(sheetId: string): string {

@@ -173,6 +173,25 @@ function csvField(value: string): string {
         }
       </p>
 
+      <p>
+        <label for="bulk-reassign-to">Move selected claims to</label>
+        <select id="bulk-reassign-to" data-testid="bulk-reassign-to"
+                [value]="bulkReassignTo()" (change)="bulkReassignToChanged($any($event.target).value)">
+          <option value="">Choose a person</option>
+          @for (p of listed(); track p.id) {
+            <option [value]="p.id">{{ p.name }}</option>
+          }
+        </select>
+        <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()" [disabled]="bulkReassigning()">Move selected claims</button>
+        @if (bulkReassignResult(); as r) {
+          Moved <span data-testid="bulk-reassigned">{{ r.reassigned }}</span>,
+          refused <span data-testid="bulk-reassign-refused">{{ r.refused }}</span>
+        }
+        @if (bulkReassignError(); as err) {
+          <span role="alert" data-testid="bulk-reassign-error">{{ err }}</span>
+        }
+      </p>
+
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade the selected people">
         <label for="bulk-grade">Grade</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
@@ -308,6 +327,13 @@ export class PeopleList {
   protected readonly bulkSettleError = signal<string | null>(null);
   /** Whether a bulk settle is running, so a second press waits for the first. */
   protected readonly bulkSettling = signal(false);
+  /** The person the selected claims are to move to (an id), or '' before one is chosen. */
+  protected readonly bulkReassignTo = signal('');
+  /** What the last bulk move did, until the button is pressed again. */
+  protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
+  protected readonly bulkReassignError = signal<string | null>(null);
+  /** Whether a bulk move is running, so a second press waits for the first. */
+  protected readonly bulkReassigning = signal(false);
   /** The ids of the people selected for a bulk action. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** How many people the last bulk grade changed; null while one runs or before any. */
@@ -608,6 +634,9 @@ export class PeopleList {
           this.bulkOpenError.set(null);
           this.bulkSettleResult.set(null);
           this.bulkSettleError.set(null);
+          this.bulkReassignTo.set('');
+          this.bulkReassignResult.set(null);
+          this.bulkReassignError.set(null);
           this.statements.set(new Map());
           this.patrons.set([]);
           this.watched.set(new Set());
@@ -959,6 +988,38 @@ export class PeopleList {
       error: () => {
         this.bulkSettling.set(false);
         this.bulkSettleError.set('Could not settle the selected claims.');
+      },
+    });
+  }
+
+  protected bulkReassignToChanged(personId: string): void {
+    this.bulkReassignTo.set(personId);
+    this.bulkReassignError.set(null);
+  }
+
+  /** Move the selected claims to the chosen person together, in list order, each by the rules of moving one; the rest are left as they are. */
+  protected bulkReassign(): void {
+    if (this.bulkReassigning()) return;
+    this.bulkReassignResult.set(null);
+    this.bulkReassignError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const to = Number(this.bulkReassignTo());
+    if (!to) {
+      this.bulkReassignError.set('Choose the person to move the selected claims to.');
+      return;
+    }
+    this.bulkReassigning.set(true);
+    this.claimsApi.bulkReassign(sheet.id, [...this.selectedClaims()], to).subscribe({
+      next: ({ reassigned, refused, claims }) => {
+        this.bulkReassigning.set(false);
+        claims.forEach((c) => this.claimSaved(c));
+        this.selectedClaims.set(new Set());
+        this.bulkReassignResult.set({ reassigned, refused });
+      },
+      error: () => {
+        this.bulkReassigning.set(false);
+        this.bulkReassignError.set('Could not move the selected claims.');
       },
     });
   }
