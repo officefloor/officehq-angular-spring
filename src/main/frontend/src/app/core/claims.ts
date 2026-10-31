@@ -3,8 +3,9 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { PersonView } from './people';
 
-/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/** DRAFT when added, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID. A clerk settling a
+ *  claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects (OPEN again). */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 export interface ClaimView {
   id: number;
@@ -26,16 +27,16 @@ export interface ClaimView {
   /** Whether its person's last statement binds the claim, to `statedDue`. */
   stated: boolean;
   /** The figure the claim had at its person's last statement, while bound by it, with exactly two
-   *  decimals; null when not bound, or if it had no figure then (it then follows the rate). */
+   *  decimals; null when not bound, while PENDING, or if it had no figure then (it then follows the rate). */
   statedDue: string | null;
   /** The number of the SETTLED claim of the same person a correction (a negative amount) corrects; null on
    *  any other claim. */
   corrects: string | null;
 }
 
-/** Only OPEN and SETTLED claims count toward what is claimed and due. */
+/** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due. */
 export function counts(c: ClaimView): boolean {
-  return c.status === 'OPEN' || c.status === 'SETTLED';
+  return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
 }
 
 /** Whether the claim counts in the live totals for a person held or not: while held, only SETTLED ones do. */
@@ -59,9 +60,9 @@ export function dueBy(c: Pick<ClaimView, 'date'>, terms: number): string {
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
-/** Whether a claim is overdue on the sheet's today: OPEN and due by a day before it. */
+/** Whether a claim is overdue on the sheet's today: OPEN or PENDING and due by a day before it. */
 export function isOverdue(c: Pick<ClaimView, 'date' | 'status'>, terms: number, today: string): boolean {
-  return c.status === 'OPEN' && dueBy(c, terms) < today;
+  return (c.status === 'OPEN' || c.status === 'PENDING') && dueBy(c, terms) < today;
 }
 
 /** A claim as the form submits it: a blank date takes the sheet's today. A negative amount is a correction,
@@ -132,6 +133,16 @@ export class Claims {
 
   changeStatus(sheetId: string, id: number, status: ClaimStatus): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/status`, { status });
+  }
+
+  /** A steward approves a PENDING claim: it is SETTLED, its due fixed as it is now. */
+  approve(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/approve`, {});
+  }
+
+  /** A steward rejects a PENDING claim with a reason: it is OPEN again. */
+  reject(sheetId: string, id: number, reason: string): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/reject`, { reason });
   }
 
   /** Open each of the claims that can be opened, numbered in list order; the rest are refused and left as they are. */

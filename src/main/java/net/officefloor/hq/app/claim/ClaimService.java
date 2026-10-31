@@ -137,8 +137,9 @@ public class ClaimService {
      * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
      * at the rate in force on its date of its person's grade in force on that date, as rates are now, with the late charge it has gained
      * added on top, so later rate changes leave it as it is. The user
-     * who opened a claim cannot settle it, and a clerk can settle it only when that due is at or below the sheet's
-     * clerk limit (a claim with no due is within any limit); a steward settles anything. A claim dated inside a closed period cannot move. The sheet is locked
+     * who opened a claim cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
+     * makes it PENDING instead, for a steward to approve or reject (a claim with no due is within any limit); a
+     * steward settles anything. A claim dated inside a closed period cannot move. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
      */
     @Transactional
@@ -156,16 +157,9 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
-        BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
-                .map(Rate::getRate)
-                .map(rate -> liveFigure(claim, rate, sheet.getFloor(), sheet.roundingFor(roundingDate(claim,
-                        claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId())))))
-                .orElse(null);
-        // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
-        BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue() : live;
-        BigDecimal due = figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
-        if (next == ClaimStatus.SETTLED) {
-            refuseOverClerkLimit(sheet, user, due);
+        BigDecimal due = dueNow(sheet, claim, person);
+        if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, due)) {
+            next = ClaimStatus.PENDING;
         }
         Rollup.Figures before = rollup.of(sheetId);
         String number = claim.getNumber();
@@ -180,17 +174,93 @@ public class ClaimService {
         Claim changed = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
+            case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
         String line = entry(event, user, person, changed, number);
         if (next == ClaimStatus.SETTLED) {
-            line += " due=" + (changed.getSettledDue() == null ? "n/a" : changed.getSettledDue().toPlainString());
+            line += " due=" + dueText(changed);
         }
         audit.recordOnCommit(line);
         rollup.recordChanges(sheetId, user, before);
         return changed;
+    }
+
+    /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
+     *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim, for a
+     *  claim that is not PENDING and for one dated inside a closed period. */
+    @Transactional
+    public Claim approve(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = pendingClaim(sheetId, user, id);
+        if (user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot approve it");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        BigDecimal due = dueNow(sheet, claim, person);
+        Rollup.Figures before = rollup.of(sheetId);
+        claim.setStatus(ClaimStatus.SETTLED);
+        claim.setSettledDue(due);
+        Claim changed = claims.saveAndFlush(claim);
+        audit.recordOnCommit(entry("CLAIM_APPROVED", user, person, changed, changed.getNumber())
+                + " due=" + dueText(changed));
+        rollup.recordChanges(sheetId, user, before);
+        return changed;
+    }
+
+    /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by its person's last
+     *  statement if that statement included it. Refused for a clerk, for a claim that is not PENDING and for one
+     *  dated inside a closed period. */
+    @Transactional
+    public Claim reject(String sheetId, String user, long id, String reason) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = pendingClaim(sheetId, user, id);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
+        claim.setStatus(ClaimStatus.OPEN);
+        Claim changed = claims.saveAndFlush(claim);
+        audit.recordOnCommit(entry("CLAIM_REJECTED", user, person, changed, changed.getNumber())
+                + " reason=" + reason.trim());
+        rollup.recordChanges(sheetId, user, before);
+        return changed;
+    }
+
+    /** The PENDING claim a steward approves or rejects; refused for a clerk, a claim in any other status and one
+     *  dated inside a closed period. */
+    private Claim pendingClaim(String sheetId, String user, long id) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim is not waiting for approval");
+        }
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim");
+        }
+        return claim;
+    }
+
+    /** The due a claim would be settled at now: its bound figure, else its live one, with the late charge it has
+     *  gained on top; null when it has no figure. */
+    private BigDecimal dueNow(Sheet sheet, Claim claim, Person person) {
+        String sheetId = sheet.getId();
+        BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
+                .map(Rate::getRate)
+                .map(rate -> liveFigure(claim, rate, sheet.getFloor(), sheet.roundingFor(roundingDate(claim,
+                        claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId())))))
+                .orElse(null);
+        // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
+        BigDecimal figure = claim.getBoundDue() != null ? claim.getBoundDue() : live;
+        return figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
+    }
+
+    private static String dueText(Claim claim) {
+        return claim.getSettledDue() == null ? "n/a" : claim.getSettledDue().toPlainString();
     }
 
     /** The next number for a claim dated on this day, opened now: within its period (<period name>-<n>, or X-<n>
@@ -208,17 +278,14 @@ public class ClaimService {
         return number;
     }
 
-    /** Refuse a clerk settling a claim whose due is above the sheet's clerk limit; a steward settles anything,
-     *  and a claim with no due is within any limit. */
-    private void refuseOverClerkLimit(Sheet sheet, String user, BigDecimal due) {
+    /** Whether a settle by this user must wait for a steward: they are a clerk and the due is above the sheet's
+     *  clerk limit (a claim with no due is within any limit). */
+    private boolean overClerkLimit(Sheet sheet, String user, BigDecimal due) {
         BigDecimal limit = sheet.getClerkLimit();
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
-            return;
+            return false;
         }
-        if (!Role.STEWARD.equals(roles.roleOf(sheet.getId(), user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "A clerk cannot settle a claim whose due is above the clerk limit of " + limit.toPlainString());
-        }
+        return !Role.STEWARD.equals(roles.roleOf(sheet.getId(), user));
     }
 
     /** Refuse a correction (a negative amount) that does not name, by number, a SETTLED claim of the same person,
@@ -278,12 +345,12 @@ public class ClaimService {
                 .map(Claim::getDate).findFirst().orElse(claim.getDate());
     }
 
-    /** The late charge an OPEN claim has gained on its figure by the sheet's today: the sheet's late percent of
+    /** The late charge an OPEN or PENDING claim has gained on its figure by the sheet's today: the sheet's late percent of
      *  the figure for every full 30 days past the day it is due by, rounded as the claim rounds; 0.00 when not overdue,
      *  it has no figure, or it is a correction. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (figure == null || claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
+        if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
             return none;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday()) / 30;

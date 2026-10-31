@@ -96,7 +96,7 @@ public class StatementService {
                 claim.unbind();
                 continue;
             }
-            BigDecimal fixed = claim.getSettledDue() != null ? claim.getSettledDue() : claim.getStatedDue();
+            BigDecimal fixed = claim.getSettledDue() != null ? claim.getSettledDue() : claim.getBoundDue();
             BigDecimal figure = fixed != null ? fixed
                     : Rate.inForceOn(ratesOf(sheetRates, person.gradeOn(claim.getDate())), claim.getDate())
                             .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), sheet.getFloor(),

@@ -167,6 +167,12 @@ public class Claim {
         return statedDue;
     }
 
+    /** The figure a statement binds the claim to now: its stated one, except while PENDING, when no statement
+     *  binds it and it follows its live figure. */
+    public BigDecimal getBoundDue() {
+        return status == ClaimStatus.PENDING ? null : statedDue;
+    }
+
     /** Bind the claim to the figure it has at a statement. */
     public void bind(BigDecimal figure) {
         this.stated = true;

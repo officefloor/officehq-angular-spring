@@ -31,7 +31,7 @@ public class ClaimController {
      * A claim as the screen shows it; the amount is given with exactly two decimals, as is the due
      * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
      * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
-     * statedDue (null if it had no figure then); corrects is the number of the claim a correction corrects (null
+     * statedDue (null if it had no figure then, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
      * on any other claim).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
@@ -42,7 +42,7 @@ public class ClaimController {
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
-                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(), claim.getCorrects());
+                    claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects());
         }
     }
 
@@ -57,6 +57,10 @@ public class ClaimController {
 
     /** The status a claim is to move to. */
     public record StatusChange(@NotNull ClaimStatus status) {
+    }
+
+    /** Why a steward rejects a PENDING claim. */
+    public record Rejection(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {
     }
 
     /** The claims selected to be opened together. */
@@ -106,6 +110,23 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody StatusChange request) {
         return ClaimView.of(claims.changeStatus(sheetId, user, id, request.status()));
+    }
+
+    @PutMapping("/claims/{id}/approve")
+    public ClaimView approve(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(claims.approve(sheetId, user, id));
+    }
+
+    @PutMapping("/claims/{id}/reject")
+    public ClaimView reject(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody Rejection request) {
+        return ClaimView.of(claims.reject(sheetId, user, id, request.reason()));
     }
 
     /**

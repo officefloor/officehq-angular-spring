@@ -14,6 +14,9 @@ const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 /** A policy date the form accepts: yyyy-mm-dd. */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/** A field of the settings form. */
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom';
+
 /** Whether a yyyy-mm-dd text is a real calendar day. */
 function isDate(value: string): boolean {
   const [y, m, d] = value.split('-').map(Number);
@@ -37,22 +40,22 @@ function isDate(value: string): boolean {
 
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
-        <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit"
+        <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" (focus)="lastFocused = 'clerkLimit'"
                inputmode="decimal" autocomplete="off" />
         <label for="setting-floor">Floor (a claim's due is at least this)</label>
-        <input id="setting-floor" data-testid="setting-floor" formControlName="floor"
+        <input id="setting-floor" data-testid="setting-floor" formControlName="floor" (focus)="lastFocused = 'floor'"
                inputmode="decimal" autocomplete="off" />
         <label for="setting-terms">Terms (days a claim is due by after its date)</label>
-        <input id="setting-terms" data-testid="setting-terms" formControlName="terms"
+        <input id="setting-terms" data-testid="setting-terms" formControlName="terms" (focus)="lastFocused = 'terms'"
                inputmode="numeric" autocomplete="off" />
         <label for="setting-late-pct">Late percent (added to an overdue claim's due for every full 30 days)</label>
-        <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct"
+        <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" (focus)="lastFocused = 'latePct'"
                inputmode="decimal" autocomplete="off" />
         <label for="setting-policy-date">Policy date (a claim dated before it rounds half up, on or after it half to even; blank: today)</label>
-        <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate"
+        <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" (focus)="lastFocused = 'policyDate'"
                placeholder="yyyy-mm-dd" autocomplete="off" />
         <label for="setting-period-numbering-from">Period numbering from (from this day, a claim opened is numbered within its period; blank: off)</label>
-        <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom"
+        <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom" (focus)="lastFocused = 'periodNumberingFrom'"
                placeholder="yyyy-mm-dd" autocomplete="off" />
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError(); as err) {
@@ -99,6 +102,9 @@ export class SettingsPanel {
   protected readonly savingSettings = signal(false);
   protected readonly savingRole = signal(false);
 
+  /** The setting field last focused: with no setting changed, it is the one saved as it is. */
+  protected lastFocused: SettingField = 'clerkLimit';
+
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
@@ -143,13 +149,16 @@ export class SettingsPanel {
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
-    // Only the settings changed in the form are saved; with none changed, the clerk limit is saved as it is.
-    const saveFloor = floor.dirty;
-    const saveTerms = terms.dirty;
-    const saveLatePct = latePct.dirty;
-    const savePolicyDate = policyDate.dirty;
-    const savePeriodNumberingFrom = periodNumberingFrom.dirty;
-    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms && !saveLatePct && !savePolicyDate && !savePeriodNumberingFrom);
+    // Only the settings changed in the form are saved; with none changed, the field last focused (else the clerk
+    // limit) is saved as it is.
+    const unchanged = !this.settingsForm.dirty;
+    const isSaved = (field: SettingField) => this.settingsForm.controls[field].dirty || (unchanged && this.lastFocused === field);
+    const saveFloor = isSaved('floor');
+    const saveTerms = isSaved('terms');
+    const saveLatePct = isSaved('latePct');
+    const savePolicyDate = isSaved('policyDate');
+    const savePeriodNumberingFrom = isSaved('periodNumberingFrom');
+    const saveLimit = isSaved('clerkLimit');
     if (saveLimit && limit !== '' && !LIMIT_PATTERN.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;

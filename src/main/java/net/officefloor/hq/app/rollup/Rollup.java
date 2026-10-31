@@ -71,7 +71,7 @@ public class Rollup {
             claimedTotal = claimedTotal.add(claimed);
             // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade
             // any of their claims is at, and no fixed figure, the person has no due-total.
-            boolean anyFixed = counting.stream().anyMatch(c -> c.getSettledDue() != null || c.getStatedDue() != null);
+            boolean anyFixed = counting.stream().anyMatch(c -> c.getSettledDue() != null || c.getBoundDue() != null);
             boolean anyRate = today != null && Stream.concat(Stream.of(person.gradeOn(today)),
                             counting.stream().map(c -> person.gradeOn(c.getDate())))
                     .anyMatch(grade -> Rate.inForceOn(ratesOf(sheetRates, grade), today).isPresent());
@@ -135,7 +135,7 @@ public class Rollup {
         return sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList();
     }
 
-    /** A claim's due: its settled figure, else its stated one, else its amount at the rate in force on its date of
+    /** A claim's due: its settled figure, else its stated one (none while PENDING), else its amount at the rate in force on its date of
      *  its person's grade in force on that date, rounded as the claim rounds (by the sheet's policy date), raised to the sheet's floor unless it is a correction; an overdue claim's late charge is added on top of the figure. */
     private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Sheet sheet, List<Claim> sheetClaims) {
         if (claim.getSettledDue() != null) {
@@ -144,7 +144,7 @@ public class Rollup {
         BigDecimal floor = sheet == null ? null : sheet.getFloor();
         RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN
                 : sheet.roundingFor(ClaimService.roundingDate(claim, sheetClaims));
-        BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue()
+        BigDecimal figure = claim.getBoundDue() != null ? claim.getBoundDue()
                 : Rate.inForceOn(gradeRates, claim.getDate())
                         .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), floor, rounding))
                         .orElse(null);

@@ -41,7 +41,7 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: while held, their OPEN claims count in no live total. */
+    /** Whether the person is on hold: while held, their OPEN and PENDING claims count in no live total. */
     @Column(name = "held", nullable = false)
     private boolean held;
 
@@ -121,7 +121,7 @@ public class Person {
         this.held = held;
     }
 
-    /** Whether a claim of this person in {@code status} counts in the live totals: while held, only SETTLED ones do. */
+    /** Whether a claim of this person in {@code status} counts in the live totals: while held, only SETTLED ones do (not OPEN or PENDING ones). */
     public boolean counts(ClaimStatus status) {
         return held ? status == ClaimStatus.SETTLED : status.counts();
     }

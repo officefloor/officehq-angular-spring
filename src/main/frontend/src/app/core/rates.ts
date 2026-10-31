@@ -62,7 +62,7 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
   return date < (sheet.policyDate ?? sheet.today);
 }
 
-/** The late charge an OPEN claim has gained on its figure (in whole cents) by the sheet's today: the
+/** The late charge an OPEN or PENDING claim has gained on its figure (in whole cents) by the sheet's today: the
  *  late percent of the figure for every full 30 days past the day it is due by, rounded as the claim rounds.
  *  A correction (a negative amount) gains none. */
 export function lateChargeCents(

@@ -61,6 +61,13 @@ const NO_RATES: readonly RateView[] = [];
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+          <button type="button" data-testid="claim-approve" (click)="approve(c)"
+                  [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <label [for]="'claim-reject-reason-' + c.id">Reason to reject</label>
+          <input [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" autocomplete="off"
+                 [value]="rejectReasons()[c.id] ?? ''" (input)="reasonChanged(c, $any($event.target).value)" />
+          <button type="button" data-testid="claim-reject" (click)="reject(c)"
+                  [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'VOID')"
                   [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           @if (editingId() === c.id) {
@@ -92,7 +99,7 @@ export class PersonClaims {
   readonly grades = input.required<Pick<PersonView, 'grade' | 'grades'>>();
   /** The sheet's periods, by from-date. */
   readonly periods = input.required<readonly PeriodView[]>();
-  /** Whether the person is on hold: their OPEN claims then count in no total. */
+  /** Whether the person is on hold: their OPEN and PENDING claims then count in no total. */
   readonly held = input(false);
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input<ReadonlySet<number>>(new Set());
@@ -105,6 +112,8 @@ export class PersonClaims {
   protected readonly saving = signal(false);
   /** The error of the last action taken on a claim's row, until the next action on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  /** The reason typed to reject each PENDING claim, by id. */
+  protected readonly rejectReasons = signal<Readonly<Record<number, string>>>({});
 
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
@@ -146,14 +155,66 @@ export class PersonClaims {
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 403
-          ? c.openedBy === this.session.user()
-            ? 'You opened this claim, so someone else must settle it.'
-            : 'Its due is above the clerk limit, so a steward must settle it.'
+          ? 'You opened this claim, so someone else must settle it.'
           : err instanceof HttpErrorResponse && err.status === 423
             ? 'This claim is dated inside a closed period.'
             : `A ${c.status} claim cannot become ${status}.`,
       }),
     });
+  }
+
+  protected approve(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.api.approve(sheet.id, c.id).subscribe({
+      next: (saved) => this.saved.emit(saved),
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? c.openedBy === this.session.user()
+            ? 'You opened this claim, so another steward must approve it.'
+            : 'Only a steward can approve a claim.'
+          : this.refusal(err, c, 'approved'),
+      }),
+    });
+  }
+
+  protected reasonChanged(c: ClaimView, reason: string): void {
+    this.rejectReasons.update((reasons) => ({ ...reasons, [c.id]: reason }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected reject(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const reason = (this.rejectReasons()[c.id] ?? '').trim().replace(/\s+/g, ' ');
+    if (reason === '') {
+      this.claimError.set({ id: c.id, message: 'Type why the claim is rejected.' });
+      return;
+    }
+    this.api.reject(sheet.id, c.id, reason).subscribe({
+      next: (saved) => {
+        this.rejectReasons.update((reasons) => ({ ...reasons, [c.id]: '' }));
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can reject a claim.'
+          : this.refusal(err, c, 'rejected'),
+      }),
+    });
+  }
+
+  /** Why approving or rejecting a claim was refused, other than by who asked. */
+  private refusal(err: unknown, c: ClaimView, done: string): string {
+    return err instanceof HttpErrorResponse && err.status === 423
+      ? 'This claim is dated inside a closed period.'
+      : err instanceof HttpErrorResponse && err.status === 400
+        ? 'Type why the claim is rejected.'
+        : `A ${c.status} claim cannot be ${done}; only a PENDING one can.`;
   }
 
   protected fieldId(field: string): string {
