@@ -84,6 +84,10 @@ public class ClaimController {
     public record Deferral(@NotNull LocalDate until) {
     }
 
+    /** The new date of an OPEN or PENDING claim. */
+    public record Redating(@NotNull LocalDate date) {
+    }
+
     /** The person a claim is to move to. */
     public record Reassignment(@NotNull Long personId) {
     }
@@ -190,6 +194,15 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody Deferral request) {
         return ClaimView.of(claims.defer(sheetId, user, id, request.until()));
+    }
+
+    @PutMapping("/claims/{id}/date")
+    public ClaimView redate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody Redating request) {
+        return ClaimView.of(claims.redate(sheetId, user, id, request.date()));
     }
 
     @PostMapping("/claims/{id}/proofs")

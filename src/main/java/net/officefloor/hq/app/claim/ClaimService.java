@@ -253,6 +253,41 @@ public class ClaimService {
         return deferred;
     }
 
+    /** A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement binds
+     *  it to stays bound; its period follows the new date, and while the sheet numbers per period a move to another
+     *  period gives it the next number of its new period's sequence (its old number is never given again). Refused
+     *  for anyone but a steward, a claim in any other status, a claim dated inside a closed period, a new date inside
+     *  one and a new date after its person retired. */
+    @Transactional
+    public Claim redate(String sheetId, String user, long id, LocalDate date) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-dates a claim");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-dated; only an OPEN or PENDING one can");
+        }
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfClosed(sheetId, date);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        refuseIfRetired(person, date);
+        Rollup.Figures before = rollup.of(sheetId);
+        LocalDate old = claim.getDate();
+        if (sheet.numbersPerPeriod() && !prefixOn(sheet, old).equals(prefixOn(sheet, date))) {
+            claim.setNumber(nextNumber(sheet, date));
+        }
+        claim.setDate(date);
+        Claim redated = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REDATED", user, person, redated, redated.getNumber())
+                + " old=" + old + " new=" + date);
+        rollup.recordChanges(sheetId, user, before);
+        return redated;
+    }
+
     /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim and one dated inside a closed
      *  period. */
     @Transactional
@@ -489,13 +524,18 @@ public class ClaimService {
         if (!sheet.numbersPerPeriod()) {
             return String.valueOf(sheet.nextClaimNumber());
         }
-        String prefix = periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
-                .filter(p -> p.contains(date)).map(Period::getName).findFirst().orElse(NO_PERIOD);
+        String prefix = prefixOn(sheet, date);
         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(sheet.getId(), prefix)
                 .orElseGet(() -> new ClaimSequence(sheet.getId(), prefix));
         String number = sequence.next();
         sequences.save(sequence);
         return number;
+    }
+
+    /** The prefix of the numbers given within the period a day is in: its name, or X in no period. */
+    private String prefixOn(Sheet sheet, LocalDate date) {
+        return periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
+                .filter(p -> p.contains(date)).map(Period::getName).findFirst().orElse(NO_PERIOD);
     }
 
     /** Refuse to settle or approve a claim with no proofs whose due is above the proof threshold in force on its

@@ -220,6 +220,11 @@ export class Claims {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/defer`, { until });
   }
 
+  /** A steward re-dates an OPEN or PENDING claim to `date` (yyyy-mm-dd). */
+  redate(sheetId: string, id: number, date: string): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/date`, { date });
+  }
+
   /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
   addProof(sheetId: string, id: number): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/proofs`, {});
