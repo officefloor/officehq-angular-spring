@@ -826,6 +826,9 @@ function csvField(value: string): string {
                 <button type="button" data-testid="person-merge" (click)="merge(p, mergeSelect)">
                   Merge<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-merge-undo" (click)="undoMerge(p)">
+                  Undo last merge<span class="visually-hidden"> into {{ p.name }}</span>
+                </button>
                 <label [for]="'person-transfer-to-' + p.id">Transfer {{ p.name }} to sheet</label>
                 <input
                   #transferTo
@@ -2206,6 +2209,36 @@ export class People {
       this.personError.set({
         id: p.id,
         message: 'Could not merge: only a steward can, into someone else, and neither may be retired.',
+      });
+    } finally {
+      this.merging = false;
+    }
+  }
+
+  /** Undo the last merge into the person; once done the whole sheet is shown again as the store holds it. */
+  protected async undoMerge(p: Person): Promise<void> {
+    if (this.merging) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.merging = true;
+    try {
+      await firstValueFrom(
+        this.http.post<Person>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${p.id}/merge-undo`,
+          {},
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      await this.reload(sheet);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: 'Could not undo the merge: only the steward who made the last merge into this person can, on the same day.',
       });
     } finally {
       this.merging = false;

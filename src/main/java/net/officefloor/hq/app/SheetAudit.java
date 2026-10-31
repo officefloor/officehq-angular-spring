@@ -45,6 +45,7 @@ import net.officefloor.hq.app.person.PersonFlagged;
 import net.officefloor.hq.app.person.ApproverSet;
 import net.officefloor.hq.app.person.PersonHeld;
 import net.officefloor.hq.app.person.PersonMerged;
+import net.officefloor.hq.app.person.PersonMergeUndone;
 import net.officefloor.hq.app.person.PersonMoved;
 import net.officefloor.hq.app.person.PersonRetired;
 import net.officefloor.hq.app.person.PersonUnretired;
@@ -167,6 +168,12 @@ public class SheetAudit {
     public void on(PersonMerged e) {
         change(e.sheetId(), e.user(), "PERSON_MERGED sheet=" + e.sheetId() + " by=" + e.user()
                 + " from=" + e.from() + " into=" + e.into());
+    }
+
+    @TransactionalEventListener
+    public void on(PersonMergeUndone e) {
+        change(e.sheetId(), e.user(), "PERSON_MERGE_UNDONE sheet=" + e.sheetId() + " by=" + e.user()
+                + " name=" + e.name() + " from=" + e.from());
     }
 
     @TransactionalEventListener

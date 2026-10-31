@@ -215,6 +215,11 @@ public class Person {
         aliases.add(alias);
     }
 
+    /** Remove one alias equal to the one given, keeping the others; whether there was one. */
+    public boolean removeAlias(String alias) {
+        return aliases.remove(alias);
+    }
+
     /** The person's own terms in days from the beginning of time (before any dated terms); null when they have none. */
     public Integer getTerms() {
         return terms;
@@ -319,6 +324,16 @@ public class Person {
     public void flag(String reason, LocalDate until) {
         this.flagReason = reason;
         this.flagUntil = until;
+    }
+
+    /** The reason of the person's flag, whether or not it is in force; null when they have none. */
+    public String getFlagReason() {
+        return flagReason;
+    }
+
+    /** The date the person's flag is in force until, inclusive; null when they have none. */
+    public LocalDate getFlagUntil() {
+        return flagUntil;
     }
 
     /** The user who may approve or reject the person's PENDING claims as a steward may; null when none. */

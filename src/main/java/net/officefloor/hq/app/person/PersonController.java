@@ -516,6 +516,14 @@ public class PersonController {
         return view(sheet, merges.merge(sheet, user.trim(), personId, form.intoId()));
     }
 
+    /** Undo the last merge into the person, made today by the same user; answers with them as they are now. */
+    @PostMapping("/{personId}/merge-undo")
+    public PersonView undoMerge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId, @RequestHeader("X-User") @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, merges.undo(sheet, user.trim(), personId));
+    }
+
     /** A transfer as asked for: the id of the other sheet the person is transferred to. */
     public record TransferForm(@NotBlank @Size(max = 100) String toSheet) {
     }
