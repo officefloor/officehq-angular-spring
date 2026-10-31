@@ -1,0 +1,68 @@
+{
+  "checkpoint": 128,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp128_transfer-merges",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    111
+  ],
+  "replaced_tests": [
+    "cp111_transfer-person.spec.ts::transfer person"
+  ],
+  "request": {
+    "spec": "A transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bf9fee5cb5eefd888937431f1d9c98e0915b3e57",
+  "reset_sha": "",
+  "preagent_sha": "d13fb88e48f6ade945c70742b910dd0835ec2dfe",
+  "prev_sha": "d13fb88e48f6ade945c70742b910dd0835ec2dfe",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.515924,
+    "input_tokens": 26,
+    "output_tokens": 7156,
+    "cache_read_tokens": 409340,
+    "cache_creation_tokens": 36354,
+    "num_turns": 13,
+    "duration_ms": 458069,
+    "duration_api_ms": 98953,
+    "model": "claude-opus-5-5",
+    "session_id": "edee98b3-2f97-48e9-b890-48e150f46bb2",
+    "stop_reason": "success",
+    "result_text": "A transfer onto a sheet that already has a person with the same name or alias now merges the arriving person into them instead of being refused. All 4 tests in `bin/e2e` pass.\n\nThe change is in `PersonTransferService.transfer`. When the arriving person's name or any of their aliases matches someone on the other sheet:\n- **Claims:** their claims get the other sheet's next numbers, as before, and are then listed after that person's own claims in the order they were added, the same way a merge lists them.\n- **Bound figures:** any figure a statement had bound to those claims is lost.\n- **Aliases:** their name and aliases become aliases of that person.\n- **Contact:** dropped, as a merge drops it. So in a merge, a contact that clashes on the other sheet doesn't cause a refusal. Without a merge, a contact clash is still refused.\n- **Audit:** the other sheet writes `PERSON_TRANSFERRED \u2026 name=<name> from=<sheet id>`, then `PERSON_MERGED \u2026 from=<name> into=<name>`, then one `ROLLUP` and `TOTALS` covering both steps.\n\nTwo cases the request didn't cover are still refused:\n- **Several matches:** the person's names match more than one different person on the other sheet, so there's no single person to merge into.\n- **Retired match:** the matching person is retired, because a merge refuses retired people.\n\nI also made one fix outside the transfer. In `Person.getAliases`, aliases that differ only by case (like \"Addie\" and \"addie\") used to come out in an unpredictable order, so the test failed. They now sort in a fixed order, uppercase first. This also affects how ordinary merges display aliases.\n\nThe front end didn't need any changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.515924,
+        "num_turns": 13,
+        "duration_ms": 458069,
+        "duration_api_ms": 98953,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp128.agent.jsonl",
+  "agent_diff_file": "cp128.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
