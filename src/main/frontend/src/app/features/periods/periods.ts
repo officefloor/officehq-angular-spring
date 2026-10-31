@@ -44,6 +44,20 @@ import { Sheets } from '../../core/sheet';
           <p role="alert" data-testid="period-form-error">{{ err }}</p>
         }
       </form>
+
+      <form [formGroup]="generateForm" (ngSubmit)="generate()" aria-label="Generate monthly periods">
+        <label for="period-generate-from">From (blank: today)</label>
+        <input id="period-generate-from" type="date" data-testid="period-generate-from" formControlName="from" />
+        <label for="period-generate-to">To</label>
+        <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
+        <button type="submit" data-testid="period-generate" [disabled]="generating()">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span> periods.</p>
+        }
+        @if (generateError(); as err) {
+          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+        }
+      </form>
     </section>
   `,
 })
@@ -61,6 +75,16 @@ export class PeriodsPanel {
   /** The error of the last action taken on a period's row, until the next action on that row. */
   protected readonly periodError = signal<{ id: number; message: string } | null>(null);
 
+  protected readonly generateError = signal<string | null>(null);
+  protected readonly generating = signal(false);
+  /** How many periods the last generate made; null while one runs or before any. */
+  protected readonly generated = signal<number | null>(null);
+
+  protected readonly generateForm = new FormGroup({
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
@@ -74,6 +98,8 @@ export class PeriodsPanel {
         switchMap((sheet) => {
           this.error.set(null);
           this.periodError.set(null);
+          this.generateError.set(null);
+          this.generated.set(null);
           return this.periods.load(sheet?.id ?? null) ?? EMPTY;
         }),
         takeUntilDestroyed(),
@@ -81,6 +107,7 @@ export class PeriodsPanel {
       .subscribe({ error: () => this.error.set('Could not read the periods.') });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+    this.generateForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.generateError.set(null));
   }
 
   protected close(p: PeriodView): void {
@@ -166,6 +193,44 @@ export class PeriodsPanel {
           err instanceof HttpErrorResponse && err.status === 409
             ? 'That period’s name is in use, or it overlaps another period.'
             : 'Could not add that period.',
+        );
+      },
+    });
+  }
+
+  protected generate(): void {
+    if (this.generating()) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const value = this.generateForm.getRawValue();
+    const from = value.from.trim();
+    const to = value.to.trim();
+    if (from !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.generateError.set('Choose a from-date, or leave it blank for today.');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.generateError.set('Choose a to-date.');
+      return;
+    }
+    if (to < (from === '' ? sheet.today : from)) {
+      this.generateError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.generating.set(true);
+    this.periods.generate(sheet.id, from === '' ? null : from, to).subscribe({
+      next: (result) => {
+        this.generating.set(false);
+        this.generated.set(result.made);
+      },
+      error: (err: unknown) => {
+        this.generating.set(false);
+        this.generateError.set(
+          err instanceof HttpErrorResponse && err.status === 400
+            ? 'The to-date cannot be before the from-date.'
+            : 'Could not generate the periods.',
         );
       },
     });

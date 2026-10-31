@@ -43,6 +43,15 @@ public class PeriodController {
     public record PeriodForm(@NotBlank @Size(max = 100) String name, LocalDate from, @NotNull LocalDate to) {
     }
 
+    /** A generate request: one period per calendar month from the from-date's month to the to-date's; a blank
+     *  from-date takes the sheet's today. */
+    public record GenerateForm(LocalDate from, @NotNull LocalDate to) {
+    }
+
+    /** What a generate made: how many periods, and the periods themselves. */
+    public record GenerateView(int made, List<PeriodView> periods) {
+    }
+
     private final PeriodService periods;
 
     public PeriodController(PeriodService periods) {
@@ -61,6 +70,16 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PeriodForm request) {
         return PeriodView.of(periods.add(sheetId, user, request.name(), request.from(), request.to()));
+    }
+
+    @PostMapping("/generate")
+    public GenerateView generate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateForm request) {
+        List<PeriodView> made = periods.generate(sheetId, user, request.from(), request.to()).stream()
+                .map(PeriodView::of).toList();
+        return new GenerateView(made.size(), made);
     }
 
     @PostMapping("/{name}/close")

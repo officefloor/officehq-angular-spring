@@ -26,6 +26,12 @@ export interface PeriodForm {
   to: string;
 }
 
+/** What a generate made: how many periods, and the periods themselves. */
+export interface GenerateView {
+  made: number;
+  periods: PeriodView[];
+}
+
 /** The period whose dates contain a date (yyyy-mm-dd); undefined when none does. */
 export function periodOn(periods: readonly PeriodView[], date: string): PeriodView | undefined {
   return periods.find((p) => p.from <= date && date <= p.to);
@@ -50,6 +56,18 @@ export class Periods {
     return this.http
       .post<PeriodView>(this.base(sheetId), period)
       .pipe(tap((saved) => this.periods.update((list) => [...list, saved].sort((a, b) => (a.from < b.from ? -1 : 1)))));
+  }
+
+  /** Generate one period per calendar month from the from-date's month to the to-date's, named yyyy-mm; a month
+   *  whose name is in use or that overlaps a period is left out. Refused when the to-date is before the from-date. */
+  generate(sheetId: string, from: string | null, to: string): Observable<GenerateView> {
+    return this.http
+      .post<GenerateView>(`${this.base(sheetId)}/generate`, { from, to })
+      .pipe(
+        tap((made) =>
+          this.periods.update((list) => [...list, ...made.periods].sort((a, b) => (a.from < b.from ? -1 : 1))),
+        ),
+      );
   }
 
   /** Close a period, fixing its due-total; refused when it is already closed. */
