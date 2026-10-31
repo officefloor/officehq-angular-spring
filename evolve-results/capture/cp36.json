@@ -1,0 +1,74 @@
+{
+  "checkpoint": 36,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp36_approvals",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    23,
+    26,
+    27,
+    32
+  ],
+  "replaced_tests": [
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+    "cp26_late-charge.spec.ts::late charge scenario 3",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1"
+  ],
+  "request": {
+    "spec": "When a clerk settles a claim whose due is above the clerk limit, the claim now goes to PENDING\ninstead of being refused (CLAIM_PENDING, naming the claim like every claim line). A PENDING claim\ncounts as open in every total, but is not bound by a statement: while PENDING it shows and totals\nits live figure. A steward approves it (it becomes SETTLED, frozen at that moment, CLAIM_APPROVED\nwith due=<due> at the end like CLAIM_SETTLED) or rejects it with a reason (back to OPEN, bound\nagain by the last statement if that statement included it, CLAIM_REJECTED with reason=<reason> at\nthe end). The opener cannot approve their own claim. In every other way a PENDING claim is handled\nlike an OPEN one: it cannot be edited, it can be voided (CLAIM_VOIDED), it goes overdue and bears\nthe late charge, and a hold takes it out of the totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a clerk settles a claim whose due is above the clerk limit, the claim now goes to PENDING\ninstead of being refused (CLAIM_PENDING, naming the claim like every claim line). A PENDING claim\ncounts as open in every total, but is not bound by a statement: while PENDING it shows and totals\nits live figure. A steward approves it (it becomes SETTLED, frozen at that moment, CLAIM_APPROVED\nwith due=<due> at the end like CLAIM_SETTLED) or rejects it with a reason (back to OPEN, bound\nagain by the last statement if that statement included it, CLAIM_REJECTED with reason=<reason> at\nthe end). The opener cannot approve their own claim. In every other way a PENDING claim is handled\nlike an OPEN one: it cannot be edited, it can be voided (CLAIM_VOIDED), it goes overdue and bears\nthe late charge, and a hold takes it out of the totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e4af44978661765c1a5ed9ed3e6fb1e51ef1e42f",
+  "reset_sha": "",
+  "preagent_sha": "a2b844eadc269c6da22bd7d54f894ab0d362fc51",
+  "prev_sha": "a2b844eadc269c6da22bd7d54f894ab0d362fc51",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3256933999999998,
+    "input_tokens": 44,
+    "output_tokens": 19219,
+    "cache_read_tokens": 1294007,
+    "cache_creation_tokens": 85292,
+    "num_turns": 24,
+    "duration_ms": 438817,
+    "duration_api_ms": 167381,
+    "model": "claude-opus-5-5",
+    "session_id": "a296b491-93b0-44ae-8afa-efa1a0c5b915",
+    "stop_reason": "success",
+    "result_text": "I've implemented PENDING approvals, and all 4 acceptance tests pass with `bin/e2e`. I ran it with `PORT=3317` because something else was already using port 3000. I didn't stop that process.\n\n**Behaviour:**\n- When a clerk settles a claim whose due is above the clerk limit, it now goes to PENDING instead of being refused, and the audit file gets a `CLAIM_PENDING` line. A steward settling it still settles it directly, and the opener still can't settle their own claim.\n- A PENDING claim counts in every total, as an OPEN one does. It ignores any statement binding and shows and totals its live figure. Its stored statement figure is kept, so if the claim is rejected the last statement binds it again.\n- **Approve:** only a steward who didn't open the claim can approve, and only a PENDING claim. The due is fixed at its live figure plus any late charge at that moment. The audit line is `CLAIM_APPROVED \u2026 due=<due>`.\n- **Reject:** only a steward can reject, and it needs a non-blank reason. The claim goes back to OPEN and the audit line is `CLAIM_REJECTED \u2026 reason=<reason>`.\n- A PENDING claim otherwise acts like an OPEN one: it can't be edited, it can be voided, it goes overdue and bears the late charge, and putting the person on hold takes it out of the totals.\n\n**Where the changes are:**\n- **Database:** migration `V27__claim_pending.sql` adds PENDING to the allowed claim statuses.\n- **Server:** `ClaimStatus`, `Claim`, `ClaimService`, `ClaimController`, `Rollup` and `StatementService`. Approve and reject are new endpoints, `PUT /claims/{id}/approve` and `PUT /claims/{id}/reject`.\n- **Front end:** every claim row now has Approve, a reject-reason field and Reject buttons. They show on every claim, not just PENDING ones, because the test presses Approve on an OPEN claim and expects the error. Totals and overdue checks in the browser treat PENDING as open.\n\n**One change outside the request:** scenario 1 failed in the settings form. When you saved a setting without changing its value (for example, policy date from blank to blank), the form saved the clerk limit instead. It now saves the field you last clicked into, and still falls back to the clerk limit if you haven't clicked into any. The fix is in `features/settings/settings.ts`. One side effect: if you click into an empty floor, terms or late-percent field and save without typing, you now get that field's validation error.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3256933999999998,
+        "num_turns": 24,
+        "duration_ms": 438817,
+        "duration_api_ms": 167381,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp36.agent.jsonl",
+  "agent_diff_file": "cp36.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
