@@ -175,6 +175,14 @@ export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil
   return (c.status === 'OPEN' || c.status === 'PENDING') && !isDeferred(c, today) && addDays(c.dueBy, graceDays) < today;
 }
 
+/** Whether a claim is late for review on the sheet's today: REVIEW, with a review SLA set (null: none), and its
+ *  review day (the sheet's today when it last went to REVIEW, by its log) plus the SLA days before today. */
+export function isReviewLate(c: Pick<ClaimView, 'status' | 'log'>, today: string, reviewSla: number | null): boolean {
+  if (c.status !== 'REVIEW' || reviewSla === null) return false;
+  const reviewDay = c.log.filter((l) => l.status === 'REVIEW').at(-1)?.on;
+  return reviewDay !== undefined && addDays(reviewDay, reviewSla) < today;
+}
+
 /** A claim as the form submits it: a blank date takes the sheet's today. A negative amount is a correction,
  *  which names in `corrects` the number of the claim it corrects. */
 export interface ClaimForm {

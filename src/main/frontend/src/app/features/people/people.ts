@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsWithHolds, isOverdue, money, roundingDate, statusAt } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, statusAt } from '../../core/claims';
 import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
@@ -102,7 +102,7 @@ function csvField(value: string): string {
     <app-pools [people]="people()" />
     <app-crews [people]="people()" [dueByPerson]="dueByPerson()" />
     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()"
-                 [voidReasons]="summaryByVoidReason()" />
+                 [voidReasons]="summaryByVoidReason()" [reviewLate]="reviewLateCount()" />
     <app-classic-summary [periods]="classicByPeriod()" [dueTotal]="classicDueTotal()" />
 
     <section aria-labelledby="people-heading">
@@ -923,6 +923,12 @@ export class PeopleList {
   protected readonly summaryByStatus = computed<StatusSummary[]>(() => {
     const claims = this.claims();
     return SUMMARY_STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
+  });
+  /** How many of the sheet's claims are late for review on its today. */
+  protected readonly reviewLateCount = computed(() => {
+    const sheet = this.sheets.current();
+    if (sheet === null) return 0;
+    return this.claims().filter((c) => isReviewLate(c, sheet.today, sheet.reviewSla)).length;
   });
   private readonly voidReasons = inject(VoidReasons);
   /** Per reason on the sheet's list, how many VOID claims were voided with it. */

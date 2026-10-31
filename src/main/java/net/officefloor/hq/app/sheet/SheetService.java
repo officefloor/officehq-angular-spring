@@ -214,6 +214,18 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's review SLA in days (null: none), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setReviewSla(String id, String user, Integer reviewSla) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setReviewSla(reviewSla);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=review-sla value=" + (reviewSla == null ? "" : reviewSla));
+        return saved;
+    }
+
     /** Set the sheet's fiscal year start month, 1 to 12, starting the sheet if it has never been loaded. Not dated. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

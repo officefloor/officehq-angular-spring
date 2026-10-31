@@ -45,13 +45,14 @@ public class SheetController {
      *  parent is the id of the sheet's parent sheet, null when it has none;
      *  reviewThreshold is the review threshold (two decimals) in force on the sheet's today, null when there is none;
      *  escalateAfter is the escalation gap in days, null when it is off;
+     *  reviewSla is the review SLA in days, null when there is none;
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
-            String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter) {
+            String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter, Integer reviewSla) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -74,7 +75,7 @@ public class SheetController {
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getRounding(),
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
-                    sheet.getEscalateAfter());
+                    sheet.getEscalateAfter(), sheet.getReviewSla());
         }
     }
 
@@ -127,6 +128,10 @@ public class SheetController {
 
     /** The sheet's escalation gap, in days, as the form submits it; a missing one means off. */
     public record EscalateAfterChange(@Min(0) @Max(36500) Integer escalateAfter) {
+    }
+
+    /** The sheet's review SLA, in days, as the form submits it; a missing one means none. */
+    public record ReviewSlaChange(@Min(0) @Max(36500) Integer reviewSla) {
     }
 
     /** The sheet's fiscal year start month as the form submits it, 1 to 12. */
@@ -324,6 +329,15 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody EscalateAfterChange request) {
         return SheetView.of(sheets.setEscalateAfter(id, user, request.escalateAfter()));
+    }
+
+    /** Change the sheet's review SLA. */
+    @PutMapping("/{id}/settings/review-sla")
+    public SheetView setReviewSla(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ReviewSlaChange request) {
+        return SheetView.of(sheets.setReviewSla(id, user, request.reviewSla()));
     }
 
     /** Change the sheet's fiscal year start month. */

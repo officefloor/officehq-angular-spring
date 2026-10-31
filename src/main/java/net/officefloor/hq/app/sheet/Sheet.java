@@ -115,6 +115,11 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The sheet's review SLA, in days: a REVIEW claim whose review day (the sheet's today when it went to REVIEW)
+     *  plus these is before the sheet's today is late for review; null means none. Not dated. */
+    @Column(name = "review_sla")
+    private Integer reviewSla;
+
     /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
      *  named FY by the calendar year it starts in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -159,6 +164,7 @@ public class Sheet {
         copy.entryDate = entryDate;
         copy.graceDays = graceDays;
         copy.escalateAfter = escalateAfter;
+        copy.reviewSla = reviewSla;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
@@ -358,6 +364,14 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    public Integer getReviewSla() {
+        return reviewSla;
+    }
+
+    public void setReviewSla(Integer reviewSla) {
+        this.reviewSla = reviewSla;
     }
 
     public int getFiscalStartMonth() {

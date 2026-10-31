@@ -66,6 +66,9 @@ export interface SheetView {
   /** The sheet's escalation gap, in days: reminding a claim whose previous reminder was at least these days before
    *  the sheet's today escalates it (once per claim); null: off. Not dated. */
   escalateAfter: number | null;
+  /** The sheet's review SLA, in days: a REVIEW claim whose review day (the sheet's today when it went to REVIEW)
+   *  plus these is before the sheet's today is late for review; null: none. Not dated. */
+  reviewSla: number | null;
   /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
    *  named FY<yyyy> by the calendar year it starts in. Not dated. */
   fiscalStartMonth: number;
@@ -241,6 +244,13 @@ export class Sheets {
   setEscalateAfter(id: string, escalateAfter: number | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/escalate-after`, { escalateAfter })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's review SLA in days; null means none. Not dated. */
+  setReviewSla(id: string, reviewSla: number | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/review-sla`, { reviewSla })
       .pipe(tap((s) => this.active.set(s)));
   }
 

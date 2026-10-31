@@ -59,6 +59,7 @@ export interface VoidReasonSummary {
             <span [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</span> claims</li>
         }
       </ul>
+      <p>Late for review: <span data-testid="summary-review-late-count">{{ reviewLate() }}</span> claims</p>
       <ul aria-label="By void reason">
         @for (v of voidReasons(); track v.reason) {
           <li>Voided as {{ v.reason }}:
@@ -73,4 +74,6 @@ export class SummaryPanel {
   readonly periods = input.required<readonly PeriodSummary[]>();
   readonly statuses = input.required<readonly StatusSummary[]>();
   readonly voidReasons = input.required<readonly VoidReasonSummary[]>();
+  /** How many claims are REVIEW for longer than the sheet's review SLA allows. */
+  readonly reviewLate = input.required<number>();
 }
