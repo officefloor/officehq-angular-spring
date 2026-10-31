@@ -1,0 +1,64 @@
+{
+  "checkpoint": 190,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp190_bulk-void",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b4cfe6a0b01ae06076551f5b9ca428b84e0fd56f",
+  "reset_sha": "",
+  "preagent_sha": "5d959b8adeb349028652934f5a65cdcec2241e31",
+  "prev_sha": "5d959b8adeb349028652934f5a65cdcec2241e31",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6433701999999999,
+    "input_tokens": 30,
+    "output_tokens": 6773,
+    "cache_read_tokens": 566351,
+    "cache_creation_tokens": 49315,
+    "num_turns": 16,
+    "duration_ms": 265589,
+    "duration_api_ms": 64229,
+    "model": "claude-opus-5-5",
+    "session_id": "13f27334-3f76-44ac-9ef0-f76109c2ede2",
+    "stop_reason": "success",
+    "result_text": "Bulk void is in: you can select claims and void them together, and all 4 tests in the acceptance spec pass under `bin/e2e`.\n\n**Server** (`ClaimController.java`): a new `POST /claims/bulk-void` endpoint takes the selected claim ids and an optional reason. It puts the claims in list order (people in list order, newest claim first) and voids each one through the same service call the row's Void button uses. So each claim follows the same rules and writes the same `CLAIM_VOIDED`, `ROLLUP` and `TOTALS` lines as a single void. Any claim that can't be voided is counted as refused and left as it was. As with the other bulk actions, a viewer or an archived sheet gets every selected claim refused and nothing written.\n\n**Front end** (`people.ts`, `core/claims.ts`): beside the other bulk buttons there is now:\n- a reason select (`bulk-void-reason`), shown only when the sheet has void reasons;\n- the `bulk-void` button;\n- the result, \"Voided N, refused M\" (`bulk-voided`, `bulk-void-refused`), which is cleared each time the button is pressed;\n- an error element (`bulk-void-error`) if the request itself fails.\n\nIf the sheet has void reasons and none is chosen, the button still sends the request: the server refuses each claim and the result shows how many were refused. This differs from the row's Void button, which shows an error without sending anything. The chosen reason stays selected after a bulk void, as the row's reason does.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6433701999999999,
+        "num_turns": 16,
+        "duration_ms": 265589,
+        "duration_api_ms": 64229,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp190.agent.jsonl",
+  "agent_diff_file": "cp190.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

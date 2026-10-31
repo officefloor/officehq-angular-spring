@@ -1,0 +1,181 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 7c00beed0..59772ee4b 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -270,6 +270,12 @@ export interface BulkRedateView {
+   claims: ClaimView[];
+ }
+ 
++export interface BulkVoidView {
++  voided: number;
++  refused: number;
++  claims: ClaimView[];
++}
++
+ /** An amount the form accepts: 0.00 or more, with up to two decimals. */
+ export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
+ 
+@@ -442,6 +448,10 @@ export class Claims {
+     return this.http.post<BulkRedateView>(`${this.base(sheetId)}/claims/bulk-redate`, { ids, date });
+   }
+ 
++  bulkVoid(sheetId: string, ids: readonly number[], reason: string | null): Observable<BulkVoidView> {
++    return this.http.post<BulkVoidView>(`${this.base(sheetId)}/claims/bulk-void`, { ids, reason });
++  }
++
+   private base(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d947f87e8..12e39740d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -277,6 +277,27 @@ function csvField(value: string): string {
+         }
+       </p>
+ 
++      <p>
++        @if (voidReasons.all().length > 0) {
++          <label for="bulk-void-reason">Reason to void</label>
++          <select id="bulk-void-reason" data-testid="bulk-void-reason"
++                  [value]="bulkVoidReason()" (change)="bulkVoidReasonChanged($any($event.target).value)">
++            <option value="">Choose a reason</option>
++            @for (r of voidReasons.all(); track r.id) {
++              <option [value]="r.reason">{{ r.reason }}</option>
++            }
++          </select>
++        }
++        <button type="button" data-testid="bulk-void" (click)="bulkVoid()" [disabled]="bulkVoiding()">Void selected claims</button>
++        @if (bulkVoidResult(); as r) {
++          Voided <span data-testid="bulk-voided">{{ r.voided }}</span>,
++          refused <span data-testid="bulk-void-refused">{{ r.refused }}</span>
++        }
++        @if (bulkVoidError(); as err) {
++          <span role="alert" data-testid="bulk-void-error">{{ err }}</span>
++        }
++      </p>
++
+       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade the selected people">
+         <label for="bulk-grade">Grade</label>
+         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+@@ -613,6 +634,13 @@ export class PeopleList {
+   protected readonly bulkRedateError = signal<string | null>(null);
+   /** Whether a bulk re-date is running, so a second press waits for the first. */
+   protected readonly bulkRedating = signal(false);
++  /** The reason from the sheet's list the selected claims are to be voided with, or '' for none. */
++  protected readonly bulkVoidReason = signal('');
++  /** What the last bulk void did, until the button is pressed again. */
++  protected readonly bulkVoidResult = signal<{ voided: number; refused: number } | null>(null);
++  protected readonly bulkVoidError = signal<string | null>(null);
++  /** Whether a bulk void is running, so a second press waits for the first. */
++  protected readonly bulkVoiding = signal(false);
+   /** The ids of the people selected for a bulk action. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** How many people the last bulk grade changed; null while one runs or before any. */
+@@ -957,7 +985,7 @@ export class PeopleList {
+     if (sheet === null) return 0;
+     return this.claims().filter((c) => isReviewLate(c, sheet.today, sheet.reviewSla)).length;
+   });
+-  private readonly voidReasons = inject(VoidReasons);
++  protected readonly voidReasons = inject(VoidReasons);
+   /** Per reason on the sheet's list, how many VOID claims were voided with it. */
+   protected readonly summaryByVoidReason = computed<VoidReasonSummary[]>(() => {
+     const claims = this.claims();
+@@ -1080,6 +1108,9 @@ export class PeopleList {
+           this.bulkRedateDate.set('');
+           this.bulkRedateResult.set(null);
+           this.bulkRedateError.set(null);
++          this.bulkVoidReason.set('');
++          this.bulkVoidResult.set(null);
++          this.bulkVoidError.set(null);
+           this.statements.set(new Map());
+           this.snapshots.set(new Map());
+           this.descendants.set(NO_DESCENDANTS);
+@@ -1756,6 +1787,34 @@ export class PeopleList {
+     });
+   }
+ 
++  protected bulkVoidReasonChanged(reason: string): void {
++    this.bulkVoidReason.set(reason);
++    this.bulkVoidError.set(null);
++  }
++
++  /** Void the selected claims together with the chosen reason, in list order, each as the row's void would; the rest are left as they are. */
++  protected bulkVoid(): void {
++    if (this.bulkVoiding()) return;
++    this.bulkVoidResult.set(null);
++    this.bulkVoidError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const reason = this.bulkVoidReason();
++    this.bulkVoiding.set(true);
++    this.claimsApi.bulkVoid(sheet.id, [...this.selectedClaims()], reason === '' ? null : reason).subscribe({
++      next: ({ voided, refused, claims }) => {
++        this.bulkVoiding.set(false);
++        claims.forEach((c) => this.claimSaved(c));
++        this.selectedClaims.set(new Set());
++        this.bulkVoidResult.set({ voided, refused });
++      },
++      error: () => {
++        this.bulkVoiding.set(false);
++        this.bulkVoidError.set('Could not void the selected claims.');
++      },
++    });
++  }
++
+   /** A claim as saved: a new one, or one moved to another person, is listed first (its person's newest). */
+   protected claimSaved(saved: ClaimView): void {
+     this.claims.update((list) => {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 2396a514f..81b7c3e4e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -181,6 +181,14 @@ public class ClaimController {
+     public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
+     }
+ 
++    /** The claims selected to be voided together, and the reason from the sheet's list (none when not given). */
++    public record BulkVoid(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @Size(max = 200) String reason) {
++    }
++
++    /** What a bulk void did: how many it voided and refused, and the claims it voided, in the order voided. */
++    public record BulkVoidView(int voided, int refused, List<ClaimView> claims) {
++    }
++
+     private final ClaimService claims;
+     private final RoleService roles;
+     private final SheetService sheets;
+@@ -506,4 +514,33 @@ public class ClaimController {
+         }
+         return new BulkRedateView(redated.size(), refused, redated);
+     }
++
++    /**
++     * Void each selected claim with the reason, one at a time in list order (people in the order listed, newest claim
++     * first within a person), by exactly the rules of voiding one claim. Each that cannot be voided, or is not on the
++     * sheet, is refused and left as it is.
++     */
++    @PostMapping("/claims/bulk-void")
++    public BulkVoidView bulkVoid(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkVoid request) {
++        int selected = (int) request.ids().stream().distinct().count();
++        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
++            // A viewer's bulk action, or one on an archived sheet, goes through with nothing done: every selected
++            // claim is refused.
++            return new BulkVoidView(0, selected, List.of());
++        }
++        List<Long> ordered = claims.inListOrder(sheetId, request.ids());
++        int refused = selected - ordered.size();
++        List<ClaimView> voided = new ArrayList<>();
++        for (long id : ordered) {
++            try {
++                voided.add(ClaimView.of(claims.changeStatus(sheetId, user, id, ClaimStatus.VOID, request.reason())));
++            } catch (ResponseStatusException refusal) {
++                refused++;
++            }
++        }
++        return new BulkVoidView(voided.size(), refused, voided);
++    }
+ }
