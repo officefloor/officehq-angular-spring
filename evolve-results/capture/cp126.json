@@ -1,0 +1,64 @@
+{
+  "checkpoint": 126,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp126_clone-sheet",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can clone the sheet to another id (an entry and a button; SHEET_CLONE_MADE to=<id> on this\nsheet). The other sheet must be empty (never used); otherwise, or for anyone but a steward, the\nclone is refused with an error on the sheet. The clone gets this sheet's today, settings, roles,\nrates, holidays, void reasons, templates, people (grades, terms, contacts, aliases, tags, holds,\nretirements, patrons), pools, periods (all open) and claims (status, frozen figures, dates, notes,\nlogs; numbers given afresh in the order the originals were opened (by the sheet's today when each\nwas opened, then by the order they were added), by the clone's own numbering); statements are not\ncopied. The clone's first audit line is SHEET_CLONED from=<this sheet's id>, followed by its rollup\nlines for every person and its totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can clone the sheet to another id (an entry and a button; SHEET_CLONE_MADE to=<id> on this\nsheet). The other sheet must be empty (never used); otherwise, or for anyone but a steward, the\nclone is refused with an error on the sheet. The clone gets this sheet's today, settings, roles,\nrates, holidays, void reasons, templates, people (grades, terms, contacts, aliases, tags, holds,\nretirements, patrons), pools, periods (all open) and claims (status, frozen figures, dates, notes,\nlogs; numbers given afresh in the order the originals were opened (by the sheet's today when each\nwas opened, then by the order they were added), by the clone's own numbering); statements are not\ncopied. The clone's first audit line is SHEET_CLONED from=<this sheet's id>, followed by its rollup\nlines for every person and its totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d63f6a1e77c3660312f90378b01db9e2787653ec",
+  "reset_sha": "",
+  "preagent_sha": "636726ee15b660f85d624d1dbf032bbc60249014",
+  "prev_sha": "636726ee15b660f85d624d1dbf032bbc60249014",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9623591999999999,
+    "input_tokens": 58,
+    "output_tokens": 21086,
+    "cache_read_tokens": 2461036,
+    "cache_creation_tokens": 131025,
+    "num_turns": 31,
+    "duration_ms": 399892,
+    "duration_api_ms": 235051,
+    "model": "claude-opus-5-5",
+    "session_id": "6de11eb4-8dc2-49e4-943d-360bf8fad896",
+    "stop_reason": "success",
+    "result_text": "I've added sheet cloning, and `bin/e2e` passes: all 4 tests in the spec (the main clone test and scenarios 1\u20133).\n\n**How it works**\n- **Screen:** the sheet header now has a \"Clone to sheet id\" entry and a \"Clone sheet\" button. After a clone succeeds, \"Cloned to\" shows the new id. That value is cleared each time the button is pressed. A refusal shows in the existing `sheet-error` element, which goes away when the entry is edited or the button is pressed again.\n- **Server:** a new `POST /api/sheets/{id}/clone` endpoint in `SheetController` calls the new `SheetCloneService`, which follows the same pattern as the existing person transfer. It refuses with no change if the user isn't a steward, or if the target id is blank, the same sheet, or has ever been used. Otherwise it writes `SHEET_CLONE_MADE \u2026 to=<id>` on this sheet and copies everything the request lists. On the clone, `SHEET_CLONED \u2026 from=<id>` comes first, then a `ROLLUP` line for every person in list order, then `TOTALS`.\n- **What gets copied:** `Sheet`, `Person` and `Claim` each got a `copyTo` method. Periods come over open. Statements aren't copied, so a claim that a statement had fixed goes back to a live figure on the clone. A settled claim keeps its frozen figure.\n\n**Decisions you may want to change**\n- **\"Never used\" means the id has never been loaded.** In this app, simply loading an id creates an empty sheet, so a sheet someone has only opened can't be cloned onto.\n- **New claim numbers are assigned by the date each claim was opened, then by person in list order, then by when the claim was added.** The test requires this. For example, Cam's claim was added and opened first but has to end up as number 4.\n- **An archived sheet can still be cloned**, since cloning changes nothing on it. The clone itself starts unarchived. I did this by exempting the new endpoint from the archive check.\n- **Also copied, though the request didn't name them:** the sheet's parent, its settle-batch counter, and claim references, tags, proofs and comments.\n- **Not copied:** watches, delegations and a person's \"transferred from\" sheet, because the request didn't list them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9623591999999999,
+        "num_turns": 31,
+        "duration_ms": 399892,
+        "duration_api_ms": 235051,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp126.agent.jsonl",
+  "agent_diff_file": "cp126.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
