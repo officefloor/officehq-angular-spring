@@ -50,6 +50,18 @@ import { Sheets } from '../../core/sheet';
         }
       </form>
 
+      <form [formGroup]="importForm" (ngSubmit)="importRates()" aria-label="Import rates">
+        <label for="import-rates">Import rates, one per line as grade,rate,from,to (from and to may be left out)</label>
+        <textarea id="import-rates" data-testid="import-rates" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="import-rates-submit" [disabled]="importing()">Import rates</button>
+        @if (importSet() !== null) {
+          Set <span data-testid="import-rates-set">{{ importSet() }}</span>
+        }
+        @if (importError(); as err) {
+          <p role="alert" data-testid="import-rates-error">{{ err }}</p>
+        }
+      </form>
+
       <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview a rate">
         <label for="rate-preview-grade">Grade</label>
         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
@@ -89,6 +101,13 @@ export class RatesPanel {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly importForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly importSet = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  protected readonly importing = signal(false);
+
   protected readonly previewForm = new FormGroup({
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
@@ -105,6 +124,8 @@ export class RatesPanel {
           this.error.set(null);
           this.previewed.set(null);
           this.previewError.set(null);
+          this.importSet.set(null);
+          this.importError.set(null);
           return this.rates.load(sheet?.id ?? null) ?? EMPTY;
         }),
         takeUntilDestroyed(),
@@ -113,6 +134,33 @@ export class RatesPanel {
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
     this.previewForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.previewError.set(null));
+    this.importForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.importError.set(null));
+  }
+
+  /** Set a rate per pasted line, as the rate form would; when any line is refused, none is set. */
+  protected importRates(): void {
+    if (this.importing()) return;
+    // A press clears the last count, so two presses with the same result can be told apart.
+    this.importSet.set(null);
+    this.importError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const text = this.importForm.getRawValue().text;
+    if (text.trim() === '') {
+      this.importError.set('Paste at least one line of grade,rate,from,to.');
+      return;
+    }
+    this.importing.set(true);
+    this.rates.importRates(sheet.id, text).subscribe({
+      next: ({ set }) => {
+        this.importing.set(false);
+        this.importSet.set(set);
+      },
+      error: () => {
+        this.importing.set(false);
+        this.importError.set('A pasted line is not a valid rate; nothing was set.');
+      },
+    });
   }
 
   protected preview(): void {

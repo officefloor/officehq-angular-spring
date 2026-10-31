@@ -22,6 +22,12 @@ export interface RateView {
   to: string | null;
 }
 
+/** What a rate import did: how many rates it set, and those rates, in line order. */
+export interface RateImportView {
+  set: number;
+  rates: RateView[];
+}
+
 /** The rate among a grade's rates (in the order they take effect) in force on a date (yyyy-mm-dd):
  *  the one with the latest from-date on or before it, unless the date is after its to-date; undefined
  *  when the date is before them all, or that rate has ended by then (an earlier one does not take over again). */
@@ -220,6 +226,18 @@ export class Rates {
           this.list.update((list) => [...list.filter((r) => r.grade !== saved.grade || r.from !== saved.from), saved]),
         ),
       );
+  }
+
+  /** Set a rate per pasted line of grade,rate,from,to, in order, as the form would; when any line is refused, none
+   *  is set. */
+  importRates(sheetId: string, text: string): Observable<RateImportView> {
+    return this.http.post<RateImportView>(`${this.base(sheetId)}/import`, { text }).pipe(
+      tap(({ rates }) =>
+        this.list.update((list) =>
+          rates.reduce((acc, saved) => [...acc.filter((r) => r.grade !== saved.grade || r.from !== saved.from), saved], list),
+        ),
+      ),
+    );
   }
 
   /** What a candidate rate for a grade, applied on every date, would change; nothing is saved. */
