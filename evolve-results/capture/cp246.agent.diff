@@ -1,0 +1,80 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index 5b32a4837..2cdff71ea 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -282,6 +282,8 @@ const ROUNDING = /^(half-up|half-even)$/;
+         <p>Roles that may {{ p.label }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
+       }
+       <form (submit)="saveSettings($event)" aria-label="Save settings">
++        <fieldset [disabled]="savingSettings()" style="border: 0; margin: 0; padding: 0">
++        <legend class="visually-hidden">Settings</legend>
+         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
+         <input
+           id="setting-clerk-limit"
+@@ -670,6 +672,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+           />
+         }
+         <button type="submit" data-testid="settings-save">Save settings</button>
++        </fieldset>
+         @if (settingsError()) {
+           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
+         }
+@@ -798,6 +801,8 @@ export class Access {
+   protected readonly settingsError = signal('');
+   /** A submit still waiting for its answer: another press meanwhile is ignored. */
+   private busy = false;
++  /** A settings save waiting for its answer: the inputs are locked till it is shown, so no edit is lost to it. */
++  protected readonly savingSettings = signal(false);
+ 
+   constructor() {
+     effect(() => {
+@@ -1151,6 +1156,7 @@ export class Access {
+     }
+     const headers = { 'X-User': this.session.user() ?? '' };
+     this.busy = true;
++    this.savingSettings.set(true);
+     try {
+       const saved = await firstValueFrom(
+         this.http.put<Settings>(`/api/sheets/${encodeURIComponent(sheet)}/settings`, body, { headers }),
+@@ -1165,6 +1171,7 @@ export class Access {
+       this.settingsError.set('Could not save the settings.');
+     } finally {
+       this.busy = false;
++      this.savingSettings.set(false);
+     }
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f69a8762e..a2ac7ad3b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -594,7 +594,7 @@ function csvField(value: string): string {
+       <table>
+         <thead>
+           <tr>
+-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Score</th><th scope="col">Band</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
++            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Open claims</th><th scope="col">Settled claims</th><th scope="col">Score</th><th scope="col">Band</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
+             @if (columnShown('statement-count')) {<th scope="col">Statements</th>}@if (columnShown('stated-total')) {<th scope="col">Last stated total</th>}@if (columnShown('statement-date')) {<th scope="col">Last statement</th>}
+             @if (columnShown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columnShown('hold')) {<th scope="col">On hold</th>}
+             @if (columnShown('overdue-count')) {<th scope="col">Overdue</th>}@if (columnShown('overdue-total')) {<th scope="col">Overdue total</th>}
+@@ -642,6 +642,8 @@ function csvField(value: string): string {
+               }
+               <td data-testid="person-settled-total">{{ p.settledTotal | figure }}</td>
+               <td data-testid="person-open-total">{{ p.openTotal | figure }}</td>
++              <td data-testid="person-claims-OPEN-count">{{ claimCount(p, 'OPEN') }}</td>
++              <td data-testid="person-claims-SETTLED-count">{{ claimCount(p, 'SETTLED') }}</td>
+               <td data-testid="person-score">{{ p.score }}</td>
+               <td data-testid="person-band">{{ p.band ?? '' }}</td>
+               @if (columnShown('excess')) {
+@@ -1316,6 +1318,11 @@ export class People {
+     return (e.target as HTMLInputElement).checked;
+   }
+ 
++  /** How many of the person's claims have the status. */
++  protected claimCount(p: Person, status: string): number {
++    return p.claims.filter((c) => c.status === status).length;
++  }
++
+   protected clearError(p: Person): void {
+     if (this.personError()?.id === p.id) this.personError.set(null);
+   }
