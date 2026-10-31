@@ -1,8 +1,11 @@
 package net.officefloor.hq.app.rate;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
@@ -45,14 +48,28 @@ public class RateChains {
         return sheetRates;
     }
 
-    /** The sheet's own rates, then each of its ancestors' up to {@link RateChain#ANCESTORS} levels up. */
+    /** The sheet's own rates, then each of its ancestors' up to {@link RateChain#ANCESTORS} levels up, then, for a
+     *  sheet that was cloned, the line of the sheet it was cloned from. */
     public RateChain of(String sheetId) {
         return new RateChain(Stream.concat(Stream.of(sheetId), ancestorsOf(sheetId).stream())
                 .map(this::ratesOf).toList());
     }
 
-    /** The ids of the sheet's ancestors whose rates stand in for its own, nearest first. */
+    /** The ids of the sheets whose rates stand in for the sheet's own, nearest first: its parents up to
+     *  {@link RateChain#ANCESTORS} levels up, then the sheet it was cloned from, that sheet's parents and the sheet it
+     *  was cloned from, and so on (each once, the sheet itself never). */
     public List<String> ancestorsOf(String sheetId) {
-        return sheets.ancestorsOf(sheetId, RateChain.ANCESTORS);
+        List<String> line = new ArrayList<>();
+        Set<String> followed = new HashSet<>();
+        for (String at = sheetId; at != null && followed.add(at);
+                at = sheets.findById(at).map(Sheet::getClonedFrom).orElse(null)) {
+            if (!at.equals(sheetId) && !line.contains(at)) {
+                line.add(at);
+            }
+            sheets.ancestorsOf(at, RateChain.ANCESTORS).stream()
+                    .filter(ancestor -> !ancestor.equals(sheetId) && !line.contains(ancestor))
+                    .forEach(line::add);
+        }
+        return line;
     }
 }

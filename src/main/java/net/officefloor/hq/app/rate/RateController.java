@@ -96,8 +96,8 @@ public class RateController {
     }
 
     /** The rates of the sheet's ancestors, nearest first (its parent's, its parent's parent's, up to three levels
-     *  up), each by grade in the order they take effect: a grade with no rate in force on a date on the sheet takes
-     *  the first in force on that date up the line. As of a date, each as it stood then. */
+     *  up, then the line of the sheet it was cloned from), each by grade in the order they take effect: a grade with
+     *  no rate in force on a date on the sheet takes the first in force on that date up the line. As of a date, each as it stood then. */
     @GetMapping("/inherited")
     public List<List<RateView>> inherited(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

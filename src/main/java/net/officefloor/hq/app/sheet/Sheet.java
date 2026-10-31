@@ -139,6 +139,12 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /** The id of the sheet this one was cloned from, whose rate line (it, its parents, the sheet it was cloned from
+     *  and so on) stands in for a grade with no rate in force on a date on this sheet nor its parents; null for a
+     *  sheet that was not cloned. Not dated. */
+    @Column(name = "cloned_from")
+    private String clonedFrom;
+
     /** The sheet's proof kinds, comma separated (receipt, photo): while set, a claim above the proof threshold needs
      *  a proof of each before it can be settled or approved; null means none. Not dated. */
     @Column(name = "proof_kinds", length = 200)
@@ -159,7 +165,8 @@ public class Sheet {
     }
 
     /** A copy of the sheet under another id, unsaved: its today, every setting (dated or not), its permission
-     *  matrix, parent and last settle batch; its claim numbering starts afresh, and it is not archived. */
+     *  matrix, parent and last settle batch, naming this sheet as the one it was cloned from; its claim numbering
+     *  starts afresh, and it is not archived. */
     public Sheet copyTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
         settings.forEach(s -> copy.settings.add(new DatedSetting(s.getKey(), s.getFrom(), s.getValue())));
@@ -174,6 +181,7 @@ public class Sheet {
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
         copy.parentId = parentId;
+        copy.clonedFrom = this.id;
         copy.proofKinds = proofKinds;
         copy.lastSettleBatch = lastSettleBatch;
         return copy;
@@ -424,6 +432,10 @@ public class Sheet {
 
     public String getParentId() {
         return parentId;
+    }
+
+    public String getClonedFrom() {
+        return clonedFrom;
     }
 
     public void setParentId(String parentId) {

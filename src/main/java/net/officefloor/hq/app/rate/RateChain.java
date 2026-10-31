@@ -5,7 +5,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-/** The rates a sheet's dues are read at: its own, then its parent's, its parent's parent's and that one's parent's.
+/** The rates a sheet's dues are read at: its own, then its parent's, its parent's parent's and that one's parent's,
+ *  then, for a cloned sheet, the line of the sheet it was cloned from.
  *  A grade with no rate in force on a date on the sheet takes the first rate in force for it on that date up the
  *  line. */
 public record RateChain(List<List<Rate>> levels) {
