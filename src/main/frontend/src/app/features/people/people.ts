@@ -18,6 +18,7 @@ import { PersonClaims } from '../claims/claims';
 import { SheetHeader } from '../header/header';
 import { PeriodsPanel } from '../periods/periods';
 import { PoolsPanel } from '../pools/pools';
+import { CrewsPanel } from '../crews/crews';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Plans } from '../../core/plans';
 import { Pools } from '../../core/pools';
@@ -89,13 +90,14 @@ function csvField(value: string): string {
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, PersonPlans, PlanGenerate],
+  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate],
   template: `
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
                 [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''" />
     <app-periods [dueTotals]="dueByPeriod()" />
     <app-pools [people]="people()" />
+    <app-crews [people]="people()" [dueByPerson]="dueByPerson()" />
     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()"
                  [voidReasons]="summaryByVoidReason()" />
     <app-classic-summary [periods]="classicByPeriod()" [dueTotal]="classicDueTotal()" />
@@ -655,7 +657,7 @@ export class PeopleList {
   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none),
    *  at most the sheet's cap; null when neither their grade in force today nor the grade any of those claims is at has a rate in
    *  force today, and none of those claims has a due. */
-  private readonly dueByPerson = computed(() => {
+  protected readonly dueByPerson = computed(() => {
     const cap = this.capCents();
     return new Map([...this.uncappedDueByPerson()].map(([id, due]) =>
       [id, due === null || cap === null ? due : Math.min(due, cap)]));

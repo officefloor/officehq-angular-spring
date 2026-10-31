@@ -18,6 +18,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.patron.PatronRepository;
 import net.officefloor.hq.app.plan.PlanService;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
@@ -48,6 +49,7 @@ public class PersonTransferService {
     private final ClaimService claimService;
     private final PatronRepository patrons;
     private final PoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final StatementService statements;
     private final WatchRepository watches;
     private final SheetService sheets;
@@ -59,7 +61,7 @@ public class PersonTransferService {
     private final PersonSnapshotService snapshots;
 
     public PersonTransferService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
-            PatronRepository patrons, PoolMemberRepository poolMembers, StatementService statements,
+            PatronRepository patrons, PoolMemberRepository poolMembers, CrewService crews, StatementService statements,
             WatchRepository watches, SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit,
             Rollup rollup, PlanService plans, PersonSnapshotService snapshots) {
         this.plans = plans;
@@ -69,6 +71,7 @@ public class PersonTransferService {
         this.claimService = claimService;
         this.patrons = patrons;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.statements = statements;
         this.watches = watches;
         this.sheets = sheets;
@@ -139,6 +142,7 @@ public class PersonTransferService {
                 .filter(p -> p.getPersonId().equals(person.getId()) || p.getPatronId().equals(person.getId()))
                 .toList());
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
+        crews.removePerson(person.getId());
         statements.move(sheetId, person.getId(), target, into == null ? person.getId() : into.getId());
         snapshots.move(sheetId, person.getId(), target, into == null ? person.getId() : into.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));

@@ -12,6 +12,7 @@ import net.officefloor.hq.app.patron.Patron;
 import net.officefloor.hq.app.patron.PatronRepository;
 import net.officefloor.hq.app.plan.PlanService;
 import net.officefloor.hq.app.pool.PoolMember;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
@@ -34,6 +35,7 @@ public class PersonMergeService {
     private final ClaimRepository claims;
     private final PatronRepository patrons;
     private final PoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final StatementService statements;
     private final WatchRepository watches;
     private final SheetService sheets;
@@ -45,7 +47,7 @@ public class PersonMergeService {
     private final PersonSnapshotService snapshots;
 
     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
-            PoolMemberRepository poolMembers, StatementService statements, WatchRepository watches,
+            PoolMemberRepository poolMembers, CrewService crews, StatementService statements, WatchRepository watches,
             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit, Rollup rollup,
             PlanService plans, PersonSnapshotService snapshots) {
         this.plans = plans;
@@ -54,6 +56,7 @@ public class PersonMergeService {
         this.claims = claims;
         this.patrons = patrons;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.statements = statements;
         this.watches = watches;
         this.sheets = sheets;
@@ -131,6 +134,7 @@ public class PersonMergeService {
             }
         }
         poolMembers.flush();
+        crews.reassign(from.getId(), into.getId());
 
         statements.move(sheetId, from.getId(), sheetId, into.getId());
         snapshots.move(sheetId, from.getId(), sheetId, into.getId());
