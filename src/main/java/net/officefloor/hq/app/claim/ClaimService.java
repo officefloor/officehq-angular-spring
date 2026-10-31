@@ -157,6 +157,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheet.getToday())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
+        }
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
         }
@@ -191,6 +195,32 @@ public class ClaimService {
         audit.recordOnCommit(line);
         rollup.recordChanges(sheetId, user, before);
         return changed;
+    }
+
+    /** Defer an OPEN claim until a day after the sheet's today: until the sheet's today reaches that day it counts
+     *  in no total, is not overdue, cannot be settled and is left unbound by a statement. Refused for a claim that
+     *  is not OPEN, a day not after today and a claim dated inside a closed period. */
+    @Transactional
+    public Claim defer(String sheetId, String user, long id, LocalDate until) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deferred; only an OPEN one can");
+        }
+        if (!until.isAfter(sheet.getToday())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A claim is deferred to a day after today");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
+        claim.setDeferredUntil(until);
+        Claim deferred = claims.saveAndFlush(claim);
+        audit.recordOnCommit(entry("CLAIM_DEFERRED", user, person, deferred, deferred.getNumber()) + " until=" + until);
+        rollup.recordChanges(sheetId, user, before);
+        return deferred;
     }
 
     /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
@@ -432,12 +462,12 @@ public class ClaimService {
                 .map(Claim::getDate).findFirst().orElse(claim.getDate());
     }
 
-    /** The late charge an OPEN or PENDING claim has gained on its figure by the sheet's today: the late percent in force on its date of
+    /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure by the sheet's today: the late percent in force on its date of
      *  the figure for every full 30 days past the day it is due by, rounded as the claim rounds; 0.00 when not overdue,
      *  it has no figure, or it is a correction. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (!claim.getStatus().isOpen()) {
+        if (!claim.getStatus().isOpen() || claim.isDeferredOn(sheet.getToday())) {
             return none;
         }
         return lateChargeAsOpen(claim, figure, sheet);

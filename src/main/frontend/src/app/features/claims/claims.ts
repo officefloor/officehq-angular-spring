@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isOverdue, money, roundingDate } from '../../core/claims';
+import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isDeferred, isOverdue, money, roundingDate } from '../../core/claims';
 import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
@@ -57,6 +57,13 @@ const NO_RATES: readonly RateView[] = [];
           <span data-testid="claim-status">{{ c.status }}</span>
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
+          — deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
+          until <span data-testid="claim-deferred-until">{{ deferredOf(c) ? c.deferredUntil : '' }}</span>
+          <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+          <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date"
+                 [value]="deferDates()[c.id] ?? ''" (input)="deferDateChanged(c, $any($event.target).value)" />
+          <button type="button" data-testid="claim-defer" (click)="defer(c)"
+                  [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
@@ -126,7 +133,7 @@ export class PersonClaims {
   readonly selectToggled = output<{ id: number; selected: boolean }>();
 
   protected readonly notAvailable = NOT_AVAILABLE;
-  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds())).reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '')).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
@@ -134,6 +141,8 @@ export class PersonClaims {
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   /** The person chosen to move each claim to, by claim id. */
   protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
+  /** The date typed to defer each OPEN claim until, by id. */
+  protected readonly deferDates = signal<Readonly<Record<number, string>>>({});
   /** The reason typed to reject each PENDING claim, by id. */
   protected readonly rejectReasons = signal<Readonly<Record<number, string>>>({});
 
@@ -164,6 +173,41 @@ export class PersonClaims {
     return sheet !== null && isOverdue(c, sheet.today);
   }
 
+  protected deferredOf(c: ClaimView): boolean {
+    const sheet = this.sheets.current();
+    return sheet !== null && isDeferred(c, sheet.today);
+  }
+
+  protected deferDateChanged(c: ClaimView, date: string): void {
+    this.deferDates.update((dates) => ({ ...dates, [c.id]: date }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected defer(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const until = (this.deferDates()[c.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      this.claimError.set({ id: c.id, message: 'Choose the date to defer the claim until.' });
+      return;
+    }
+    this.api.defer(sheet.id, c.id, until).subscribe({
+      next: (saved) => {
+        this.deferDates.update((dates) => ({ ...dates, [c.id]: '' }));
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 423
+          ? 'This claim is dated inside a closed period.'
+          : err instanceof HttpErrorResponse && err.status === 400
+            ? `A claim is deferred to a day after today (${sheet.today}).`
+            : `A ${c.status} claim cannot be deferred; only an OPEN one can.`,
+      }),
+    });
+  }
+
   protected periodOf(c: ClaimView): string {
     return periodOn(this.periods(), c.date)?.name ?? '';
   }
@@ -180,7 +224,9 @@ export class PersonClaims {
           ? 'You opened this claim, so someone else must settle it.'
           : err instanceof HttpErrorResponse && err.status === 423
             ? 'This claim is dated inside a closed period.'
-            : `A ${c.status} claim cannot become ${status}.`,
+            : status === 'SETTLED' && this.deferredOf(c)
+              ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled before then.`
+              : `A ${c.status} claim cannot become ${status}.`,
       }),
     });
   }

@@ -35,6 +35,8 @@ export interface ClaimView {
   /** The day the claim is due by (yyyy-mm-dd): fixed when it was added, from its date and the terms of its
    *  person's grade in force then. */
   dueBy: string;
+  /** The day the claim was deferred until (yyyy-mm-dd); null if it was never deferred. */
+  deferredUntil: string | null;
   /** The claim's status log, oldest first: a line for each status it has had, the DRAFT it was added as first. */
   log: ClaimLogLine[];
 }
@@ -53,11 +55,18 @@ export function counts(c: ClaimView): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
 }
 
-/** Whether the claim counts in the live totals for a person with these holds: an OPEN or PENDING one dated
- *  within a hold does not, unless a statement binds it. */
-export function countsWithHolds(holds: readonly HoldView[]): (c: ClaimView) => boolean {
+/** Whether a claim is deferred on the sheet's today: OPEN and deferred until a later day. While deferred it
+ *  counts in no total, is not overdue and cannot be settled. */
+export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today: string): boolean {
+  return c.status === 'OPEN' && c.deferredUntil !== null && today < c.deferredUntil;
+}
+
+/** Whether the claim counts in the live totals on the sheet's today for a person with these holds: a deferred
+ *  one does not, nor does an OPEN or PENDING one dated within a hold, unless a statement binds it. */
+export function countsWithHolds(holds: readonly HoldView[], today: string): (c: ClaimView) => boolean {
   return (c) =>
     counts(c) &&
+    !isDeferred(c, today) &&
     (c.stated ||
       (c.status !== 'OPEN' && c.status !== 'PENDING') ||
       !holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)));
@@ -73,9 +82,9 @@ export function roundingDate(
   return theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
 }
 
-/** Whether a claim is overdue on the sheet's today: OPEN or PENDING and due by a day before it. */
-export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status'>, today: string): boolean {
-  return (c.status === 'OPEN' || c.status === 'PENDING') && c.dueBy < today;
+/** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and due by a day before it. */
+export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil'>, today: string): boolean {
+  return (c.status === 'OPEN' || c.status === 'PENDING') && !isDeferred(c, today) && c.dueBy < today;
 }
 
 /** A claim as the form submits it: a blank date takes the sheet's today. A negative amount is a correction,
@@ -165,6 +174,11 @@ export class Claims {
 
   changeStatus(sheetId: string, id: number, status: ClaimStatus): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/status`, { status });
+  }
+
+  /** Defer an OPEN claim until `until` (yyyy-mm-dd), a day after the sheet's today. */
+  defer(sheetId: string, id: number, until: string): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/defer`, { until });
   }
 
   /** A steward approves a PENDING claim: it is SETTLED, its due fixed as it is now. */

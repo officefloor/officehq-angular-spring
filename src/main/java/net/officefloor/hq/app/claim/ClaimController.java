@@ -32,11 +32,11 @@ public class ClaimController {
      * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
      * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
      * statedDue (null if it had no figure then, when it stays n/a, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
-     * on any other claim); log is its status log, oldest first.
+     * on any other claim); deferredUntil is the day it was deferred until (null if never deferred); log is its status log, oldest first.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate dueBy, List<LogLine> log) {
+            LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -44,7 +44,7 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
-                    claim.getDueBy(), claim.getLog().stream().map(LogLine::of).toList());
+                    claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList());
         }
     }
 
@@ -73,6 +73,10 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim. */
     public record Rejection(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {
+    }
+
+    /** The day an OPEN claim is to be deferred until. */
+    public record Deferral(@NotNull LocalDate until) {
     }
 
     /** The person a claim is to move to. */
@@ -160,6 +164,15 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(claims.resettle(sheetId, user, id));
+    }
+
+    @PutMapping("/claims/{id}/defer")
+    public ClaimView defer(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody Deferral request) {
+        return ClaimView.of(claims.defer(sheetId, user, id, request.until()));
     }
 
     @PutMapping("/claims/{id}/person")

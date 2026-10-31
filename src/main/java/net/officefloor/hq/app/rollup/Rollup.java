@@ -66,7 +66,8 @@ public class Rollup {
         BigDecimal overdueTotal = BigDecimal.ZERO.setScale(2);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counting = sheetClaims.stream()
-                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c))
+                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c)
+                            && !c.isDeferredOn(today))
                     .toList();
             BigDecimal claimed = counting.stream().map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -107,6 +108,7 @@ public class Rollup {
     public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
         List<Rate> sheetRates = rates.findBySheetId(sheetId);
         Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
         Map<Long, Person> personOf = new LinkedHashMap<>();
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
         people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
@@ -116,7 +118,7 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = personOf.get(claim.getPersonId());
-            if (person == null || !person.counts(claim) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            if (person == null || !person.counts(claim) || claim.isDeferredOn(today) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
             BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet, sheetClaims);

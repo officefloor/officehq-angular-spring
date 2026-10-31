@@ -260,11 +260,14 @@ export class PeopleList {
     const people = this.people();
     return new Map(people.map((p) => [p.id, people.filter((q) => q.id !== p.id)]));
   });
-  /** Whether each claim counts in the live totals: a person's open claims dated within one of their holds,
-   *  and not bound by a statement, do not. */
+  /** The sheet's today ('' before a sheet is loaded). */
+  private readonly todayNow = computed(() => this.sheets.current()?.today ?? '');
+  /** Whether each claim counts in the live totals: a deferred claim does not, nor do a person's open claims
+   *  dated within one of their holds and not bound by a statement. */
   private readonly countsNow = computed(() => {
-    const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds)]));
-    return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([]))(c);
+    const today = this.todayNow();
+    const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds, today)]));
+    return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([], today))(c);
   });
   protected readonly claimedTotal = computed(() =>
     money(this.claims().filter(this.countsNow()).reduce((sum, c) => sum + cents(c.amount), 0)),
@@ -288,7 +291,7 @@ export class PeopleList {
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
-      const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds));
+      const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow()));
       const grades = [this.gradeToday(p), ...counting.map((c) => gradeOn(p, c.date))];
       const dues = counting.map((c) => this.claimDue(p, c, dueTerms)).filter((due) => due !== null);
       if (!grades.some((g) => today.has(g)) && dues.length === 0) {
@@ -310,7 +313,7 @@ export class PeopleList {
     const byPerson = new Map<number, Overdue>();
     for (const p of this.people()) {
       const overdue = sheet
-        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds)(c) && isOverdue(c, sheet.today))
+        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds, sheet.today)(c) && isOverdue(c, sheet.today))
         : NO_CLAIMS;
       byPerson.set(p.id, {
         count: overdue.length,
@@ -335,7 +338,7 @@ export class PeopleList {
     const byPerson = new Map<number, Map<number, number>>();
     for (const p of this.people()) {
       const live = new Map<number, number>(periods.map((pd) => [pd.id, 0]));
-      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds))) {
+      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow()))) {
         const period = periodOn(periods, c.date);
         if (period) live.set(period.id, (live.get(period.id) ?? 0) + (this.claimDue(p, c, dueTerms) ?? 0));
       }

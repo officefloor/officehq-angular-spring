@@ -92,7 +92,7 @@ public class StatementService {
         boolean anyDue = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!person.countsUnbound(claim)) {
+            if (!person.countsUnbound(claim) || claim.isDeferredOn(today)) {
                 claim.unbind();
                 continue;
             }
