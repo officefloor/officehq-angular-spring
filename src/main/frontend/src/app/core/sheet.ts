@@ -10,7 +10,12 @@ export interface SheetView {
   clerkLimit: string | null;
   /** A claim's live due is at least this (two decimals). */
   floor: string;
+  /** The sheet's terms in days: a claim is due by its date plus these. */
+  terms: number;
 }
+
+/** The terms a sheet has until they are changed. */
+export const DEFAULT_TERMS = 14;
 
 // The active sheet. Everything else in the app is kept per sheet; loading an id re-reads it from
 // the store, and an id never loaded before starts an empty sheet.
@@ -52,6 +57,13 @@ export class Sheets {
   setFloor(id: string, floor: string): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/floor`, { floor })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's terms (days). */
+  setTerms(id: string, terms: number): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms`, { terms })
       .pipe(tap((s) => this.active.set(s)));
   }
 }

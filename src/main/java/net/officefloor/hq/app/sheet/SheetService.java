@@ -75,4 +75,15 @@ public class SheetService {
         rollup.recordChanges(id, user, before);
         return saved;
     }
+
+    /** Set the sheet's terms in days, starting the sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setTerms(String id, String user, int terms) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setTerms(terms);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
+        return saved;
+    }
 }

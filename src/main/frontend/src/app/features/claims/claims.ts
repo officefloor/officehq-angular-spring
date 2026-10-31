@@ -2,11 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, money } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money } from '../../core/claims';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_FLOOR, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
-import { Sheets } from '../../core/sheet';
+import { DEFAULT_TERMS, Sheets } from '../../core/sheet';
 
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
 // the claims listed newest first.
@@ -40,6 +40,8 @@ import { Sheets } from '../../core/sheet';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           on <span data-testid="claim-date">{{ c.date }}</span>
           — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
+          by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
+          — overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           in period <span data-testid="claim-period">{{ periodOf(c) }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
@@ -103,6 +105,15 @@ export class PersonClaims {
   protected dueOf(c: ClaimView): string {
     const due = claimDueCents(c, this.rates(), this.sheets.current()?.floor ?? DEFAULT_FLOOR);
     return due === null ? NOT_AVAILABLE : money(due);
+  }
+
+  protected dueByOf(c: ClaimView): string {
+    return dueBy(c, this.sheets.current()?.terms ?? DEFAULT_TERMS);
+  }
+
+  protected overdueOf(c: ClaimView): boolean {
+    const sheet = this.sheets.current();
+    return sheet !== null && isOverdue(c, sheet.terms, sheet.today);
   }
 
   protected periodOf(c: ClaimView): string {

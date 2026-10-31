@@ -3,6 +3,8 @@ package net.officefloor.hq.app.sheet;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -24,13 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor have exactly two decimals. */
-    public record SheetView(String id, LocalDate today, String clerkLimit, String floor) {
+    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor have exactly two decimals; terms is in days. */
+    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString());
+                    sheet.getFloor().toPlainString(), sheet.getTerms());
         }
     }
 
@@ -43,6 +45,10 @@ public class SheetController {
 
     /** The sheet's floor as the form submits it. */
     public record FloorChange(@NotNull @DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal floor) {
+    }
+
+    /** The sheet's terms, in days, as the form submits them. */
+    public record TermsChange(@NotNull @Min(0) @Max(36500) Integer terms) {
     }
 
     private final SheetService sheets;
@@ -84,5 +90,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody FloorChange request) {
         return SheetView.of(sheets.setFloor(id, user, request.floor()));
+    }
+
+    /** Change the sheet's terms. */
+    @PutMapping("/{id}/settings/terms")
+    public SheetView setTerms(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody TermsChange request) {
+        return SheetView.of(sheets.setTerms(id, user, request.terms()));
     }
 }
