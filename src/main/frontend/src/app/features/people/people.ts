@@ -9,6 +9,7 @@ import { Notes } from '../notes/notes';
 import { Claims, PersonWithClaims as Person } from '../claims/claims';
 import { Audit } from '../audit/audit';
 import { Activity } from '../activity/activity';
+import { Policy } from '../policy/policy';
 import { Search } from '../search/search';
 import { SnapshotCompare } from '../snapshot-compare/snapshot-compare';
 import { SheetCompare } from '../sheet-compare/sheet-compare';
@@ -204,7 +205,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Access, Activity, Audit, ClaimTemplates, Claims, Crews, Duplicates, Grades, Holidays, Notes, Periods, PersonPlans, Pools, Rates, Search, SheetCompare, SnapshotCompare, Summary, Tags, VoidReasons],
+  imports: [FigurePipe, Access, Activity, Audit, ClaimTemplates, Claims, Crews, Duplicates, Grades, Holidays, Notes, Periods, PersonPlans, Policy, Pools, Rates, Search, SheetCompare, SnapshotCompare, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -258,6 +259,7 @@ function csvField(value: string): string {
     <app-duplicates />
     <app-audit />
     <app-activity />
+    <app-policy />
     <section aria-label="People">
       <h2>People</h2>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
