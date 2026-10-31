@@ -308,7 +308,7 @@ public class ClaimService {
             refuseOverCap(sheetId, claim);
             refuseFlagged(sheet, user, person);
         }
-        if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, due)) {
+        if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, person, due)) {
             next = ClaimStatus.PENDING;
         }
         if (next == ClaimStatus.OPEN && overReviewThreshold(sheet, claim, due)) {
@@ -759,7 +759,7 @@ public class ClaimService {
      *  number, gets none) with its old number never used again, loses any figure a statement bound it to (it is live again until its new person's next statement), and is
      *  listed as its new person's newest claim. Refused for a role the permission matrix does not allow (by default a clerk), for a SETTLED or VOID claim, for a move to the
      *  person it is already of, for one due by inside a closed period or after the new person retired, and for a
-     *  correction the new person has no SETTLED claim of that number for. */
+     *  correction (other than a DRAFT) the new person has no SETTLED claim of that number for. */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
         return reassign(sheetId, user, id, toPersonId, false);
@@ -787,7 +787,9 @@ public class ClaimService {
         }
         refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(to, claim.getDate());
-        refuseUnlessCorrects(sheetId, to.getId(), claim.getAmount(), claim.getCorrects(), claim.getId());
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            refuseUnlessCorrects(sheetId, to.getId(), claim.getAmount(), claim.getCorrects(), claim.getId());
+        }
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         Rollup.Figures before = rollup.of(sheetId);
         claim.unbind();
@@ -1019,10 +1021,11 @@ public class ClaimService {
         return threshold != null && due != null && due.compareTo(threshold) > 0;
     }
 
-    /** Whether a settle by this user must wait for a steward: they are a clerk and the due is above the sheet's
-     *  clerk limit (a claim with no due is within any limit). */
-    private boolean overClerkLimit(Sheet sheet, String user, BigDecimal due) {
-        BigDecimal limit = sheet.getClerkLimit();
+    /** Whether a settle by this user must wait for a steward: they are a clerk and the due is above the clerk limit
+     *  in force on the sheet's today for the person's grade then (its own, else the sheet's; a claim with no due is
+     *  within any limit). */
+    private boolean overClerkLimit(Sheet sheet, String user, Person person, BigDecimal due) {
+        BigDecimal limit = sheet.clerkLimitFor(person.gradeOn(sheet.getToday()));
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }

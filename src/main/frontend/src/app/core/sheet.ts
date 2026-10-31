@@ -4,7 +4,7 @@ import { Observable, tap } from 'rxjs';
 import { Grade } from './people';
 
 /** A dated setting's value from its from-date (yyyy-mm-dd; null: from the beginning of time) until the next one's
- *  of the same key; a null value means none. Keys: clerk-limit, floor, terms, terms-A/B/C, late-pct, grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C,
+ *  of the same key; a null value means none. Keys: clerk-limit, clerk-limit-A/B/C, floor, terms, terms-A/B/C, late-pct, grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C,
  *  note-threshold, review-threshold, rounding. */
 export interface DatedSetting {
   key: string;
@@ -19,6 +19,9 @@ export interface SheetView {
   today: string;
   /** A clerk can settle a claim only when its due is at or below this (two decimals); null: no limit. */
   clerkLimit: string | null;
+  /** The clerk limit (two decimals) set per grade, in force on the sheet's today; a grade without its own uses the
+   *  sheet's. */
+  gradeClerkLimit: Partial<Record<Grade, string>>;
   /** A claim's live due is at least this (two decimals). */
   floor: string;
   /** The sheet's terms in business days: a claim is due by the terms-th business day after its date. */
@@ -306,6 +309,13 @@ export class Sheets {
   setLatePct(id: string, latePct: string, from: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/late-pct`, { latePct, from })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Record a grade's own clerk limit from a date (null: the sheet's today); null means the sheet's. */
+  setGradeClerkLimit(id: string, grade: Grade, clerkLimit: string | null, from: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/clerk-limit/${grade}`, { clerkLimit, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 

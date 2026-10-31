@@ -23,7 +23,7 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ROUNDING_MODES = ['half-up', 'half-even'];
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'proofKinds' | 'defaultGrade' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | PermField;
+type SettingField = 'clerkLimit' | 'clerkLimitA' | 'clerkLimitB' | 'clerkLimitC' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'proofKinds' | 'defaultGrade' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | PermField;
 
 /** A setting that carries a figure: it is saved from a from-date. */
 type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'proofKinds' | 'defaultGrade' | PermField>;
@@ -36,6 +36,9 @@ const GRADE_TERMS_FIELD: Record<Grade, 'termsA' | 'termsB' | 'termsC'> = { A: 't
 
 /** The form field of each grade's grace days. */
 const GRADE_GRACE_FIELD: Record<Grade, 'graceA' | 'graceB' | 'graceC'> = { A: 'graceA', B: 'graceB', C: 'graceC' };
+
+/** The form field of each grade's own clerk limit. */
+const GRADE_CLERK_LIMIT_FIELD: Record<Grade, 'clerkLimitA' | 'clerkLimitB' | 'clerkLimitC'> = { A: 'clerkLimitA', B: 'clerkLimitB', C: 'clerkLimitC' };
 
 /** The form field of each grade's own proof threshold. */
 const GRADE_PROOF_THRESHOLD_FIELD: Record<Grade, 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC'> = { A: 'proofThresholdA', B: 'proofThresholdB', C: 'proofThresholdC' };
@@ -53,7 +56,7 @@ function isDate(value: string): boolean {
   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
 }
 
-// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, each grade's grace days, its late percent, its policy date, its period numbering from, its grace days (not dated), its pot (not dated), its alert threshold (not dated), its parent sheet (not dated), its cap, its proof threshold, its proof kinds (not dated), its note threshold, its review threshold, its permission matrix (not dated), and the role assigned to each user name.
+// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, each grade's own clerk limit, its floor, its terms, each grade's own terms, each grade's grace days, its late percent, its policy date, its period numbering from, its grace days (not dated), its pot (not dated), its alert threshold (not dated), its parent sheet (not dated), its cap, its proof threshold, its proof kinds (not dated), its note threshold, its review threshold, its permission matrix (not dated), and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule, FigurePipe],
@@ -61,6 +64,9 @@ function isDate(value: string): boolean {
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
       <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ (sheets.current()?.clerkLimit ?? '') | figure }}</span></p>
+      @for (g of grades; track g) {
+        <p>Clerk limit for grade {{ g }}: <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (sheets.current()?.gradeClerkLimit?.[g] ?? '') | figure }}</span></p>
+      }
       <p>Floor: <span data-testid="setting-floor-current">{{ (sheets.current()?.floor ?? '') | figure }}</span></p>
       <p>Terms (business days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
       @for (g of grades; track g) {
@@ -104,6 +110,14 @@ function isDate(value: string): boolean {
         <label for="setting-clerk-limit-from">Clerk limit from (yyyy-mm-dd; blank: today)</label>
         <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" formControlName="clerkLimitFrom" (focus)="lastFocused = 'clerkLimit'"
                placeholder="yyyy-mm-dd" autocomplete="off" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (in place of the sheet's for a claim whose person is of the grade on the sheet's today; blank: the sheet's)</label>
+          <input [id]="'setting-clerk-limit-' + g" [attr.data-testid]="'setting-clerk-limit-' + g" [formControlName]="clerkLimitField[g]"
+                 (focus)="lastFocused = clerkLimitField[g]" inputmode="decimal" autocomplete="off" />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} from (yyyy-mm-dd; blank: today)</label>
+          <input [id]="'setting-clerk-limit-' + g + '-from'" [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+                 [formControlName]="clerkLimitField[g] + 'From'" (focus)="lastFocused = clerkLimitField[g]" placeholder="yyyy-mm-dd" autocomplete="off" />
+        }
         <label for="setting-floor">Floor (a claim's due is at least this)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" (focus)="lastFocused = 'floor'"
                inputmode="decimal" autocomplete="off" />
@@ -259,6 +273,7 @@ export class SettingsPanel {
   protected readonly grades = GRADES;
   protected readonly gradeField = GRADE_TERMS_FIELD;
   protected readonly graceField = GRADE_GRACE_FIELD;
+  protected readonly clerkLimitField = GRADE_CLERK_LIMIT_FIELD;
   protected readonly proofThresholdField = GRADE_PROOF_THRESHOLD_FIELD;
   protected readonly permActions = PERM_ACTIONS;
   protected readonly standing = STANDING_PERMISSIONS;
@@ -275,6 +290,9 @@ export class SettingsPanel {
 
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
+    clerkLimitA: new FormControl('', { nonNullable: true }),
+    clerkLimitB: new FormControl('', { nonNullable: true }),
+    clerkLimitC: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
     termsA: new FormControl('', { nonNullable: true }),
@@ -305,6 +323,9 @@ export class SettingsPanel {
     reviewThreshold: new FormControl('', { nonNullable: true }),
     rounding: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
+    clerkLimitAFrom: new FormControl('', { nonNullable: true }),
+    clerkLimitBFrom: new FormControl('', { nonNullable: true }),
+    clerkLimitCFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
     termsAFrom: new FormControl('', { nonNullable: true }),
@@ -414,6 +435,12 @@ export class SettingsPanel {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const gradeClerkLimitSaved = GRADES.filter((g) => isSaved(GRADE_CLERK_LIMIT_FIELD[g]))
+      .map((g) => ({ grade: g, value: controls[GRADE_CLERK_LIMIT_FIELD[g]].value.trim() }));
+    if (gradeClerkLimitSaved.some((t) => t.value !== '' && !LIMIT_PATTERN.test(t.value))) {
+      this.settingsError.set('Type a grade\'s clerk limit of 0.00 or more, with up to two decimals, or leave it blank for the sheet\'s.');
+      return;
+    }
     if (saveFloor && !LIMIT_PATTERN.test(floorValue)) {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
       return;
@@ -520,7 +547,7 @@ export class SettingsPanel {
       this.settingsError.set(`List the roles that may take an action, comma separated (${this.roleNames}), or leave it blank for the standing rule.`);
       return;
     }
-    const datedFields: DatedField[] = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'graceA', 'graceB', 'graceC', 'latePct', 'cap', 'proofThreshold', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC', 'noteThreshold', 'reviewThreshold', 'rounding'];
+    const datedFields: DatedField[] = ['clerkLimit', 'clerkLimitA', 'clerkLimitB', 'clerkLimitC', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'graceA', 'graceB', 'graceC', 'latePct', 'cap', 'proofThreshold', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC', 'noteThreshold', 'reviewThreshold', 'rounding'];
     const badFrom = datedFields.find((f) => {
       const from = fromOf(f);
       return isSaved(f) && from !== null && !(DATE_PATTERN.test(from) && isDate(from));
@@ -531,6 +558,7 @@ export class SettingsPanel {
     }
     const saves: Observable<SheetView>[] = [];
     if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit, fromOf('clerkLimit')));
+    for (const t of gradeClerkLimitSaved) saves.push(this.sheets.setGradeClerkLimit(sheet.id, t.grade, t.value === '' ? null : t.value, fromOf(GRADE_CLERK_LIMIT_FIELD[t.grade])));
     if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue, fromOf('floor')));
     if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue), fromOf('terms')));
     for (const t of gradeTermsSaved) saves.push(this.sheets.setGradeTerms(sheet.id, t.grade, t.value === '' ? null : Number(t.value), fromOf(GRADE_TERMS_FIELD[t.grade])));
@@ -572,7 +600,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), escalateAfter: String(sheet?.escalateAfter ?? ''), reviewSla: String(sheet?.reviewSla ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', proofKinds: sheet?.proofKinds ?? '', defaultGrade: sheet?.defaultGrade ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', reviewThreshold: sheet?.reviewThreshold ?? '', rounding: sheet?.rounding ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '', reviewThresholdFrom: '', roundingFrom: '',
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', clerkLimitA: sheet?.gradeClerkLimit?.A ?? '', clerkLimitB: sheet?.gradeClerkLimit?.B ?? '', clerkLimitC: sheet?.gradeClerkLimit?.C ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), escalateAfter: String(sheet?.escalateAfter ?? ''), reviewSla: String(sheet?.reviewSla ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', proofKinds: sheet?.proofKinds ?? '', defaultGrade: sheet?.defaultGrade ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', reviewThreshold: sheet?.reviewThreshold ?? '', rounding: sheet?.rounding ?? '', clerkLimitFrom: '', clerkLimitAFrom: '', clerkLimitBFrom: '', clerkLimitCFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '', reviewThresholdFrom: '', roundingFrom: '',
       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
   }

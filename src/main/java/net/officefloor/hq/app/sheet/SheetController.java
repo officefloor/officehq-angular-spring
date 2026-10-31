@@ -40,6 +40,7 @@ public class SheetController {
      *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off; archived is whether the sheet is archived;
      *  the entry date is null when it is off; gradeGrace is the grace days set per grade in force on the sheet's today;
      *  gradeProofThreshold is the proof threshold (two decimals) set per grade in force on the sheet's today;
+     *  gradeClerkLimit is the clerk limit (two decimals) set per grade in force on the sheet's today;
      *  settleBatch is the number of the last settle batch, null when there has been none; the pot (two decimals) is null when there is none, as is the alert threshold (two decimals) when it is off;
      *  rounding is the rounding mode in force on the sheet's today (half-up or half-even), null when there is none;
      *  parent is the id of the sheet's parent sheet, null when it has none;
@@ -55,7 +56,7 @@ public class SheetController {
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
-            String proofKinds, String defaultGrade) {
+            String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimit) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -79,7 +80,7 @@ public class SheetController {
                     sheet.getRounding(),
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
-                    sheet.getDefaultGrade());
+                    sheet.getDefaultGrade(), sheet.getGradeClerkLimits());
         }
     }
 
@@ -426,6 +427,16 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofThresholdChange request) {
         return SheetView.of(sheets.setProofThreshold(id, user, request.proofThreshold(), request.from()));
+    }
+
+    /** Change a grade's own clerk limit. */
+    @PutMapping("/{id}/settings/clerk-limit/{grade}")
+    public SheetView setGradeClerkLimit(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody SettingsChange request) {
+        return SheetView.of(sheets.setGradeClerkLimit(id, user, grade, request.clerkLimit(), request.from()));
     }
 
     /** Change a grade's own proof threshold. */

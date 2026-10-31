@@ -76,7 +76,7 @@ public class Sheet {
     @Column(name = "last_settle_batch", nullable = false)
     private int lastSettleBatch;
 
-    /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
+    /** The dated values of the settings that carry a figure (keys: clerk-limit, clerk-limit-A/B/C, floor, terms, terms-A/B/C, late-pct,
      *  grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C, note-threshold, review-threshold, rounding): each in force from its from-date until the next one's of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
@@ -249,6 +249,25 @@ public class Sheet {
      *  no limit. */
     public BigDecimal getClerkLimit() {
         return amountOn(CLERK_LIMIT, today, null);
+    }
+
+    /** The clerk limits set per grade in force on the sheet's today, by grade; a grade without its own is missing. */
+    public Map<String, String> getGradeClerkLimits() {
+        Map<String, String> byGrade = new TreeMap<>();
+        for (String grade : GRADES) {
+            BigDecimal value = amountOn(CLERK_LIMIT + "-" + grade, today, null);
+            if (value != null) {
+                byGrade.put(grade, value.toPlainString());
+            }
+        }
+        return byGrade;
+    }
+
+    /** The clerk limit for a grade in force on the sheet's today: its own when one is set, else the sheet's; null
+     *  means no limit. */
+    public BigDecimal clerkLimitFor(String grade) {
+        BigDecimal own = amountOn(CLERK_LIMIT + "-" + grade, today, null);
+        return own != null ? own : getClerkLimit();
     }
 
     /** A claim's live due is at least the floor in force on its date (two decimals). */
