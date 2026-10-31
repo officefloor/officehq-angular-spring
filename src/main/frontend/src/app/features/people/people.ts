@@ -601,7 +601,7 @@ export class PeopleList {
     return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([], today))(c);
   });
   protected readonly claimedTotal = computed(() =>
-    money(this.claims().filter(this.countsNow()).reduce((sum, c) => sum + cents(c.amount), 0)),
+    money(this.claims().filter(this.countsNow()).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)),
   );
   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none),
    *  at most the sheet's cap; null when neither their grade in force today nor the grade any of those claims is at has a rate in

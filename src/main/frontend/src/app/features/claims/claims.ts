@@ -231,7 +231,7 @@ export class PersonClaims {
   readonly selectToggled = output<{ id: number; selected: boolean }>();
 
   protected readonly notAvailable = NOT_AVAILABLE;
-  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '', this.retiredFrom())).reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '', this.retiredFrom())).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
   /** Whether the form was typed into since the edit button was pressed. */
   private typedSinceEdit = false;

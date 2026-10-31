@@ -2,6 +2,8 @@ package net.officefloor.hq.app.snapshot;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,11 +31,20 @@ public class PersonSnapshotService {
         snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal));
     }
 
-    /** Move the person's snapshots to another person, on another sheet (a merge or transfer). */
+    /** Move the person's snapshots to another person, on another sheet (a merge or transfer); a day the other
+     *  already has a snapshot line for keeps theirs, and the moved one is dropped. */
     @Transactional
     public void move(String fromSheetId, Long fromPersonId, String toSheetId, Long toPersonId) {
-        snapshots.findBySheetIdAndPersonIdOrderByIdAsc(fromSheetId, fromPersonId)
-                .forEach(s -> s.moveTo(toSheetId, toPersonId));
+        Set<LocalDate> theirs = snapshots.findBySheetIdAndPersonIdOrderByIdAsc(toSheetId, toPersonId).stream()
+                .map(PersonSnapshot::getDay)
+                .collect(Collectors.toSet());
+        for (PersonSnapshot s : snapshots.findBySheetIdAndPersonIdOrderByIdAsc(fromSheetId, fromPersonId)) {
+            if (theirs.contains(s.getDay())) {
+                snapshots.delete(s);
+            } else {
+                s.moveTo(toSheetId, toPersonId);
+            }
+        }
         snapshots.flush();
     }
 }
