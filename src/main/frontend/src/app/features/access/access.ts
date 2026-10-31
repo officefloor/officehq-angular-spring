@@ -38,6 +38,7 @@ interface Settings {
   escalateAfter: string | null;
   /** A REVIEW claim whose review day plus this many days is before the sheet's today is late; null when blank (none). Not dated. */
   reviewSla: string | null;
+  pendingSla: string | null;
   /** While both are set, a person whose score is at or above the high one is HIGH, at or above the mid one MID, else LOW; null when blank. Whole numbers, not dated. */
   scoreMid: string | null;
   scoreHigh: string | null;
@@ -259,6 +260,7 @@ const ROUNDING = /^(half-up|half-even)$/;
       <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
       <p>Escalate after (days) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
       <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
+      <p>Pending SLA (days) <strong data-testid="setting-pending-sla-current">{{ pendingSla() ?? '' }}</strong></p>
       <p>Score mid threshold <strong data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</strong></p>
       <p>Score high threshold <strong data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</strong></p>
       <p>Score log <strong data-testid="setting-score-log-current">{{ scoreLog() ?? '' }}</strong></p>
@@ -491,6 +493,15 @@ const ROUNDING = /^(half-up|half-even)$/;
           (input)="reviewSlaInput.set(value($event)); reviewSlaTouched = true; settingsError.set('')"
           (keydown)="reviewSlaTouched = reviewSlaTouched || clears($event)"
         />
+        <label for="setting-pending-sla">Pending SLA: a claim pending more than this many days is late (blank: none)</label>
+        <input
+          id="setting-pending-sla"
+          inputmode="numeric"
+          data-testid="setting-pending-sla"
+          [value]="pendingSlaInput()"
+          (input)="pendingSlaInput.set(value($event)); pendingSlaTouched = true; settingsError.set('')"
+          (keydown)="pendingSlaTouched = pendingSlaTouched || clears($event)"
+        />
         <label for="setting-score-mid">Score mid threshold: a score at or above it is MID (a whole number; blank: no bands)</label>
         <input
           id="setting-score-mid"
@@ -713,6 +724,8 @@ export class Access {
   protected readonly escalateAfterInput = signal('');
   protected readonly reviewSla = signal<string | null>(null);
   protected readonly reviewSlaInput = signal('');
+  protected readonly pendingSla = signal<string | null>(null);
+  protected readonly pendingSlaInput = signal('');
   protected readonly scoreMid = signal<string | null>(null);
   protected readonly scoreMidInput = signal('');
   protected readonly scoreHigh = signal<string | null>(null);
@@ -766,6 +779,7 @@ export class Access {
   protected alertThresholdTouched = false;
   protected escalateAfterTouched = false;
   protected reviewSlaTouched = false;
+  protected pendingSlaTouched = false;
   protected scoreMidTouched = false;
   protected scoreHighTouched = false;
   protected scoreLogTouched = false;
@@ -796,7 +810,7 @@ export class Access {
       this.delegateFrom.set('');
       this.delegateTo.set('');
       this.delegateError.set('');
-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
       this.settingsError.set('');
       if (sheet) void this.reload(sheet);
     });
@@ -1004,6 +1018,11 @@ export class Access {
       this.settingsError.set('Enter a review SLA as a whole number of days, or leave it blank for none.');
       return;
     }
+    const pendingSla = this.pendingSlaInput().trim();
+    if (this.pendingSlaTouched && pendingSla !== '' && !DAYS.test(pendingSla)) {
+      this.settingsError.set('Enter a pending SLA as a whole number of days, or leave it blank for none.');
+      return;
+    }
     const scoreMid = this.scoreMidInput().trim();
     if (this.scoreMidTouched && scoreMid !== '' && !WHOLE.test(scoreMid)) {
       this.settingsError.set('Enter a score mid threshold as a whole number, or leave it blank for no bands.');
@@ -1106,6 +1125,7 @@ export class Access {
     if (this.alertThresholdTouched) body.alertThreshold = alertThreshold;
     if (this.escalateAfterTouched) body.escalateAfter = escalateAfter;
     if (this.reviewSlaTouched) body.reviewSla = reviewSla;
+    if (this.pendingSlaTouched) body.pendingSla = pendingSla;
     if (this.scoreMidTouched) body.scoreMid = scoreMid;
     if (this.scoreHighTouched) body.scoreHigh = scoreHigh;
     if (this.scoreLogTouched) body.scoreLog = scoreLog;
@@ -1206,6 +1226,9 @@ export class Access {
     this.reviewSla.set(settings.reviewSla);
     this.reviewSlaInput.set(settings.reviewSla ?? '');
     this.reviewSlaTouched = false;
+    this.pendingSla.set(settings.pendingSla);
+    this.pendingSlaInput.set(settings.pendingSla ?? '');
+    this.pendingSlaTouched = false;
     this.scoreMid.set(settings.scoreMid);
     this.scoreMidInput.set(settings.scoreMid ?? '');
     this.scoreMidTouched = false;

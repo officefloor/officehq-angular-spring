@@ -108,6 +108,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
         </tbody>
       </table>
       <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
+      <p>Late pending: <span data-testid="summary-pending-late-count">{{ pendingLateCount() }}</span></p>
       <table>
         <caption>By void reason</caption>
         <thead>
@@ -196,6 +197,7 @@ export class Summary {
   protected readonly byStatus = computed(() => statusCounts(this.people()));
 
   protected readonly reviewLateCount = computed(() => this.people().flatMap((p) => p.claims).filter((c) => c.reviewLate).length);
+  protected readonly pendingLateCount = computed(() => this.people().flatMap((p) => p.claims).filter((c) => c.pendingLate).length);
 
   protected readonly byVoidReason = computed(() => {
     const voided = this.people().flatMap((p) => p.claims).filter((c) => c.status === 'VOID');

@@ -95,6 +95,7 @@ public class AccessService {
 
     public static final String ESCALATE_AFTER = DatedSettings.ESCALATE_AFTER;
     public static final String REVIEW_SLA = DatedSettings.REVIEW_SLA;
+    public static final String PENDING_SLA = DatedSettings.PENDING_SLA;
     public static final String SCORE_MID = DatedSettings.SCORE_MID;
     public static final String SCORE_HIGH = DatedSettings.SCORE_HIGH;
     public static final String SCORE_LOG = DatedSettings.SCORE_LOG;
@@ -283,7 +284,7 @@ public class AccessService {
             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
-            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
+            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String pendingSla, String proofKinds,
             String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh,
             String scoreLog, String maxOpen) {
         if (scoreLog != null && !scoreLog.isEmpty() && !scoreLog.equals("on")) {
@@ -376,6 +377,9 @@ public class AccessService {
         }
         if (reviewSla != null) {
             setReviewSla(sheetId, user, days(reviewSla, null));
+        }
+        if (pendingSla != null) {
+            setPendingSla(sheetId, user, days(pendingSla, null));
         }
         if (proofKinds != null) {
             setProofKinds(sheetId, user, proofKinds);
@@ -481,6 +485,15 @@ public class AccessService {
     @Transactional
     public void setReviewSla(String sheetId, String user, String days) {
         setUndated(sheetId, user, REVIEW_SLA, days);
+    }
+
+    /**
+     * Record the sheet's pending SLA, a number of days (null: none). Not dated: the value holds from the
+     * beginning of time, replacing the one it had.
+     */
+    @Transactional
+    public void setPendingSla(String sheetId, String user, String days) {
+        setUndated(sheetId, user, PENDING_SLA, days);
     }
 
     /** Record an undated setting as written (null: none), replacing the one it had. */

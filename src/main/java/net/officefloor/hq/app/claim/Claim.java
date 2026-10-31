@@ -132,6 +132,10 @@ public class Claim {
     @Column(name = "review_on")
     private LocalDate reviewOn;
 
+    /** The sheet's today when the claim last went to PENDING; null when it never did. */
+    @Column(name = "pending_on")
+    private LocalDate pendingOn;
+
     /** Whether a reminder ever escalated the claim; a claim is escalated at most once. */
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
@@ -252,6 +256,7 @@ public class Claim {
         arrived.held = held;
         arrived.reviewAssigned = reviewAssigned;
         arrived.reviewOn = reviewOn;
+        arrived.pendingOn = pendingOn;
         arrived.proofs = proofs;
         arrived.proofPhotos = proofPhotos;
         arrived.splitFrom = splitFrom;
@@ -357,6 +362,14 @@ public class Claim {
 
     public void setReviewOn(LocalDate reviewOn) {
         this.reviewOn = reviewOn;
+    }
+
+    public LocalDate getPendingOn() {
+        return pendingOn;
+    }
+
+    public void setPendingOn(LocalDate pendingOn) {
+        this.pendingOn = pendingOn;
     }
 
     public boolean isWaived() {

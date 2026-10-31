@@ -56,7 +56,7 @@ public class AccessController {
      * sheet, null for none; it is not dated. The fiscal start month is the month (1 to 12) the sheet's fiscal
      * year starts in; it is not dated. The alert threshold is a figure with two decimals, null when off; it is not dated.
      * The escalation gap is a number of days, null when off; it is not dated.
-     * The review SLA is a number of days, null for none; it is not dated.
+     * The review SLA is a number of days, null for none; it is not dated. So is the pending SLA.
      * The rounding mode is half-up or half-even, null for none (the policy date decides); it is dated.
      * The proof kinds are a comma separated list of kinds (receipt, photo), null for none; they are not dated.
      * The default grade is A, B or C, null for none (grade A); it is not dated.
@@ -69,7 +69,7 @@ public class AccessController {
             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
-            String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
+            String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String pendingSla, String proofKinds,
             String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC, String scoreMid,
             String scoreHigh, String scoreLog, String maxOpen) {
 
@@ -91,7 +91,7 @@ public class AccessController {
                     text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent(),
                     Integer.toString(dated.fiscalStartMonth()), text(dated.alertThreshold()),
                     dated.on(DatedSettings.ROUNDING, today).orElse(null), text(dated.reviewThreshold(today)),
-                    text(dated.escalateAfter()), text(dated.reviewSla()), dated.proofKindsText(),
+                    text(dated.escalateAfter()), text(dated.reviewSla()), text(dated.pendingSla()), dated.proofKindsText(),
                     dated.defaultGradeText(), text(dated.gradeClerkLimit("A", today)),
                     text(dated.gradeClerkLimit("B", today)), text(dated.gradeClerkLimit("C", today)),
                     text(dated.scoreMid()), text(dated.scoreHigh()), dated.scoreLog() ? "on" : null,
@@ -152,7 +152,7 @@ public class AccessController {
      * putting back 1; not dated. The alert threshold is 0.00 or more with up to two decimals, blank meaning off;
      * not dated. The rounding mode is half-up or half-even, blank meaning none (the policy date decides); dated.
      * The escalation gap is a whole number of days, blank meaning off; not dated.
-     * The review SLA is a whole number of days, blank meaning none; not dated.
+     * The review SLA is a whole number of days, blank meaning none; not dated. So is the pending SLA.
      * The proof kinds are a comma separated list of kinds (receipt, photo), blank meaning none; not dated.
      * The default grade is A, B or C, blank meaning A; not dated.
      * The maximum of open claims per person is a whole number, blank meaning none; not dated.
@@ -210,6 +210,7 @@ public class AccessController {
             @Pattern(regexp = DATE) String reviewThresholdFrom,
             @Pattern(regexp = "(\\d{1,5})?") String escalateAfter,
             @Pattern(regexp = "(\\d{1,5})?") String reviewSla,
+            @Pattern(regexp = "(\\d{1,5})?") String pendingSla,
             @Pattern(regexp = "\\s*((receipt|photo)\\s*(,\\s*(receipt|photo)\\s*)*)?") String proofKinds,
             @Pattern(regexp = "([A-Z]{1,3})?") String defaultGrade,
             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimitA,
@@ -309,7 +310,7 @@ public class AccessController {
                 form.pot(), form.parent() == null ? null : form.parent().trim(), form.fiscalStartMonth(),
                 form.alertThreshold(), dated(form.rounding(), form.roundingFrom()),
                 dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter(),
-                form.reviewSla(), form.proofKinds(), form.defaultGrade(), gradeClerkLimit,
+                form.reviewSla(), form.pendingSla(), form.proofKinds(), form.defaultGrade(), gradeClerkLimit,
                 form.scoreMid() == null ? null : form.scoreMid().trim(), form.scoreHigh() == null ? null : form.scoreHigh().trim(),
                 form.scoreLog() == null ? null : form.scoreLog().trim(),
                 form.maxOpen() == null ? null : form.maxOpen().trim());

@@ -48,6 +48,9 @@ public record DatedSettings(List<SheetSetting> values) {
     /** A REVIEW claim is late once its review day plus this many days is before the sheet's today; not dated. */
     public static final String REVIEW_SLA = "review-sla";
 
+    /** A PENDING claim is late once its pending day plus this many days is before the sheet's today; not dated. */
+    public static final String PENDING_SLA = "pending-sla";
+
     /** A person whose score is at or above it is in the MID band (while the high threshold is set too); not dated. */
     public static final String SCORE_MID = "score-mid";
 
@@ -241,6 +244,11 @@ public record DatedSettings(List<SheetSetting> values) {
     /** The sheet's review SLA in days (not dated: it holds on every date); null when there is none. */
     public Integer reviewSla() {
         return on(REVIEW_SLA, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+    }
+
+    /** The sheet's pending SLA in days (not dated: it holds on every date); null when there is none. */
+    public Integer pendingSla() {
+        return on(PENDING_SLA, LocalDate.MAX).map(Integer::valueOf).orElse(null);
     }
 
     /** The sheet's mid score threshold, a whole number (not dated); null when it is blank. */

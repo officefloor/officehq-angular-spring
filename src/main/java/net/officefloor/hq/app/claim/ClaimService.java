@@ -440,6 +440,7 @@ public class ClaimService {
                 due = fixed == null ? "n/a" : fixed.toPlainString();
             } else {
                 next = ClaimStatus.PENDING;
+                claim.setPendingOn(sheets.today(sheetId));
             }
         }
         String number = claim.getShownNumber();

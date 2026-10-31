@@ -102,6 +102,16 @@ public final class Dues {
     }
 
     /**
+     * Whether the claim is late pending: PENDING, with the sheet's pending SLA set, and its pending day (the
+     * sheet's today when it last went to PENDING) plus the SLA days before the sheet's today.
+     */
+    public static boolean pendingLate(Claim claim, RateTable rates) {
+        Integer sla = rates.settings().pendingSla();
+        return claim.getStatus() == ClaimStatus.PENDING && sla != null && claim.getPendingOn() != null
+                && claim.getPendingOn().plusDays(sla).isBefore(rates.today());
+    }
+
+    /**
      * Whether the claim is overdue: OPEN or PENDING, not {@link #deferred deferred}, and due by a date before
      * the sheet's today (its due-by, fixed when it was added, plus its {@link #graceBy grace}).
      */
