@@ -1,0 +1,78 @@
+{
+  "checkpoint": 148,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp148_claimed-without-corrections",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    32,
+    36,
+    51,
+    56,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year",
+    "cp30_corrections.spec.ts::corrections",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date",
+    "cp36_approvals.spec.ts::approvals scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1",
+    "cp56_late-per-boundary.spec.ts::late per boundary scenario 1"
+  ],
+  "request": {
+    "spec": "A person's claimed, and the sheet's claimed-total, no longer include corrections: claimed is the\namounts of the person's claims that count, leaving out claims that correct another. Everything that\nreads claimed (the rollup lines included) follows; due figures are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's claimed, and the sheet's claimed-total, no longer include corrections: claimed is the\namounts of the person's claims that count, leaving out claims that correct another. Everything that\nreads claimed (the rollup lines included) follows; due figures are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7fdb3bae691ca6689dda7360486e8d2b5a27c98a",
+  "reset_sha": "",
+  "preagent_sha": "c2e5b069fc2a38d6084676a377b5260dde2d0fee",
+  "prev_sha": "c2e5b069fc2a38d6084676a377b5260dde2d0fee",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7356592000000001,
+    "input_tokens": 46,
+    "output_tokens": 7997,
+    "cache_read_tokens": 917956,
+    "cache_creation_tokens": 48993,
+    "num_turns": 23,
+    "duration_ms": 690374,
+    "duration_api_ms": 119629,
+    "model": "claude-opus-5-5",
+    "session_id": "2b9440d0-b7c8-464e-81ff-0525e6831f81",
+    "stop_reason": "success",
+    "result_text": "Claimed figures now leave out corrections, and `bin/e2e` passes all 4 tests.\n\n**The requested change.** A claim that corrects another (its `corrects` field is set) no longer adds to claimed:\n- **Server:** `src/main/java/net/officefloor/hq/app/rollup/Rollup.java:77` now leaves corrections out of each person's claimed. Since the sheet's claimed-total is built from those figures, the `ROLLUP \u2026 claimed=` and `TOTALS \u2026 claimed-total=` audit lines change with it. Due-total and overdue-total are calculated as before.\n- **Front end:** the same filter is in the person's `person-claimed` (`features/claims/claims.ts:234`) and the sheet's `rollup-claimed-total` (`features/people/people.ts:604`).\n\nIn the test, Ada's 50.00 claim plus a \u221220.00 correction now shows claimed 50.00, and due-total stays at 3.00.\n\n**A second fix the test needed.** Scenario 3 kept failing on something unrelated to claimed. When Ben is merged into Cam, the test expects Cam to show only their own snapshot line for 2026-04-05, but the app was moving Ben's line for that same day across as well. I undid my change and ran the tests again, and scenario 3 failed at the same line (`acceptance.spec.ts:1041`), so the problem was already there. To make it pass, `PersonSnapshotService.move` now keeps the receiving person's line when both people have one for the same day, and drops the moved one. This changes merge behaviour beyond what you asked for, and person transfers to another sheet use the same code, so they follow the same rule. Undo-merge doesn't touch snapshots. Tell me if you'd rather handle this differently or separately.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7356592000000001,
+        "num_turns": 23,
+        "duration_ms": 690374,
+        "duration_api_ms": 119629,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp148.agent.jsonl",
+  "agent_diff_file": "cp148.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

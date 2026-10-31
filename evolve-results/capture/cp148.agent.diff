@@ -1,0 +1,77 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 71439f3d6..0d112b02b 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -231,7 +231,7 @@ export class PersonClaims {
+   readonly selectToggled = output<{ id: number; selected: boolean }>();
+ 
+   protected readonly notAvailable = NOT_AVAILABLE;
+-  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '', this.retiredFrom())).reduce((sum, c) => sum + cents(c.amount), 0)));
++  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '', this.retiredFrom())).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)));
+   protected readonly editingId = signal<number | null>(null);
+   /** Whether the form was typed into since the edit button was pressed. */
+   private typedSinceEdit = false;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 24df154f5..a5b2f4058 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -601,7 +601,7 @@ export class PeopleList {
+     return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([], today))(c);
+   });
+   protected readonly claimedTotal = computed(() =>
+-    money(this.claims().filter(this.countsNow()).reduce((sum, c) => sum + cents(c.amount), 0)),
++    money(this.claims().filter(this.countsNow()).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)),
+   );
+   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none),
+    *  at most the sheet's cap; null when neither their grade in force today nor the grade any of those claims is at has a rate in
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 00e3a6afb..9621fe3b6 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -73,7 +73,8 @@ public class Rollup {
+                     .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
+                             && !c.isDeferredOn(today))
+                     .toList();
+-            BigDecimal claimed = counting.stream().map(Claim::getAmount)
++            // Claimed leaves out corrections: claims that correct another.
++            BigDecimal claimed = counting.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+             claimedTotal = claimedTotal.add(claimed);
+             // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade
+diff --git a/src/main/java/net/officefloor/hq/app/snapshot/PersonSnapshotService.java b/src/main/java/net/officefloor/hq/app/snapshot/PersonSnapshotService.java
+index e72fed5db..09c137326 100644
+--- a/src/main/java/net/officefloor/hq/app/snapshot/PersonSnapshotService.java
++++ b/src/main/java/net/officefloor/hq/app/snapshot/PersonSnapshotService.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.snapshot;
+ 
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Set;
++import java.util.stream.Collectors;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -29,11 +31,20 @@ public class PersonSnapshotService {
+         snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal));
+     }
+ 
+-    /** Move the person's snapshots to another person, on another sheet (a merge or transfer). */
++    /** Move the person's snapshots to another person, on another sheet (a merge or transfer); a day the other
++     *  already has a snapshot line for keeps theirs, and the moved one is dropped. */
+     @Transactional
+     public void move(String fromSheetId, Long fromPersonId, String toSheetId, Long toPersonId) {
+-        snapshots.findBySheetIdAndPersonIdOrderByIdAsc(fromSheetId, fromPersonId)
+-                .forEach(s -> s.moveTo(toSheetId, toPersonId));
++        Set<LocalDate> theirs = snapshots.findBySheetIdAndPersonIdOrderByIdAsc(toSheetId, toPersonId).stream()
++                .map(PersonSnapshot::getDay)
++                .collect(Collectors.toSet());
++        for (PersonSnapshot s : snapshots.findBySheetIdAndPersonIdOrderByIdAsc(fromSheetId, fromPersonId)) {
++            if (theirs.contains(s.getDay())) {
++                snapshots.delete(s);
++            } else {
++                s.moveTo(toSheetId, toPersonId);
++            }
++        }
+         snapshots.flush();
+     }
+ }
