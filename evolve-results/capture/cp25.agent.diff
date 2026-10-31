@@ -1,0 +1,387 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 3d43f76f2..95e729182 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -39,6 +39,17 @@ export function countsWhile(held: boolean): (c: ClaimView) => boolean {
+   return held ? (c) => c.status === 'SETTLED' : counts;
+ }
+ 
++/** The day a claim is due by (yyyy-mm-dd): its date plus the sheet's terms in days. */
++export function dueBy(c: ClaimView, terms: number): string {
++  const [y, m, d] = c.date.split('-').map(Number);
++  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
++}
++
++/** Whether a claim is overdue on the sheet's today: OPEN and due by a day before it. */
++export function isOverdue(c: ClaimView, terms: number, today: string): boolean {
++  return c.status === 'OPEN' && dueBy(c, terms) < today;
++}
++
+ /** A claim as the form submits it: a blank date takes the sheet's today. */
+ export interface ClaimForm {
+   amount: string;
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index b2a71aec8..8cb4edfa1 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -10,8 +10,13 @@ export interface SheetView {
+   clerkLimit: string | null;
+   /** A claim's live due is at least this (two decimals). */
+   floor: string;
++  /** The sheet's terms in days: a claim is due by its date plus these. */
++  terms: number;
+ }
+ 
++/** The terms a sheet has until they are changed. */
++export const DEFAULT_TERMS = 14;
++
+ // The active sheet. Everything else in the app is kept per sheet; loading an id re-reads it from
+ // the store, and an id never loaded before starts an empty sheet.
+ @Injectable({ providedIn: 'root' })
+@@ -54,4 +59,11 @@ export class Sheets {
+       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/floor`, { floor })
+       .pipe(tap((s) => this.active.set(s)));
+   }
++
++  /** Change the active sheet's terms (days). */
++  setTerms(id: string, terms: number): Observable<SheetView> {
++    return this.http
++      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms`, { terms })
++      .pipe(tap((s) => this.active.set(s)));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ab841fff8..b0ec1a34e 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -2,11 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, money } from '../../core/claims';
++import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money } from '../../core/claims';
+ import { PeriodView, periodOn } from '../../core/periods';
+ import { DEFAULT_FLOOR, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
+ import { Session } from '../../core/session';
+-import { Sheets } from '../../core/sheet';
++import { DEFAULT_TERMS, Sheets } from '../../core/sheet';
+ 
+ // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
+ // the claims listed newest first.
+@@ -40,6 +40,8 @@ import { Sheets } from '../../core/sheet';
+           <span data-testid="claim-amount">{{ c.amount }}</span>
+           on <span data-testid="claim-date">{{ c.date }}</span>
+           — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
++          by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
++          — overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
+           in period <span data-testid="claim-period">{{ periodOf(c) }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span data-testid="claim-status">{{ c.status }}</span>
+@@ -105,6 +107,15 @@ export class PersonClaims {
+     return due === null ? NOT_AVAILABLE : money(due);
+   }
+ 
++  protected dueByOf(c: ClaimView): string {
++    return dueBy(c, this.sheets.current()?.terms ?? DEFAULT_TERMS);
++  }
++
++  protected overdueOf(c: ClaimView): boolean {
++    const sheet = this.sheets.current();
++    return sheet !== null && isOverdue(c, sheet.terms, sheet.today);
++  }
++
+   protected periodOf(c: ClaimView): string {
+     return periodOn(this.periods(), c.date)?.name ?? '';
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 587a80b95..cdb061f44 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { forkJoin, of, switchMap } from 'rxjs';
+-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, money } from '../../core/claims';
++import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, isOverdue, money } from '../../core/claims';
+ import { GRADES, Grade, People, PersonView } from '../../core/people';
+ import { Periods, periodOn } from '../../core/periods';
+ import { DEFAULT_FLOOR, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
+@@ -15,6 +15,13 @@ import { PeriodsPanel } from '../periods/periods';
+ const NO_CLAIMS: ClaimView[] = [];
+ const NO_RATES: RateView[] = [];
+ 
++/** A count of overdue claims and their dues in whole cents. */
++interface Overdue {
++  count: number;
++  cents: number;
++}
++const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
++
+ // The people on the active sheet: one form to add a person or edit an existing one, the list with
+ // each person's claims and due-total, and the sheet's claimed-total and due-total.
+ @Component({
+@@ -27,6 +34,8 @@ const NO_RATES: RateView[] = [];
+       <h2 id="people-heading">People</h2>
+       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
++      <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong>
++        claims, due <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
+ 
+       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
+         <label for="person-form-name">Name</label>
+@@ -71,6 +80,8 @@ const NO_RATES: RateView[] = [];
+             <span data-testid="person-name">{{ p.name }}</span>
+             — grade <span data-testid="person-grade">{{ p.grade }}</span>
+             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
++            — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
++            due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
+             — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+             — last stated <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span>
+             on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
+@@ -108,6 +119,7 @@ export class PeopleList {
+   protected readonly periods = inject(Periods);
+ 
+   protected readonly grades = GRADES;
++  protected readonly money = money;
+   protected readonly noRates = NO_RATES;
+   protected readonly people = signal<PersonView[]>([]);
+   /** The people listed: retired people only while "show retired" is on. Totals still count everyone. */
+@@ -161,6 +173,31 @@ export class PeopleList {
+   protected readonly dueTotal = computed(() =>
+     money([...this.dueByPerson().values()].reduce<number>((sum, due) => sum + (due ?? 0), 0)),
+   );
++  /** Each person's overdue claims that count: how many, and their dues added up in whole cents (none counting as 0). */
++  private readonly overdueByPerson = computed(() => {
++    const sheet = this.sheets.current();
++    const ratesByGrade = this.rates.ratesByGrade();
++    const floor = sheet?.floor ?? DEFAULT_FLOOR;
++    const byPerson = new Map<number, Overdue>();
++    for (const p of this.people()) {
++      const overdue = sheet
++        ? this.claimsOf(p.id).filter((c) => countsWhile(p.held)(c) && isOverdue(c, sheet.terms, sheet.today))
++        : NO_CLAIMS;
++      const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
++      byPerson.set(p.id, {
++        count: overdue.length,
++        cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, floor) ?? 0), 0),
++      });
++    }
++    return byPerson;
++  });
++  /** Everyone's overdue claims added up. */
++  protected readonly overdueTotals = computed(() =>
++    [...this.overdueByPerson().values()].reduce<Overdue>(
++      (sum, o) => ({ count: sum.count + o.count, cents: sum.cents + o.cents }),
++      NO_OVERDUE,
++    ),
++  );
+   /** Each period's due-total, by period id: the dues of the claims that count whose date falls in it;
+    *  a closed period keeps the total fixed when it was closed. */
+   protected readonly dueByPeriod = computed(() => {
+@@ -240,6 +277,10 @@ export class PeopleList {
+     return due === null || due === undefined ? NOT_AVAILABLE : money(due);
+   }
+ 
++  protected overdueOf(personId: number): Overdue {
++    return this.overdueByPerson().get(personId) ?? NO_OVERDUE;
++  }
++
+   protected statementOf(personId: number): StatementSummary | undefined {
+     return this.statements().get(personId);
+   }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 73f09a11b..26ea779ac 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -7,8 +7,10 @@ import { SheetView, Sheets } from '../../core/sheet';
+ 
+ /** A clerk limit the form accepts: an amount of 0.00 or more with up to two decimals. */
+ const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
++/** Terms the form accepts: a whole number of days, 0 or more. */
++const TERMS_PATTERN = /^\d{1,5}$/;
+ 
+-// The sheet's settings: its clerk limit, its floor, and the role assigned to each user name.
++// The sheet's settings: its clerk limit, its floor, its terms, and the role assigned to each user name.
+ @Component({
+   selector: 'app-settings',
+   imports: [ReactiveFormsModule],
+@@ -17,6 +19,7 @@ const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
+       <h2 id="settings-heading">Settings</h2>
+       <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ sheets.current()?.clerkLimit ?? '' }}</span></p>
+       <p>Floor: <span data-testid="setting-floor-current">{{ sheets.current()?.floor ?? '' }}</span></p>
++      <p>Terms (days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
+ 
+       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
+         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
+@@ -25,6 +28,9 @@ const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
+         <label for="setting-floor">Floor (a claim's due is at least this)</label>
+         <input id="setting-floor" data-testid="setting-floor" formControlName="floor"
+                inputmode="decimal" autocomplete="off" />
++        <label for="setting-terms">Terms (days a claim is due by after its date)</label>
++        <input id="setting-terms" data-testid="setting-terms" formControlName="terms"
++               inputmode="numeric" autocomplete="off" />
+         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
+         @if (settingsError(); as err) {
+           <p role="alert" data-testid="settings-error">{{ err }}</p>
+@@ -73,6 +79,7 @@ export class SettingsPanel {
+   protected readonly settingsForm = new FormGroup({
+     clerkLimit: new FormControl('', { nonNullable: true }),
+     floor: new FormControl('', { nonNullable: true }),
++    terms: new FormControl('', { nonNullable: true }),
+   });
+   protected readonly roleForm = new FormGroup({
+     user: new FormControl('', { nonNullable: true }),
+@@ -103,12 +110,14 @@ export class SettingsPanel {
+     this.settingsError.set(null);
+     const sheet = this.sheets.current();
+     if (!sheet) return;
+-    const { clerkLimit, floor } = this.settingsForm.controls;
++    const { clerkLimit, floor, terms } = this.settingsForm.controls;
+     const limit = clerkLimit.value.trim();
+     const floorValue = floor.value.trim();
++    const termsValue = terms.value.trim();
+     // Only the settings changed in the form are saved; with none changed, the clerk limit is saved as it is.
+     const saveFloor = floor.dirty;
+-    const saveLimit = clerkLimit.dirty || !saveFloor;
++    const saveTerms = terms.dirty;
++    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms);
+     if (saveLimit && limit !== '' && !LIMIT_PATTERN.test(limit)) {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+@@ -117,9 +126,14 @@ export class SettingsPanel {
+       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+       return;
+     }
++    if (saveTerms && !TERMS_PATTERN.test(termsValue)) {
++      this.settingsError.set('Type terms of 0 or more whole days.');
++      return;
++    }
+     const saves: Observable<SheetView>[] = [];
+     if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit));
+     if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue));
++    if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue)));
+     this.savingSettings.set(true);
+     concat(...saves).pipe(last()).subscribe({
+       next: (saved) => {
+@@ -135,7 +149,7 @@ export class SettingsPanel {
+ 
+   /** Show the sheet's settings in the form, as not yet changed. */
+   private resetSettings(sheet: SheetView | null): void {
+-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '' }, { emitEvent: false });
++    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? '') }, { emitEvent: false });
+   }
+ 
+   protected saveRole(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index c844ee812..ff0d1dbb4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -38,6 +38,10 @@ public class Sheet {
+     @Column(name = "floor", nullable = false, precision = 14, scale = 2)
+     private BigDecimal floor = new BigDecimal("1.00");
+ 
++    /** The sheet's terms in days: a claim is due by its date plus these. */
++    @Column(name = "terms", nullable = false)
++    private int terms = 14;
++
+     protected Sheet() {
+     }
+ 
+@@ -84,6 +88,14 @@ public class Sheet {
+         this.floor = floor;
+     }
+ 
++    public int getTerms() {
++        return terms;
++    }
++
++    public void setTerms(int terms) {
++        this.terms = terms;
++    }
++
+     /** Take the next claim number on this sheet; it is never given out again. */
+     public int nextClaimNumber() {
+         return ++lastClaimNumber;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 7247c411e..4537c95ef 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -3,6 +3,8 @@ package net.officefloor.hq.app.sheet;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+@@ -24,13 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets")
+ public class SheetController {
+ 
+-    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor have exactly two decimals. */
+-    public record SheetView(String id, LocalDate today, String clerkLimit, String floor) {
++    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor have exactly two decimals; terms is in days. */
++    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(),
+                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+-                    sheet.getFloor().toPlainString());
++                    sheet.getFloor().toPlainString(), sheet.getTerms());
+         }
+     }
+ 
+@@ -45,6 +47,10 @@ public class SheetController {
+     public record FloorChange(@NotNull @DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal floor) {
+     }
+ 
++    /** The sheet's terms, in days, as the form submits them. */
++    public record TermsChange(@NotNull @Min(0) @Max(36500) Integer terms) {
++    }
++
+     private final SheetService sheets;
+ 
+     public SheetController(SheetService sheets) {
+@@ -85,4 +91,13 @@ public class SheetController {
+             @Valid @RequestBody FloorChange request) {
+         return SheetView.of(sheets.setFloor(id, user, request.floor()));
+     }
++
++    /** Change the sheet's terms. */
++    @PutMapping("/{id}/settings/terms")
++    public SheetView setTerms(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody TermsChange request) {
++        return SheetView.of(sheets.setTerms(id, user, request.terms()));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 0cab1d257..d409aac2b 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -75,4 +75,15 @@ public class SheetService {
+         rollup.recordChanges(id, user, before);
+         return saved;
+     }
++
++    /** Set the sheet's terms in days, starting the sheet if it has never been loaded. */
++    @Transactional
++    public Sheet setTerms(String id, String user, int terms) {
++        load(id, user);
++        Sheet sheet = sheets.findLockedById(id).orElseThrow();
++        sheet.setTerms(terms);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
++        return saved;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V20__sheet_terms.sql b/src/main/resources/db/migration/V20__sheet_terms.sql
+new file mode 100644
+index 000000000..7640ba711
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__sheet_terms.sql
+@@ -0,0 +1,2 @@
++-- The sheet's terms: a claim is due by its date plus this many days.
++ALTER TABLE sheet ADD COLUMN terms INT DEFAULT 14 NOT NULL CHECK (terms >= 0);
