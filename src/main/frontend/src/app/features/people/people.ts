@@ -5,6 +5,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { forkJoin, of, switchMap } from 'rxjs';
 import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, isOverdue, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
+import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
@@ -98,6 +99,20 @@ const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
             <input [id]="'person-retire-date-' + p.id" type="date" data-testid="person-retire-date" #retireDate />
             <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)" [disabled]="retiring() === p.id"
                     [attr.aria-label]="'Retire ' + p.name">Retire</button>
+            — patrons <span data-testid="person-patrons">{{ patronsOf(p.id) }}</span>
+            — backing <span data-testid="person-backing">{{ backingOf(p.id) }}</span>
+            <label [attr.for]="'person-patron-select-' + p.id">Patron</label>
+            <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
+                    (change)="patronError.set(null)">
+              @for (q of people(); track q.id) {
+                <option [value]="q.id">{{ q.name }}</option>
+              }
+            </select>
+            <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect.value)"
+                    [disabled]="addingPatron() === p.id" [attr.aria-label]="'Add a patron of ' + p.name">Add patron</button>
+            @if (patronError()?.id === p.id) {
+              <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
+            }
             @if (personError()?.id === p.id) {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
@@ -115,6 +130,7 @@ export class PeopleList {
   protected readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
   private readonly statementsApi = inject(Statements);
+  private readonly patronsApi = inject(Patrons);
   protected readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);
 
@@ -136,6 +152,18 @@ export class PeopleList {
   private readonly statements = signal<Map<number, StatementSummary>>(new Map());
   /** The person whose statement is being taken, so a second press waits for the first. */
   protected readonly stating = signal<number | null>(null);
+  /** Every patron named on the sheet. */
+  private readonly patrons = signal<PatronView[]>([]);
+  /** The person a patron is being added to, so a second press waits for the first. */
+  protected readonly addingPatron = signal<number | null>(null);
+  /** The error of the last patron added on a person's row, until the next action on that row. */
+  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
+  /** Each person's patrons' ids, by person. */
+  private readonly patronIdsByPerson = computed(() => {
+    const byPerson = new Map<number, number[]>();
+    for (const pt of this.patrons()) byPerson.set(pt.personId, [...(byPerson.get(pt.personId) ?? []), pt.patronId]);
+    return byPerson;
+  });
   /** The error of the last action taken on a person's row, until the next action on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   private readonly claimsByPerson = computed(() => {
@@ -242,7 +270,9 @@ export class PeopleList {
           this.people.set([]);
           this.claims.set([]);
           this.statements.set(new Map());
+          this.patrons.set([]);
           this.personError.set(null);
+          this.patronError.set(null);
           this.reset();
           this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
           this.quickError.set(null);
@@ -251,13 +281,15 @@ export class PeopleList {
                 people: this.api.list(sheet.id),
                 claims: this.claimsApi.list(sheet.id),
                 statements: this.statementsApi.list(sheet.id),
+                patrons: this.patronsApi.list(sheet.id),
               })
-            : of({ people: [], claims: [], statements: [] });
+            : of({ people: [], claims: [], statements: [], patrons: [] });
         }),
         takeUntilDestroyed(),
       )
       .subscribe({
-        next: ({ people, claims, statements }) => {
+        next: ({ people, claims, statements, patrons }) => {
+          this.patrons.set(patrons);
           this.people.set(people);
           this.claims.set(claims);
           this.statements.set(new Map(statements.map((s) => [s.personId, s])));
@@ -277,6 +309,49 @@ export class PeopleList {
     return due === null || due === undefined ? NOT_AVAILABLE : money(due);
   }
 
+  /** The person's patrons' names, sorted, comma and space separated. */
+  protected patronsOf(personId: number): string {
+    const nameOf = new Map(this.people().map((q) => [q.id, q.name]));
+    return (this.patronIdsByPerson().get(personId) ?? [])
+      .map((id) => nameOf.get(id) ?? '')
+      .sort((a, b) => a.localeCompare(b))
+      .join(', ');
+  }
+
+  /** The person's backing: their patrons' due-totals added up, skipping those with none; 0.00 with no patrons. */
+  protected backingOf(personId: number): string {
+    const due = this.dueByPerson();
+    return money((this.patronIdsByPerson().get(personId) ?? []).reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
+  }
+
+  /** Name the chosen person as the person's patron; refused when it is themselves or already their patron. */
+  protected addPatron(p: PersonView, patronId: string): void {
+    if (this.addingPatron() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet || patronId === '') return;
+    this.addingPatron.set(p.id);
+    this.patronsApi.add(sheet.id, p.id, Number(patronId)).subscribe({
+      next: (added) => {
+        this.addingPatron.set(null);
+        this.patrons.update((list) => [...list, added]);
+      },
+      error: (err: unknown) => {
+        this.addingPatron.set(null);
+        this.patronError.set({
+          id: p.id,
+          message:
+            err instanceof HttpErrorResponse && err.status === 422
+              ? p.name + ' cannot be their own patron.'
+              : err instanceof HttpErrorResponse && err.status === 409
+                ? 'That person is already a patron of ' + p.name + '.'
+                : 'Could not add that patron.',
+        });
+      },
+    });
+  }
+
   protected overdueOf(personId: number): Overdue {
     return this.overdueByPerson().get(personId) ?? NO_OVERDUE;
   }
@@ -289,6 +364,7 @@ export class PeopleList {
   protected takeStatement(p: PersonView): void {
     if (this.stating() === p.id) return;
     this.personError.set(null);
+    this.patronError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
     this.stating.set(p.id);
@@ -310,6 +386,7 @@ export class PeopleList {
   protected retire(p: PersonView, from: string): void {
     if (this.retiring() === p.id) return;
     this.personError.set(null);
+    this.patronError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
     this.retiring.set(p.id);
@@ -329,6 +406,7 @@ export class PeopleList {
   protected toggleHold(p: PersonView): void {
     if (this.holding() === p.id) return;
     this.personError.set(null);
+    this.patronError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
     this.holding.set(p.id);
@@ -394,6 +472,7 @@ export class PeopleList {
 
   protected edit(p: PersonView): void {
     this.personError.set(null);
+    this.patronError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
     this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });
