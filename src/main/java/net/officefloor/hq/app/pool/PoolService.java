@@ -11,6 +11,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewMemberRepository;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.SheetState;
 import net.officefloor.hq.app.person.Person;
@@ -117,10 +121,15 @@ public class PoolService {
     private final SheetRepository sheetStore;
     private final Audit audit;
     private final SheetHistory history;
+    private final CrewRepository crews;
+    private final CrewMemberRepository crewMembers;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            SheetService sheets, SheetRepository sheetStore, Audit audit, SheetHistory history) {
+            SheetService sheets, SheetRepository sheetStore, Audit audit, SheetHistory history, CrewRepository crews,
+            CrewMemberRepository crewMembers) {
         this.history = history;
+        this.crews = crews;
+        this.crewMembers = crewMembers;
         this.pools = pools;
         this.members = members;
         this.people = people;
@@ -129,7 +138,8 @@ public class PoolService {
         this.audit = audit;
     }
 
-    /** The sheet's pools, in the order they were added, each with its members and its pot. */
+    /** The sheet's pools, in the order they were added, each with its members and its pot; then each crew, in the
+     *  order they were added, as a pool under its name (see {@link #crewMembers}). */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId) {
         return list(sheetId, null);
@@ -149,7 +159,7 @@ public class PoolService {
         List<Person> sheetPeople = on != null ? then.map(s -> s.rebuildPeople(sheetId)).orElse(List.of())
                 : people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
-        Map<Long, Pool> poolsById = list.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
+        Map<Long, Pool> poolsById = new HashMap<>(list.stream().collect(Collectors.toMap(Pool::getId, Function.identity())));
         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())
                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
         Map<Long, List<Member>> membersOf = new HashMap<>();
@@ -172,8 +182,45 @@ public class PoolService {
             }
             membersOf.put(p.getId(), of);
         }
+        List<Crew> sheetCrews = crews.findBySheetIdOrderByIdAsc(sheetId);
+        Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(
+                sheetCrews.stream().map(Crew::getId).toList()).stream()
+                .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        list = new ArrayList<>(list);
+        for (Crew c : sheetCrews) {
+            Pool crewPool = Pool.ofCrew(sheetId, c.getId(), c.getName());
+            List<Person> crewPeople = new ArrayList<>();
+            if (c.getLeadId() != null && byId.containsKey(c.getLeadId())) {
+                crewPeople.add(byId.get(c.getLeadId()));
+            }
+            for (CrewMember m : byCrew.getOrDefault(c.getId(), List.of())) {
+                if (byId.containsKey(m.getPersonId())) {
+                    crewPeople.add(byId.get(m.getPersonId()));
+                }
+            }
+            list.add(crewPool);
+            poolsById.put(crewPool.getId(), crewPool);
+            membersOf.put(crewPool.getId(), crewMembers(crewPeople, today));
+        }
         Map<Long, PoolWithMembers> done = new HashMap<>();
         return list.stream().map(p -> withPot(p.getId(), poolsById, membersOf, parentOf, sheetPot, done, 0)).toList();
+    }
+
+    /** A crew's people, its lead first (when still on the sheet) then its members in the order added, as the members
+     *  of its pool: 100.00 split equally, each share rounded half to even, with the remainder given to the lead (the
+     *  first), each membership with no from-date or to-date. */
+    private static List<Member> crewMembers(List<Person> crewPeople, LocalDate today) {
+        if (crewPeople.isEmpty()) {
+            return List.of();
+        }
+        BigDecimal each = FULL.divide(BigDecimal.valueOf(crewPeople.size()), 2, RoundingMode.HALF_EVEN);
+        BigDecimal first = FULL.subtract(each.multiply(BigDecimal.valueOf(crewPeople.size() - 1)));
+        List<Member> of = new ArrayList<>();
+        for (int i = 0; i < crewPeople.size(); i++) {
+            Person person = crewPeople.get(i);
+            of.add(new Member(person, null, i == 0 ? first : each, person.heldOn(today), null, null, true));
+        }
+        return of;
     }
 
     /** The pool with its members and its pot: the sheet's pot when it is a member of none, else its cut in the pool
@@ -206,7 +253,7 @@ public class PoolService {
         return made;
     }
 
-    /** Add a pool by its name, trimmed; refused when blank or already a pool on the sheet. */
+    /** Add a pool by its name, trimmed; refused when blank or already a pool or a crew on the sheet. */
     @Transactional
     public Pool add(String sheetId, String user, String name) {
         String key = name == null ? "" : name.strip();
@@ -217,6 +264,9 @@ public class PoolService {
         sheetStore.findLockedById(sheetId).orElseThrow();
         if (pools.existsBySheetIdAndName(sheetId, key)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already on the sheet");
+        }
+        if (crews.existsBySheetIdAndName(sheetId, key)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That is a crew on the sheet");
         }
         Pool saved;
         try {

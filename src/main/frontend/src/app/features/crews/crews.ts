@@ -5,6 +5,7 @@ import { EMPTY, switchMap } from 'rxjs';
 import { money } from '../../core/claims';
 import { CrewView, Crews, crewDueCents } from '../../core/crews';
 import { PersonView } from '../../core/people';
+import { Pools } from '../../core/pools';
 import { Sheets } from '../../core/sheet';
 import { FigurePipe } from '../../core/figure';
 
@@ -72,6 +73,7 @@ export class CrewsPanel {
 
   protected readonly crews = inject(Crews);
   private readonly sheets = inject(Sheets);
+  private readonly pools = inject(Pools);
 
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
@@ -140,10 +142,11 @@ export class CrewsPanel {
       next: () => {
         this.saving.set(false);
         this.form.reset({ name: '', leadId: '' }, { emitEvent: false });
+        this.refreshPools(sheet.id);
       },
       error: () => {
         this.saving.set(false);
-        this.error.set('Could not add that crew: is it already on the sheet?');
+        this.error.set('Could not add that crew: is it already a crew or a pool on the sheet?');
       },
     });
   }
@@ -168,12 +171,18 @@ export class CrewsPanel {
       next: () => {
         done();
         this.memberForm(crewId).reset({ personId: '' }, { emitEvent: false });
+        this.refreshPools(sheet.id);
       },
       error: () => {
         done();
         this.setError(crewId, 'Could not add that member: do they lead the crew, or are they already in it?');
       },
     });
+  }
+
+  /** A crew is also a pool: re-read the pools so its pool shows the crew as it now stands. */
+  private refreshPools(sheetId: string): void {
+    this.pools.refresh(sheetId).subscribe({ error: () => undefined });
   }
 
   private setError(crewId: number, message: string | null): void {

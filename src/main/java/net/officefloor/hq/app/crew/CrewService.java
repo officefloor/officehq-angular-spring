@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -30,9 +31,11 @@ public class CrewService {
     private final SheetService sheets;
     private final SheetRepository sheetStore;
     private final Audit audit;
+    private final PoolRepository pools;
 
     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
-            SheetService sheets, SheetRepository sheetStore, Audit audit) {
+            SheetService sheets, SheetRepository sheetStore, Audit audit, PoolRepository pools) {
+        this.pools = pools;
         this.crews = crews;
         this.members = members;
         this.people = people;
@@ -55,7 +58,7 @@ public class CrewService {
     }
 
     /** Add a crew by its name, trimmed, led by a person of the sheet; refused when the name is blank or already a
-     *  crew on the sheet. */
+     *  crew or a pool on the sheet (a crew is also a pool, under its name). */
     @Transactional
     public CrewWithMembers add(String sheetId, String user, String name, Long leadId) {
         String key = name == null ? "" : name.strip();
@@ -71,6 +74,9 @@ public class CrewService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (crews.existsBySheetIdAndName(sheetId, key)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That crew is already on the sheet");
+        }
+        if (pools.existsBySheetIdAndName(sheetId, key)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That is a pool on the sheet");
         }
         Crew saved;
         try {

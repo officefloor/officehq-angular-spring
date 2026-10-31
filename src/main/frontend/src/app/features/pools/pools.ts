@@ -45,31 +45,33 @@ function csvField(value: string): string {
                 </li>
               }
             </ul>
-            <form [formGroup]="memberForm(pool.id)" (ngSubmit)="addMember(pool.id)"
-                  [attr.aria-label]="'Add a member to ' + pool.name">
-              <label [attr.for]="'pool-member-select-' + pool.id">Member</label>
-              <select [id]="'pool-member-select-' + pool.id" data-testid="pool-member-select" formControlName="personId">
-                <option value="">Choose a person or a pool</option>
-                @for (p of people(); track p.id) {
-                  <option [value]="p.id">{{ p.name }}</option>
+            @if (!pool.crew) {
+              <form [formGroup]="memberForm(pool.id)" (ngSubmit)="addMember(pool.id)"
+                    [attr.aria-label]="'Add a member to ' + pool.name">
+                <label [attr.for]="'pool-member-select-' + pool.id">Member</label>
+                <select [id]="'pool-member-select-' + pool.id" data-testid="pool-member-select" formControlName="personId">
+                  <option value="">Choose a person or a pool</option>
+                  @for (p of people(); track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                  }
+                  @for (other of memberPools(); track other.id) {
+                    <option [value]="'pool:' + other.id">pool:{{ other.name }}</option>
+                  }
+                </select>
+                <label [attr.for]="'pool-member-share-' + pool.id">Share %</label>
+                <input [id]="'pool-member-share-' + pool.id" data-testid="pool-member-share" formControlName="share"
+                       inputmode="decimal" autocomplete="off" />
+                <label [attr.for]="'pool-member-from-' + pool.id">From (blank: no start)</label>
+                <input [id]="'pool-member-from-' + pool.id" type="date" data-testid="pool-member-from"
+                       formControlName="from" />
+                <label [attr.for]="'pool-member-to-' + pool.id">To (blank: no end)</label>
+                <input [id]="'pool-member-to-' + pool.id" type="date" data-testid="pool-member-to" formControlName="to" />
+                <button type="submit" data-testid="pool-member-add" [disabled]="busy().has(pool.id)">Add member</button>
+                @if (errors().get(pool.id); as err) {
+                  <p role="alert" data-testid="pool-error">{{ err }}</p>
                 }
-                @for (other of pools.all(); track other.id) {
-                  <option [value]="'pool:' + other.id">pool:{{ other.name }}</option>
-                }
-              </select>
-              <label [attr.for]="'pool-member-share-' + pool.id">Share %</label>
-              <input [id]="'pool-member-share-' + pool.id" data-testid="pool-member-share" formControlName="share"
-                     inputmode="decimal" autocomplete="off" />
-              <label [attr.for]="'pool-member-from-' + pool.id">From (blank: no start)</label>
-              <input [id]="'pool-member-from-' + pool.id" type="date" data-testid="pool-member-from"
-                     formControlName="from" />
-              <label [attr.for]="'pool-member-to-' + pool.id">To (blank: no end)</label>
-              <input [id]="'pool-member-to-' + pool.id" type="date" data-testid="pool-member-to" formControlName="to" />
-              <button type="submit" data-testid="pool-member-add" [disabled]="busy().has(pool.id)">Add member</button>
-              @if (errors().get(pool.id); as err) {
-                <p role="alert" data-testid="pool-error">{{ err }}</p>
-              }
-            </form>
+              </form>
+            }
           </li>
         }
       </ul>
@@ -138,6 +140,9 @@ export class PoolsPanel {
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
   }
 
+  /** The pools another pool can take as a member: the stored ones, not those crews are. */
+  protected readonly memberPools = computed(() => this.pools.all().filter((p) => !p.crew));
+
   /** A member's key in its row's test id: the person's id, or pool-<name> for a pool. */
   protected memberKey(m: PoolMemberView): string {
     return m.memberPoolId !== null ? `pool-${m.name}` : String(m.personId);
@@ -179,7 +184,7 @@ export class PoolsPanel {
       },
       error: () => {
         this.saving.set(false);
-        this.error.set('Could not add that pool: is it already on the sheet?');
+        this.error.set('Could not add that pool: is it already a pool or a crew on the sheet?');
       },
     });
   }

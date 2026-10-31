@@ -34,6 +34,9 @@ export interface PoolView {
   members: PoolMemberView[];
   totalShare: string;
   balanced: boolean;
+  /** The pool a crew is, under its name: its members are the crew's lead and members at equal shares (100.00 split
+   *  as patrons' shares are, the remainder on the lead); none can be added to it as a pool's. */
+  crew: boolean;
 }
 
 // The pools on the active sheet, in the order they were added.

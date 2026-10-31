@@ -43,15 +43,17 @@ public class PoolController {
         }
     }
 
-    /** A pool as the screen shows it: its members, their total share and whether that is exactly 100.00. */
-    public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
+    /** A pool as the screen shows it: its members, their total share and whether that is exactly 100.00; crew when it
+     *  is the pool a crew is, its members the crew's lead and members (none can be added to it here). */
+    public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced,
+            boolean crew) {
 
         public static PoolView of(PoolService.PoolWithMembers p) {
             List<BigDecimal> cuts = p.cuts();
             return new PoolView(p.pool().getId(), p.pool().getName(),
                     IntStream.range(0, p.members().size())
                             .mapToObj(i -> MemberView.of(p.members().get(i), cuts == null ? null : cuts.get(i))).toList(),
-                    p.totalShare().toPlainString(), p.balanced());
+                    p.totalShare().toPlainString(), p.balanced(), p.pool().isCrew());
         }
     }
 
