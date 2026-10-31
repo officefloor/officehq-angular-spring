@@ -7,6 +7,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -23,14 +25,16 @@ public class ClaimService {
     private final PersonRepository people;
     private final SheetService sheets;
     private final SheetRepository sheetStore;
+    private final RateRepository rates;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            SheetRepository sheetStore, Audit audit) {
+            SheetRepository sheetStore, RateRepository rates, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
+        this.rates = rates;
         this.audit = audit;
     }
 
@@ -68,7 +72,8 @@ public class ClaimService {
 
     /**
      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
-     * claim gives it the sheet's next number; voiding it clears its number. The sheet is locked
+     * claim gives it the sheet's next number; voiding it clears its number; settling it fixes its due
+     * at its person's grade's rate now, so later rate changes leave it as it is. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
      */
     @Transactional
@@ -81,6 +86,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         Integer number = claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
@@ -88,16 +94,22 @@ public class ClaimService {
             claim.setNumber(number);
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
+        } else if (next == ClaimStatus.SETTLED) {
+            claim.setSettledDue(rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+                    .map(Rate::getRate).map(rate -> dueOn(claim.getAmount(), rate)).orElse(null));
         }
         Claim changed = claims.saveAndFlush(claim);
-        Person person = people.findByIdAndSheetId(changed.getPersonId(), sheetId).orElseThrow();
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(entry(event, user, person, changed, number));
+        String line = entry(event, user, person, changed, number);
+        if (next == ClaimStatus.SETTLED) {
+            line += " due=" + (changed.getSettledDue() == null ? "n/a" : changed.getSettledDue().toPlainString());
+        }
+        audit.recordOnCommit(line);
         return changed;
     }
 
@@ -106,6 +118,11 @@ public class ClaimService {
         return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
                 + (number == null ? "" : " number=" + number);
+    }
+
+    /** The due on an amount at a rate (a percent): amount × rate / 100, rounded half up to the cent. */
+    private static BigDecimal dueOn(BigDecimal amount, BigDecimal rate) {
+        return amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

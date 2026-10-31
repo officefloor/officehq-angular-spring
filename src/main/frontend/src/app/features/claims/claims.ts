@@ -90,6 +90,7 @@ export class PersonClaims {
   }
 
   protected dueOf(c: ClaimView): string {
+    if (c.settledDue !== null) return c.settledDue;
     const rate = this.rate();
     return rate === undefined ? NOT_AVAILABLE : money(dueCents(cents(c.amount), rate));
   }

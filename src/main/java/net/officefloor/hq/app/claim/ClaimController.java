@@ -26,13 +26,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class ClaimController {
 
-    /** A claim as the screen shows it; the amount is given with exactly two decimals. */
+    /**
+     * A claim as the screen shows it; the amount is given with exactly two decimals, as is the due
+     * fixed when it was settled (null while it is not settled, or if its grade had no rate then).
+     */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Integer number) {
+            Integer number, String settledDue) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
         }
     }
 
