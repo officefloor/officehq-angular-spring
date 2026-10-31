@@ -1,0 +1,374 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index b2338f480..f3d9821f4 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -38,6 +38,7 @@ interface Settings {
+   escalateAfter: string | null;
+   /** A REVIEW claim whose review day plus this many days is before the sheet's today is late; null when blank (none). Not dated. */
+   reviewSla: string | null;
++  pendingSla: string | null;
+   /** While both are set, a person whose score is at or above the high one is HIGH, at or above the mid one MID, else LOW; null when blank. Whole numbers, not dated. */
+   scoreMid: string | null;
+   scoreHigh: string | null;
+@@ -259,6 +260,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+       <p>Alert threshold <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
+       <p>Escalate after (days) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
+       <p>Review SLA (days) <strong data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</strong></p>
++      <p>Pending SLA (days) <strong data-testid="setting-pending-sla-current">{{ pendingSla() ?? '' }}</strong></p>
+       <p>Score mid threshold <strong data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</strong></p>
+       <p>Score high threshold <strong data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</strong></p>
+       <p>Score log <strong data-testid="setting-score-log-current">{{ scoreLog() ?? '' }}</strong></p>
+@@ -491,6 +493,15 @@ const ROUNDING = /^(half-up|half-even)$/;
+           (input)="reviewSlaInput.set(value($event)); reviewSlaTouched = true; settingsError.set('')"
+           (keydown)="reviewSlaTouched = reviewSlaTouched || clears($event)"
+         />
++        <label for="setting-pending-sla">Pending SLA: a claim pending more than this many days is late (blank: none)</label>
++        <input
++          id="setting-pending-sla"
++          inputmode="numeric"
++          data-testid="setting-pending-sla"
++          [value]="pendingSlaInput()"
++          (input)="pendingSlaInput.set(value($event)); pendingSlaTouched = true; settingsError.set('')"
++          (keydown)="pendingSlaTouched = pendingSlaTouched || clears($event)"
++        />
+         <label for="setting-score-mid">Score mid threshold: a score at or above it is MID (a whole number; blank: no bands)</label>
+         <input
+           id="setting-score-mid"
+@@ -713,6 +724,8 @@ export class Access {
+   protected readonly escalateAfterInput = signal('');
+   protected readonly reviewSla = signal<string | null>(null);
+   protected readonly reviewSlaInput = signal('');
++  protected readonly pendingSla = signal<string | null>(null);
++  protected readonly pendingSlaInput = signal('');
+   protected readonly scoreMid = signal<string | null>(null);
+   protected readonly scoreMidInput = signal('');
+   protected readonly scoreHigh = signal<string | null>(null);
+@@ -766,6 +779,7 @@ export class Access {
+   protected alertThresholdTouched = false;
+   protected escalateAfterTouched = false;
+   protected reviewSlaTouched = false;
++  protected pendingSlaTouched = false;
+   protected scoreMidTouched = false;
+   protected scoreHighTouched = false;
+   protected scoreLogTouched = false;
+@@ -796,7 +810,7 @@ export class Access {
+       this.delegateFrom.set('');
+       this.delegateTo.set('');
+       this.delegateError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -1004,6 +1018,11 @@ export class Access {
+       this.settingsError.set('Enter a review SLA as a whole number of days, or leave it blank for none.');
+       return;
+     }
++    const pendingSla = this.pendingSlaInput().trim();
++    if (this.pendingSlaTouched && pendingSla !== '' && !DAYS.test(pendingSla)) {
++      this.settingsError.set('Enter a pending SLA as a whole number of days, or leave it blank for none.');
++      return;
++    }
+     const scoreMid = this.scoreMidInput().trim();
+     if (this.scoreMidTouched && scoreMid !== '' && !WHOLE.test(scoreMid)) {
+       this.settingsError.set('Enter a score mid threshold as a whole number, or leave it blank for no bands.');
+@@ -1106,6 +1125,7 @@ export class Access {
+     if (this.alertThresholdTouched) body.alertThreshold = alertThreshold;
+     if (this.escalateAfterTouched) body.escalateAfter = escalateAfter;
+     if (this.reviewSlaTouched) body.reviewSla = reviewSla;
++    if (this.pendingSlaTouched) body.pendingSla = pendingSla;
+     if (this.scoreMidTouched) body.scoreMid = scoreMid;
+     if (this.scoreHighTouched) body.scoreHigh = scoreHigh;
+     if (this.scoreLogTouched) body.scoreLog = scoreLog;
+@@ -1206,6 +1226,9 @@ export class Access {
+     this.reviewSla.set(settings.reviewSla);
+     this.reviewSlaInput.set(settings.reviewSla ?? '');
+     this.reviewSlaTouched = false;
++    this.pendingSla.set(settings.pendingSla);
++    this.pendingSlaInput.set(settings.pendingSla ?? '');
++    this.pendingSlaTouched = false;
+     this.scoreMid.set(settings.scoreMid);
+     this.scoreMidInput.set(settings.scoreMid ?? '');
+     this.scoreMidTouched = false;
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2a0717f44..64a8a2ee4 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -62,6 +62,7 @@ export interface Claim {
+   lateEntry: boolean;
+   /** Whether the claim is REVIEW and its review day plus the sheet's review SLA is before the sheet's today. */
+   reviewLate: boolean;
++  pendingLate: boolean;
+   /** Whether a steward waived the claim's late charge: it then bears none, whatever its overdue state. */
+   waived: boolean;
+   /** Whether the claim is held: it still counts in every total; a hold no longer leaves it out. */
+@@ -270,6 +271,7 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+           <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
+           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+           <span>Review late <span data-testid="claim-review-late">{{ c.reviewLate ? 'yes' : 'no' }}</span></span>
++          <span>Pending late <span data-testid="claim-pending-late">{{ c.pendingLate ? 'yes' : 'no' }}</span></span>
+           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+           <button type="button" data-testid="claim-waive" (click)="waive(c)">
+             Waive late charge<span class="visually-hidden"> of claim {{ c.amount }} {{ c.date }}</span>
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 5caeebc5b..7a074a003 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -108,6 +108,7 @@ export function statusCounts(people: PersonWithClaims[]): { status: string; coun
+         </tbody>
+       </table>
+       <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
++      <p>Late pending: <span data-testid="summary-pending-late-count">{{ pendingLateCount() }}</span></p>
+       <table>
+         <caption>By void reason</caption>
+         <thead>
+@@ -196,6 +197,7 @@ export class Summary {
+   protected readonly byStatus = computed(() => statusCounts(this.people()));
+ 
+   protected readonly reviewLateCount = computed(() => this.people().flatMap((p) => p.claims).filter((c) => c.reviewLate).length);
++  protected readonly pendingLateCount = computed(() => this.people().flatMap((p) => p.claims).filter((c) => c.pendingLate).length);
+ 
+   protected readonly byVoidReason = computed(() => {
+     const voided = this.people().flatMap((p) => p.claims).filter((c) => c.status === 'VOID');
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index ed81f7983..a136b40e9 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -56,7 +56,7 @@ public class AccessController {
+      * sheet, null for none; it is not dated. The fiscal start month is the month (1 to 12) the sheet's fiscal
+      * year starts in; it is not dated. The alert threshold is a figure with two decimals, null when off; it is not dated.
+      * The escalation gap is a number of days, null when off; it is not dated.
+-     * The review SLA is a number of days, null for none; it is not dated.
++     * The review SLA is a number of days, null for none; it is not dated. So is the pending SLA.
+      * The rounding mode is half-up or half-even, null for none (the policy date decides); it is dated.
+      * The proof kinds are a comma separated list of kinds (receipt, photo), null for none; they are not dated.
+      * The default grade is A, B or C, null for none (grade A); it is not dated.
+@@ -69,7 +69,7 @@ public class AccessController {
+             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+             String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
+             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
+-            String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
++            String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String pendingSla, String proofKinds,
+             String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC, String scoreMid,
+             String scoreHigh, String scoreLog, String maxOpen) {
+ 
+@@ -91,7 +91,7 @@ public class AccessController {
+                     text(dated.gradeProofThreshold("C", today)), text(dated.pot()), dated.parent(),
+                     Integer.toString(dated.fiscalStartMonth()), text(dated.alertThreshold()),
+                     dated.on(DatedSettings.ROUNDING, today).orElse(null), text(dated.reviewThreshold(today)),
+-                    text(dated.escalateAfter()), text(dated.reviewSla()), dated.proofKindsText(),
++                    text(dated.escalateAfter()), text(dated.reviewSla()), text(dated.pendingSla()), dated.proofKindsText(),
+                     dated.defaultGradeText(), text(dated.gradeClerkLimit("A", today)),
+                     text(dated.gradeClerkLimit("B", today)), text(dated.gradeClerkLimit("C", today)),
+                     text(dated.scoreMid()), text(dated.scoreHigh()), dated.scoreLog() ? "on" : null,
+@@ -152,7 +152,7 @@ public class AccessController {
+      * putting back 1; not dated. The alert threshold is 0.00 or more with up to two decimals, blank meaning off;
+      * not dated. The rounding mode is half-up or half-even, blank meaning none (the policy date decides); dated.
+      * The escalation gap is a whole number of days, blank meaning off; not dated.
+-     * The review SLA is a whole number of days, blank meaning none; not dated.
++     * The review SLA is a whole number of days, blank meaning none; not dated. So is the pending SLA.
+      * The proof kinds are a comma separated list of kinds (receipt, photo), blank meaning none; not dated.
+      * The default grade is A, B or C, blank meaning A; not dated.
+      * The maximum of open claims per person is a whole number, blank meaning none; not dated.
+@@ -210,6 +210,7 @@ public class AccessController {
+             @Pattern(regexp = DATE) String reviewThresholdFrom,
+             @Pattern(regexp = "(\\d{1,5})?") String escalateAfter,
+             @Pattern(regexp = "(\\d{1,5})?") String reviewSla,
++            @Pattern(regexp = "(\\d{1,5})?") String pendingSla,
+             @Pattern(regexp = "\\s*((receipt|photo)\\s*(,\\s*(receipt|photo)\\s*)*)?") String proofKinds,
+             @Pattern(regexp = "([A-Z]{1,3})?") String defaultGrade,
+             @Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String clerkLimitA,
+@@ -309,7 +310,7 @@ public class AccessController {
+                 form.pot(), form.parent() == null ? null : form.parent().trim(), form.fiscalStartMonth(),
+                 form.alertThreshold(), dated(form.rounding(), form.roundingFrom()),
+                 dated(form.reviewThreshold(), form.reviewThresholdFrom()), form.escalateAfter(),
+-                form.reviewSla(), form.proofKinds(), form.defaultGrade(), gradeClerkLimit,
++                form.reviewSla(), form.pendingSla(), form.proofKinds(), form.defaultGrade(), gradeClerkLimit,
+                 form.scoreMid() == null ? null : form.scoreMid().trim(), form.scoreHigh() == null ? null : form.scoreHigh().trim(),
+                 form.scoreLog() == null ? null : form.scoreLog().trim(),
+                 form.maxOpen() == null ? null : form.maxOpen().trim());
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessService.java b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+index 335cb30fe..99bcc3a41 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessService.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessService.java
+@@ -95,6 +95,7 @@ public class AccessService {
+ 
+     public static final String ESCALATE_AFTER = DatedSettings.ESCALATE_AFTER;
+     public static final String REVIEW_SLA = DatedSettings.REVIEW_SLA;
++    public static final String PENDING_SLA = DatedSettings.PENDING_SLA;
+     public static final String SCORE_MID = DatedSettings.SCORE_MID;
+     public static final String SCORE_HIGH = DatedSettings.SCORE_HIGH;
+     public static final String SCORE_LOG = DatedSettings.SCORE_LOG;
+@@ -283,7 +284,7 @@ public class AccessService {
+             Map<String, Dated> gradeTerms, Dated latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             Map<String, Dated> gradeGrace, Dated cap, Dated proofThreshold, Dated noteThreshold, Map<Permission, String> permissions, String entryDate,
+             Map<String, Dated> gradeProofThreshold, String pot, String parent, String fiscalStartMonth,
+-            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String proofKinds,
++            String alertThreshold, Dated rounding, Dated reviewThreshold, String escalateAfter, String reviewSla, String pendingSla, String proofKinds,
+             String defaultGrade, Map<String, Dated> gradeClerkLimit, String scoreMid, String scoreHigh,
+             String scoreLog, String maxOpen) {
+         if (scoreLog != null && !scoreLog.isEmpty() && !scoreLog.equals("on")) {
+@@ -377,6 +378,9 @@ public class AccessService {
+         if (reviewSla != null) {
+             setReviewSla(sheetId, user, days(reviewSla, null));
+         }
++        if (pendingSla != null) {
++            setPendingSla(sheetId, user, days(pendingSla, null));
++        }
+         if (proofKinds != null) {
+             setProofKinds(sheetId, user, proofKinds);
+         }
+@@ -483,6 +487,15 @@ public class AccessService {
+         setUndated(sheetId, user, REVIEW_SLA, days);
+     }
+ 
++    /**
++     * Record the sheet's pending SLA, a number of days (null: none). Not dated: the value holds from the
++     * beginning of time, replacing the one it had.
++     */
++    @Transactional
++    public void setPendingSla(String sheetId, String user, String days) {
++        setUndated(sheetId, user, PENDING_SLA, days);
++    }
++
+     /** Record an undated setting as written (null: none), replacing the one it had. */
+     private void setUndated(String sheetId, String user, String key, String value) {
+         sheets.load(sheetId, user);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 39926f6be..564487801 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -132,6 +132,10 @@ public class Claim {
+     @Column(name = "review_on")
+     private LocalDate reviewOn;
+ 
++    /** The sheet's today when the claim last went to PENDING; null when it never did. */
++    @Column(name = "pending_on")
++    private LocalDate pendingOn;
++
+     /** Whether a reminder ever escalated the claim; a claim is escalated at most once. */
+     @Column(name = "escalated", nullable = false)
+     private boolean escalated;
+@@ -252,6 +256,7 @@ public class Claim {
+         arrived.held = held;
+         arrived.reviewAssigned = reviewAssigned;
+         arrived.reviewOn = reviewOn;
++        arrived.pendingOn = pendingOn;
+         arrived.proofs = proofs;
+         arrived.proofPhotos = proofPhotos;
+         arrived.splitFrom = splitFrom;
+@@ -359,6 +364,14 @@ public class Claim {
+         this.reviewOn = reviewOn;
+     }
+ 
++    public LocalDate getPendingOn() {
++        return pendingOn;
++    }
++
++    public void setPendingOn(LocalDate pendingOn) {
++        this.pendingOn = pendingOn;
++    }
++
+     public boolean isWaived() {
+         return waived;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 393ae8ca4..ec22b622a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -440,6 +440,7 @@ public class ClaimService {
+                 due = fixed == null ? "n/a" : fixed.toPlainString();
+             } else {
+                 next = ClaimStatus.PENDING;
++                claim.setPendingOn(sheets.today(sheetId));
+             }
+         }
+         String number = claim.getShownNumber();
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 57ff5efdd..708a91379 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -101,6 +101,16 @@ public final class Dues {
+                 && claim.getReviewOn().plusDays(sla).isBefore(rates.today());
+     }
+ 
++    /**
++     * Whether the claim is late pending: PENDING, with the sheet's pending SLA set, and its pending day (the
++     * sheet's today when it last went to PENDING) plus the SLA days before the sheet's today.
++     */
++    public static boolean pendingLate(Claim claim, RateTable rates) {
++        Integer sla = rates.settings().pendingSla();
++        return claim.getStatus() == ClaimStatus.PENDING && sla != null && claim.getPendingOn() != null
++                && claim.getPendingOn().plusDays(sla).isBefore(rates.today());
++    }
++
+     /**
+      * Whether the claim is overdue: OPEN or PENDING, not {@link #deferred deferred}, and due by a date before
+      * the sheet's today (its due-by, fixed when it was added, plus its {@link #graceBy grace}).
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 7ff9b8362..49be78ea4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -63,14 +63,15 @@ public class PersonController {
+      * correction, the number of the claim it corrects (null otherwise), and whether it was deferred until a date after the
+      * sheet's today, whatever its status since (its counting follows {@link Dues#deferred}), and the date it is deferred until (null when never),
+      * its proofs count, and of them its receipts and its photos, and, for a claim split off another, the number of the claim it was split from (null otherwise),
+-     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none), its lines, in the order they were added, whether it is late in review (see {@link Dues#reviewLate}), whether its late charge was waived, whether it is held, the people it is shared with, and the user its review is assigned to (null when none).
++     * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none), its lines, in the order they were added, whether it is late in review (see {@link Dues#reviewLate}), whether its late charge was waived, whether it is held, the people it is shared with, the user its review is assigned to (null when none), and whether it is late pending (see {@link Dues#pendingLate}).
+      */
+     public record ClaimView(long id, String amount, LocalDate date, String note, String due, ClaimStatus status,
+             String number, String openedBy, boolean stated, LocalDate dueBy, boolean overdue, String corrects,
+             List<LogLineView> log, boolean deferred, LocalDate deferredUntil, int proofs, int proofsReceipt, int proofsPhoto, String splitFrom,
+             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
+             String voidReason, List<CommentView> comments, boolean counts, Integer settleBatch, List<LineView> lines,
+-            boolean reviewLate, boolean waived, boolean held, List<ShareView> shares, String reviewAssigned) {
++            boolean reviewLate, boolean waived, boolean held, List<ShareView> shares, String reviewAssigned,
++            boolean pendingLate) {
+ 
+         static ClaimView of(Claim claim, Grades grade, RateTable rates, Holds held) {
+             return new ClaimView(claim.getId(), money(claim.getAmount()), claim.getDate(), claim.getNote(),
+@@ -84,7 +85,8 @@ public class PersonController {
+                     claim.getComments().stream().map(CommentView::of).toList(),
+                     Dues.counts(claim, held, rates.today()), claim.getSettleBatch(),
+                     claim.getLines().stream().map(LineView::of).toList(), Dues.reviewLate(claim, rates), claim.isWaived(),
+-                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList(), claim.getReviewAssigned());
++                    claim.isHeld(), claim.getShares().stream().map(ShareView::of).toList(), claim.getReviewAssigned(),
++                    Dues.pendingLate(claim, rates));
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+index b6f19e5d7..f48730b6b 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/DatedSettings.java
+@@ -48,6 +48,9 @@ public record DatedSettings(List<SheetSetting> values) {
+     /** A REVIEW claim is late once its review day plus this many days is before the sheet's today; not dated. */
+     public static final String REVIEW_SLA = "review-sla";
+ 
++    /** A PENDING claim is late once its pending day plus this many days is before the sheet's today; not dated. */
++    public static final String PENDING_SLA = "pending-sla";
++
+     /** A person whose score is at or above it is in the MID band (while the high threshold is set too); not dated. */
+     public static final String SCORE_MID = "score-mid";
+ 
+@@ -243,6 +246,11 @@ public record DatedSettings(List<SheetSetting> values) {
+         return on(REVIEW_SLA, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+     }
+ 
++    /** The sheet's pending SLA in days (not dated: it holds on every date); null when there is none. */
++    public Integer pendingSla() {
++        return on(PENDING_SLA, LocalDate.MAX).map(Integer::valueOf).orElse(null);
++    }
++
+     /** The sheet's mid score threshold, a whole number (not dated); null when it is blank. */
+     public Integer scoreMid() {
+         return on(SCORE_MID, LocalDate.MAX).map(Integer::valueOf).orElse(null);
+diff --git a/src/main/resources/db/migration/V112__claim_pending_on.sql b/src/main/resources/db/migration/V112__claim_pending_on.sql
+new file mode 100644
+index 000000000..0da5ba6d0
+--- /dev/null
++++ b/src/main/resources/db/migration/V112__claim_pending_on.sql
+@@ -0,0 +1,3 @@
++-- The sheet's today when a claim last went to PENDING; null for a claim that never did. With the sheet's
++-- pending SLA (not dated) it decides whether a PENDING claim is late.
++ALTER TABLE claim ADD COLUMN pending_on DATE;
