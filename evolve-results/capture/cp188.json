@@ -1,0 +1,68 @@
+{
+  "checkpoint": 188,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp188_clone-source-rates",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    126
+  ],
+  "replaced_tests": [
+    "cp126_clone-sheet.spec.ts::clone sheet"
+  ],
+  "request": {
+    "spec": "When a grade has no rate in force on a date on a sheet nor on its parents, a sheet that was\ncloned uses the rate of the sheet it was cloned from (and so on up that sheet's parents and\nsource).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a grade has no rate in force on a date on a sheet nor on its parents, a sheet that was\ncloned uses the rate of the sheet it was cloned from (and so on up that sheet's parents and\nsource).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cfa1837fde4a5b5ac2b39e2ef395bce3e193859c",
+  "reset_sha": "",
+  "preagent_sha": "4ba130f7128d677796d2ff065fa5c58309f193c0",
+  "prev_sha": "4ba130f7128d677796d2ff065fa5c58309f193c0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7064594000000001,
+    "input_tokens": 36,
+    "output_tokens": 7176,
+    "cache_read_tokens": 768377,
+    "cache_creation_tokens": 51140,
+    "num_turns": 19,
+    "duration_ms": 286833,
+    "duration_api_ms": 72208,
+    "model": "claude-opus-5-5",
+    "session_id": "3c7b0f5c-9492-4d3f-9801-f42685fac743",
+    "stop_reason": "success",
+    "result_text": "A cloned sheet now falls back to the rates of the sheet it was cloned from. All 4 tests in `bin/e2e` pass.\n\n**What changed:**\n- **Stored data:** a new migration, `V103__sheet_cloned_from.sql`, adds a `cloned_from` column to the sheet table. Cloning a sheet now records the original's id in it (`Sheet.copyTo`).\n- **Server:** `RateChains.ancestorsOf` now sets the order a grade's rate is looked for:\n  1. The sheet's own rates.\n  2. Its parents, up to three levels as before.\n  3. The sheet it was cloned from.\n  4. That sheet's parents and the sheet *it* was cloned from, and so on up the line.\n\n  Each sheet is used only once, so a loop of parents and clones can't make this run forever.\n- **Front end:** no changes were needed. Both the due figures and the current rates shown on screen already read this list (the screen gets it from `/inherited`), so they pick up the fallback automatically.\n\n**What it means for you:**\n- The fallback is live. A rate added to the original after cloning shows up on the clone wherever the clone has no rate of its own. The first test checks this.\n- Like setting a rate on a parent today, a rate change on the original writes no ROLLUP audit lines for the clone.\n- Sheets cloned before this change have no original recorded, so they don't get the fallback.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7064594000000001,
+        "num_turns": 19,
+        "duration_ms": 286833,
+        "duration_api_ms": 72208,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp188.agent.jsonl",
+  "agent_diff_file": "cp188.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

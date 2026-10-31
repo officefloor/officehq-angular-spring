@@ -1,0 +1,132 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChain.java b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+index 706168399..8230a391c 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChain.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+@@ -5,7 +5,8 @@ import java.util.List;
+ import java.util.Optional;
+ import java.util.stream.Stream;
+ 
+-/** The rates a sheet's dues are read at: its own, then its parent's, its parent's parent's and that one's parent's.
++/** The rates a sheet's dues are read at: its own, then its parent's, its parent's parent's and that one's parent's,
++ *  then, for a cloned sheet, the line of the sheet it was cloned from.
+  *  A grade with no rate in force on a date on the sheet takes the first rate in force for it on that date up the
+  *  line. */
+ public record RateChain(List<List<Rate>> levels) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChains.java b/src/main/java/net/officefloor/hq/app/rate/RateChains.java
+index f90148855..372d03fe1 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChains.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChains.java
+@@ -1,8 +1,11 @@
+ package net.officefloor.hq.app.rate;
+ 
+ import java.util.ArrayList;
++import java.util.HashSet;
+ import java.util.List;
++import java.util.Set;
+ import java.util.stream.Stream;
++import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+ 
+@@ -45,14 +48,28 @@ public class RateChains {
+         return sheetRates;
+     }
+ 
+-    /** The sheet's own rates, then each of its ancestors' up to {@link RateChain#ANCESTORS} levels up. */
++    /** The sheet's own rates, then each of its ancestors' up to {@link RateChain#ANCESTORS} levels up, then, for a
++     *  sheet that was cloned, the line of the sheet it was cloned from. */
+     public RateChain of(String sheetId) {
+         return new RateChain(Stream.concat(Stream.of(sheetId), ancestorsOf(sheetId).stream())
+                 .map(this::ratesOf).toList());
+     }
+ 
+-    /** The ids of the sheet's ancestors whose rates stand in for its own, nearest first. */
++    /** The ids of the sheets whose rates stand in for the sheet's own, nearest first: its parents up to
++     *  {@link RateChain#ANCESTORS} levels up, then the sheet it was cloned from, that sheet's parents and the sheet it
++     *  was cloned from, and so on (each once, the sheet itself never). */
+     public List<String> ancestorsOf(String sheetId) {
+-        return sheets.ancestorsOf(sheetId, RateChain.ANCESTORS);
++        List<String> line = new ArrayList<>();
++        Set<String> followed = new HashSet<>();
++        for (String at = sheetId; at != null && followed.add(at);
++                at = sheets.findById(at).map(Sheet::getClonedFrom).orElse(null)) {
++            if (!at.equals(sheetId) && !line.contains(at)) {
++                line.add(at);
++            }
++            sheets.ancestorsOf(at, RateChain.ANCESTORS).stream()
++                    .filter(ancestor -> !ancestor.equals(sheetId) && !line.contains(ancestor))
++                    .forEach(line::add);
++        }
++        return line;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 07654c535..e47ff42a8 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -96,8 +96,8 @@ public class RateController {
+     }
+ 
+     /** The rates of the sheet's ancestors, nearest first (its parent's, its parent's parent's, up to three levels
+-     *  up), each by grade in the order they take effect: a grade with no rate in force on a date on the sheet takes
+-     *  the first in force on that date up the line. As of a date, each as it stood then. */
++     *  up, then the line of the sheet it was cloned from), each by grade in the order they take effect: a grade with
++     *  no rate in force on a date on the sheet takes the first in force on that date up the line. As of a date, each as it stood then. */
+     @GetMapping("/inherited")
+     public List<List<RateView>> inherited(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 71bb85099..63c94c745 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -139,6 +139,12 @@ public class Sheet {
+     @Column(name = "parent_id")
+     private String parentId;
+ 
++    /** The id of the sheet this one was cloned from, whose rate line (it, its parents, the sheet it was cloned from
++     *  and so on) stands in for a grade with no rate in force on a date on this sheet nor its parents; null for a
++     *  sheet that was not cloned. Not dated. */
++    @Column(name = "cloned_from")
++    private String clonedFrom;
++
+     /** The sheet's proof kinds, comma separated (receipt, photo): while set, a claim above the proof threshold needs
+      *  a proof of each before it can be settled or approved; null means none. Not dated. */
+     @Column(name = "proof_kinds", length = 200)
+@@ -159,7 +165,8 @@ public class Sheet {
+     }
+ 
+     /** A copy of the sheet under another id, unsaved: its today, every setting (dated or not), its permission
+-     *  matrix, parent and last settle batch; its claim numbering starts afresh, and it is not archived. */
++     *  matrix, parent and last settle batch, naming this sheet as the one it was cloned from; its claim numbering
++     *  starts afresh, and it is not archived. */
+     public Sheet copyTo(String id, String createdBy, Instant createdAt) {
+         Sheet copy = new Sheet(id, createdBy, createdAt, today);
+         settings.forEach(s -> copy.settings.add(new DatedSetting(s.getKey(), s.getFrom(), s.getValue())));
+@@ -174,6 +181,7 @@ public class Sheet {
+         copy.pot = pot;
+         copy.alertThreshold = alertThreshold;
+         copy.parentId = parentId;
++        copy.clonedFrom = this.id;
+         copy.proofKinds = proofKinds;
+         copy.lastSettleBatch = lastSettleBatch;
+         return copy;
+@@ -426,6 +434,10 @@ public class Sheet {
+         return parentId;
+     }
+ 
++    public String getClonedFrom() {
++        return clonedFrom;
++    }
++
+     public void setParentId(String parentId) {
+         this.parentId = parentId;
+     }
+diff --git a/src/main/resources/db/migration/V103__sheet_cloned_from.sql b/src/main/resources/db/migration/V103__sheet_cloned_from.sql
+new file mode 100644
+index 000000000..b2e239cf0
+--- /dev/null
++++ b/src/main/resources/db/migration/V103__sheet_cloned_from.sql
+@@ -0,0 +1,3 @@
++-- The sheet a sheet was cloned from: a grade with no rate in force on a date on the sheet nor on its parents takes
++-- that sheet's rate (then its parents', then the sheet it was cloned from, and so on). None for a sheet not cloned.
++ALTER TABLE sheet ADD COLUMN cloned_from VARCHAR(100);
