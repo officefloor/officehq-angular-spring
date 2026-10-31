@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.access.AccessService;
 import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.claim.Tags;
+import net.officefloor.hq.app.rate.GradeService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -28,7 +29,8 @@ import org.springframework.web.server.ResponseStatusException;
  * or down swapping with their neighbour, added and edited one at a time;
  * an edit made from a version someone else has saved since is refused. A person can be retired from a
  * date; no claim dated after it can then be added for them. A retired person can be unretired; no claim
- * dated within a past retirement (after its from-date, before its to-date) can be added for them either. */
+ * dated within a past retirement (after its from-date, before its to-date) can be added for them either. A
+ * retired grade (see {@link GradeService}) cannot be chosen for a new person or in an edit. */
 @Service
 public class PersonService {
 
@@ -41,10 +43,12 @@ public class PersonService {
     private final Tags tags;
     private final PersonSnapshotRepository snapshots;
     private final AccessService access;
+    private final GradeService grades;
 
     public PersonService(PersonRepository people, PatronRepository patrons, SheetService sheets,
             SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events, Tags tags,
-            PersonSnapshotRepository snapshots, AccessService access) {
+            PersonSnapshotRepository snapshots, AccessService access, GradeService grades) {
+        this.grades = grades;
         this.access = access;
         this.tags = tags;
         this.snapshots = snapshots;
@@ -93,6 +97,7 @@ public class PersonService {
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
             throw contactInUse();
         }
+        grades.choosable(sheetId, grade);
         Rollup.Figures before = rollup.figures(sheetId);
         Person added = new Person(sheetId, trimmed, grade);
         if (termsFrom != null) {
@@ -159,10 +164,14 @@ public class PersonService {
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
             throw contactInUse();
         }
+        LocalDate today = sheets.today(sheetId);
+        boolean gradeChosen = gradeFrom != null || !grade.equals(person.gradeOn(today));
+        if (gradeChosen) {
+            grades.choosable(sheetId, grade);
+        }
         Rollup.Figures before = rollup.figures(sheetId);
         person.setName(trimmed);
-        LocalDate today = sheets.today(sheetId);
-        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+        if (gradeChosen) {
             person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
         }
         boolean termsChanged;

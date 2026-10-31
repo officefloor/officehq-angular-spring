@@ -13,6 +13,7 @@ import { Search } from '../search/search';
 import { SnapshotCompare } from '../snapshot-compare/snapshot-compare';
 import { SheetCompare } from '../sheet-compare/sheet-compare';
 import { Duplicates } from '../duplicates/duplicates';
+import { Grades } from '../grades/grades';
 import { Holidays } from '../holidays/holidays';
 import { Period, Periods, periodOf, personPeriodCarried, personPeriodTotals } from '../periods/periods';
 import { PersonPlans, PlanList } from '../plans/plans';
@@ -169,7 +170,7 @@ function csvField(value: string): string {
 // user can watch people of their own choosing.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Access, Activity, Audit, ClaimTemplates, Claims, Crews, Duplicates, Holidays, Notes, Periods, PersonPlans, Pools, Rates, Search, SheetCompare, SnapshotCompare, Summary, Tags, VoidReasons],
+  imports: [FigurePipe, Access, Activity, Audit, ClaimTemplates, Claims, Crews, Duplicates, Grades, Holidays, Notes, Periods, PersonPlans, Pools, Rates, Search, SheetCompare, SnapshotCompare, Summary, Tags, VoidReasons],
   template: `
     <header aria-label="Counters">
       <p>People <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -203,6 +204,7 @@ function csvField(value: string): string {
       }
     </section>
     <app-rates (changed)="reloadSheet()" />
+    <app-grades />
     <app-access [settingsSaved]="reloadAfterSettings" />
     <app-periods [people]="people()" [(periods)]="periods" />
     <app-holidays />
@@ -1651,7 +1653,8 @@ export class People {
         return;
       }
       if (err instanceof HttpErrorResponse && err.status === 409) {
-        this.error.set('That name (or alias) or contact is already in use on this sheet.');
+        // a retired grade's refusal says why; any other is a name or contact in use
+        this.error.set(err.error?.message ?? 'That name (or alias) or contact is already in use on this sheet.');
         return;
       }
       this.error.set(id === null ? 'Could not add the person.' : 'Could not save the person.');
@@ -1869,7 +1872,7 @@ export class People {
       const message =
         err instanceof HttpErrorResponse && err.status === 412
           ? 'Someone else saved this person since the sheet was loaded; re-load it to see their values.'
-          : 'Could not save the grade.';
+          : (err instanceof HttpErrorResponse && err.status === 409 && err.error?.message) || 'Could not save the grade.';
       this.personError.set({ id: p.id, message });
     } finally {
       this.grading = false;

@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.sheet.SheetRepository;
-import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.rate.GradeService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Import people: lines of {@code name,grade,terms,contact} (terms and contact may be left out or blank; a blank
- * grade is the sheet's default grade, A when none is set). A line
+ * grade is the sheet's default grade, A when none is set or it is retired). A line
  * whose name is the name or an alias of a person on the sheet (compared as names are) updates that person as
  * the person form edits them: their grade is recorded from the sheet's today, and their terms and contact are
  * set when the line gives them. Any other line adds a person as the person form adds them. Every line is first
@@ -46,14 +46,14 @@ public class PersonImportService {
     private final PersonService service;
     private final PersonRepository people;
     private final SheetRepository sheetRows;
-    private final SheetService sheets;
+    private final GradeService grades;
 
     public PersonImportService(PersonService service, PersonRepository people, SheetRepository sheetRows,
-            SheetService sheets) {
+            GradeService grades) {
         this.service = service;
         this.people = people;
         this.sheetRows = sheetRows;
-        this.sheets = sheets;
+        this.grades = grades;
     }
 
     /** Update or add a person per line, in order; returns how many were added and updated. */
@@ -64,7 +64,7 @@ public class PersonImportService {
         Set<String> names = new HashSet<>();
         Set<Long> updated = new HashSet<>();
         Set<String> contacts = new HashSet<>();
-        String defaultGrade = sheets.settings(sheetId).defaultGrade();
+        String defaultGrade = grades.defaultGrade(sheetId);
         for (String raw : text.split("\\R")) {
             if (raw.isBlank()) continue;
             Line line = parse(raw, defaultGrade);
