@@ -220,8 +220,8 @@ public class Claim {
     }
 
     /** Move the claim to another sheet and person, listed there at {@code listed} and numbered {@code number}
-     *  (none for a claim without one): it loses its reference, its settle batch, its editor's lock and any figure
-     *  a statement bound it to; a correction or split names the number given to the claim it names there. */
+     *  (none for a claim without one): it loses its reference, its settle batch and its editor's lock, keeping any
+     *  figure a statement bound it to; a correction or split names the number given to the claim it names there. */
     public void transferTo(String sheetId, Long personId, long listed, String number, String corrects,
             String splitFrom) {
         this.sheetId = sheetId;
@@ -233,7 +233,6 @@ public class Claim {
         this.ref = null;
         this.settleBatch = null;
         this.lockedBy = null;
-        unbind();
     }
 
     /** The sheet's today on which the claim was first opened (took a status past DRAFT), as its log records it;

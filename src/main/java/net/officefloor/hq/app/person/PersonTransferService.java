@@ -25,7 +25,7 @@ import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
-import net.officefloor.hq.app.statement.StatementRepository;
+import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.watch.WatchRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -47,7 +47,7 @@ public class PersonTransferService {
     private final ClaimService claimService;
     private final PatronRepository patrons;
     private final PoolMemberRepository poolMembers;
-    private final StatementRepository statements;
+    private final StatementService statements;
     private final WatchRepository watches;
     private final SheetService sheets;
     private final SheetRepository sheetStore;
@@ -57,7 +57,7 @@ public class PersonTransferService {
     private final PlanService plans;
 
     public PersonTransferService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
-            PatronRepository patrons, PoolMemberRepository poolMembers, StatementRepository statements,
+            PatronRepository patrons, PoolMemberRepository poolMembers, StatementService statements,
             WatchRepository watches, SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit,
             Rollup rollup, PlanService plans) {
         this.plans = plans;
@@ -78,10 +78,11 @@ public class PersonTransferService {
     /**
      * A steward transfers a person to another sheet (started empty if never loaded). They arrive there with every
      * grade they were given, their terms, contact and aliases, and their claims with their status, dates, notes,
-     * tags, frozen figures and logs, listed in the order they had; each claim that had a number takes the other
-     * sheet's next, in the order the claims were opened. Figures a statement bound are lost, and so are references,
-     * settle batches and holds. They leave this sheet entirely: their statements, patron links (either way), pool
-     * memberships and watches are dropped. When the other sheet already has a person with their name or one of
+     * tags, frozen figures, figures a statement bound and logs, listed in the order they had; each claim that had a
+     * number takes the other sheet's next, in the order the claims were opened. Their statements go with them (when
+     * merged, the person there counts their own plus these, and their last statement stays theirs or, having none,
+     * becomes this person's last). References, settle batches and holds are lost. They leave this sheet entirely:
+     * their patron links (either way), pool memberships and watches are dropped. When the other sheet already has a person with their name or one of
      * their aliases (as a name or alias), they are merged into that person there, exactly as a merge does: their
      * claims are listed after that person's, their name and aliases become that person's aliases and their contact is
      * dropped. Refused for anyone but a steward, a retired person, a transfer to this sheet itself or to an archived
@@ -135,7 +136,7 @@ public class PersonTransferService {
                 .filter(p -> p.getPersonId().equals(person.getId()) || p.getPatronId().equals(person.getId()))
                 .toList());
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, person.getId()));
+        statements.move(sheetId, person.getId(), target, into == null ? person.getId() : into.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));
         plans.removeOf(person.getId());
         patrons.flush();

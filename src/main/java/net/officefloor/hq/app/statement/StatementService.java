@@ -90,6 +90,27 @@ public class StatementService {
     }
 
     /**
+     * The statements of a person ({@code fromId}) move to another ({@code intoId}, on {@code intoSheetId}), as a merge
+     * or a transfer moves their claims: the other's count becomes their own plus the person's, and their last
+     * statement stays theirs (or, having none, becomes the person's last).
+     */
+    public void move(String fromSheetId, long fromId, String intoSheetId, long intoId) {
+        List<Statement> from = statements.findBySheetIdAndPersonIdOrderByIdAsc(fromSheetId, fromId);
+        List<Statement> into = fromId == intoId && fromSheetId.equals(intoSheetId) ? List.of()
+                : statements.findBySheetIdAndPersonIdOrderByIdAsc(intoSheetId, intoId);
+        if (from.isEmpty()) {
+            return;
+        }
+        // Statements are read in the order taken (by id), so the other's own are taken again after the person's.
+        List<Statement> moved = Stream.concat(from.stream(), into.stream())
+                .map(s -> s.copyFor(intoSheetId, intoId)).toList();
+        statements.deleteAll(from);
+        statements.deleteAll(into);
+        statements.flush();
+        statements.saveAllAndFlush(moved);
+    }
+
+    /**
      * Take a statement of a person: record their due-total now (with the late charges their overdue claims have gained), bind each of their claims that counts
      * to the figure it has now (its settled figure, else the figure it is bound to, else its amount at
      * its grade's rate in force on its date, not raised to the floor) and leave the rest unbound. A late charge is never

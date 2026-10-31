@@ -40,6 +40,11 @@ public class Statement {
         this.takenOn = takenOn;
     }
 
+    /** A copy of this statement taken of another person, on another sheet. */
+    public Statement copyFor(String sheetId, Long personId) {
+        return new Statement(sheetId, personId, dueTotal, takenOn);
+    }
+
     public Long getId() {
         return id;
     }
