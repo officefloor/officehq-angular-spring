@@ -26,13 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor have exactly two decimals; terms is in days. */
-    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms) {
+    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days. */
+    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString(), sheet.getTerms());
+                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString());
         }
     }
 
@@ -49,6 +49,10 @@ public class SheetController {
 
     /** The sheet's terms, in days, as the form submits them. */
     public record TermsChange(@NotNull @Min(0) @Max(36500) Integer terms) {
+    }
+
+    /** The sheet's late percent as the form submits it. */
+    public record LatePctChange(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal latePct) {
     }
 
     private final SheetService sheets;
@@ -99,5 +103,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsChange request) {
         return SheetView.of(sheets.setTerms(id, user, request.terms()));
+    }
+
+    /** Change the sheet's late percent. */
+    @PutMapping("/{id}/settings/late-pct")
+    public SheetView setLatePct(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody LatePctChange request) {
+        return SheetView.of(sheets.setLatePct(id, user, request.latePct()));
     }
 }

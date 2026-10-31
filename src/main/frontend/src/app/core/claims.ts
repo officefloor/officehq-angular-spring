@@ -40,13 +40,13 @@ export function countsWhile(held: boolean): (c: ClaimView) => boolean {
 }
 
 /** The day a claim is due by (yyyy-mm-dd): its date plus the sheet's terms in days. */
-export function dueBy(c: ClaimView, terms: number): string {
+export function dueBy(c: Pick<ClaimView, 'date'>, terms: number): string {
   const [y, m, d] = c.date.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
 /** Whether a claim is overdue on the sheet's today: OPEN and due by a day before it. */
-export function isOverdue(c: ClaimView, terms: number, today: string): boolean {
+export function isOverdue(c: Pick<ClaimView, 'date' | 'status'>, terms: number, today: string): boolean {
   return c.status === 'OPEN' && dueBy(c, terms) < today;
 }
 

@@ -12,6 +12,9 @@ export interface SheetView {
   floor: string;
   /** The sheet's terms in days: a claim is due by its date plus these. */
   terms: number;
+  /** The sheet's late percent (two decimals): an overdue claim's due gains this percent of its figure
+   *  for every full 30 days it is overdue. */
+  latePct: string;
 }
 
 /** The terms a sheet has until they are changed. */
@@ -64,6 +67,13 @@ export class Sheets {
   setTerms(id: string, terms: number): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms`, { terms })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's late percent. */
+  setLatePct(id: string, latePct: string): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/late-pct`, { latePct })
       .pipe(tap((s) => this.active.set(s)));
   }
 }

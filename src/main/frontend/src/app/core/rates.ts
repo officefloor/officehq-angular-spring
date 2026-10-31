@@ -1,8 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
+import { ClaimStatus, dueBy, isOverdue } from './claims';
 import { Grade } from './people';
-import { Sheets } from './sheet';
+import { DEFAULT_TERMS, SheetView, Sheets } from './sheet';
 
 export interface RateView {
   grade: Grade;
@@ -31,6 +32,9 @@ export const RATE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 /** The floor a sheet starts with. */
 export const DEFAULT_FLOOR = '1.00';
 
+/** The due terms used before a sheet is loaded: its starting floor and no late charge. */
+export const DEFAULT_DUE_TERMS: DueTerms = { floor: DEFAULT_FLOOR, terms: DEFAULT_TERMS, today: '', latePct: '0.00' };
+
 /** What is shown in place of a due when its grade has no rate. */
 export const NOT_AVAILABLE = 'n/a';
 
@@ -46,18 +50,42 @@ export function dueCents(amountCents: number, rate: string): number {
   return Number(roundUp ? quotient + 1n : quotient);
 }
 
+/** The sheet's settings a claim's due depends on: its floor and, for the late charge, its terms,
+ *  today and late percent. */
+export type DueTerms = Pick<SheetView, 'floor' | 'terms' | 'today' | 'latePct'>;
+
+/** The late charge an OPEN claim has gained on its figure (in whole cents) by the sheet's today: the
+ *  late percent of the figure for every full 30 days past the day it is due by, rounded as a due is. */
+export function lateChargeCents(
+  c: { date: string; status: ClaimStatus },
+  figureCents: number,
+  sheet: DueTerms,
+): number {
+  if (!isOverdue(c, sheet.terms, sheet.today)) return 0;
+  const days = (Date.parse(sheet.today) - Date.parse(dueBy(c, sheet.terms))) / 86_400_000;
+  const periods = Math.floor(days / 30);
+  if (periods <= 0) return 0;
+  return dueCents(figureCents * periods, sheet.latePct);
+}
+
 /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
  *  last statement bound it to, else its amount at its grade's rate in force on its date raised to the
- *  sheet's floor; null when it has none. */
+ *  sheet's floor, with any late charge added on top of it; null when it has none. */
 export function claimDueCents(
-  c: { amount: string; date: string; settledDue: string | null; statedDue: string | null },
+  c: { amount: string; date: string; status: ClaimStatus; settledDue: string | null; statedDue: string | null },
   gradeRates: readonly RateView[],
-  floor: string,
+  sheet: DueTerms,
 ): number | null {
   if (c.settledDue !== null) return amountCents(c.settledDue);
-  if (c.statedDue !== null) return amountCents(c.statedDue);
-  const rate = rateOn(gradeRates, c.date);
-  return rate === undefined ? null : Math.max(dueCents(amountCents(c.amount), rate), amountCents(floor));
+  let figure: number;
+  if (c.statedDue !== null) {
+    figure = amountCents(c.statedDue);
+  } else {
+    const rate = rateOn(gradeRates, c.date);
+    if (rate === undefined) return null;
+    figure = Math.max(dueCents(amountCents(c.amount), rate), amountCents(sheet.floor));
+  }
+  return figure + lateChargeCents(c, figure, sheet);
 }
 
 /** An amount ("12.3", "4") in whole cents. */

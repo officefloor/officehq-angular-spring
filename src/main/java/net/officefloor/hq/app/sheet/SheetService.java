@@ -86,4 +86,19 @@ public class SheetService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
         return saved;
     }
+
+    /** Set the sheet's late percent, starting the sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setLatePct(String id, String user, BigDecimal latePct) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        Rollup.Figures before = rollup.of(id);
+        BigDecimal scaled = latePct.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setLatePct(scaled);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=late-pct value=" + scaled.toPlainString());
+        rollup.recordChanges(id, user, before);
+        return saved;
+    }
 }

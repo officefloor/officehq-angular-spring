@@ -68,9 +68,10 @@ public class StatementService {
     }
 
     /**
-     * Take a statement of a person: record their due-total now, bind each of their claims that counts
+     * Take a statement of a person: record their due-total now (with the late charges their overdue claims have gained), bind each of their claims that counts
      * to the figure it has now (its settled figure, else the figure it is bound to, else its amount at
-     * its grade's rate in force on its date) and leave the rest unbound. The sheet is locked first, so
+     * its grade's rate in force on its date) and leave the rest unbound. A late charge is never bound: it keeps
+     * following the sheet's today. The sheet is locked first, so
      * a statement is not taken while a claim on it changes.
      */
     @Transactional
@@ -88,7 +89,7 @@ public class StatementService {
         boolean anyFixed = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts()) {
+            if (!person.counts(claim.getStatus())) {
                 claim.unbind();
                 continue;
             }
@@ -99,7 +100,7 @@ public class StatementService {
                                     sheet.getFloor()))
                             .orElse(null);
             anyFixed |= fixed != null;
-            total = figure == null ? total : total.add(figure);
+            total = figure == null ? total : total.add(figure).add(ClaimService.lateCharge(claim, figure, sheet));
             claim.bind(figure);
             counted++;
         }

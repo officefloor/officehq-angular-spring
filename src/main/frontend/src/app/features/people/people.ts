@@ -6,7 +6,7 @@ import { forkJoin, of, switchMap } from 'rxjs';
 import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, isOverdue, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
 import { Periods, periodOn } from '../../core/periods';
-import { DEFAULT_FLOOR, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
+import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { PersonClaims } from '../claims/claims';
@@ -156,7 +156,7 @@ export class PeopleList {
   private readonly dueByPerson = computed(() => {
     const today = this.rates.byGrade();
     const ratesByGrade = this.rates.ratesByGrade();
-    const floor = this.sheets.current()?.floor ?? DEFAULT_FLOOR;
+    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
       const counting = this.claimsOf(p.id).filter(countsWhile(p.held));
@@ -165,7 +165,7 @@ export class PeopleList {
         continue;
       }
       const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
-      byPerson.set(p.id, counting.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, floor) ?? 0), 0));
+      byPerson.set(p.id, counting.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, dueTerms) ?? 0), 0));
     }
     return byPerson;
   });
@@ -177,7 +177,7 @@ export class PeopleList {
   private readonly overdueByPerson = computed(() => {
     const sheet = this.sheets.current();
     const ratesByGrade = this.rates.ratesByGrade();
-    const floor = sheet?.floor ?? DEFAULT_FLOOR;
+    const dueTerms = sheet ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, Overdue>();
     for (const p of this.people()) {
       const overdue = sheet
@@ -186,7 +186,7 @@ export class PeopleList {
       const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
       byPerson.set(p.id, {
         count: overdue.length,
-        cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, floor) ?? 0), 0),
+        cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, dueTerms) ?? 0), 0),
       });
     }
     return byPerson;
@@ -203,14 +203,14 @@ export class PeopleList {
   protected readonly dueByPeriod = computed(() => {
     const periods = this.periods.list();
     const ratesByGrade = this.rates.ratesByGrade();
-    const floor = this.sheets.current()?.floor ?? DEFAULT_FLOOR;
+    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
     const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
     for (const c of this.claims().filter(this.countsNow())) {
       const period = periodOn(periods, c.date);
       const grade = gradeOf.get(c.personId);
       if (!period || !grade) continue;
-      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, ratesByGrade.get(grade) ?? NO_RATES, floor) ?? 0));
+      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, ratesByGrade.get(grade) ?? NO_RATES, dueTerms) ?? 0));
     }
     const closed = new Map(periods.filter((p) => p.closedTotal !== null).map((p) => [p.id, p.closedTotal as string]));
     return new Map([...totals].map(([id, total]) => [id, closed.get(id) ?? money(total)]));

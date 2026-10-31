@@ -9,8 +9,10 @@ import { SheetView, Sheets } from '../../core/sheet';
 const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
 /** Terms the form accepts: a whole number of days, 0 or more. */
 const TERMS_PATTERN = /^\d{1,5}$/;
+/** A late percent the form accepts: 0.00 or more, up to 999.99, with up to two decimals. */
+const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 
-// The sheet's settings: its clerk limit, its floor, its terms, and the role assigned to each user name.
+// The sheet's settings: its clerk limit, its floor, its terms, its late percent, and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -20,6 +22,7 @@ const TERMS_PATTERN = /^\d{1,5}$/;
       <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ sheets.current()?.clerkLimit ?? '' }}</span></p>
       <p>Floor: <span data-testid="setting-floor-current">{{ sheets.current()?.floor ?? '' }}</span></p>
       <p>Terms (days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
+      <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
 
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
@@ -31,6 +34,9 @@ const TERMS_PATTERN = /^\d{1,5}$/;
         <label for="setting-terms">Terms (days a claim is due by after its date)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms"
                inputmode="numeric" autocomplete="off" />
+        <label for="setting-late-pct">Late percent (added to an overdue claim's due for every full 30 days)</label>
+        <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct"
+               inputmode="decimal" autocomplete="off" />
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -80,6 +86,7 @@ export class SettingsPanel {
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
+    latePct: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -110,14 +117,16 @@ export class SettingsPanel {
     this.settingsError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { clerkLimit, floor, terms } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
+    const latePctValue = latePct.value.trim();
     // Only the settings changed in the form are saved; with none changed, the clerk limit is saved as it is.
     const saveFloor = floor.dirty;
     const saveTerms = terms.dirty;
-    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms);
+    const saveLatePct = latePct.dirty;
+    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms && !saveLatePct);
     if (saveLimit && limit !== '' && !LIMIT_PATTERN.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -130,10 +139,15 @@ export class SettingsPanel {
       this.settingsError.set('Type terms of 0 or more whole days.');
       return;
     }
+    if (saveLatePct && !LATE_PCT_PATTERN.test(latePctValue)) {
+      this.settingsError.set('Type a late percent of 0.00 or more, up to 999.99, with up to two decimals.');
+      return;
+    }
     const saves: Observable<SheetView>[] = [];
     if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit));
     if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue));
     if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue)));
+    if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue));
     this.savingSettings.set(true);
     concat(...saves).pipe(last()).subscribe({
       next: (saved) => {
@@ -149,7 +163,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in the form, as not yet changed. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? '') }, { emitEvent: false });
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), latePct: sheet?.latePct ?? '' }, { emitEvent: false });
   }
 
   protected saveRole(): void {

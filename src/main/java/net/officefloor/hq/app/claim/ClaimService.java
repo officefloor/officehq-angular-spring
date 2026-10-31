@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
@@ -102,8 +103,9 @@ public class ClaimService {
     /**
      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
      * claim gives it the sheet's next number and records who opened it; voiding it keeps its number, which is
-     * never given again; settling it fixes its due
-     * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The user
+     * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
+     * at its person's grade's rate in force on its date, as rates are now, with the late charge it has gained
+     * added on top, so later rate changes leave it as it is. The user
      * who opened a claim cannot settle it, and a clerk can settle it only when that due is at or below the sheet's
      * clerk limit (a claim with no due is within any limit); a steward settles anything. A claim dated inside a closed period cannot move. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
@@ -123,8 +125,11 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
-        BigDecimal due = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
+        BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
                 .map(Rate::getRate).map(rate -> floored(dueOn(claim.getAmount(), rate), sheet.getFloor())).orElse(null);
+        // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
+        BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue() : live;
+        BigDecimal due = figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
         if (next == ClaimStatus.SETTLED) {
             refuseOverClerkLimit(sheet, user, due);
         }
@@ -192,6 +197,18 @@ public class ClaimService {
     /** The due on an amount at a rate (a percent): amount × rate / 100, rounded half to even to the cent. */
     public static BigDecimal dueOn(BigDecimal amount, BigDecimal rate) {
         return amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    /** The late charge an OPEN claim has gained on its figure by the sheet's today: the sheet's late percent of
+     *  the figure for every full 30 days past the day it is due by, rounded as a due is; 0.00 when not overdue
+     *  or it has no figure. */
+    public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
+        BigDecimal none = BigDecimal.ZERO.setScale(2);
+        if (figure == null || claim.getStatus() != ClaimStatus.OPEN) {
+            return none;
+        }
+        long periods = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday()) / 30;
+        return periods <= 0 ? none : dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)));
     }
 
     /** A live due raised to the sheet's floor when it is below it. */
