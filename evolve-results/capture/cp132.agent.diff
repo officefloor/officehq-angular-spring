@@ -1,0 +1,87 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index cfeefe3c0..adf0e2bf7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -752,10 +752,11 @@ public class ClaimService {
+     }
+ 
+     /** The next number for a claim due by this day, opened now: within its period (<period name>-<n>, or X-<n>
+-     *  in no period) while the sheet's period numbering is on by its today, else the sheet's next number. */
++     *  in no period) while the sheet's period numbering is on by its today, else the next number in the sheet-wide
++     *  sequence its tree shares. */
+     private String nextNumber(Sheet sheet, LocalDate date) {
+         if (!sheet.numbersPerPeriod()) {
+-            return String.valueOf(sheet.nextClaimNumber());
++            return String.valueOf(sheet.nextClaimNumberAfter(lastNumberInTree(sheet)));
+         }
+         String prefix = prefixOn(sheet, date);
+         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(sheet.getId(), prefix)
+@@ -765,6 +766,21 @@ public class ClaimService {
+         return number;
+     }
+ 
++    /** The last sheet-wide number given anywhere in the sheet's tree: the sheet at the top of its line of parents
++     *  and all of that sheet's descendants. The top sheet is locked so the tree's numbers are given one at a time. */
++    private int lastNumberInTree(Sheet sheet) {
++        List<String> ancestors = sheetStore.ancestorsOf(sheet.getId(), Integer.MAX_VALUE);
++        String top = ancestors.isEmpty() ? sheet.getId() : ancestors.get(ancestors.size() - 1);
++        if (!top.equals(sheet.getId())) {
++            sheetStore.findLockedById(top);
++        }
++        Set<String> others = new HashSet<>(sheetStore.descendantsOf(top));
++        others.add(top);
++        others.remove(sheet.getId());
++        int last = sheet.getLastClaimNumber();
++        return others.isEmpty() ? last : Math.max(last, sheetStore.lastClaimNumberOf(others));
++    }
++
+     /** The prefix of the numbers given within the period a day is in: its name, or X in no period. */
+     private String prefixOn(Sheet sheet, LocalDate date) {
+         return periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index c0e9d308e..265c85b12 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -424,9 +424,16 @@ public class Sheet {
+         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+     }
+ 
+-    /** Take the next claim number on this sheet; it is never given out again. */
+-    public int nextClaimNumber() {
+-        return ++lastClaimNumber;
++    /** The last number given to a claim opened on this sheet; 0 before the first. */
++    public int getLastClaimNumber() {
++        return lastClaimNumber;
++    }
++
++    /** Take the next claim number on this sheet after the last one given anywhere in its tree (this sheet's own
++     *  last included); it is never given out again. */
++    public int nextClaimNumberAfter(int lastInTree) {
++        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
++        return lastClaimNumber;
+     }
+ 
+     /** The number of the last settle batch on this sheet; 0 when there has been none. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index ac377e567..da65e6e05 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
+ import jakarta.persistence.LockModeType;
+ import java.util.ArrayDeque;
+ import java.util.ArrayList;
++import java.util.Collection;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Optional;
+@@ -19,6 +20,10 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Query("select s from Sheet s where s.id = :id")
+     Optional<Sheet> findLockedById(@Param("id") String id);
+ 
++    /** The last claim number given on any of these sheets, read from the store; 0 when none was given. */
++    @Query("select coalesce(max(s.lastClaimNumber), 0) from Sheet s where s.id in :ids")
++    int lastClaimNumberOf(@Param("ids") Collection<String> ids);
++
+     /** The sheet's children: the sheets naming it as their parent. */
+     List<Sheet> findByParentIdOrderByIdAsc(String parentId);
+ 
