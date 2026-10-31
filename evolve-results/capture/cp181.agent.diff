@@ -1,0 +1,382 @@
+diff --git a/src/main/frontend/src/app/core/notes.ts b/src/main/frontend/src/app/core/notes.ts
+new file mode 100644
+index 000000000..b5778686b
+--- /dev/null
++++ b/src/main/frontend/src/app/core/notes.ts
+@@ -0,0 +1,37 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { Observable, tap } from 'rxjs';
++
++/** A note on the sheet: its text, who added it and the sheet's today when it was added. */
++export interface NoteView {
++  id: number;
++  text: string;
++  by: string;
++  addedOn: string;
++}
++
++// The notes on the active sheet, newest first.
++@Injectable({ providedIn: 'root' })
++export class Notes {
++  private readonly http = inject(HttpClient);
++  private readonly list = signal<NoteView[]>([]);
++  readonly all = this.list.asReadonly();
++
++  /** Re-read a sheet's notes from the store (as of the date shown, if any); null clears them. */
++  load(sheetId: string | null): Observable<NoteView[]> | null {
++    this.list.set([]);
++    if (sheetId === null) return null;
++    return this.http.get<NoteView[]>(this.base(sheetId)).pipe(tap((list) => this.list.set(list)));
++  }
++
++  /** Add a note; refused when blank. */
++  add(sheetId: string, text: string): Observable<NoteView> {
++    return this.http.post<NoteView>(this.base(sheetId), { text }).pipe(
++      tap((saved) => this.list.update((list) => [saved, ...list])),
++    );
++  }
++
++  private base(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}/notes`;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index ad16338a8..c508c7191 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -5,6 +5,7 @@ import { Sheets } from '../../core/sheet';
+ import { AuditPanel } from '../audit/audit';
+ import { DelegationsPanel } from '../delegations/delegations';
+ import { HolidaysPanel } from '../holidays/holidays';
++import { NotesPanel } from '../notes/notes';
+ import { PeopleList } from '../people/people';
+ import { RatesPanel } from '../rates/rates';
+ import { SearchPanel } from '../search/search';
+@@ -16,7 +17,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ @Component({
+   selector: 'app-home',
+   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
+-    VoidReasonsPanel, TemplatesPanel, SearchPanel, AuditPanel],
++    VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -86,6 +87,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+         <app-holidays />
+         <app-void-reasons />
+         <app-templates />
++        <app-notes />
+         <app-people />
+         <app-search />
+         <app-audit />
+diff --git a/src/main/frontend/src/app/features/notes/notes.ts b/src/main/frontend/src/app/features/notes/notes.ts
+new file mode 100644
+index 000000000..622470318
+--- /dev/null
++++ b/src/main/frontend/src/app/features/notes/notes.ts
+@@ -0,0 +1,80 @@
++import { Component, inject, signal } from '@angular/core';
++import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { EMPTY, switchMap } from 'rxjs';
++import { Notes } from '../../core/notes';
++import { Sheets } from '../../core/sheet';
++
++// The sheet's notes, newest first, each under the sheet's today when it was added.
++@Component({
++  selector: 'app-notes',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="notes-heading">
++      <h3 id="notes-heading">Notes</h3>
++      <ul aria-label="Notes">
++        @for (n of notes.all(); track n.id) {
++          <li data-testid="note-line">{{ n.addedOn }} {{ n.by }}: {{ n.text }}</li>
++        }
++      </ul>
++
++      <form [formGroup]="form" (ngSubmit)="add()" aria-label="Add a note">
++        <label for="note-text">Note</label>
++        <input id="note-text" data-testid="note-text" formControlName="text" autocomplete="off" />
++        <button type="submit" data-testid="note-add" [disabled]="saving()">Add note</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="note-error">{{ err }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class NotesPanel {
++  protected readonly notes = inject(Notes);
++  private readonly sheets = inject(Sheets);
++
++  protected readonly error = signal<string | null>(null);
++  protected readonly saving = signal(false);
++  protected readonly form = new FormGroup({
++    text: new FormControl('', { nonNullable: true }),
++  });
++
++  constructor() {
++    // Each (re)load of a sheet re-reads its notes from the store.
++    toObservable(this.sheets.loaded)
++      .pipe(
++        switchMap((sheet) => {
++          this.error.set(null);
++          return this.notes.load(sheet?.id ?? null) ?? EMPTY;
++        }),
++        takeUntilDestroyed(),
++      )
++      .subscribe({ error: () => this.error.set('Could not read the notes.') });
++    // An error is removed as soon as its form is changed.
++    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
++  }
++
++  protected add(): void {
++    // A second submit before the first has answered is ignored, so it stores one note.
++    if (this.saving()) return;
++    this.error.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const text = this.form.controls.text.value.trim();
++    if (text === '') {
++      this.error.set('Type the note.');
++      return;
++    }
++    this.saving.set(true);
++    this.notes.add(sheet.id, text).subscribe({
++      next: () => {
++        this.saving.set(false);
++        this.form.reset({ text: '' }, { emitEvent: false });
++      },
++      error: () => {
++        this.saving.set(false);
++        this.error.set('Could not add the note.');
++      },
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/Note.java b/src/main/java/net/officefloor/hq/app/note/Note.java
+new file mode 100644
+index 000000000..f19f8c30e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/Note.java
+@@ -0,0 +1,61 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A note on a sheet: its text, who added it and the sheet's today when it was added. */
++@Entity
++@Table(name = "sheet_note")
++public class Note {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "note_text", nullable = false, length = 1000)
++    private String text;
++
++    @Column(name = "added_by", nullable = false, length = 100)
++    private String addedBy;
++
++    @Column(name = "added_on", nullable = false)
++    private LocalDate addedOn;
++
++    protected Note() {
++    }
++
++    public Note(String sheetId, String text, String addedBy, LocalDate addedOn) {
++        this.sheetId = sheetId;
++        this.text = text;
++        this.addedBy = addedBy;
++        this.addedOn = addedOn;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public String getAddedBy() {
++        return addedBy;
++    }
++
++    public LocalDate getAddedOn() {
++        return addedOn;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteController.java b/src/main/java/net/officefloor/hq/app/note/NoteController.java
+new file mode 100644
+index 000000000..445567038
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteController.java
+@@ -0,0 +1,59 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.history.SheetHistory;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The notes on a sheet. The caller's signed-in name comes in the {@code X-User} header. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/notes")
++public class NoteController {
++
++    /** A note as the screen shows it. */
++    public record NoteView(long id, String text, String by, LocalDate addedOn) {
++
++        public static NoteView of(Note n) {
++            return new NoteView(n.getId(), n.getText(), n.getAddedBy(), n.getAddedOn());
++        }
++    }
++
++    /** A note as the form submits it. */
++    public record NoteForm(@NotNull @Size(max = 1000) String text) {
++    }
++
++    private final NoteService notes;
++
++    public NoteController(NoteService notes) {
++        this.notes = notes;
++    }
++
++    @GetMapping
++    public List<NoteView> list(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return notes.list(sheetId, asOf).stream().map(NoteView::of).toList();
++    }
++
++    @PostMapping
++    public NoteView add(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody NoteForm request) {
++        return NoteView.of(notes.add(sheetId, user, request.text()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteRepository.java b/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
+new file mode 100644
+index 000000000..8a36871ff
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.note;
++
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface NoteRepository extends JpaRepository<Note, Long> {
++
++    List<Note> findBySheetIdOrderByIdDesc(String sheetId);
++
++    List<Note> findBySheetIdAndAddedOnLessThanEqualOrderByIdDesc(String sheetId, LocalDate asOf);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteService.java b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+new file mode 100644
+index 000000000..f165d5bd1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteService.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.note;
++
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The notes on a sheet. */
++@Service
++public class NoteService {
++
++    private final NoteRepository notes;
++    private final SheetService sheets;
++    private final SheetRepository sheetStore;
++    private final Audit audit;
++
++    public NoteService(NoteRepository notes, SheetService sheets, SheetRepository sheetStore, Audit audit) {
++        this.notes = notes;
++        this.sheets = sheets;
++        this.sheetStore = sheetStore;
++        this.audit = audit;
++    }
++
++    /** The sheet's notes, newest first; with a date, only those added while the sheet's today was on or before it. */
++    @Transactional(readOnly = true)
++    public List<Note> list(String sheetId, LocalDate asOf) {
++        return asOf == null
++                ? notes.findBySheetIdOrderByIdDesc(sheetId)
++                : notes.findBySheetIdAndAddedOnLessThanEqualOrderByIdDesc(sheetId, asOf);
++    }
++
++    /** Add a note, trimmed, to the sheet under its today; refused when blank. */
++    @Transactional
++    public Note add(String sheetId, String user, String text) {
++        String trimmed = text == null ? "" : text.strip();
++        if (trimmed.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A note is not blank");
++        }
++        sheets.load(sheetId, user);
++        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
++        Note saved = notes.saveAndFlush(new Note(sheetId, trimmed, user, sheet.getToday()));
++        audit.recordChangeOnCommit(sheetId, user, "NOTE_ADDED sheet=" + sheetId + " by=" + user
++                + " text=" + saved.getText());
++        return saved;
++    }
++}
+diff --git a/src/main/resources/db/migration/V100__sheet_note.sql b/src/main/resources/db/migration/V100__sheet_note.sql
+new file mode 100644
+index 000000000..a0ad54ead
+--- /dev/null
++++ b/src/main/resources/db/migration/V100__sheet_note.sql
+@@ -0,0 +1,10 @@
++-- The notes on a sheet: a text, who added it and the sheet's today when it was added. Ids rise in the order notes
++-- were added.
++CREATE TABLE sheet_note (
++    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id   VARCHAR(100)  NOT NULL REFERENCES sheet (id),
++    note_text  VARCHAR(1000) NOT NULL,
++    added_by   VARCHAR(100)  NOT NULL,
++    added_on   DATE          NOT NULL
++);
++CREATE INDEX sheet_note_sheet ON sheet_note (sheet_id);
