@@ -1,0 +1,62 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e9ba8510e..354b999ae 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,6 +16,7 @@ import { PersonClaims } from '../claims/claims';
+ import { SheetHeader } from '../header/header';
+ import { PeriodsPanel } from '../periods/periods';
+ import { PoolsPanel } from '../pools/pools';
++import { Pools } from '../../core/pools';
+ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
+ import { VoidReasons } from '../../core/void-reasons';
+ 
+@@ -91,6 +92,7 @@ function csvField(value: string): string {
+         claims, due <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
+       <p>Settled in total: <strong data-testid="rollup-settled-total">{{ money(splitTotals().settled) }}</strong>,
+         open in total: <strong data-testid="rollup-open-total">{{ money(splitTotals().open) }}</strong></p>
++      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <ul aria-label="Due by tag">
+           @for (t of tagTotals(); track t.tag) {
+@@ -266,6 +268,7 @@ function csvField(value: string): string {
+             settled <span data-testid="person-settled-total">{{ money(splitOf(p.id).settled) }}</span>
+             open <span data-testid="person-open-total">{{ money(splitOf(p.id).open) }}</span>
+             excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span>
++            cut <span data-testid="person-cut-total">{{ money(cutOf(p.id)) }}</span>
+             — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
+             due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
+             — aged 0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) }}</span>
+@@ -360,6 +363,7 @@ export class PeopleList {
+   private readonly consolidatedApi = inject(Consolidated);
+   protected readonly rates = inject(Rates);
+   protected readonly periods = inject(Periods);
++  private readonly pools = inject(Pools);
+ 
+   protected readonly grades = GRADES;
+   protected readonly money = money;
+@@ -505,6 +509,25 @@ export class PeopleList {
+     }
+     return byPerson;
+   });
++  /** Each person's cut total in whole cents: their cuts across every pool they are a member of, added up; a pool
++   *  that shows no cuts adds nothing. */
++  private readonly cutByPerson = computed(() => {
++    const byPerson = new Map<number, number>();
++    for (const pool of this.pools.all()) {
++      for (const m of pool.members) {
++        if (m.personId !== null && m.cut !== null) {
++          byPerson.set(m.personId, (byPerson.get(m.personId) ?? 0) + cents(m.cut));
++        }
++      }
++    }
++    return byPerson;
++  });
++  protected cutOf(personId: number): number {
++    return this.cutByPerson().get(personId) ?? 0;
++  }
++  /** The sheet's cut total in whole cents: everyone's cut total added up. */
++  protected readonly cutTotal = computed(() =>
++    this.people().reduce((sum, p) => sum + this.cutOf(p.id), 0));
+   /** Everyone's settled-total and open-total, each simply added up (not trimmed). */
+   protected readonly splitTotals = computed(() => {
+     const total = { ...NO_SPLIT };
