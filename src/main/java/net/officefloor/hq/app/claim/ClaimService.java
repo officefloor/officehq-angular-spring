@@ -144,7 +144,7 @@ public class ClaimService {
         LocalDate dueBy = holidays.dueBy(sheetId, claimDate, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, claimDate);
-        refuseUnlessCorrects(sheetId, personId, amount, corrects);
+        refuseUnlessCorrects(sheetId, personId, amount, corrects, null);
         String reference = refOf(ref);
         if (reference != null && claims.existsBySheetIdAndRefIgnoreCase(sheetId, reference)) {
             throw refUsed(reference);
@@ -204,7 +204,7 @@ public class ClaimService {
         refuseIfLockedByOther(claim, user);
         refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(), date != null ? date : today);
-        refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
+        refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects, claim.getId());
         if (!claim.getLines().isEmpty() && scaled(amount).compareTo(claim.getAmount()) != 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim with lines has the amount of its lines; it cannot be given another");
@@ -721,7 +721,7 @@ public class ClaimService {
         }
         refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(to, claim.getDate());
-        refuseUnlessCorrects(sheetId, to.getId(), claim.getAmount(), claim.getCorrects());
+        refuseUnlessCorrects(sheetId, to.getId(), claim.getAmount(), claim.getCorrects(), claim.getId());
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         Rollup.Figures before = rollup.of(sheetId);
         claim.unbind();
@@ -942,8 +942,9 @@ public class ClaimService {
     }
 
     /** Refuse a correction (a negative amount) that does not name, by number, a SETTLED claim of the same person,
-     *  and a claim that is not a correction but names one. */
-    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, String corrects) {
+     *  or that exceeds what remains of it (its amount less the corrections already made against it, VOID and
+     *  DELETED ones and the claim {@code self} itself left out), and a claim that is not a correction but names one. */
+    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, String corrects, Long self) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -951,11 +952,22 @@ public class ClaimService {
             }
             return;
         }
-        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId).stream()
-                .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
-        if (!settled) {
+        List<Claim> own = corrects == null ? List.of()
+                : claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId);
+        Claim target = own.stream()
+                .filter(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED)
+                .findFirst().orElse(null);
+        if (target == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A correction must name the number of a SETTLED claim of the same person");
+        }
+        BigDecimal remaining = own.stream()
+                .filter(c -> corrects.equals(c.getCorrects()) && !c.getId().equals(self)
+                        && c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
+                .map(Claim::getAmount).reduce(target.getAmount(), BigDecimal::add);
+        if (scaled(amount).negate().compareTo(remaining) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A correction may not exceed what remains of " + corrects + " (" + scaled(remaining).toPlainString() + ")");
         }
     }
 
