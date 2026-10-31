@@ -1,0 +1,56 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+new file mode 100644
+index 000000000..f029dc8f4
+--- /dev/null
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -0,0 +1,26 @@
++import { Component, input } from '@angular/core';
++import { StatusSummary } from '../summary/summary';
++
++// The sheet's counters, always on show: its people (retired included), its claims per status and
++// its due-total and overdue-total. Each repeats a figure shown elsewhere and is fed from the same source.
++@Component({
++  selector: 'app-header',
++  template: `
++    <header aria-label="Sheet counters">
++      <ul>
++        <li>People: <strong data-testid="header-people-count">{{ peopleCount() }}</strong></li>
++        @for (s of statuses(); track s.status) {
++          <li>{{ s.status }}: <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong></li>
++        }
++        <li>Due: <strong data-testid="header-due-total">{{ dueTotal() }}</strong></li>
++        <li>Overdue: <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></li>
++      </ul>
++    </header>
++  `,
++})
++export class SheetHeader {
++  readonly peopleCount = input.required<number>();
++  readonly statuses = input.required<readonly StatusSummary[]>();
++  readonly dueTotal = input.required<string>();
++  readonly overdueTotal = input.required<string>();
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fd2d754f3..e158c1ea6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -11,6 +11,7 @@ import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateView, Rates, claimDueCe
+ import { Sheets } from '../../core/sheet';
+ import { StatementSummary, Statements } from '../../core/statements';
+ import { PersonClaims } from '../claims/claims';
++import { SheetHeader } from '../header/header';
+ import { PeriodsPanel } from '../periods/periods';
+ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary';
+ 
+@@ -36,8 +37,10 @@ function csvField(value: string): string {
+ // each person's claims and due-total, and the sheet's claimed-total and due-total.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims, PeriodsPanel, SummaryPanel],
++  imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel],
+   template: `
++    <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
++                [overdueTotal]="money(overdueTotals().cents)" />
+     <app-periods [dueTotals]="dueByPeriod()" />
+     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()" />
+ 
