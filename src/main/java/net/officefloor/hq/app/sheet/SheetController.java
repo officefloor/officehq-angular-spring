@@ -41,6 +41,7 @@ public class SheetController {
      *  the entry date is null when it is off; gradeGrace is the grace days set per grade in force on the sheet's today;
      *  gradeProofThreshold is the proof threshold (two decimals) set per grade in force on the sheet's today;
      *  settleBatch is the number of the last settle batch, null when there has been none; the pot (two decimals) is null when there is none, as is the alert threshold (two decimals) when it is off;
+     *  rounding is the rounding mode in force on the sheet's today (half-up or half-even), null when there is none;
      *  parent is the id of the sheet's parent sheet, null when it has none;
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
@@ -48,7 +49,7 @@ public class SheetController {
             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
-            String alertThreshold) {
+            String alertThreshold, String rounding) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -68,7 +69,8 @@ public class SheetController {
                     sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
                     sheet.getFiscalStartMonth(),
-                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString());
+                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
+                    sheet.getRounding());
         }
     }
 
@@ -145,6 +147,10 @@ public class SheetController {
 
     /** The sheet's note threshold as the form submits it; a missing one means none. */
     public record NoteThresholdChange(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal noteThreshold, LocalDate from) {
+    }
+
+    /** The sheet's rounding mode as the form submits it; a missing (or blank) one means none. */
+    public record RoundingChange(@Size(max = 20) String rounding, LocalDate from) {
     }
 
     /** The roles that may take an action as the form submits them, comma separated; blank keeps the standing rule. */
@@ -371,6 +377,16 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody NoteThresholdChange request) {
         return SheetView.of(sheets.setNoteThreshold(id, user, request.noteThreshold(), request.from()));
+    }
+
+    /** Change the sheet's rounding mode. */
+    @PutMapping("/{id}/settings/rounding")
+    public SheetView setRounding(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RoundingChange request) {
+        String mode = request.rounding() == null || request.rounding().isBlank() ? null : request.rounding().trim();
+        return SheetView.of(sheets.setRounding(id, user, mode, request.from()));
     }
 
     /** Change the roles that may take an action. */

@@ -5,7 +5,7 @@ import { Grade } from './people';
 
 /** A dated setting's value from its from-date (yyyy-mm-dd; null: from the beginning of time) until the next one's
  *  of the same key; a null value means none. Keys: clerk-limit, floor, terms, terms-A/B/C, late-pct, grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C,
- *  note-threshold. */
+ *  note-threshold, rounding. */
 export interface DatedSetting {
   key: string;
   from: string | null;
@@ -47,6 +47,9 @@ export interface SheetView {
   /** A claim whose due is above this (two decimals), in force on its date, cannot be opened while its note is
    *  empty; null: none. */
   noteThreshold: string | null;
+  /** The rounding mode (half-up or half-even) in force on the sheet's today: a claim dated while one is in force
+   *  rounds every live figure by it, one with none by the policy date; null: none. */
+  rounding: string | null;
   /** The number of the last settle batch (a bulk settle that settled at least one claim); null when there has been none. */
   settleBatch: number | null;
   /** Every dated value recorded for the settings that carry a figure. */
@@ -281,6 +284,13 @@ export class Sheets {
   setNoteThreshold(id: string, noteThreshold: string | null, from: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/note-threshold`, { noteThreshold, from })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Record the active sheet's rounding mode (half-up or half-even) from a date (null: its today); null means none. */
+  setRounding(id: string, rounding: string | null, from: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/rounding`, { rounding, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 

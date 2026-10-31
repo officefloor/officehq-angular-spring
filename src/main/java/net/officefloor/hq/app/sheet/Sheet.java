@@ -35,6 +35,11 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String ROUNDING = "rounding";
+
+    /** The rounding modes a sheet can set, by the value recorded. */
+    public static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
+            "half-up", RoundingMode.HALF_UP, "half-even", RoundingMode.HALF_EVEN);
 
     /** The values a sheet starts with, in force before every from-date of their key. */
     static final BigDecimal START_FLOOR = new BigDecimal("1.00");
@@ -71,7 +76,7 @@ public class Sheet {
     private int lastSettleBatch;
 
     /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
-     *  grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C, note-threshold): each in force from its from-date until the next one's of the same key. */
+     *  grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C, note-threshold, rounding): each in force from its from-date until the next one's of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
@@ -451,10 +456,20 @@ public class Sheet {
     }
 
     /** How a claim's figures round when the claim (or, for a correction, the claim it corrects) is dated on this
-     *  day: half up before the policy date (the sheet's today when it has none), half to even on or after it. */
+     *  day: by the rounding mode in force then, when there is one; else half up before the policy date (the sheet's
+     *  today when it has none), half to even on or after it. */
     public RoundingMode roundingFor(LocalDate date) {
+        String mode = valueOn(ROUNDING, date);
+        if (mode != null) {
+            return ROUNDING_MODES.get(mode);
+        }
         LocalDate policy = policyDate != null ? policyDate : today;
         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+    }
+
+    /** The rounding mode in force on the sheet's today (half-up or half-even); null means none. */
+    public String getRounding() {
+        return valueOn(ROUNDING, today);
     }
 
     /** The last number given to a claim opened on this sheet; 0 before the first. */

@@ -17,11 +17,12 @@ public class PersonSnapshotService {
         this.snapshots = snapshots;
     }
 
-    /** The sheet's snapshots, oldest first; with an as-of date, only those of days on or before it. */
+    /** The sheet's snapshots, oldest first; with an as-of date, only those of days before it (a day's
+     *  line is written as the sheet's today leaves it, so it had not been written as the day stood). */
     @Transactional(readOnly = true)
     public List<PersonSnapshot> list(String sheetId, LocalDate asOf) {
         return snapshots.findBySheetIdOrderByDayAscIdAsc(sheetId).stream()
-                .filter(s -> asOf == null || !s.getDay().isAfter(asOf))
+                .filter(s -> asOf == null || s.getDay().isBefore(asOf))
                 .toList();
     }
 

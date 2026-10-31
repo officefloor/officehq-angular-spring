@@ -294,6 +294,16 @@ public class SheetService {
         return record(id, user, Sheet.NOTE_THRESHOLD, from, threshold == null ? null : scaled(threshold), false);
     }
 
+    /** Record the sheet's rounding mode (half-up or half-even; null: none) from a date (null: the sheet's today),
+     *  starting the sheet if it has never been loaded. Refused for any other mode. */
+    @Transactional
+    public Sheet setRounding(String id, String user, String mode, LocalDate from) {
+        if (mode != null && !Sheet.ROUNDING_MODES.containsKey(mode)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rounding mode is half-up or half-even");
+        }
+        return record(id, user, Sheet.ROUNDING, from, mode, true);
+    }
+
     /** Set the roles that may take an action (a comma separated list of clerk and steward; blank: its standing
      *  rule), starting the sheet if it has never been loaded. Not dated. Refused for a role that is neither. */
     @Transactional

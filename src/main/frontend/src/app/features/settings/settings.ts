@@ -17,9 +17,11 @@ const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 const SHEET_ID_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 /** A policy date the form accepts: yyyy-mm-dd. */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+/** The rounding modes the form accepts. */
+const ROUNDING_MODES = ['half-up', 'half-even'];
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'rounding' | PermField;
 
 /** A setting that carries a figure: it is saved from a from-date. */
 type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | PermField>;
@@ -81,6 +83,7 @@ function isDate(value: string): boolean {
         <p>Proof threshold for grade {{ g }}: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ sheets.current()?.gradeProofThreshold?.[g] ?? '' }}</span></p>
       }
       <p>Note threshold: <span data-testid="setting-note-threshold-current">{{ sheets.current()?.noteThreshold ?? '' }}</span></p>
+      <p>Rounding mode: <span data-testid="setting-rounding-current">{{ sheets.current()?.rounding ?? '' }}</span></p>
       @for (a of permActions; track a) {
         <p>Who may {{ a }}: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ sheets.current()?.permissions?.[a] ?? '' }}</span></p>
       }
@@ -178,6 +181,12 @@ function isDate(value: string): boolean {
         <label for="setting-note-threshold-from">Note threshold from (yyyy-mm-dd; blank: today)</label>
         <input id="setting-note-threshold-from" data-testid="setting-note-threshold-from" formControlName="noteThresholdFrom" (focus)="lastFocused = 'noteThreshold'"
                placeholder="yyyy-mm-dd" autocomplete="off" />
+        <label for="setting-rounding">Rounding mode (half-up or half-even: a claim dated while one is in force rounds by it; blank: none, by the policy date)</label>
+        <input id="setting-rounding" data-testid="setting-rounding" formControlName="rounding" (focus)="lastFocused = 'rounding'"
+               autocomplete="off" />
+        <label for="setting-rounding-from">Rounding mode from (yyyy-mm-dd; blank: today)</label>
+        <input id="setting-rounding-from" data-testid="setting-rounding-from" formControlName="roundingFrom" (focus)="lastFocused = 'rounding'"
+               placeholder="yyyy-mm-dd" autocomplete="off" />
         @for (a of permActions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; blank: {{ standing[a] }})</label>
           <input [id]="'setting-perm-' + a" [attr.data-testid]="'setting-perm-' + a" [formControlName]="permField[a]"
@@ -264,6 +273,7 @@ export class SettingsPanel {
     proofThresholdB: new FormControl('', { nonNullable: true }),
     proofThresholdC: new FormControl('', { nonNullable: true }),
     noteThreshold: new FormControl('', { nonNullable: true }),
+    rounding: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
@@ -280,6 +290,7 @@ export class SettingsPanel {
     proofThresholdBFrom: new FormControl('', { nonNullable: true }),
     proofThresholdCFrom: new FormControl('', { nonNullable: true }),
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
+    roundingFrom: new FormControl('', { nonNullable: true }),
     perm_open: new FormControl('', { nonNullable: true }),
     perm_settle: new FormControl('', { nonNullable: true }),
     perm_void: new FormControl('', { nonNullable: true }),
@@ -316,7 +327,7 @@ export class SettingsPanel {
     this.settingsError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, fiscalStartMonth, pot, alertThreshold, parent, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, fiscalStartMonth, pot, alertThreshold, parent, cap, proofThreshold, noteThreshold, rounding } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -332,6 +343,7 @@ export class SettingsPanel {
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
+    const roundingValue = rounding.value.trim();
     // Only the settings changed in the form (a value or its from-date) are saved; with none changed, the field last
     // focused (else the clerk limit) is saved as it is.
     const unchanged = !this.settingsForm.dirty;
@@ -356,6 +368,7 @@ export class SettingsPanel {
     const saveCap = isSaved('cap');
     const saveProofThreshold = isSaved('proofThreshold');
     const saveNoteThreshold = isSaved('noteThreshold');
+    const saveRounding = isSaved('rounding');
     if (saveLimit && limit !== '' && !LIMIT_PATTERN.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -435,13 +448,17 @@ export class SettingsPanel {
       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    if (saveRounding && roundingValue !== '' && !ROUNDING_MODES.includes(roundingValue)) {
+      this.settingsError.set('Type a rounding mode of half-up or half-even, or leave it blank for none.');
+      return;
+    }
     const permsSaved = PERM_ACTIONS.filter((a) => isSaved(`perm_${a}`))
       .map((a) => ({ action: a, roles: controls[`perm_${a}`].value.split(',').map((r) => r.trim()).filter((r) => r !== '') }));
     if (permsSaved.some((p) => p.roles.some((r) => !(ROLES as readonly string[]).includes(r)))) {
       this.settingsError.set(`List the roles that may take an action, comma separated (${this.roleNames}), or leave it blank for the standing rule.`);
       return;
     }
-    const datedFields: DatedField[] = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'graceA', 'graceB', 'graceC', 'latePct', 'cap', 'proofThreshold', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC', 'noteThreshold'];
+    const datedFields: DatedField[] = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'graceA', 'graceB', 'graceC', 'latePct', 'cap', 'proofThreshold', 'proofThresholdA', 'proofThresholdB', 'proofThresholdC', 'noteThreshold', 'rounding'];
     const badFrom = datedFields.find((f) => {
       const from = fromOf(f);
       return isSaved(f) && from !== null && !(DATE_PATTERN.test(from) && isDate(from));
@@ -469,6 +486,7 @@ export class SettingsPanel {
     if (saveProofThreshold) saves.push(this.sheets.setProofThreshold(sheet.id, proofThresholdValue === '' ? null : proofThresholdValue, fromOf('proofThreshold')));
     for (const t of gradeProofThresholdSaved) saves.push(this.sheets.setGradeProofThreshold(sheet.id, t.grade, t.value === '' ? null : t.value, fromOf(GRADE_PROOF_THRESHOLD_FIELD[t.grade])));
     if (saveNoteThreshold) saves.push(this.sheets.setNoteThreshold(sheet.id, noteThresholdValue === '' ? null : noteThresholdValue, fromOf('noteThreshold')));
+    if (saveRounding) saves.push(this.sheets.setRounding(sheet.id, roundingValue === '' ? null : roundingValue, fromOf('rounding')));
     for (const p of permsSaved) saves.push(this.sheets.setPermission(sheet.id, p.action, p.roles.join(',')));
     this.savingSettings.set(true);
     concat(...saves).pipe(last()).subscribe({
@@ -487,7 +505,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '',
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', rounding: sheet?.rounding ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '', roundingFrom: '',
       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
   }

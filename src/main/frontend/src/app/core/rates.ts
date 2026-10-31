@@ -99,9 +99,12 @@ export function latePctOn(sheet: DueTerms, date: string): string {
   return settingOn(sheet.settings, 'late-pct', date, DEFAULT_LATE_PCT);
 }
 
-/** Whether a claim whose figures round by this date (yyyy-mm-dd) rounds half up: it is before the sheet's policy
- *  date (its today when it has none); on or after it, it rounds half to even. */
+/** Whether a claim whose figures round by this date (yyyy-mm-dd) rounds half up: by the rounding mode in force on
+ *  it when there is one; else it is before the sheet's policy date (its today when it has none); on or after it, it
+ *  rounds half to even. */
 export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
+  const mode = settingOn(sheet.settings, 'rounding', date, '');
+  if (mode !== '') return mode === 'half-up';
   return date < (sheet.policyDate ?? sheet.today);
 }
 
