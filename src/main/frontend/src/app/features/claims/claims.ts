@@ -115,7 +115,9 @@ export class PersonClaims {
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 403
           ? 'You opened this claim, so someone else must settle it.'
-          : `A ${c.status} claim cannot become ${status}.`,
+          : err instanceof HttpErrorResponse && err.status === 423
+            ? 'This claim is dated inside a closed period.'
+            : `A ${c.status} claim cannot become ${status}.`,
       }),
     });
   }
@@ -164,9 +166,13 @@ export class PersonClaims {
         this.saved.emit(saved);
         this.reset();
       },
-      error: () => {
+      error: (err: unknown) => {
         this.saving.set(false);
-        this.error.set(id === null ? 'Could not add that claim.' : 'Could not save that claim.');
+        this.error.set(
+          err instanceof HttpErrorResponse && err.status === 423
+            ? 'That claim is dated inside a closed period.'
+            : id === null ? 'Could not add that claim.' : 'Could not save that claim.',
+        );
       },
     });
   }

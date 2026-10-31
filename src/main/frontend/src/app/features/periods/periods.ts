@@ -3,7 +3,7 @@ import { Component, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, switchMap } from 'rxjs';
-import { Periods } from '../../core/periods';
+import { PeriodView, Periods } from '../../core/periods';
 import { Sheets } from '../../core/sheet';
 
 // The sheet's periods, each with its due-total, and a form to add one.
@@ -20,6 +20,12 @@ import { Sheets } from '../../core/sheet';
             from <span data-testid="period-from">{{ p.from }}</span>
             to <span data-testid="period-to">{{ p.to }}</span>
             — due <span data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</span>
+            — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</span>
+            <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
+                    [attr.aria-label]="'Close period ' + p.name">Close</button>
+            @if (periodError()?.id === p.id) {
+              <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
+            }
           </li>
         }
       </ul>
@@ -48,6 +54,10 @@ export class PeriodsPanel {
 
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** The period being closed, so a second press waits for the first. */
+  protected readonly closing = signal<number | null>(null);
+  /** The error of the last action taken on a period's row, until the next action on that row. */
+  protected readonly periodError = signal<{ id: number; message: string } | null>(null);
 
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
@@ -61,6 +71,7 @@ export class PeriodsPanel {
       .pipe(
         switchMap((sheet) => {
           this.error.set(null);
+          this.periodError.set(null);
           return this.periods.load(sheet?.id ?? null) ?? EMPTY;
         }),
         takeUntilDestroyed(),
@@ -68,6 +79,26 @@ export class PeriodsPanel {
       .subscribe({ error: () => this.error.set('Could not read the periods.') });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+  }
+
+  protected close(p: PeriodView): void {
+    if (this.closing() === p.id) return;
+    this.periodError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.closing.set(p.id);
+    this.periods.close(sheet.id, p.name).subscribe({
+      next: () => this.closing.set(null),
+      error: (err: unknown) => {
+        this.closing.set(null);
+        this.periodError.set({
+          id: p.id,
+          message: err instanceof HttpErrorResponse && err.status === 409
+            ? 'That period is already closed.'
+            : 'Could not close that period.',
+        });
+      },
+    });
   }
 
   protected submit(): void {

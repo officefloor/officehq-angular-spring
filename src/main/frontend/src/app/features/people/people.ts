@@ -119,7 +119,8 @@ export class PeopleList {
   protected readonly dueTotal = computed(() =>
     money([...this.dueByPerson().values()].reduce<number>((sum, due) => sum + (due ?? 0), 0)),
   );
-  /** Each period's due-total, by period id: the dues of the claims that count whose date falls in it. */
+  /** Each period's due-total, by period id: the dues of the claims that count whose date falls in it;
+   *  a closed period keeps the total fixed when it was closed. */
   protected readonly dueByPeriod = computed(() => {
     const periods = this.periods.list();
     const ratesByGrade = this.rates.ratesByGrade();
@@ -131,7 +132,8 @@ export class PeopleList {
       if (!period || !grade) continue;
       totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, ratesByGrade.get(grade) ?? NO_RATES) ?? 0));
     }
-    return new Map([...totals].map(([id, total]) => [id, money(total)]));
+    const closed = new Map(periods.filter((p) => p.closedTotal !== null).map((p) => [p.id, p.closedTotal as string]));
+    return new Map([...totals].map(([id, total]) => [id, closed.get(id) ?? money(total)]));
   });
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */

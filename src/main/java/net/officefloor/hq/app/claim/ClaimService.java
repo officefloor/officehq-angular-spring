@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
@@ -29,9 +30,11 @@ public class ClaimService {
     private final RateRepository rates;
     private final Audit audit;
     private final Rollup rollup;
+    private final PeriodRepository periods;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup) {
+            SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods) {
+        this.periods = periods;
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
@@ -47,12 +50,15 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
-    /** Add a claim for a person; a missing date takes the sheet's today, a missing note is empty. */
+    /** Add a claim for a person; a missing date takes the sheet's today, a missing note is empty. Refused
+     *  when its date is inside a closed period. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
-        LocalDate today = sheets.load(sheetId, user).getToday();
+        sheets.load(sheetId, user);
+        LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        refuseIfClosed(sheetId, date != null ? date : today);
         Rollup.Figures before = rollup.of(sheetId);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note)));
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
@@ -60,12 +66,16 @@ public class ClaimService {
         return added;
     }
 
-    /** Change a claim's amount, date and note; a missing date takes the sheet's today. */
+    /** Change a claim's amount, date and note; a missing date takes the sheet's today. Refused when its
+     *  date, as it is or as it would become, is inside a closed period. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
-        LocalDate today = sheets.load(sheetId, user).getToday();
+        sheets.load(sheetId, user);
+        LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfClosed(sheetId, date != null ? date : today);
         Rollup.Figures before = rollup.of(sheetId);
         claim.setAmount(scaled(amount));
         claim.setDate(date != null ? date : today);
@@ -81,7 +91,7 @@ public class ClaimService {
      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
      * claim gives it the sheet's next number and records who opened it; voiding it clears its number; settling it fixes its due
      * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The user
-     * who opened a claim cannot settle it. The sheet is locked
+     * who opened a claim cannot settle it. A claim dated inside a closed period cannot move. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
      */
     @Transactional
@@ -90,6 +100,7 @@ public class ClaimService {
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseIfClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
@@ -125,6 +136,13 @@ public class ClaimService {
         audit.recordOnCommit(line);
         rollup.recordChanges(sheetId, user, before);
         return changed;
+    }
+
+    /** Refuse a change to a claim dated inside a closed period of the sheet. */
+    private void refuseIfClosed(String sheetId, LocalDate date) {
+        if (periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date, date)) {
+            throw new ResponseStatusException(HttpStatus.LOCKED, "That claim's date is inside a closed period");
+        }
     }
 
     /** An audit line about a claim; one with a number (or, once void, that had one) ends with it. */

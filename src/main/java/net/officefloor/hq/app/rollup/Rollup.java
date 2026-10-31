@@ -82,6 +82,26 @@ public class Rollup {
         return new Figures(byPerson, claimedTotal.toPlainString(), dueTotal.toPlainString());
     }
 
+    /** The due-total of the claims that count dated from {@code from} to {@code to} inclusive, as the
+     *  screen shows a period's: each claim's due, none counting as 0. */
+    public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+        List<Rate> sheetRates = rates.findBySheetId(sheetId);
+        Map<Long, String> gradeOf = new LinkedHashMap<>();
+        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> gradeOf.put(p.getId(), p.getGrade()));
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            String grade = gradeOf.get(claim.getPersonId());
+            if (grade == null || !claim.getStatus().counts() || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+                continue;
+            }
+            BigDecimal due = dueOf(claim, sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList());
+            if (due != null) {
+                total = total.add(due);
+            }
+        }
+        return total;
+    }
+
     /**
      * Record, once the change commits, how the sheet's figures moved since {@code before}: a ROLLUP line
      * for each person whose figures changed (one who did not exist before counting as changed), then a

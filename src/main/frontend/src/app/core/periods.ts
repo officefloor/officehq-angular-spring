@@ -10,6 +10,10 @@ export interface PeriodView {
   from: string;
   /** The last day of the period (yyyy-mm-dd), inclusive. */
   to: string;
+  /** Whether the period is closed: no claim dated inside it can be added, edited or moved. */
+  closed: boolean;
+  /** The due-total fixed when the period was closed, with exactly two decimals; null while open. */
+  closedTotal: string | null;
 }
 
 /** A period as the form submits it: a blank from-date takes the sheet's today. */
@@ -43,6 +47,13 @@ export class Periods {
     return this.http
       .post<PeriodView>(this.base(sheetId), period)
       .pipe(tap((saved) => this.periods.update((list) => [...list, saved].sort((a, b) => (a.from < b.from ? -1 : 1)))));
+  }
+
+  /** Close a period, fixing its due-total; refused when it is already closed. */
+  close(sheetId: string, name: string): Observable<PeriodView> {
+    return this.http
+      .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/close`, {})
+      .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
   }
 
   private base(sheetId: string): string {

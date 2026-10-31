@@ -2,7 +2,9 @@ package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -19,12 +21,15 @@ public class PeriodService {
     private final SheetService sheets;
     private final SheetRepository sheetStore;
     private final Audit audit;
+    private final Rollup rollup;
 
-    public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit) {
+    public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit,
+            Rollup rollup) {
         this.periods = periods;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** The sheet's periods, by from-date. */
@@ -62,6 +67,25 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
                 + " from=" + added.getFromDate() + " to=" + added.getToDate());
         return added;
+    }
+
+    /** Close a period, fixing its due-total as it is now; refused when it is already closed. The sheet
+     *  is locked so no claim in it changes while its total is taken. */
+    @Transactional
+    public Period close(String sheetId, String user, String name) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
+        if (period.isClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
+        }
+        BigDecimal total = rollup.dueTotalBetween(sheetId, period.getFromDate(), period.getToDate());
+        period.close(total);
+        Period closed = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
+                + " total=" + total.toPlainString());
+        return closed;
     }
 
     private static ResponseStatusException nameInUse() {
