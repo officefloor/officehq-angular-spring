@@ -165,6 +165,7 @@ function csvField(value: string): string {
             — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
             from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
             — on hold <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+            — active <span data-testid="person-active">{{ activeByPerson().get(p.id) ? 'yes' : 'no' }}</span>
             @if (p.holds.length > 0) {
               <ul [attr.aria-label]="'Holds of ' + p.name">
                 @for (h of p.holds; track $index) {
@@ -385,9 +386,20 @@ export class PeopleList {
     }
     return new Map([...totals].map(([id, total]) => [id, money(total)]));
   });
-  /** Per grade: the people not retired on it today and their due-totals added up, skipping those with none. */
+  /** Whether each person is active, by person id: they have an OPEN or PENDING claim that counts dated within the
+   *  30 days up to and including the sheet's today. */
+  protected readonly activeByPerson = computed(() => {
+    const today = this.todayNow();
+    const from = today ? new Date(Date.parse(today) - 29 * 86_400_000).toISOString().slice(0, 10) : '';
+    return new Map(this.people().map((p) => [p.id, today !== '' && this.claimsOf(p.id).some((c) =>
+      (c.status === 'OPEN' || c.status === 'PENDING') && countsWithHolds(p.holds, today)(c)
+      && from <= c.date && c.date <= today)]));
+  });
+  /** Per grade: the people not retired on it today, their due-totals added up (skipping those with none), and how
+   *  many of them are active. */
   protected readonly summaryByGrade = computed<GradeSummary[]>(() => {
     const due = this.dueByPerson();
+    const active = this.activeByPerson();
     const current = this.people().filter((p) => !p.retired);
     return GRADES.map((grade) => {
       const onGrade = current.filter((p) => this.gradeToday(p) === grade);
@@ -395,6 +407,7 @@ export class PeopleList {
         grade,
         count: onGrade.length,
         dueTotal: money(onGrade.reduce((sum, p) => sum + (due.get(p.id) ?? 0), 0)),
+        active: onGrade.filter((p) => active.get(p.id)).length,
       };
     });
   });
