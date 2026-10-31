@@ -49,6 +49,10 @@ public class Claim {
     @Column(name = "ref", length = 120)
     private String ref;
 
+    /** The claim's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; none when it has none. */
+    @Column(name = "tags", length = 1000)
+    private String tags;
+
     /** The day the claim is due by: fixed when it is added: the terms-th business day after its date (skipping
      *  Saturdays, Sundays and the sheet's holidays then), on its person's own terms, else the terms of their grade
      *  in force then, else the sheet's then; it does not change when the terms or its date
@@ -298,6 +302,19 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
+    }
+
+    /** The claim's tags, sorted; empty when it has none. */
+    public List<String> tagList() {
+        return tags == null ? List.of() : List.of(tags.split(","));
     }
 
     public LocalDate getRemindedOn() {

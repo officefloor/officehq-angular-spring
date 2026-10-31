@@ -4,11 +4,14 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
@@ -97,6 +100,14 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref) {
+        return add(sheetId, user, personId, amount, date, note, corrects, ref, null);
+    }
+
+    /** Add a claim as {@link #add(String, String, long, BigDecimal, LocalDate, String, String, String)} does, with
+     *  its tags (comma separated; each trimmed and lower-cased, blanks and repeats dropped). */
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref, String tags) {
         sheets.load(sheetId, user);
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         LocalDate today = sheet.getToday();
@@ -120,10 +131,12 @@ public class ClaimService {
             claim.markLateEntry();
         }
         claim.setRef(reference);
+        String tagged = tagsOf(tags);
+        claim.setTags(tagged);
         Claim added = claims.saveAndFlush(claim);
         added.logStatus(user, today, shownDue(sheet, added, person));
         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_ADDED", user, person, added, added.getNumber())
-                + (reference == null ? "" : " ref=" + reference));
+                + (reference == null ? "" : " ref=" + reference) + (tagged == null ? "" : " tags=" + tagged));
         if (late) {
             audit.recordChangeOnCommit(sheetId, user, entry("LATE_ENTRY", user, person, added, null));
         }
@@ -138,7 +151,7 @@ public class ClaimService {
      *  while another user has its editor open. Saving releases its lock. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tags) {
         sheets.load(sheetId, user);
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -158,6 +171,7 @@ public class ClaimService {
         Rollup.Figures before = rollup.of(sheetId);
         claim.setAmount(scaled(amount));
         claim.setRef(reference);
+        claim.setTags(tagsOf(tags));
         claim.setCorrects(corrects);
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
@@ -552,6 +566,7 @@ public class ClaimService {
         Claim added = new Claim(sheetId, person.getId(), part, date, dueBy, original.getNote(), null,
                 claims.lastListed(sheetId) + 1);
         added.openAsSplit(nextNumber(sheet, dueBy), user, original.getNumber());
+        added.setTags(original.getTags());
         if (original.isLateEntry()) {
             added.markLateEntry();
         }
@@ -802,6 +817,17 @@ public class ClaimService {
     /** An external reference as kept: trimmed, none when blank. */
     public static String refOf(String ref) {
         return ref == null || ref.isBlank() ? null : ref.trim();
+    }
+
+    /** Tags as kept: each trimmed and lower-cased, blanks and repeats dropped, sorted and joined by commas; none
+     *  when there are none. */
+    public static String tagsOf(String tags) {
+        if (tags == null) {
+            return null;
+        }
+        String joined = String.join(",", new TreeSet<>(Arrays.stream(tags.split(","))
+                .map(t -> t.trim().toLowerCase(Locale.ROOT)).filter(t -> !t.isEmpty()).toList()));
+        return joined.isEmpty() ? null : joined;
     }
 
     /** The refusal of an external reference already used on the sheet. */

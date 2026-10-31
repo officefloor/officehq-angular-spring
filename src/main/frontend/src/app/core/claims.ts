@@ -52,6 +52,8 @@ export interface ClaimView {
   remindedOn: string | null;
   /** The claim's external reference, unique on its sheet without regard to case; null when it has none. */
   ref: string | null;
+  /** The claim's tags, sorted; empty when it has none. */
+  tags: string[];
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
@@ -154,6 +156,8 @@ export interface ClaimForm {
   corrects: string | null;
   /** The external reference (trimmed by the store); null or blank for none. */
   ref: string | null;
+  /** The tags, comma separated (each trimmed and lower-cased by the store, repeats dropped); blank for none. */
+  tags: string;
 }
 
 /** What a quick-add made: the person the claim is for, whether they were added by it, and the claim. */

@@ -41,12 +41,12 @@ public class ClaimController {
      * proofs is how many proofs have been given for it; splitFrom is the number of the claim it was split off (null
      * on any other claim); lockedBy is who has its editor open, locking it for other users (null when no one has);
      * lateEntry is whether it was added while its period was soft-closed; remindedOn is the last day a reminder was
-     * written for it (null if never).
+     * written for it (null if never); tags are its tags, sorted (none when it has none).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
-            String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref) {
+            String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -56,7 +56,7 @@ public class ClaimController {
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn(), claim.getRef());
+                    claim.getRemindedOn(), claim.getRef(), claim.tagList());
         }
     }
 
@@ -77,7 +77,8 @@ public class ClaimController {
             LocalDate date,
             @Size(max = 1000) String note,
             @Size(max = 120) String corrects,
-            @Size(max = 120) String ref) {
+            @Size(max = 120) String ref,
+            @Size(max = 1000) String tags) {
     }
 
     /** The status a claim is to move to. */
@@ -154,7 +155,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm request) {
         return ClaimView.of(claims.add(sheetId, user, personId, request.amount(), request.date(), request.note(),
-                request.corrects(), request.ref()));
+                request.corrects(), request.ref(), request.tags()));
     }
 
     @PutMapping("/claims/{id}")
@@ -164,7 +165,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm request) {
         return ClaimView.of(claims.update(sheetId, user, id, request.amount(), request.date(), request.note(),
-                request.corrects(), request.ref()));
+                request.corrects(), request.ref(), request.tags()));
     }
 
     /** Open the claim's editor, locking it for other users. */

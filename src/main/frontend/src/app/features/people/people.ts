@@ -82,6 +82,13 @@ function csvField(value: string): string {
         claims, due <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
       <p>Settled in total: <strong data-testid="rollup-settled-total">{{ money(splitTotals().settled) }}</strong>,
         open in total: <strong data-testid="rollup-open-total">{{ money(splitTotals().open) }}</strong></p>
+      @if (tagTotals().length > 0) {
+        <ul aria-label="Due by tag">
+          @for (t of tagTotals(); track t.tag) {
+            <li>{{ t.tag }}: <span [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) }}</span></li>
+          }
+        </ul>
+      }
 
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
         <label for="person-form-name">Name</label>
@@ -409,6 +416,21 @@ export class PeopleList {
       total.open += split.open;
     }
     return total;
+  });
+  /** For every tag used on the sheet's claims, in tag order, the dues in whole cents of the claims that count which
+   *  carry it (none counting as 0); a claim with two tags counts in both. */
+  protected readonly tagTotals = computed(() => {
+    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+    const totals = new Map<string, number>();
+    for (const c of this.claims()) for (const tag of c.tags) totals.set(tag, 0);
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
+        if (c.tags.length === 0) continue;
+        const due = this.claimDue(p, c, dueTerms) ?? 0;
+        for (const tag of c.tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
+      }
+    }
+    return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
   });
   /** Everyone's due-total added up, skipping those with none, trimmed of the highest and lowest. */
   protected readonly dueTotal = computed(() =>
