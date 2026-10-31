@@ -32,11 +32,29 @@ export const RATE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 export const NOT_AVAILABLE = 'n/a';
 
 /** The due on an amount (in whole cents) at a rate (a percent, e.g. "12.50"), in whole cents:
- *  amount × rate / 100, rounded half up to the cent. Exact, whatever the size of the amount. */
+ *  amount × rate / 100, rounded half to even to the cent. Exact, whatever the size of the amount. */
 export function dueCents(amountCents: number, rate: string): number {
   const [whole, frac = ''] = rate.split('.');
   const basisPoints = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0').slice(0, 2));
-  return Number((BigInt(amountCents) * basisPoints + 5000n) / 10000n);
+  const product = BigInt(amountCents) * basisPoints;
+  const quotient = product / 10000n;
+  const remainder = product % 10000n;
+  const roundUp = remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n);
+  return Number(roundUp ? quotient + 1n : quotient);
+}
+
+/** A claim's due in whole cents: the figure fixed when it was settled, else its amount at its grade's
+ *  rate in force on its date; null when it has neither. */
+export function claimDueCents(c: { amount: string; date: string; settledDue: string | null }, gradeRates: readonly RateView[]): number | null {
+  if (c.settledDue !== null) return amountCents(c.settledDue);
+  const rate = rateOn(gradeRates, c.date);
+  return rate === undefined ? null : dueCents(amountCents(c.amount), rate);
+}
+
+/** An amount ("12.3", "4") in whole cents. */
+function amountCents(amount: string): number {
+  const [whole, frac = ''] = amount.split('.');
+  return Number(whole) * 100 + Number(frac.padEnd(2, '0').slice(0, 2));
 }
 
 // The rates set for each grade on the active sheet, by from-date; a grade with none has no rate.

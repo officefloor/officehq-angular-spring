@@ -2,7 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, counts, money } from '../../core/claims';
-import { NOT_AVAILABLE, RateView, dueCents, rateOn } from '../../core/rates';
+import { NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
@@ -91,8 +91,8 @@ export class PersonClaims {
 
   protected dueOf(c: ClaimView): string {
     if (c.settledDue !== null) return c.settledDue;
-    const rate = rateOn(this.rates(), c.date);
-    return rate === undefined ? NOT_AVAILABLE : money(dueCents(cents(c.amount), rate));
+    const due = claimDueCents(c, this.rates());
+    return due === null ? NOT_AVAILABLE : money(due);
   }
 
   protected changeStatus(c: ClaimView, status: ClaimStatus): void {

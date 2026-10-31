@@ -5,7 +5,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { forkJoin, of, switchMap } from 'rxjs';
 import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
-import { NOT_AVAILABLE, RateView, Rates, dueCents } from '../../core/rates';
+import { NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 import { PersonClaims } from '../claims/claims';
 
@@ -76,14 +76,20 @@ export class PeopleList {
     return byPerson;
   });
   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
-  /** Each person's due-total in whole cents: their claimed times their grade's rate in force today; null when it has none. */
+  /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none);
+   *  null when their grade has no rate in force today and none of those claims keeps a settled figure. */
   private readonly dueByPerson = computed(() => {
-    const rates = this.rates.byGrade();
+    const today = this.rates.byGrade();
+    const ratesByGrade = this.rates.ratesByGrade();
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
-      const rate = rates.get(p.grade);
-      const claimed = this.claimsOf(p.id).filter(counts).reduce((sum, c) => sum + cents(c.amount), 0);
-      byPerson.set(p.id, rate === undefined ? null : dueCents(claimed, rate));
+      const counting = this.claimsOf(p.id).filter(counts);
+      if (!today.has(p.grade) && !counting.some((c) => c.settledDue !== null)) {
+        byPerson.set(p.id, null);
+        continue;
+      }
+      const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
+      byPerson.set(p.id, counting.reduce((sum, c) => sum + (claimDueCents(c, gradeRates) ?? 0), 0));
     }
     return byPerson;
   });
