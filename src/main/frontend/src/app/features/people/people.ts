@@ -27,6 +27,11 @@ interface Overdue {
 }
 const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
 
+/** A CSV field: wrapped in double quotes, with any quote inside doubled, when it holds a comma, a quote or a line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
+}
+
 // The people on the active sheet: one form to add a person or edit an existing one, the list with
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
@@ -82,6 +87,10 @@ const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
         <input id="show-retired" type="checkbox" data-testid="show-retired"
                [checked]="api.showRetired()" (change)="api.showRetired.set($any($event.target).checked)" />
         <label for="show-retired">Show retired</label>
+      </p>
+
+      <p>
+        <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
       </p>
 
       <ul data-testid="person-list">
@@ -348,6 +357,20 @@ export class PeopleList {
   protected dueOf(p: PersonView): string {
     const due = this.dueByPerson().get(p.id);
     return due === null || due === undefined ? NOT_AVAILABLE : money(due);
+  }
+
+  /** Download the people as CSV, in list order, retired people included. */
+  protected exportCsv(): void {
+    const lines = [
+      ['name', 'grade', 'retired-from', 'due-total'],
+      ...this.people().map((p) => [p.name, this.gradeToday(p), p.retiredFrom ?? '', this.dueOf(p)]),
+    ].map((fields) => fields.map(csvField).join(',') + '\n');
+    const url = URL.createObjectURL(new Blob(lines, { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'people-' + (this.sheets.current()?.id ?? 'sheet') + '.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   /** The person's patrons' names, sorted, comma and space separated. */
