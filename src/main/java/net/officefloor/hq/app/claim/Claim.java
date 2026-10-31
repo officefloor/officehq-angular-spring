@@ -45,8 +45,9 @@ public class Claim {
     @Column(name = "note", nullable = false)
     private String note;
 
-    /** The day the claim is due by: fixed when it is added, from its date and the terms of its person's grade in
-     *  force then; it does not change when the terms or its date change later. */
+    /** The day the claim is due by: fixed when it is added, from its date and its person's own terms, else the
+     *  terms of their grade in force then, else the sheet's then; it does not change when the terms or its date
+     *  change later. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 

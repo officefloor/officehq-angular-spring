@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -34,17 +35,27 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a person; the name is stored trimmed and must not already be in use on the sheet. */
+    /** Add a person on no terms of their own. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
+        return add(sheetId, user, name, grade, null);
+    }
+
+    /** Add a person with their own terms (null: none); the name is stored trimmed and must not already be in use
+     *  on the sheet. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
         Rollup.Figures before = rollup.of(sheetId);
-        Person added = save(new Person(sheetId, trimmed, grade));
-        audit.recordChangeOnCommit(sheetId, user, entry("PERSON_ADDED", user, added, grade));
+        Person person = new Person(sheetId, trimmed, grade);
+        person.setTerms(terms);
+        Person added = save(person);
+        audit.recordChangeOnCommit(sheetId, user, entry("PERSON_ADDED", user, added, grade)
+                + (terms != null ? " terms=" + terms : ""));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
@@ -59,10 +70,11 @@ public class PersonService {
      * Edit a person, as loaded at {@code version}: refused when someone has saved them since. The grade is
      * recorded from {@code gradeFrom} (null: the sheet's today), keeping the grades already recorded from
      * other dates; a save leaving the grade as in force on the sheet's today, with no from-date, records none.
+     * The person's own terms become {@code terms} (null: none).
      */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         LocalDate today = sheets.load(sheetId, user).getToday();
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
@@ -78,8 +90,11 @@ public class PersonService {
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
         }
+        boolean termsChanged = !Objects.equals(person.getTerms(), terms);
+        person.setTerms(terms);
         Person edited = save(person);
-        audit.recordChangeOnCommit(sheetId, user, entry("PERSON_EDITED", user, edited, edited.gradeOn(today)));
+        audit.recordChangeOnCommit(sheetId, user, entry("PERSON_EDITED", user, edited, edited.gradeOn(today))
+                + (termsChanged ? " terms=" + (terms != null ? terms : "") : ""));
         rollup.recordChanges(sheetId, user, before);
         return edited;
     }

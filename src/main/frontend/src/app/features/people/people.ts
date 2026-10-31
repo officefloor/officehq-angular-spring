@@ -28,6 +28,13 @@ interface Overdue {
   cents: number;
 }
 const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
+/** A person's terms the form accepts: a whole number of days, 0 or more. */
+const TERMS_PATTERN = /^\d{1,5}$/;
+
+/** A person's own terms as the form shows them: blank for none. */
+function termsText(p: PersonView): string {
+  return p.terms === null ? '' : String(p.terms);
+}
 
 /** A CSV field: wrapped in double quotes, with any quote inside doubled, when it holds a comma, a quote or a line break. */
 /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
@@ -71,6 +78,8 @@ function csvField(value: string): string {
           <label for="person-form-grade-from">Grade from</label>
           <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         }
+        <label for="person-form-terms">Terms (days; blank: none of their own)</label>
+        <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -142,6 +151,7 @@ function csvField(value: string): string {
           <li [attr.data-testid]="'person-row-' + p.id">
             <span data-testid="person-name">{{ p.name }}</span>
             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
+            — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
             @for (pd of periods.list(); track pd.id) {
               — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd.id) }}</span>
@@ -413,6 +423,8 @@ export class PeopleList {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     /** While editing: the date the grade is from (yyyy-mm-dd); blank takes the sheet's today. */
     gradeFrom: new FormControl('', { nonNullable: true }),
+    /** The person's own terms in days; blank for none. */
+    terms: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly quickError = signal<string | null>(null);
@@ -811,13 +823,13 @@ export class PeopleList {
     this.patronError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '' }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p) }, { emitEvent: false });
     this.error.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '' }, { emitEvent: false });
     this.error.set(null);
   }
 
@@ -832,12 +844,20 @@ export class PeopleList {
       this.error.set('Type a name for the person.');
       return;
     }
+    const termsValue = value.terms.trim();
+    if (termsValue !== '' && !TERMS_PATTERN.test(termsValue)) {
+      // Refused terms close the editor, saving nothing, so the form is ready for the next person.
+      if (this.editingId() !== null) this.reset();
+      this.error.set('Type terms of 0 or more whole days, or leave them blank.');
+      return;
+    }
+    const terms = termsValue === '' ? null : Number(termsValue);
     const id = this.editingId();
     this.saving.set(true);
     const request = id === null
-      ? this.api.add(sheet.id, { name: value.name, grade: value.grade })
+      ? this.api.add(sheet.id, { name: value.name, grade: value.grade, terms })
       : this.api.update(sheet.id, id, this.editingVersion,
-          { name: value.name, grade: value.grade, gradeFrom: value.gradeFrom === '' ? null : value.gradeFrom });
+          { name: value.name, grade: value.grade, gradeFrom: value.gradeFrom === '' ? null : value.gradeFrom, terms });
     request.subscribe({
       next: (saved) => {
         this.saving.set(false);
@@ -868,7 +888,8 @@ export class PeopleList {
         const current = people.find((p) => p.id === id);
         if (current && this.editingId() === id) {
           this.editingVersion = current.version;
-          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '' }, { emitEvent: false });
+          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current) },
+            { emitEvent: false });
         }
       },
     });

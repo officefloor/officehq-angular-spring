@@ -97,7 +97,7 @@ public class ClaimService {
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
         Rollup.Figures before = rollup.of(sheetId);
         LocalDate claimDate = date != null ? date : today;
-        LocalDate dueBy = claimDate.plusDays(sheet.termsFor(person.gradeOn(claimDate), claimDate));
+        LocalDate dueBy = claimDate.plusDays(termsOf(sheet, person, claimDate));
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), claimDate, dueBy,
                 noteOf(note), corrects, claims.lastListed(sheetId) + 1));
         added.logStatus(user, today, shownDue(sheet, added, person));
@@ -413,7 +413,7 @@ public class ClaimService {
         claim.unbind();
         Claim original = claims.saveAndFlush(claim);
         LocalDate date = original.getDate();
-        LocalDate dueBy = date.plusDays(sheet.termsFor(person.gradeOn(date), date));
+        LocalDate dueBy = date.plusDays(termsOf(sheet, person, date));
         Claim added = new Claim(sheetId, person.getId(), part, date, dueBy, original.getNote(), null,
                 claims.lastListed(sheetId) + 1);
         added.openAsSplit(nextNumber(sheet, date), user, original.getNumber());
@@ -600,6 +600,12 @@ public class ClaimService {
     /** A live due raised to the sheet's floor when it is below it. */
     public static BigDecimal floored(BigDecimal due, BigDecimal floor) {
         return floor != null && due.compareTo(floor) < 0 ? floor : due;
+    }
+
+    /** The terms in days a claim of the person dated {@code date} is due by: the person's own, else their grade's
+     *  in force then, else the sheet's then. */
+    private static int termsOf(Sheet sheet, Person person, LocalDate date) {
+        return person.getTerms() != null ? person.getTerms() : sheet.termsFor(person.gradeOn(date), date);
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

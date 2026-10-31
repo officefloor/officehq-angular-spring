@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -25,12 +27,12 @@ public class PersonController {
 
     /** A person as listed: {@code grade} is the one in force on the sheet's today; {@code grades} all those
      *  recorded, in the order they take effect. */
-    public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
-            boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds) {
+    public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
+            long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds) {
 
         public static PersonView of(Person person, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
-                    person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
+                    person.getGrades().stream().map(GradeView::of).toList(), person.getTerms(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList());
         }
@@ -56,18 +58,21 @@ public class PersonController {
     public record HoldForm(LocalDate from, LocalDate to) {
     }
 
-    /** A person's values as the form submits them; the name is stored with surrounding spaces removed. */
+    /** A person's values as the form submits them; the name is stored with surrounding spaces removed; missing
+     *  terms: none of their own. */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @Min(0) @Max(36500) Integer terms) {
     }
 
-    /** An edit of a person: their new values, the date the grade is from (missing: the sheet's today) and the
-     *  version of the person the editor loaded. */
+    /** An edit of a person: their new values, the date the grade is from (missing: the sheet's today), their own
+     *  terms (missing: none) and the version of the person the editor loaded. */
     public record PersonEdit(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
+            @Min(0) @Max(36500) Integer terms,
             @NotNull Long version) {
     }
 
@@ -93,7 +98,7 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm request) {
-        Person added = people.add(sheetId, user, request.name(), request.grade());
+        Person added = people.add(sheetId, user, request.name(), request.grade(), request.terms());
         return PersonView.of(added, people.today(sheetId));
     }
 
@@ -104,7 +109,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonEdit request) {
         Person edited = people.update(sheetId, user, id, request.version(), request.name(), request.grade(),
-                request.gradeFrom());
+                request.gradeFrom(), request.terms());
         return PersonView.of(edited, people.today(sheetId));
     }
 

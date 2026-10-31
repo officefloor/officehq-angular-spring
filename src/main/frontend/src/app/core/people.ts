@@ -25,6 +25,8 @@ export interface PersonView {
   grade: Grade;
   /** Every grade recorded, in the order they take effect. */
   grades: GradeFrom[];
+  /** The person's own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+  terms: number | null;
   /** Raised on every save; an edit names the version it was made from. */
   version: number;
   /** Retired as soon as a retirement date is set, whatever the date. */
@@ -41,6 +43,8 @@ export interface PersonView {
 export interface PersonForm {
   name: string;
   grade: Grade;
+  /** The person's own terms in days; null: none. */
+  terms: number | null;
 }
 
 /** An edit of a person: the grade is recorded from `gradeFrom` (yyyy-mm-dd; null takes the sheet's today). */
