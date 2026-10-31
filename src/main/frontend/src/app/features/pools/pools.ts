@@ -3,12 +3,12 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, distinctUntilChanged, skip, switchMap } from 'rxjs';
 import { PersonView } from '../../core/people';
-import { Pools, SHARE_PATTERN } from '../../core/pools';
+import { PoolMemberView, Pools, SHARE_PATTERN } from '../../core/pools';
 import { Sheets } from '../../core/sheet';
 
 type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<string> }>;
 
-// The sheet's pools: each has members chosen from the sheet's people, with a share percent of it.
+// The sheet's pools: each has members chosen from the sheet's people and its other pools, with a share percent of it.
 @Component({
   selector: 'app-pools',
   imports: [ReactiveFormsModule],
@@ -22,8 +22,8 @@ type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<
             total share <span data-testid="pool-total-share">{{ pool.totalShare }}</span>,
             balanced <span data-testid="pool-balanced">{{ pool.balanced ? 'yes' : 'no' }}</span>
             <ul [attr.aria-label]="'Members of ' + pool.name">
-              @for (m of pool.members; track m.personId) {
-                <li [attr.data-testid]="'pool-member-' + pool.name + '-' + m.personId">
+              @for (m of pool.members; track memberKey(m)) {
+                <li [attr.data-testid]="'pool-member-' + pool.name + '-' + memberKey(m)">
                   <span data-testid="pool-member-name">{{ m.name }}</span>:
                   <span data-testid="pool-share">{{ m.share }}</span>,
                   cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
@@ -33,11 +33,14 @@ type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<
             </ul>
             <form [formGroup]="memberForm(pool.id)" (ngSubmit)="addMember(pool.id)"
                   [attr.aria-label]="'Add a member to ' + pool.name">
-              <label [attr.for]="'pool-member-select-' + pool.id">Person</label>
+              <label [attr.for]="'pool-member-select-' + pool.id">Member</label>
               <select [id]="'pool-member-select-' + pool.id" data-testid="pool-member-select" formControlName="personId">
-                <option value="">Choose a person</option>
+                <option value="">Choose a person or a pool</option>
                 @for (p of people(); track p.id) {
                   <option [value]="p.id">{{ p.name }}</option>
+                }
+                @for (other of pools.all(); track other.id) {
+                  <option [value]="'pool:' + other.id">pool:{{ other.name }}</option>
                 }
               </select>
               <label [attr.for]="'pool-member-share-' + pool.id">Share %</label>
@@ -113,6 +116,11 @@ export class PoolsPanel {
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
   }
 
+  /** A member's key in its row's test id: the person's id, or pool-<name> for a pool. */
+  protected memberKey(m: PoolMemberView): string {
+    return m.memberPoolId !== null ? `pool-${m.name}` : String(m.personId);
+  }
+
   /** The pool row's form to add a member, made the first time the row shows. */
   protected memberForm(poolId: number): MemberForm {
     let form = this.memberForms.get(poolId);
@@ -160,7 +168,7 @@ export class PoolsPanel {
     const value = this.memberForm(poolId).getRawValue();
     const share = value.share.trim();
     if (value.personId === '') {
-      this.setError(poolId, 'Choose a person to add.');
+      this.setError(poolId, 'Choose a person or a pool to add.');
       return;
     }
     if (!SHARE_PATTERN.test(share) || Number(share) <= 0 || Number(share) > 100) {
@@ -173,14 +181,17 @@ export class PoolsPanel {
       next.delete(poolId);
       return next;
     });
-    this.pools.addMember(sheet.id, poolId, Number(value.personId), share).subscribe({
+    const member = value.personId.startsWith('pool:')
+      ? { memberPoolId: Number(value.personId.slice('pool:'.length)) }
+      : { personId: Number(value.personId) };
+    this.pools.addMember(sheet.id, poolId, member, share).subscribe({
       next: () => {
         done();
         this.memberForm(poolId).reset({ personId: '', share: '' }, { emitEvent: false });
       },
       error: () => {
         done();
-        this.setError(poolId, 'Could not add that member: are they already in the pool?');
+        this.setError(poolId, 'Could not add that member: is it already in a pool, would the pool contain itself, or would the chain of pools be over three deep?');
       },
     });
   }

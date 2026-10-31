@@ -1,18 +1,23 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, switchMap, tap } from 'rxjs';
 
 /** A share percent the pool's row accepts: up to two decimals (more than 0.00 and at most 100.00 is checked apart). */
 export const SHARE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 
-/** A member of a pool: a person of the sheet with their share percent. */
+/** A member of a pool: a person of the sheet, or another pool of it, with its share percent. */
 export interface PoolMemberView {
-  personId: number;
+  /** The person that is the member; null when the member is a pool. */
+  personId: number | null;
+  /** The pool that is the member; null when the member is a person. */
+  memberPoolId: number | null;
+  /** The person's name, or the member pool's. */
   name: string;
   share: string;
   /** Retired as soon as a retirement date is set: their share then counts as 0.00 toward the total. */
   retired: boolean;
-  /** Their cut of the sheet's pot (two decimals); null when there is no pot or the pool is not balanced. */
+  /** Their cut of the pool's pot (two decimals); null when the pool has no pot or is not balanced. A pool that is a
+   *  member of another has its cut there as its pot; one that is a member of none has the sheet's. */
   cut: string | null;
 }
 
@@ -46,10 +51,14 @@ export class Pools {
     );
   }
 
-  /** Add a person to a pool with a share; refused when they are already in it or the share is out of range. */
-  addMember(sheetId: string, poolId: number, personId: number, share: string): Observable<PoolView> {
-    return this.http.post<PoolView>(`${this.base(sheetId)}/${poolId}/members`, { personId, share }).pipe(
-      tap((saved) => this.list.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))),
+  /** Add a person or another pool to a pool with a share; refused when the person is already in it, the share is
+   *  out of range, or the pool member is already in a pool, would contain itself or make a chain over three deep.
+   *  Every pool is re-read after, since a pool's pot follows its cut in the pool above. */
+  addMember(sheetId: string, poolId: number, member: { personId: number } | { memberPoolId: number },
+            share: string): Observable<PoolView[]> {
+    return this.http.post<PoolView>(`${this.base(sheetId)}/${poolId}/members`, { ...member, share }).pipe(
+      switchMap(() => this.http.get<PoolView[]>(this.base(sheetId))),
+      tap((list) => this.list.set(list)),
     );
   }
 

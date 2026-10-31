@@ -138,7 +138,7 @@ function isDate(value: string): boolean {
         <label for="setting-grace-days">Grace days (when today changes, an open period ended more than these days before it is closed; blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" (focus)="lastFocused = 'graceDays'"
                inputmode="numeric" autocomplete="off" />
-        <label for="setting-pot">Pot (cut among the members of each balanced pool by their shares; blank: none)</label>
+        <label for="setting-pot">Pot (cut among the members of each balanced pool that is a member of none, by their shares; blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" (focus)="lastFocused = 'pot'"
                inputmode="decimal" autocomplete="off" />
         <label for="setting-parent">Parent sheet (a sheet id: a grade with no rate in force on a date here takes the parent's, up to three levels up; blank: none)</label>

@@ -104,7 +104,7 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
-    /** The sheet's pot (two decimals), cut among the members of each balanced pool; null means none. Not dated. */
+    /** The sheet's pot (two decimals), cut among the members of each balanced pool that is a member of none; null means none. Not dated. */
     @Column(name = "pot", precision = 14, scale = 2)
     private BigDecimal pot;
 

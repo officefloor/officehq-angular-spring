@@ -23,12 +23,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/pools")
 public class PoolController {
 
-    /** A member as the pool's row shows it; cut is their cut of the sheet's pot, null when the pool shows none. */
-    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
+    /** A member as the pool's row shows it: a person (personId) or another pool (memberPoolId, its name as the
+     *  name); cut is its cut of the pool's pot, null when the pool shows none. */
+    public record MemberView(Long personId, Long memberPoolId, String name, String share, boolean retired,
+            String cut) {
 
         public static MemberView of(PoolService.Member m, BigDecimal cut) {
-            return new MemberView(m.person().getId(), m.person().getName(), m.share().toPlainString(),
-                    m.person().isRetired(), cut == null ? null : cut.toPlainString());
+            String shown = cut == null ? null : cut.toPlainString();
+            if (m.pool() != null) {
+                return new MemberView(null, m.pool().getId(), m.pool().getName(), m.share().toPlainString(), false,
+                        shown);
+            }
+            return new MemberView(m.person().getId(), null, m.person().getName(), m.share().toPlainString(),
+                    m.person().isRetired(), shown);
         }
     }
 
@@ -48,8 +55,8 @@ public class PoolController {
     public record PoolForm(@NotNull @Size(max = 200) String name) {
     }
 
-    /** A member as the pool's row submits it. */
-    public record MemberForm(@NotNull Long personId, @NotNull BigDecimal share) {
+    /** A member as the pool's row submits it: a person or another pool of the sheet, exactly one given. */
+    public record MemberForm(Long personId, Long memberPoolId, @NotNull BigDecimal share) {
     }
 
     private final PoolService pools;
@@ -78,6 +85,7 @@ public class PoolController {
             @PathVariable long poolId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MemberForm request) {
-        return PoolView.of(pools.addMember(sheetId, user, poolId, request.personId(), request.share()));
+        return PoolView.of(pools.addMember(sheetId, user, poolId, request.personId(), request.memberPoolId(),
+                request.share()));
     }
 }

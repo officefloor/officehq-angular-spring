@@ -57,7 +57,7 @@ export interface SheetView {
   /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the new
    *  today is closed; null: off. Not dated. */
   graceDays: number | null;
-  /** The pot (two decimals), cut among the members of each balanced pool; null when there is none. Not dated. */
+  /** The pot (two decimals), cut among the members of each balanced pool that is a member of none; null when there is none. Not dated. */
   pot: string | null;
   /** The id of the sheet's parent sheet: a grade with no rate in force on a date on this sheet takes its parent's
    *  (then its parent's parent's, up to three levels up); null when it has none. Not dated. */
