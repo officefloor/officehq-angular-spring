@@ -1,0 +1,83 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8c70412ee..48cb4be68 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -24,6 +24,10 @@ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSum
+ import { VoidReasons } from '../../core/void-reasons';
+ 
+ const NO_CLAIMS: ClaimView[] = [];
++
++/** The keys the people list can be sorted on, on the screen only. */
++const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
++type SortKey = (typeof SORT_KEYS)[number];
+ const NO_RATES: RateLine = [];
+ 
+ /** The statuses the summary counts claims in, in the order it lists them. */
+@@ -259,8 +263,17 @@ function csvField(value: string): string {
+         }
+       </form>
+ 
++      <p>
++        <label for="sort-by">Sort people by</label>
++        <select id="sort-by" data-testid="sort-by" [value]="sortKey()" (change)="sortBy($any($event.target).value)">
++          @for (k of sortKeys; track k) {
++            <option [value]="k">{{ k }}</option>
++          }
++        </select>
++      </p>
++
+       <ul data-testid="person-list">
+-        @for (p of listed(); track p.id) {
++        @for (p of shown(); track p.id) {
+           <li [attr.data-testid]="'person-row-' + p.id">
+             <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
+                    (change)="togglePerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
+@@ -413,6 +426,35 @@ export class PeopleList {
+   protected readonly listed = computed(() =>
+     this.api.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+   );
++  protected readonly sortKeys = SORT_KEYS;
++  /** Each signed-in user's sort key for this screen; 'added' (list order) until they choose one. */
++  private readonly sortByUser = signal<ReadonlyMap<string, SortKey>>(new Map());
++  protected readonly sortKey = computed(() =>
++    this.sortByUser().get(this.session.user()?.trim().toLowerCase() ?? '') ?? 'added');
++  /** The people listed, in the chosen order: only what the screen shows; positions and every action in list order
++   *  still go by list order. A stable sort, so equal keys keep list order. */
++  protected readonly shown = computed(() => {
++    const list = this.listed();
++    const due = this.dueByPerson();
++    switch (this.sortKey()) {
++      case 'name':
++        return [...list].sort((a, b) => {
++          const x = a.name.trim().toLowerCase(), y = b.name.trim().toLowerCase();
++          return x < y ? -1 : x > y ? 1 : 0;
++        });
++      case 'grade':
++        return [...list].sort((a, b) => GRADES.indexOf(this.gradeToday(a)) - GRADES.indexOf(this.gradeToday(b)));
++      case 'due-total': {
++        const key = (p: PersonView) => due.get(p.id) ?? Number.POSITIVE_INFINITY;
++        return [...list].sort((a, b) => {
++          const x = key(a), y = key(b);
++          return x === y ? 0 : x < y ? -1 : 1;
++        });
++      }
++      default:
++        return list;
++    }
++  });
+   /** The person being retired, so a second press waits for the first. */
+   protected readonly retiring = signal<number | null>(null);
+   /** The person being moved, so a second press waits for the first. */
+@@ -889,6 +931,12 @@ export class PeopleList {
+       roundingDate(c, this.claimsOf(p.id)), grade);
+   }
+ 
++  protected sortBy(key: string): void {
++    if (!(SORT_KEYS as readonly string[]).includes(key)) return;
++    const user = this.session.user()?.trim().toLowerCase() ?? '';
++    this.sortByUser.update((m) => new Map(m).set(user, key as SortKey));
++  }
++
+   protected dueOf(p: PersonView): string {
+     const due = this.dueByPerson().get(p.id);
+     return due === null || due === undefined ? NOT_AVAILABLE : money(due);

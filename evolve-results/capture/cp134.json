@@ -1,0 +1,64 @@
+{
+  "checkpoint": 134,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp134_sorting",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "770b1fafc34b3f9ad61bf81aa2e185950668d561",
+  "reset_sha": "",
+  "preagent_sha": "4fd1409ff18b91534784062e4c0ec95ba22de6f1",
+  "prev_sha": "4fd1409ff18b91534784062e4c0ec95ba22de6f1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5554468,
+    "input_tokens": 8,
+    "output_tokens": 638,
+    "cache_read_tokens": 149521,
+    "cache_creation_tokens": 3029,
+    "num_turns": 3,
+    "duration_ms": 13316,
+    "duration_api_ms": 84985,
+    "model": "claude-opus-5-5",
+    "session_id": "9838c5c7-8a55-4f6a-85a1-78822149b744",
+    "stop_reason": "success",
+    "result_text": "The people list now has a sort select with the options added, name, grade and due-total. `bin/e2e` passes all 4 tests in the spec.\n\nThe whole change is in the front end, in `src/main/frontend/src/app/features/people/people.ts`. Nothing is stored and the server is unchanged.\n\n- **The select:** it sits above the people list (`data-testid=\"sort-by\"`). Each signed-in user's choice is kept separately on that screen and starts at \"added\". If another user picks a sort on the same sheet, it doesn't change yours. Re-loading the sheet keeps your choice.\n- **Name:** names are trimmed and compared ignoring case, the same way the app matches the signed-in user to a person.\n- **Grade:** sorts A, B, C by each person's grade as of the sheet's today.\n- **Due-total:** sorts on the value shown, after the cap, so changing the cap or adding a hold can change the order. People with no due-total (n/a) go last.\n- **Ties:** people with the same key stay in list order.\n- **What it doesn't touch:** only the order of the rows on screen changes. Positions, moving a person up or down, the rollup lines, the bulk \"Move selected claims to\" dropdown, exports and audit records all still follow the stored list order.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5554468,
+        "num_turns": 3,
+        "duration_ms": 13316,
+        "duration_api_ms": 84985,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp134.agent.jsonl",
+  "agent_diff_file": "cp134.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
