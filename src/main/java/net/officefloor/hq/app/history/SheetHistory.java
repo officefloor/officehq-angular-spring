@@ -20,6 +20,8 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateController.RateView;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.holiday.HolidayController.HolidayView;
+import net.officefloor.hq.app.holiday.HolidayRepository;
 import net.officefloor.hq.app.role.DelegationController.DelegationView;
 import net.officefloor.hq.app.role.DelegationRepository;
 import net.officefloor.hq.app.role.RoleController.RoleView;
@@ -60,12 +62,13 @@ public class SheetHistory {
     private final WatchRepository watches;
     private final RoleRepository roles;
     private final DelegationRepository delegations;
+    private final HolidayRepository holidays;
     private final JsonMapper json;
 
     public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateRepository rates,
             PersonRepository people, ClaimRepository claims, PeriodRepository periods, StatementRepository statements,
             PatronRepository patrons, WatchRepository watches, RoleRepository roles, DelegationRepository delegations,
-            JsonMapper json) {
+            HolidayRepository holidays, JsonMapper json) {
         this.snapshots = snapshots;
         this.sheets = sheets;
         this.rates = rates;
@@ -77,6 +80,7 @@ public class SheetHistory {
         this.watches = watches;
         this.roles = roles;
         this.delegations = delegations;
+        this.holidays = holidays;
         this.json = json;
     }
 
@@ -131,7 +135,8 @@ public class SheetHistory {
                 patrons.findBySheetIdOrderByIdAsc(sheetId).stream().map(PatronView::of).toList(),
                 watched,
                 roles.findBySheetIdOrderByUserName(sheetId).stream().map(RoleView::of).toList(),
-                delegations.findBySheetIdOrderByIdAsc(sheetId).stream().map(DelegationView::of).toList());
+                delegations.findBySheetIdOrderByIdAsc(sheetId).stream().map(DelegationView::of).toList(),
+                holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(HolidayView::of).toList());
         SheetState state = SheetState.of(sheet, sheetRates, sheetPeople, sheetClaims, views);
         snapshots.deleteBySheetIdAndAsOf(sheetId, sheet.getToday());
         snapshots.saveAndFlush(new SheetSnapshot(sheetId, sheet.getToday(), json.writeValueAsString(state)));

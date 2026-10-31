@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
 import { DelegationsPanel } from '../delegations/delegations';
+import { HolidaysPanel } from '../holidays/holidays';
 import { PeopleList } from '../people/people';
 import { RatesPanel } from '../rates/rates';
 import { SettingsPanel } from '../settings/settings';
@@ -10,7 +11,7 @@ import { SettingsPanel } from '../settings/settings';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel],
+  imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -55,6 +56,7 @@ import { SettingsPanel } from '../settings/settings';
         <app-rates />
         <app-settings />
         <app-delegations />
+        <app-holidays />
         <app-people />
       } @else {
         <p data-testid="sheet-none">Load a sheet to begin.</p>

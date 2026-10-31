@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -49,10 +50,13 @@ public class ClaimService {
     private final RoleService roles;
     private final ClaimSequenceRepository sequences;
     private final WatchService watches;
+    private final HolidayService holidays;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
-            RoleService roles, ClaimSequenceRepository sequences, WatchService watches) {
+            RoleService roles, ClaimSequenceRepository sequences, WatchService watches,
+            HolidayService holidays) {
+        this.holidays = holidays;
         this.watches = watches;
         this.periods = periods;
         this.sequences = sequences;
@@ -85,7 +89,8 @@ public class ClaimService {
     }
 
     /** Add a claim for a person; a missing date takes the sheet's entry date while set, else its today, a missing note is empty. Its period is the one its due-by
-     *  (its date plus the terms it gets) is in: one due by inside a soft-closed period is a late entry. Refused
+     *  (its date plus the terms it gets, moved past
+     *  the sheet's holidays) is in: one due by inside a soft-closed period is a late entry. Refused
      *  when its due-by is inside a closed period, or when it is a correction that does not name a SETTLED claim of
      *  the person. */
     @Transactional
@@ -97,7 +102,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         LocalDate claimDate = date != null ? date : sheet.defaultClaimDate();
-        LocalDate dueBy = claimDate.plusDays(termsOf(sheet, person, claimDate));
+        LocalDate dueBy = holidays.pastHolidays(sheetId, claimDate.plusDays(termsOf(sheet, person, claimDate)));
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, claimDate);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
@@ -530,7 +535,7 @@ public class ClaimService {
         claim.unbind();
         Claim original = claims.saveAndFlush(claim);
         LocalDate date = original.getDate();
-        LocalDate dueBy = date.plusDays(termsOf(sheet, person, date));
+        LocalDate dueBy = holidays.pastHolidays(sheetId, date.plusDays(termsOf(sheet, person, date)));
         Claim added = new Claim(sheetId, person.getId(), part, date, dueBy, original.getNote(), null,
                 claims.lastListed(sheetId) + 1);
         added.openAsSplit(nextNumber(sheet, dueBy), user, original.getNumber());

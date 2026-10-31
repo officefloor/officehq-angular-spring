@@ -11,6 +11,7 @@ import net.officefloor.hq.app.patron.PatronController.PatronView;
 import net.officefloor.hq.app.period.PeriodController.PeriodView;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.rate.RateController.RateView;
+import net.officefloor.hq.app.holiday.HolidayController.HolidayView;
 import net.officefloor.hq.app.role.DelegationController.DelegationView;
 import net.officefloor.hq.app.role.RoleController.RoleView;
 import net.officefloor.hq.app.statement.StatementController.SummaryView;
@@ -34,11 +35,12 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
     public record Views(List<PersonView> people, List<ClaimView> claims, List<RateView> rates,
             List<PeriodView> periods, List<SummaryView> statements, List<PatronView> patrons,
-            Map<String, List<Long>> watches, List<RoleView> roles, List<DelegationView> delegations) {
+            Map<String, List<Long>> watches, List<RoleView> roles, List<DelegationView> delegations,
+            List<HolidayView> holidays) {
 
         /** Nothing: a sheet as it stood before any change was made on it. */
         public static final Views NONE = new Views(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                Map.of(), List.of(), List.of());
+                Map.of(), List.of(), List.of(), List.of());
     }
 
     public record SettingState(String key, LocalDate from, String value) {
