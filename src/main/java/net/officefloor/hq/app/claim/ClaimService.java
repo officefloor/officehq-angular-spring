@@ -126,7 +126,7 @@ public class ClaimService {
     }
 
     /** The due on an amount at a rate (a percent): amount × rate / 100, rounded half to even to the cent. */
-    private static BigDecimal dueOn(BigDecimal amount, BigDecimal rate) {
+    public static BigDecimal dueOn(BigDecimal amount, BigDecimal rate) {
         return amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 

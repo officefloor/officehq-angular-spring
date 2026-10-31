@@ -43,10 +43,14 @@ export function dueCents(amountCents: number, rate: string): number {
   return Number(roundUp ? quotient + 1n : quotient);
 }
 
-/** A claim's due in whole cents: the figure fixed when it was settled, else its amount at its grade's
- *  rate in force on its date; null when it has neither. */
-export function claimDueCents(c: { amount: string; date: string; settledDue: string | null }, gradeRates: readonly RateView[]): number | null {
+/** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
+ *  last statement bound it to, else its amount at its grade's rate in force on its date; null when it has none. */
+export function claimDueCents(
+  c: { amount: string; date: string; settledDue: string | null; statedDue: string | null },
+  gradeRates: readonly RateView[],
+): number | null {
   if (c.settledDue !== null) return amountCents(c.settledDue);
+  if (c.statedDue !== null) return amountCents(c.statedDue);
   const rate = rateOn(gradeRates, c.date);
   return rate === undefined ? null : dueCents(amountCents(c.amount), rate);
 }

@@ -7,6 +7,7 @@ import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
 import { NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
+import { StatementSummary, Statements } from '../../core/statements';
 import { PersonClaims } from '../claims/claims';
 
 const NO_CLAIMS: ClaimView[] = [];
@@ -49,8 +50,16 @@ const NO_RATES: RateView[] = [];
             <span data-testid="person-name">{{ p.name }}</span>
             — grade <span data-testid="person-grade">{{ p.grade }}</span>
             — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
+            — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+            — last stated <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span>
+            on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
+            <button type="button" data-testid="person-statement" (click)="takeStatement(p)" [disabled]="stating() === p.id"
+                    [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+            @if (personError()?.id === p.id) {
+              <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+            }
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates.ratesByGrade().get(p.grade) ?? noRates"
                                (saved)="claimSaved($event)" />
           </li>
@@ -63,6 +72,7 @@ export class PeopleList {
   private readonly sheets = inject(Sheets);
   private readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
+  private readonly statementsApi = inject(Statements);
   protected readonly rates = inject(Rates);
 
   protected readonly grades = GRADES;
@@ -70,6 +80,12 @@ export class PeopleList {
   protected readonly people = signal<PersonView[]>([]);
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
+  /** Each person's statements, by person; one with none is missing. */
+  private readonly statements = signal<Map<number, StatementSummary>>(new Map());
+  /** The person whose statement is being taken, so a second press waits for the first. */
+  protected readonly stating = signal<number | null>(null);
+  /** The error of the last action taken on a person's row, until the next action on that row. */
+  protected readonly personError = signal<{ id: number; message: string } | null>(null);
   private readonly claimsByPerson = computed(() => {
     const byPerson = new Map<number, ClaimView[]>();
     for (const c of this.claims()) byPerson.set(c.personId, [...(byPerson.get(c.personId) ?? []), c]);
@@ -84,7 +100,7 @@ export class PeopleList {
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
       const counting = this.claimsOf(p.id).filter(counts);
-      if (!today.has(p.grade) && !counting.some((c) => c.settledDue !== null)) {
+      if (!today.has(p.grade) && !counting.some((c) => c.settledDue !== null || c.statedDue !== null)) {
         byPerson.set(p.id, null);
         continue;
       }
@@ -115,17 +131,24 @@ export class PeopleList {
         switchMap((sheet) => {
           this.people.set([]);
           this.claims.set([]);
+          this.statements.set(new Map());
+          this.personError.set(null);
           this.reset();
           return sheet
-            ? forkJoin({ people: this.api.list(sheet.id), claims: this.claimsApi.list(sheet.id) })
-            : of({ people: [], claims: [] });
+            ? forkJoin({
+                people: this.api.list(sheet.id),
+                claims: this.claimsApi.list(sheet.id),
+                statements: this.statementsApi.list(sheet.id),
+              })
+            : of({ people: [], claims: [], statements: [] });
         }),
         takeUntilDestroyed(),
       )
       .subscribe({
-        next: ({ people, claims }) => {
+        next: ({ people, claims, statements }) => {
           this.people.set(people);
           this.claims.set(claims);
+          this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         },
       });
     // An error is removed as soon as its form is changed.
@@ -141,6 +164,31 @@ export class PeopleList {
     return due === null || due === undefined ? NOT_AVAILABLE : money(due);
   }
 
+  protected statementOf(personId: number): StatementSummary | undefined {
+    return this.statements().get(personId);
+  }
+
+  /** Take a statement of the person, then show their summary and their claims as it left them. */
+  protected takeStatement(p: PersonView): void {
+    if (this.stating() === p.id) return;
+    this.personError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.stating.set(p.id);
+    this.statementsApi.take(sheet.id, p.id).subscribe({
+      next: ({ summary, claims }) => {
+        this.stating.set(null);
+        this.statements.update((map) => new Map(map).set(summary.personId, summary));
+        const byId = new Map(claims.map((c) => [c.id, c]));
+        this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+      },
+      error: () => {
+        this.stating.set(null);
+        this.personError.set({ id: p.id, message: 'Could not take a statement of ' + p.name + '.' });
+      },
+    });
+  }
+
   protected claimSaved(saved: ClaimView): void {
     this.claims.update((list) =>
       list.some((c) => c.id === saved.id)
@@ -150,6 +198,7 @@ export class PeopleList {
   }
 
   protected edit(p: PersonView): void {
+    this.personError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
     this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });

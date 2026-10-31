@@ -21,6 +21,11 @@ export interface ClaimView {
   settledDue: string | null;
   /** The signed-in name of the user who opened the claim; null while a draft. */
   openedBy: string | null;
+  /** Whether its person's last statement binds the claim, to `statedDue`. */
+  stated: boolean;
+  /** The figure the claim had at its person's last statement, while bound by it, with exactly two
+   *  decimals; null when not bound, or if it had no figure then (it then follows the rate). */
+  statedDue: string | null;
 }
 
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */

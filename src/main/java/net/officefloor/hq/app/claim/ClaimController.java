@@ -29,16 +29,18 @@ public class ClaimController {
     /**
      * A claim as the screen shows it; the amount is given with exactly two decimals, as is the due
      * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
-     * is who opened it (null while a draft).
+     * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
+     * statedDue (null if it had no figure then).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Integer number, String settledDue, String openedBy) {
+            Integer number, String settledDue, String openedBy, boolean stated, String statedDue) {
 
-        static ClaimView of(Claim claim) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.isStated(),
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString());
         }
     }
 

@@ -41,6 +41,7 @@ import { Sheets } from '../../core/sheet';
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+          — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
@@ -92,7 +93,6 @@ export class PersonClaims {
   }
 
   protected dueOf(c: ClaimView): string {
-    if (c.settledDue !== null) return c.settledDue;
     const due = claimDueCents(c, this.rates());
     return due === null ? NOT_AVAILABLE : money(due);
   }
