@@ -1,0 +1,64 @@
+{
+  "checkpoint": 39,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp39_claim-log",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each claim its status log: one line per status it has had, oldest first, as\n<STATUS> by <user> on <date> due=<due>, where the date is the sheet's today when the change was\nmade and the due is the claim's due as it was computed at that moment (including the DRAFT line\nwritten when the claim was added).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each claim its status log: one line per status it has had, oldest first, as\n<STATUS> by <user> on <date> due=<due>, where the date is the sheet's today when the change was\nmade and the due is the claim's due as it was computed at that moment (including the DRAFT line\nwritten when the claim was added).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8889fcc43461324961082f607387809de5f5c7fb",
+  "reset_sha": "",
+  "preagent_sha": "876d48f9c4111a8de2eabe91cbe5b119ac81ce7a",
+  "prev_sha": "876d48f9c4111a8de2eabe91cbe5b119ac81ce7a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7035245999999998,
+    "input_tokens": 30,
+    "output_tokens": 8048,
+    "cache_read_tokens": 585263,
+    "cache_creation_tokens": 53174,
+    "num_turns": 16,
+    "duration_ms": 180748,
+    "duration_api_ms": 75172,
+    "model": "claude-opus-5-5",
+    "session_id": "01da672a-2189-451f-af27-1611a61058bc",
+    "stop_reason": "success",
+    "result_text": "Each claim now shows its status log, and all 4 acceptance tests pass with `bin/e2e`.\n\nEach line reads `<STATUS> by <user> on <date> due=<due>`, oldest first. The date is the sheet's today and the due is the figure the claim showed at that moment. Lines are written in four cases:\n- **Adding a claim** writes the DRAFT line. Quick-add goes through the same code, so it gets one too.\n- **Every status change:** open, settle (or PENDING, when a clerk's settle needs a steward), and void.\n- **A steward approving** writes a SETTLED line.\n- **A steward rejecting** writes an OPEN line.\n\nEditing a claim or moving it to another person doesn't change its status, so neither writes a line.\n\nThe due is the settled due once the claim is settled. Before that, it's the figure the claim would settle at right then: the one fixed by a statement if there is one, otherwise the live rate figure, plus any late charge. If the claim had no rate at that moment, the line shows `due=n/a`, the same as the claim's due field. That case isn't covered by the tests.\n\n**Changes:**\n- **Stored data:** a new migration, `V30__claim_log.sql`, adds a `claim_log` table.\n- **Server:** the log is stored on each claim (new `ClaimLogEntry.java`, wired into `Claim.java`). `ClaimService.java` writes the lines, and the claim data sent to the screen now includes the log.\n- **Front end:** `core/claims.ts` adds the log type, and `features/claims/claims.ts` shows one `claim-log-line` per entry under each claim.\n\nClaims that already existed before this change start with an empty log. The database is in-memory and reset on every start, so in practice that never comes up.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7035245999999998,
+        "num_turns": 16,
+        "duration_ms": 180748,
+        "duration_api_ms": 75172,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp39.agent.jsonl",
+  "agent_diff_file": "cp39.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
