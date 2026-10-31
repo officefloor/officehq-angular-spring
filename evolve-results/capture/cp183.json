@@ -1,0 +1,64 @@
+{
+  "checkpoint": 183,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp183_period-lock",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can lock and unlock a period (buttons on the period; PERIOD_LOCKED and PERIOD_UNLOCKED\nperiod=<name>; anyone else, or locking a locked period, is refused with an error on the period).\nA locked period cannot be reopened. Show locked yes/no.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can lock and unlock a period (buttons on the period; PERIOD_LOCKED and PERIOD_UNLOCKED\nperiod=<name>; anyone else, or locking a locked period, is refused with an error on the period).\nA locked period cannot be reopened. Show locked yes/no.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0b6a9e953ecc8ffdd3f2e1d879e5864732907d60",
+  "reset_sha": "",
+  "preagent_sha": "dac790c98b7d5b333ccdc295b6b5c558090661a4",
+  "prev_sha": "dac790c98b7d5b333ccdc295b6b5c558090661a4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6399007999999999,
+    "input_tokens": 28,
+    "output_tokens": 6772,
+    "cache_read_tokens": 512424,
+    "cache_creation_tokens": 50233,
+    "num_turns": 15,
+    "duration_ms": 336150,
+    "duration_api_ms": 82053,
+    "model": "claude-opus-5-5",
+    "session_id": "32cee8a3-0db5-4ae7-bd28-bde735959f20",
+    "stop_reason": "success",
+    "result_text": "Stewards can now lock and unlock a period, and a locked period can't be reopened. `bin/e2e` passes all 4 acceptance tests.\n\n**What it does**\n- **Who can lock:** only someone acting as a steward on the sheet. That includes a user who has been delegated the steward role, because the check uses the existing `roleOf`. Anyone else is refused with the period's error message.\n- **Refusals:** locking a period that's already locked, or unlocking one that isn't, is refused with an error and writes nothing. Reopening a locked period is refused the same way.\n- **Audit:** a lock writes `PERIOD_LOCKED sheet=\u2026 by=\u2026 period=<name>` and an unlock writes `PERIOD_UNLOCKED`, in the same form.\n- **Screen:** each period row has Lock and Unlock buttons and shows \"locked yes/no\" (`period-lock`, `period-unlock`, `period-locked`).\n\n**Changes**\n- **Stored data:** a new migration, `V102__period_locked.sql`, adds a `locked` column to the period table (default false).\n- **Server:**\n  - `Period` has the new flag.\n  - `PeriodService` has a `setLocked` method and the new reopen refusal.\n  - `PeriodController` has `POST \u2026/{name}/lock` and `\u2026/unlock` endpoints, and the period it returns now includes `locked`.\n- **Front end:** `core/periods.ts` (`setLocked`) and `features/periods/periods.ts` (the buttons, the yes/no display and the error messages).\n\n**Choices I made where the request was silent**\n- A period can be locked whether it is open, closed or soft-closed; one test locks a soft-closed period.\n- Locking only blocks reopening. It does not stop closing the period, and it does not freeze its figures: in the first test, changing a rate after the lock still changes the claim's due amount.\n- Copying a sheet doesn't copy the lock, and older saved period records without the field read as unlocked.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6399007999999999,
+        "num_turns": 15,
+        "duration_ms": 336150,
+        "duration_api_ms": 82053,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp183.agent.jsonl",
+  "agent_diff_file": "cp183.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

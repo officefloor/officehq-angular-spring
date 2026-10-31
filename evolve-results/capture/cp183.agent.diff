@@ -1,0 +1,228 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index fd6464fab..fc3993c28 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -28,6 +28,9 @@ export interface PeriodView {
+   /** Each person's opening balance for the period, by person id, added to their carried figure for it (absent from
+    *  what was kept before openings were pasted). A person missing has 0.00. */
+   personOpenings?: Record<string, string> | null;
++  /** Whether a steward has locked the period: while locked it cannot be reopened (absent from what was kept before
++   *  periods could be locked). */
++  locked?: boolean;
+ }
+ 
+ /** A period as the form submits it: a blank from-date takes the sheet's today. */
+@@ -119,6 +122,13 @@ export class Periods {
+       .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
+   }
+ 
++  /** Lock or unlock a period; only a steward may, and it is refused when the period is already so. */
++  setLocked(sheetId: string, name: string, locked: boolean): Observable<PeriodView> {
++    return this.http
++      .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/${locked ? 'lock' : 'unlock'}`, {})
++      .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
++  }
++
+   /** Add an opening balance per pasted line of name,period,amount to the person's carried figure for the period;
+    *  when any line is refused, none is added. */
+   importOpenings(sheetId: string, text: string): Observable<OpeningImportView> {
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index a60ce43f9..3fd0a029d 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -30,6 +30,11 @@ import { FigurePipe } from '../../core/figure';
+                     [attr.aria-label]="'Soft-close period ' + p.name">Soft close</button>
+             <button type="button" data-testid="period-reopen" (click)="reopen(p)" [disabled]="closing() === p.id"
+                     [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
++            — locked <span data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</span>
++            <button type="button" data-testid="period-lock" (click)="setLocked(p, true)" [disabled]="closing() === p.id"
++                    [attr.aria-label]="'Lock period ' + p.name">Lock</button>
++            <button type="button" data-testid="period-unlock" (click)="setLocked(p, false)" [disabled]="closing() === p.id"
++                    [attr.aria-label]="'Unlock period ' + p.name">Unlock</button>
+             @if (periodError()?.id === p.id) {
+               <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
+             }
+@@ -231,13 +236,36 @@ export class PeriodsPanel {
+           message: status === 403
+             ? 'Your role may not reopen a period.'
+             : status === 409
+-              ? 'That period is not closed.'
++              ? 'That period is not closed, or it is locked.'
+               : 'Could not reopen that period.',
+         });
+       },
+     });
+   }
+ 
++  protected setLocked(p: PeriodView, locked: boolean): void {
++    if (this.closing() === p.id) return;
++    this.periodError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.closing.set(p.id);
++    this.periods.setLocked(sheet.id, p.name, locked).subscribe({
++      next: () => this.closing.set(null),
++      error: (err: unknown) => {
++        this.closing.set(null);
++        const status = err instanceof HttpErrorResponse ? err.status : 0;
++        this.periodError.set({
++          id: p.id,
++          message: status === 403
++            ? `Only a steward may ${locked ? 'lock' : 'unlock'} a period.`
++            : status === 409
++              ? locked ? 'That period is already locked.' : 'That period is not locked.'
++              : `Could not ${locked ? 'lock' : 'unlock'} that period.`,
++        });
++      },
++    });
++  }
++
+   protected submit(): void {
+     // A second submit before the first has answered is ignored, so it stores one record.
+     if (this.saving()) return;
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 9e75b4873..e5ef4b27e 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -46,6 +46,10 @@ public class Period {
+     @Column(name = "soft_closed", nullable = false)
+     private boolean softClosed;
+ 
++    /** Whether a steward has locked the period: while locked it cannot be reopened. */
++    @Column(name = "locked", nullable = false)
++    private boolean locked;
++
+     /** The period's due-total fixed when it was closed or soft-closed; none while it is open. */
+     @Column(name = "closed_total", precision = 14, scale = 2)
+     private BigDecimal closedTotal;
+@@ -135,6 +139,15 @@ public class Period {
+         return softClosed;
+     }
+ 
++    public boolean isLocked() {
++        return locked;
++    }
++
++    /** Lock or unlock the period. */
++    public void setLocked(boolean locked) {
++        this.locked = locked;
++    }
++
+     public BigDecimal getClosedTotal() {
+         return closedTotal;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 477bea078..f6c8ff78b 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -31,10 +31,11 @@ public class PeriodController {
+     /** A period as the screen shows it; softClosed is whether it is soft-closed; closedTotal is its due-total fixed
+      *  when it was closed or soft-closed (null while open), and closedPersonTotals each person's, by person id, fixed
+      *  then (empty while open; a person missing has 0.00), as closedPersonCarried is each person's carried figure;
+-     *  personOpenings is each person's opening balance for it, by person id (a person missing has 0.00). */
++     *  personOpenings is each person's opening balance for it, by person id (a person missing has 0.00); locked is
++     *  whether a steward has locked it. */
+     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+             String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
+-            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings) {
++            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked) {
+ 
+         public static PeriodView of(Period period) {
+             Map<Long, String> personTotals = new TreeMap<>();
+@@ -45,7 +46,7 @@ public class PeriodController {
+             period.getPersonOpenings().forEach((id, opening) -> openings.put(id, opening.toPlainString()));
+             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
+-                    personTotals, period.getClaimCap(), personCarried, openings);
++                    personTotals, period.getClaimCap(), personCarried, openings, period.isLocked());
+         }
+     }
+ 
+@@ -139,4 +140,20 @@ public class PeriodController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         return PeriodView.of(periods.reopen(sheetId, user, name));
+     }
++
++    @PostMapping("/{name}/lock")
++    public PeriodView lock(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @NotBlank @Size(max = 100) String name,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return PeriodView.of(periods.setLocked(sheetId, user, name, true));
++    }
++
++    @PostMapping("/{name}/unlock")
++    public PeriodView unlock(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @NotBlank @Size(max = 100) String name,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return PeriodView.of(periods.setLocked(sheetId, user, name, false));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 93bb71c7b..cdf511e12 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -7,6 +7,7 @@ import java.util.Comparator;
+ import java.util.List;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -181,7 +182,7 @@ public class PeriodService {
+     }
+ 
+     /** Reopen a closed or soft-closed period, making its due-total live again; only a role the permission matrix allows may (by
+-     *  default a steward), and it is refused when the period is open. */
++     *  default a steward), and it is refused when the period is open or locked. */
+     @Transactional
+     public Period reopen(String sheetId, String user, String name) {
+         sheets.load(sheetId, user);
+@@ -194,12 +195,37 @@ public class PeriodService {
+         if (!period.isClosed() && !period.isSoftClosed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed");
+         }
++        if (period.isLocked()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is locked");
++        }
+         period.reopen();
+         Period reopened = periods.saveAndFlush(period);
+         audit.recordChangeOnCommit(sheetId, user, "PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + reopened.getName());
+         return reopened;
+     }
+ 
++    /** Lock or unlock a period; only a steward may, and it is refused when the period is already so. */
++    @Transactional
++    public Period setLocked(String sheetId, String user, String name, boolean locked) {
++        sheets.load(sheetId, user);
++        sheetStore.findLockedById(sheetId).orElseThrow();
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "Only a steward may " + (locked ? "lock" : "unlock") + " a period");
++        }
++        Period period = periods.findBySheetIdAndName(sheetId, name)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
++        if (period.isLocked() == locked) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    locked ? "That period is already locked" : "That period is not locked");
++        }
++        period.setLocked(locked);
++        Period saved = periods.saveAndFlush(period);
++        audit.recordChangeOnCommit(sheetId, user, (locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId
++                + " by=" + user + " period=" + saved.getName());
++        return saved;
++    }
++
+     private static ResponseStatusException nameInUse() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "That period name is already in use on this sheet");
+     }
+diff --git a/src/main/resources/db/migration/V102__period_locked.sql b/src/main/resources/db/migration/V102__period_locked.sql
+new file mode 100644
+index 000000000..5f7499088
+--- /dev/null
++++ b/src/main/resources/db/migration/V102__period_locked.sql
+@@ -0,0 +1,2 @@
++-- A locked period: a steward has locked it, and while it stays locked it cannot be reopened.
++ALTER TABLE period ADD COLUMN locked BOOLEAN DEFAULT FALSE NOT NULL;
