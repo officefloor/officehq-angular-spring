@@ -160,6 +160,19 @@ public class ClaimService {
         return added;
     }
 
+    /** Whether the claim form would take a claim for the person dated {@code date} that corrects none and has no
+     *  external reference: its due-by is not inside a closed period, and it is not dated after the person retired. */
+    @Transactional(readOnly = true)
+    public boolean accepts(String sheetId, long personId, LocalDate date) {
+        Sheet sheet = sheetStore.findById(sheetId).orElseThrow();
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElse(null);
+        if (person == null || person.refusesClaimOn(date)) {
+            return false;
+        }
+        LocalDate dueBy = holidays.dueBy(sheetId, date, termsOf(sheet, person, date));
+        return !periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, dueBy, dueBy);
+    }
+
     /** Change a claim's amount, date, note and the claim it corrects; a missing date takes the sheet's today. Only
      *  a draft can be changed: to change an open claim, void it and add a new one. Its due-by stays as it was fixed.
      *  Refused when its due-by is inside a closed period, or when it would be a correction that does not name a

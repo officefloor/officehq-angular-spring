@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.patron.Patron;
 import net.officefloor.hq.app.patron.PatronRepository;
+import net.officefloor.hq.app.plan.PlanService;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.Role;
@@ -39,10 +40,13 @@ public class PersonMergeService {
     private final RoleService roles;
     private final Audit audit;
     private final Rollup rollup;
+    private final PlanService plans;
 
     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
             PoolMemberRepository poolMembers, StatementRepository statements, WatchRepository watches,
-            SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit, Rollup rollup) {
+            SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit, Rollup rollup,
+            PlanService plans) {
+        this.plans = plans;
         this.people = people;
         this.claims = claims;
         this.patrons = patrons;
@@ -127,6 +131,7 @@ public class PersonMergeService {
 
         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+        plans.reassign(from.getId(), into.getId());
         String fromName = from.getName();
         List<String> fromAliases = from.getAliases();
         people.delete(from);

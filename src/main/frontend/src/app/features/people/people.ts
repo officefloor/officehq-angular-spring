@@ -17,6 +17,8 @@ import { PersonClaims } from '../claims/claims';
 import { SheetHeader } from '../header/header';
 import { PeriodsPanel } from '../periods/periods';
 import { PoolsPanel } from '../pools/pools';
+import { PersonPlans, PlanGenerate } from '../plans/plans';
+import { Plans } from '../../core/plans';
 import { Pools } from '../../core/pools';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
@@ -72,7 +74,7 @@ function csvField(value: string): string {
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, PoolsPanel],
+  imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, PoolsPanel, PersonPlans, PlanGenerate],
   template: `
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
@@ -160,6 +162,8 @@ function csvField(value: string): string {
           <p role="alert" data-testid="paste-error">{{ err }}</p>
         }
       </form>
+
+      <app-plan-generate (generated)="plansGenerated($event)" />
 
       <form [formGroup]="importForm" (ngSubmit)="importPeople()" aria-label="Import people">
         <label for="import-people">Import people, one per line as name,grade,terms,contact (terms and contact may be left out)</label>
@@ -365,6 +369,7 @@ function csvField(value: string): string {
             @if (personError()?.id === p.id) {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
+            <app-person-plans [personId]="p.id" [personName]="p.name" />
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.lineByGrade()" [grades]="p"
                                [periods]="periods.list()" [holds]="p.holds" [retiredFrom]="p.retiredFrom" [others]="othersOf(p.id)"
                                [selected]="selectedClaims()" (selectToggled)="toggleSelected($event)"
@@ -381,6 +386,7 @@ export class PeopleList {
   private readonly claimsApi = inject(Claims);
   private readonly statementsApi = inject(Statements);
   private readonly patronsApi = inject(Patrons);
+  private readonly plansApi = inject(Plans);
   private readonly watchesApi = inject(Watches);
   private readonly consolidatedApi = inject(Consolidated);
   protected readonly rates = inject(Rates);
@@ -816,6 +822,7 @@ export class PeopleList {
           this.descendants.set(NO_DESCENDANTS);
           this.patrons.set([]);
           this.watched.set(new Set());
+          this.plansApi.clear();
           this.personError.set(null);
           this.patronError.set(null);
           this.reset();
@@ -835,9 +842,10 @@ export class PeopleList {
                 statements: this.statementsApi.list(sheet.id),
                 patrons: this.patronsApi.list(sheet.id),
                 watched: this.watchesApi.list(sheet.id),
+                plans: this.plansApi.load(sheet.id),
                 descendants: this.consolidatedApi.descendants(sheet.id, this.sheets.asOf() !== null),
               })
-            : of({ people: [], claims: [], statements: [], patrons: [], watched: [], descendants: NO_DESCENDANTS });
+            : of({ people: [], claims: [], statements: [], patrons: [], watched: [], plans: [], descendants: NO_DESCENDANTS });
         }),
         takeUntilDestroyed(),
       )
@@ -1379,6 +1387,11 @@ export class PeopleList {
         ? list.map((c) => (c.id === saved.id ? saved : c))
         : [saved, ...list.filter((c) => c.id !== saved.id)];
     });
+  }
+
+  /** Show the claims a generate of the sheet's plans made. */
+  protected plansGenerated(made: ClaimView[]): void {
+    made.forEach((c) => this.claimSaved(c));
   }
 
   /** The other people on the sheet a person's claims can be moved to. */

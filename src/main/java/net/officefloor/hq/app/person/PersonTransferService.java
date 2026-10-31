@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.patron.PatronRepository;
+import net.officefloor.hq.app.plan.PlanService;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
@@ -53,11 +54,13 @@ public class PersonTransferService {
     private final RoleService roles;
     private final Audit audit;
     private final Rollup rollup;
+    private final PlanService plans;
 
     public PersonTransferService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
             PatronRepository patrons, PoolMemberRepository poolMembers, StatementRepository statements,
             WatchRepository watches, SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit,
-            Rollup rollup) {
+            Rollup rollup, PlanService plans) {
+        this.plans = plans;
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
@@ -134,6 +137,7 @@ public class PersonTransferService {
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, person.getId()));
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));
+        plans.removeOf(person.getId());
         patrons.flush();
 
         List<Claim> moving = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, person.getId());
