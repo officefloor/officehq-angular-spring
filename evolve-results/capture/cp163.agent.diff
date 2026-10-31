@@ -1,0 +1,151 @@
+diff --git a/src/main/frontend/src/app/core/statements.ts b/src/main/frontend/src/app/core/statements.ts
+index a2ea00bec..2b1bc5bf4 100644
+--- a/src/main/frontend/src/app/core/statements.ts
++++ b/src/main/frontend/src/app/core/statements.ts
+@@ -3,13 +3,22 @@ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ import { ClaimView } from './claims';
+ 
+-/** What a person's statements come to: how many, and the last one's due-total and date (yyyy-mm-dd). */
++/** A statement standing: its date (yyyy-mm-dd) and the due-total it records (two decimals, or "n/a"). */
++export interface StatementLine {
++  date: string;
++  dueTotal: string;
++}
++
++/** What a person's statements come to: how many, the last one's due-total and date (yyyy-mm-dd), and a line for
++ *  each one standing, oldest first. */
+ export interface StatementSummary {
+   personId: number;
+   count: number;
+   /** The due-total with exactly two decimals, or "n/a" when the grade had no rate then. */
+   dueTotal: string | null;
+   date: string | null;
++  /** None in a view of the sheet as of a date kept before statements had lines. */
++  lines: StatementLine[] | null;
+ }
+ 
+ /** A statement just taken: the person's summary and their claims as it left them, newest first. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bf49f5e78..945cc3f33 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -375,6 +375,13 @@ function csvField(value: string): string {
+             @if (session.shows('statement-date')) {
+                 on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
+             }
++            @if (statementOf(p.id)?.lines?.length) {
++              <ul [attr.aria-label]="'Statements of ' + p.name">
++                @for (l of statementOf(p.id)?.lines ?? []; track $index) {
++                  <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal | figure }}</li>
++                }
++              </ul>
++            }
+             @if (snapshotsOf(p.id).length > 0) {
+               <ul [attr.aria-label]="'Snapshots of ' + p.name">
+                 @for (s of snapshotsOf(p.id); track $index) {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index 88e0a24d1..572046bc1 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -24,11 +24,21 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class StatementController {
+ 
+-    /** A person's statements: how many, and the last one's due-total ("n/a" when none could be given) and date. */
+-    public record SummaryView(long personId, int count, String dueTotal, LocalDate date) {
++    /** A person's statements: how many, the last one's due-total ("n/a" when none could be given) and date, and a
++     *  line for each one standing, oldest first. */
++    public record SummaryView(long personId, int count, String dueTotal, LocalDate date, List<LineView> lines) {
+ 
+         public static SummaryView of(StatementService.Summary summary) {
+-            return new SummaryView(summary.personId(), summary.count(), summary.dueTotal(), summary.takenOn());
++            return new SummaryView(summary.personId(), summary.count(), summary.dueTotal(), summary.takenOn(),
++                    summary.lines().stream().map(LineView::of).toList());
++        }
++    }
++
++    /** A statement standing: its date and the due-total it records. */
++    public record LineView(LocalDate date, String dueTotal) {
++
++        public static LineView of(StatementService.Line line) {
++            return new LineView(line.takenOn(), line.dueTotal());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 9214aac0a..67f0f70ce 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -2,7 +2,9 @@ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+@@ -38,8 +40,12 @@ import org.springframework.web.server.ResponseStatusException;
+ @Service
+ public class StatementService {
+ 
+-    /** What a person's statements come to: how many, and the last one's due-total and date. */
+-    public record Summary(long personId, int count, String dueTotal, LocalDate takenOn) {
++    /** What a person's statements come to: how many, the last one's due-total and date, and each one standing. */
++    public record Summary(long personId, int count, String dueTotal, LocalDate takenOn, List<Line> lines) {
++    }
++
++    /** A statement standing: the date it is of and the due-total it records, as a line on its person. */
++    public record Line(LocalDate takenOn, String dueTotal) {
+     }
+ 
+     /** A statement just taken: the person's summary and their claims, newest first, as it left them. */
+@@ -80,13 +86,18 @@ public class StatementService {
+ 
+     /** The summary of each person who has had one of these statements (in the order taken) taken. */
+     public static List<Summary> summarize(List<Statement> taken) {
+-        Map<Long, Summary> byPerson = new LinkedHashMap<>();
+-        for (Statement s : taken) {
+-            Summary before = byPerson.get(s.getPersonId());
+-            byPerson.put(s.getPersonId(),
+-                    new Summary(s.getPersonId(), before == null ? 1 : before.count() + 1, s.getDueTotal(), s.getTakenOn()));
+-        }
+-        return List.copyOf(byPerson.values());
++        Map<Long, List<Statement>> byPerson = new LinkedHashMap<>();
++        taken.forEach(s -> byPerson.computeIfAbsent(s.getPersonId(), id -> new ArrayList<>()).add(s));
++        return byPerson.values().stream().map(StatementService::summaryOf).toList();
++    }
++
++    /** The summary of a person's statements (at least one, in the order taken): their lines are by date, those of
++     *  the same date in the order taken, so the statements a merge or a transfer brings over show among their own. */
++    private static Summary summaryOf(List<Statement> theirs) {
++        Statement last = theirs.get(theirs.size() - 1);
++        List<Line> lines = theirs.stream().sorted(Comparator.comparing(Statement::getTakenOn))
++                .map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
++        return new Summary(last.getPersonId(), theirs.size(), last.getDueTotal(), last.getTakenOn(), lines);
+     }
+ 
+     /**
+@@ -159,8 +170,7 @@ public class StatementService {
+         audit.recordChangeOnCommit(sheetId, user, "STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                 + " due-total=" + stated.dueTotal() + " claims=" + stated.counted() + (asOf == null ? "" : " asof=" + asOf));
+         rollup.recordChanges(sheetId, user, before);
+-        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+-        return new Taken(new Summary(personId, taken.size(), stated.dueTotal(), takenOn), theirs);
++        return new Taken(summaryOf(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)), theirs);
+     }
+ 
+     /** What a statement came to: the due-total it records and how many claims it bound. */
+@@ -234,9 +244,7 @@ public class StatementService {
+                 + person.getName() + " due-total=" + last.getDueTotal());
+         rollup.recordChanges(sheetId, user, before);
+         List<Statement> left = taken.subList(0, taken.size() - 1);
+-        Statement previous = left.isEmpty() ? null : left.get(left.size() - 1);
+-        return new Taken(new Summary(personId, left.size(), previous == null ? null : previous.getDueTotal(),
+-                previous == null ? null : previous.getTakenOn()), theirs);
++        return new Taken(left.isEmpty() ? new Summary(personId, 0, null, null, List.of()) : summaryOf(left), theirs);
+     }
+ 
+     /** The line of rates as it stood at the end of a date: the sheet's own then, then each of its ancestors' as

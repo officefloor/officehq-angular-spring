@@ -1,0 +1,64 @@
+{
+  "checkpoint": 163,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp163_statement-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a4a122f68e66124493012a369635879c0f3fd381",
+  "reset_sha": "",
+  "preagent_sha": "16073bbe9876f69c5a226fe49e78d171b0bd16a0",
+  "prev_sha": "16073bbe9876f69c5a226fe49e78d171b0bd16a0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1080164000000003,
+    "input_tokens": 48,
+    "output_tokens": 11942,
+    "cache_read_tokens": 1288202,
+    "cache_creation_tokens": 76418,
+    "num_turns": 24,
+    "duration_ms": 426230,
+    "duration_api_ms": 194377,
+    "model": "claude-opus-5-5",
+    "session_id": "7760c472-0696-4fc2-9153-0c45a777ea30",
+    "stop_reason": "success",
+    "result_text": "Statement lines now show on each person. Three of the four e2e tests pass. The fourth, scenario 2, fails at a check on a claim's due, not on statements. I think the cause is the machine's date rather than this change, but I haven't proven it.\n\n**What I changed**\n- **Server** (`statement/StatementService.java`, `StatementController.java`): a person's statement summary now carries a `lines` list, one entry per statement still standing, each with its date and due-total. Lines are sorted by date; statements on the same date keep the order they were taken. A cancelled statement is deleted from the store, so its line goes. A merge or transfer already moves statements to the receiving person, so those now fall in among that person's own by date. Taking or cancelling a statement returns the updated lines, so the row updates without reloading.\n- **Front end** (`core/statements.ts`, `features/people/people.ts`): each person row lists `<date> <due-total>` items under `data-testid=\"person-statement-line-line\"`, oldest first. The due-total uses the same `figure` formatting as the existing last-stated total. Saved as-of views written before this change have no `lines` and show no lines.\n- No database change was needed: the statement table already stores the date and due-total.\n\n**Test results**\n- Passing: \"statement lines\", scenario 1 and scenario 3. These cover taking a statement, taking one as of a date, cancelling, and statements brought over by a merge or transfer.\n- Failing: scenario 2, at `acceptance.spec.ts:800`. In the view of the sheet as of 2026-03-20, a claim's due shows `n/a` where the test expects `1.29`.\n\n**Why scenario 2 fails**\nThat `1.29` comes from a grade C rate the test sets on a parent sheet. The parent sheet is never given a \"today\", so it starts on the real date (`LocalDate.now()` in `SheetService.load`), which is 2026-11-01 here. Its rates and its saved history are therefore dated 2026-11-01. A view as of 2026-03-20 finds nothing for the parent and falls back to `n/a`. The expected figure only works if the run happens on or before about 2026-03-01, so the test looks like it was written assuming an earlier date.\n\nI couldn't confirm this by running at an earlier date: `faketime` isn't installed and I'm not allowed to change `bin/*`. The test fails before it reaches its later statement-line checks. Those checks all expect empty lists, which is the same thing the passing checks just before line 800 show.\n\nTo settle it, run `bin/e2e` with the system clock set before 2026-03-01. If scenario 2 still fails then, the cause is something else.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1080164000000003,
+        "num_turns": 24,
+        "duration_ms": 426230,
+        "duration_api_ms": 194377,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp163.agent.jsonl",
+  "agent_diff_file": "cp163.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
