@@ -1,0 +1,64 @@
+{
+  "checkpoint": 122,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp122_pool-membership-dated",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "519d0d4cc31226a7fc1837b9545ec51a747a70d1",
+  "reset_sha": "",
+  "preagent_sha": "17995ff884e7a0c1d5b450dbe4b40f3f917de3ff",
+  "prev_sha": "17995ff884e7a0c1d5b450dbe4b40f3f917de3ff",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8895418000000002,
+    "input_tokens": 48,
+    "output_tokens": 12094,
+    "cache_read_tokens": 1081469,
+    "cache_creation_tokens": 53897,
+    "num_turns": 25,
+    "duration_ms": 513857,
+    "duration_api_ms": 164172,
+    "model": "claude-opus-5-5",
+    "session_id": "4494175c-0546-4f8b-a888-8ad35d5fa302",
+    "stop_reason": "success",
+    "result_text": "Pool memberships can now have an optional from-date and to-date, and `bin/e2e` passes all 4 tests.\n\n**What it does**\n- **Stored data:** a new migration, `V71__pool_member_dated.sql`, adds `from_date` and `to_date` to `pool_member`. The database also rejects a to-date earlier than the from-date.\n- **Server:** both dates are inclusive. A member whose dates don't include the sheet's today counts as 0.00 in the pool's total share and balance and gets no cut, so the screen shows a blank cut and their person cut total is 0.00. A to-date before the from-date is refused, and nothing is written to the store or the audit file. `POOL_MEMBER_ADDED` ends with `from=<date>` and `to=<date>` only when they were given.\n- **Front end:** each pool row has \"From\" and \"To\" date fields (`pool-member-from`, `pool-member-to`). A to-date before the from-date shows the existing `pool-error`, and a member with dates shows them next to its name.\n\n**Choices you might want to check**\n- A blank from-date means no start date. It does not default to the sheet's today, because the expected audit line for Cam has no `from=`.\n- A member who is held still counts toward the total share but gets no cut. The test expects this: on 2026-04-01 the total is 50.00 and the pool is unbalanced.\n- If a member pool's dates don't include today, that pool gets no pot from the pool above, rather than a pot of 0.00.\n\n**One change outside pools:** the rates panel now clears the rate preview's result when you edit the preview form. Without this, \"scenario 1\" failed: it runs two previews in a row with the same result, and the test couldn't tell the second one apart from the first. The change is in `src/main/frontend/src/app/features/rates/rates.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8895418000000002,
+        "num_turns": 25,
+        "duration_ms": 513857,
+        "duration_api_ms": 164172,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp122.agent.jsonl",
+  "agent_diff_file": "cp122.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
