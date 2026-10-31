@@ -4,7 +4,8 @@ import { Observable, tap } from 'rxjs';
 import { Grade } from './people';
 
 /** A dated setting's value from its from-date (yyyy-mm-dd; null: from the beginning of time) until the next one's
- *  of the same key; a null value means none. Keys: clerk-limit, floor, terms, terms-A/B/C, late-pct, grace-A/B/C, cap, proof-threshold, note-threshold. */
+ *  of the same key; a null value means none. Keys: clerk-limit, floor, terms, terms-A/B/C, late-pct, grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C,
+ *  note-threshold. */
 export interface DatedSetting {
   key: string;
   from: string | null;
@@ -40,6 +41,9 @@ export interface SheetView {
   /** A claim whose due is above this (two decimals), in force on its date, cannot be settled or approved while it
    *  has no proofs; null: none. */
   proofThreshold: string | null;
+  /** The proof threshold (two decimals) set per grade, in force on the sheet's today; a grade without its own uses
+   *  the sheet's. */
+  gradeProofThreshold: Partial<Record<Grade, string>>;
   /** A claim whose due is above this (two decimals), in force on its date, cannot be opened while its note is
    *  empty; null: none. */
   noteThreshold: string | null;
@@ -205,6 +209,13 @@ export class Sheets {
   setLatePct(id: string, latePct: string, from: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/late-pct`, { latePct, from })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Record a grade's own proof threshold from a date (null: the sheet's today); null means the sheet's. */
+  setGradeProofThreshold(id: string, grade: Grade, proofThreshold: string | null, from: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/proof-threshold/${grade}`, { proofThreshold, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 

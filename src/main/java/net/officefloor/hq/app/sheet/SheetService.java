@@ -209,6 +209,13 @@ public class SheetService {
         return record(id, user, Sheet.PROOF_THRESHOLD, from, threshold == null ? null : scaled(threshold), false);
     }
 
+    /** Record a grade's own proof threshold (null: the sheet's) from a date (null: the sheet's today), starting the
+     *  sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setGradeProofThreshold(String id, String user, String grade, BigDecimal threshold, LocalDate from) {
+        return record(id, user, Sheet.PROOF_THRESHOLD + "-" + grade, from, threshold == null ? null : scaled(threshold), false);
+    }
+
     /** Record the sheet's note threshold (null: none) from a date (null: the sheet's today), starting the sheet if
      *  it has never been loaded. */
     @Transactional

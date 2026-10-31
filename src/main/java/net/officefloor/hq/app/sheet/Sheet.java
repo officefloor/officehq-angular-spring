@@ -66,7 +66,7 @@ public class Sheet {
     private int lastClaimNumber;
 
     /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
-     *  grace-A/B/C, cap, proof-threshold, note-threshold): each in force from its from-date until the next one's of the same key. */
+     *  grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C, note-threshold): each in force from its from-date until the next one's of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
@@ -317,6 +317,25 @@ public class Sheet {
      *  or approved while it has no proofs; null means none. */
     public BigDecimal proofThresholdOn(LocalDate date) {
         return amountOn(PROOF_THRESHOLD, date, null);
+    }
+
+    /** The proof thresholds set per grade in force on the sheet's today, by grade; a grade without its own is missing. */
+    public Map<String, String> getGradeProofThresholds() {
+        Map<String, String> byGrade = new TreeMap<>();
+        for (String grade : GRADES) {
+            BigDecimal value = amountOn(PROOF_THRESHOLD + "-" + grade, today, null);
+            if (value != null) {
+                byGrade.put(grade, value.toPlainString());
+            }
+        }
+        return byGrade;
+    }
+
+    /** The proof threshold for a grade in force on a day: its own then when one is set, else the sheet's then;
+     *  null means none. */
+    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
+        BigDecimal own = amountOn(PROOF_THRESHOLD + "-" + grade, date, null);
+        return own != null ? own : proofThresholdOn(date);
     }
 
     /** The proof threshold in force on the sheet's today; null means none. */
