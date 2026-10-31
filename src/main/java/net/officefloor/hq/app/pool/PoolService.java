@@ -9,7 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.history.SheetState;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -113,9 +116,11 @@ public class PoolService {
     private final SheetService sheets;
     private final SheetRepository sheetStore;
     private final Audit audit;
+    private final SheetHistory history;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            SheetService sheets, SheetRepository sheetStore, Audit audit) {
+            SheetService sheets, SheetRepository sheetStore, Audit audit, SheetHistory history) {
+        this.history = history;
         this.pools = pools;
         this.members = members;
         this.people = people;
@@ -131,14 +136,19 @@ public class PoolService {
     }
 
     /** The sheet's pools as {@link #list(String)}, with {@code on} (null: the sheet's today) standing in for the
-     *  sheet's today, as a sheet shown as of a date reads them. */
+     *  sheet's today, as a sheet shown as of a date reads them: then the pot and the people (retired or held) are as
+     *  they stood at the end of that date (see {@link SheetHistory}), a person not on the sheet by then is no member,
+     *  and the pools and their memberships are as they are now. */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId, LocalDate on) {
         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
-        BigDecimal sheetPot = sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
+        Optional<SheetState> then = on == null ? Optional.empty() : history.asOf(sheetId, on);
+        BigDecimal sheetPot = on != null ? then.map(SheetState::pot).orElse(null)
+                : sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
         LocalDate today = on != null ? on : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
-        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
-                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        List<Person> sheetPeople = on != null ? then.map(s -> s.rebuildPeople(sheetId)).orElse(List.of())
+                : people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, Pool> poolsById = list.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())
                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));

@@ -276,9 +276,11 @@ public class Person {
         return at != null && at.counts() && (claim.isStated() || !heldOn(claim, today));
     }
 
-    /** Whether a claim of this person counts when no statement binds it, as a new statement finds it. */
+    /** Whether a claim of this person counts as a new statement finds it: as when no statement binds it, except that
+     *  an open claim a statement binds still counts once {@code today} reaches the retirement date. */
     public boolean countsUnbound(Claim claim, LocalDate today) {
-        return claim.getStatus().counts() && !heldOn(claim, today);
+        return claim.getStatus().counts() && !(claim.getStatus().isOpen()
+                && ((!claim.isStated() && retiredOn(today)) || holds.stream().anyMatch(h -> h.covers(claim.getDate()))));
     }
 
     /** Whether the claim is open and dated within one of the person's holds, or open once {@code today} reaches
