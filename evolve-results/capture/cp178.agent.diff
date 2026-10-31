@@ -1,0 +1,285 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+new file mode 100644
+index 000000000..46a187272
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -0,0 +1,40 @@
++import { Component, computed, inject, input } from '@angular/core';
++import { Delegations } from '../../core/delegations';
++import { Roles } from '../../core/roles';
++import { Session } from '../../core/session';
++import { Sheets } from '../../core/sheet';
++
++// The steward's dashboard: how many claims are PENDING, how many are in REVIEW and how many that count are
++// overdue, over the sheet. The cells stay empty for a user who is not a steward; under an as-of date the roles and
++// delegations are those the sheet held then, so the role is the one the user had then.
++@Component({
++  selector: 'app-dashboard',
++  template: `
++    <section aria-labelledby="dash-heading">
++      <h2 id="dash-heading">Steward's dashboard</h2>
++      <p>Pending: <strong data-testid="dash-pending-count">{{ steward() ? pending() : '' }}</strong>,
++        in review: <strong data-testid="dash-review-count">{{ steward() ? review() : '' }}</strong>,
++        overdue: <strong data-testid="dash-overdue-count">{{ steward() ? overdue() : '' }}</strong></p>
++    </section>
++  `,
++})
++export class Dashboard {
++  readonly pending = input.required<number>();
++  readonly review = input.required<number>();
++  readonly overdue = input.required<number>();
++
++  private readonly session = inject(Session);
++  private readonly sheets = inject(Sheets);
++  private readonly roles = inject(Roles);
++  private readonly delegations = inject(Delegations);
++
++  /** Whether the signed-in user acts as a steward on the sheet's today: by a delegation holding it, else by the
++   *  role assigned to them. */
++  protected readonly steward = computed(() => {
++    const user = this.session.user();
++    const today = this.sheets.current()?.today;
++    if (!user || !today) return false;
++    if (this.delegations.all().some((d) => d.user === user && d.from <= today && today <= d.to)) return true;
++    return this.roles.all().some((r) => r.user === user && r.role === 'steward');
++  });
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b32671da0..461fd75ca 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -27,6 +27,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSum
+ import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { FigurePipe } from '../../core/figure';
++import { Dashboard } from '../dashboard/dashboard';
+ 
+ const NO_CLAIMS: ClaimView[] = [];
+ const NO_SNAPSHOTS: SnapshotView[] = [];
+@@ -92,12 +93,14 @@ function csvField(value: string): string {
+ // each person's claims and due-total, and the sheet's claimed-total and due-total.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate],
++  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate, Dashboard],
+   template: `
+     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
+                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
+                 [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
+                 [myCrewDueTotal]="myCrewDueTotal()" />
++    <app-dashboard [pending]="statusCount('PENDING')" [review]="statusCount('REVIEW')"
++                   [overdue]="overdueTotals().count" />
+     <app-periods [dueTotals]="dueByPeriod()" />
+     <app-pools [people]="people()" />
+     <app-crews [people]="people()" [dueByPerson]="dueByPerson()" />
+@@ -926,6 +929,10 @@ export class PeopleList {
+     const claims = this.claims();
+     return SUMMARY_STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
+   });
++  /** How many of the sheet's claims are in a status. */
++  protected statusCount(status: string): number {
++    return this.summaryByStatus().find((s) => s.status === status)?.count ?? 0;
++  }
+   /** How many of the sheet's claims are late for review on its today. */
+   protected readonly reviewLateCount = computed(() => {
+     const sheet = this.sheets.current();
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index 5e205446a..316d02a5e 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -129,8 +129,7 @@ public class SheetHistory {
+         SheetState.Views views = new SheetState.Views(
+                 sheetPeople.stream().map(p -> PersonView.of(p, sheet.getToday())).toList(),
+                 sheetClaims.stream().map(ClaimView::of).map(SheetHistory::unlocked).toList(),
+-                sheetRates.stream().sorted(Comparator.comparing(Rate::getGrade).thenComparing(Rate.BY_FROM))
+-                        .map(RateView::of).toList(),
++                viewsOf(sheetRates),
+                 periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList(),
+                 StatementService.summarize(statements.findBySheetIdOrderByIdAsc(sheetId)).stream()
+                         .map(SummaryView::of).toList(),
+@@ -139,7 +138,11 @@ public class SheetHistory {
+                 roles.findBySheetIdOrderByUserName(sheetId).stream().map(RoleView::of).toList(),
+                 delegations.findBySheetIdOrderByIdAsc(sheetId).stream().map(DelegationView::of).toList(),
+                 holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(HolidayView::of).toList());
+-        SheetState state = SheetState.of(sheet, sheetRates, sheetPeople, sheetClaims, views);
++        List<SheetState.AncestorState> ancestors = rates.ancestorsOf(sheetId).stream().map(ancestor -> {
++            List<Rate> ancestorRates = rates.ratesOf(ancestor);
++            return new SheetState.AncestorState(ancestor, SheetState.statesOf(ancestorRates), viewsOf(ancestorRates));
++        }).toList();
++        SheetState state = SheetState.of(sheet, sheetRates, sheetPeople, sheetClaims, views, ancestors);
+         snapshots.deleteBySheetIdAndAsOf(sheetId, sheet.getToday());
+         snapshots.saveAndFlush(new SheetSnapshot(sheetId, sheet.getToday(), json.writeValueAsString(state)));
+     }
+@@ -155,8 +158,39 @@ public class SheetHistory {
+      *  they stood then (none for one with no change made on it by then). */
+     @Transactional(readOnly = true)
+     public RateChain ratesAsOf(String sheetId, LocalDate date) {
+-        return new RateChain(Stream.concat(Stream.of(sheetId), rates.ancestorsOf(sheetId).stream())
+-                .map(id -> asOf(id, date).map(state -> state.rebuildRates(id)).orElse(List.<Rate>of())).toList());
++        Optional<SheetState> then = asOf(sheetId, date);
++        return ratesOf(sheetId, then.orElse(null), date);
++    }
++
++    /** The line of rates of the sheet as it stood then (none: no change made on it by then): its own, then each of
++     *  its ancestors' as they stood when that state was kept; for a state kept before ancestors were recorded, or
++     *  none, each ancestor's as it stood at the end of the date. */
++    @Transactional(readOnly = true)
++    public RateChain ratesOf(String sheetId, SheetState then, LocalDate date) {
++        List<Rate> own = then == null ? List.of() : then.rebuildRates(sheetId);
++        if (then != null && then.ancestors() != null) {
++            return new RateChain(Stream.concat(Stream.of(own),
++                    then.ancestors().stream().map(SheetState.AncestorState::rebuildRates)).toList());
++        }
++        return new RateChain(Stream.concat(Stream.of(own), rates.ancestorsOf(sheetId).stream()
++                .map(id -> asOf(id, date).map(state -> state.rebuildRates(id)).orElse(List.<Rate>of()))).toList());
++    }
++
++    /** The rates the sheet inherited at the end of a date, nearest ancestor first, as the screen reads them: each
++     *  ancestor's as it stood when the sheet's state for that date was kept (see {@link #ratesOf}). */
++    @Transactional(readOnly = true)
++    public List<List<RateView>> inheritedAsOf(String sheetId, LocalDate date) {
++        Optional<SheetState> then = asOf(sheetId, date);
++        if (then.isPresent() && then.get().ancestors() != null) {
++            return then.get().ancestors().stream().map(SheetState.AncestorState::views).toList();
++        }
++        return rates.ancestorsOf(sheetId).stream().map(ancestor -> viewsAsOf(ancestor, date).rates()).toList();
++    }
++
++    /** The rates as the screen reads them: by grade, in the order they take effect. */
++    private static List<RateView> viewsOf(List<Rate> sheetRates) {
++        return sheetRates.stream().sorted(Comparator.comparing(Rate::getGrade).thenComparing(Rate.BY_FROM))
++                .map(RateView::of).toList();
+     }
+ 
+     /** The claim as kept: no one's editor lock is part of what the sheet held. */
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+index de551e831..d74468c49 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetState.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -33,7 +33,17 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+         List<PersonState> people, List<ClaimState> claims, Map<String, String> permissions,
+         LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate,
+         Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth, BigDecimal alertThreshold,
+-        Integer escalateAfter, Integer reviewSla, String proofKinds) {
++        Integer escalateAfter, Integer reviewSla, String proofKinds, List<AncestorState> ancestors) {
++
++    /** An ancestor's rates as they stood when the sheet's state was kept, nearest ancestor first: what the sheet then
++     *  inherited (none recorded in a state kept before ancestors were). */
++    public record AncestorState(String sheetId, List<RateState> rates, List<RateView> views) {
++
++        /** The ancestor's rates as they stood then, unsaved. */
++        public List<Rate> rebuildRates() {
++            return SheetState.rebuildRates(sheetId, rates);
++        }
++    }
+ 
+     /** Each list the screen reads of the sheet, as it read it then; a person's grade there is the one in force on the
+      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
+@@ -121,13 +131,12 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+     }
+ 
+     /** What the sheet holds now. */
+-    public static SheetState of(Sheet sheet, List<Rate> rates, List<Person> people, List<Claim> claims, Views views) {
++    public static SheetState of(Sheet sheet, List<Rate> rates, List<Person> people, List<Claim> claims, Views views,
++            List<AncestorState> ancestors) {
+         return new SheetState(
+                 sheet.getSettings().stream().map(s -> new SettingState(s.getKey(), s.getFrom(), s.getValue())).toList(),
+                 sheet.getPolicyDate(),
+-                rates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getRate(),
+-                        r.getClaimsAfter(), r.getEarlier().stream().map(v -> new EarlierRateState(v.getVersion(),
+-                                v.getRate(), v.getToDate(), v.getClaimsAfter())).toList())).toList(),
++                statesOf(rates),
+                 people.stream().map(SheetState::stateOf).toList(),
+                 claims.stream().map(c -> new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(),
+                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
+@@ -136,7 +145,14 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
+                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
+                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),
+-                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds());
++                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors);
++    }
++
++    /** The rates as they stand now. */
++    public static List<RateState> statesOf(List<Rate> rates) {
++        return rates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getRate(),
++                r.getClaimsAfter(), r.getEarlier().stream().map(v -> new EarlierRateState(v.getVersion(),
++                        v.getRate(), v.getToDate(), v.getClaimsAfter())).toList())).toList();
+     }
+ 
+     /** The people as the screen read them then, each with the grade in force on {@code today}. */
+@@ -188,6 +204,10 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+ 
+     /** The rates as they stood then, unsaved. */
+     public List<Rate> rebuildRates(String sheetId) {
++        return rebuildRates(sheetId, rates);
++    }
++
++    private static List<Rate> rebuildRates(String sheetId, List<RateState> rates) {
+         return rates.stream().map(r -> {
+             Rate rate = new Rate(sheetId, r.grade(), r.from(), r.rate());
+             rate.setToDate(r.to());
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 89785d961..07654c535 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -102,9 +102,11 @@ public class RateController {
+     public List<List<RateView>> inherited(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        if (asOf != null) {
++            return history.inheritedAsOf(sheetId, asOf);
++        }
+         return rates.ancestorsOf(sheetId).stream()
+-                .map(ancestor -> asOf != null ? history.viewsAsOf(ancestor, asOf).rates()
+-                        : rates.list(ancestor).stream().map(RateView::of).toList())
++                .map(ancestor -> rates.list(ancestor).stream().map(RateView::of).toList())
+                 .toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 42d619e7e..439a3ef42 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -4,7 +4,6 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+-import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+@@ -22,7 +21,6 @@ import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.history.SheetState;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+-import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateChain;
+ import net.officefloor.hq.app.rate.RateChains;
+ import net.officefloor.hq.app.role.Role;
+@@ -91,12 +89,11 @@ public class StatementService {
+         return byPerson.values().stream().map(StatementService::summaryOf).toList();
+     }
+ 
+-    /** The summary of a person's statements (at least one, in the order taken): their lines are by date, those of
+-     *  the same date in the order taken, so the statements a merge or a transfer brings over show among their own. */
++    /** The summary of a person's statements (at least one, in the order taken): their lines are in the order taken,
++     *  so one taken as of an earlier date shows after those taken before it. */
+     private static Summary summaryOf(List<Statement> theirs) {
+         Statement last = theirs.get(theirs.size() - 1);
+-        List<Line> lines = theirs.stream().sorted(Comparator.comparing(Statement::getTakenOn))
+-                .map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
++        List<Line> lines = theirs.stream().map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
+         return new Summary(last.getPersonId(), theirs.size(), last.getDueTotal(), last.getTakenOn(), lines);
+     }
+ 
+@@ -252,8 +249,6 @@ public class StatementService {
+     /** The line of rates as it stood at the end of a date: the sheet's own then, then each of its ancestors' as
+      *  they stood then (none for one with no change made on it by then). */
+     private RateChain ratesAsOf(String sheetId, SheetState then, LocalDate asOf) {
+-        return new RateChain(Stream.concat(Stream.of(then.rebuildRates(sheetId)),
+-                rates.ancestorsOf(sheetId).stream().map(ancestor -> history.asOf(ancestor, asOf)
+-                        .map(state -> state.rebuildRates(ancestor)).orElse(List.<Rate>of()))).toList());
++        return history.ratesOf(sheetId, then, asOf);
+     }
+ }
