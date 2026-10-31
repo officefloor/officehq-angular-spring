@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +23,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * The figures of a sheet as the screen shows them: each person's claimed, due-total and overdue-total, and the
- * sheet's claimed-total, due-total and overdue-total. A change takes the figures before it and, once made, records
+ * sheet's claimed-total, due-total and overdue-total (the latter two trimmed of the single highest and lowest
+ * person's figure when three or more people have one). A change takes the figures before it and, once made, records
  * a ROLLUP line for each person whose figures moved and a TOTALS line when any of the sheet's totals moved.
  */
 @Service
@@ -62,8 +64,8 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<Long, PersonFigures> byPerson = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
-        BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
-        BigDecimal overdueTotal = BigDecimal.ZERO.setScale(2);
+        List<BigDecimal> dueFigures = new ArrayList<>();
+        List<BigDecimal> overdueFigures = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counting = sheetClaims.stream()
                     .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c)
@@ -85,7 +87,7 @@ public class Rollup {
             if (!dues.isEmpty() || anyRate) {
                 BigDecimal sum = dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
                 BigDecimal total = sheet == null ? sum : sheet.capped(sum);
-                dueTotal = dueTotal.add(total);
+                dueFigures.add(total);
                 due = total.toPlainString();
             }
             // As on screen: the dues of the claims that count which are open and due by a day before the sheet's today.
@@ -94,12 +96,23 @@ public class Rollup {
                     .map(c -> dueOf(c, ratesOf(sheetRates, person.gradeOn(c.getDate())), sheet, sheetClaims))
                     .filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-            overdueTotal = overdueTotal.add(overdue);
+            overdueFigures.add(overdue);
             byPerson.put(person.getId(),
                     new PersonFigures(person.getName(), claimed.toPlainString(), due, overdue.toPlainString()));
         }
-        return new Figures(byPerson, claimedTotal.toPlainString(), dueTotal.toPlainString(),
-                overdueTotal.toPlainString());
+        return new Figures(byPerson, claimedTotal.toPlainString(), trimmedSum(dueFigures).toPlainString(),
+                trimmedSum(overdueFigures).toPlainString());
+    }
+
+    /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+    static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        if (figures.size() < 3) {
+            return sum;
+        }
+        BigDecimal highest = figures.stream().max(BigDecimal::compareTo).orElseThrow();
+        BigDecimal lowest = figures.stream().min(BigDecimal::compareTo).orElseThrow();
+        return sum.subtract(highest).subtract(lowest);
     }
 
     /** Each person's due-total for the dates from {@code from} to {@code to} inclusive, by person id, as the screen

@@ -30,6 +30,12 @@ interface Overdue {
 const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
 
 /** A CSV field: wrapped in double quotes, with any quote inside doubled, when it holds a comma, a quote or a line break. */
+/** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+function trimmedSum(figures: number[]): number {
+  const sum = figures.reduce((total, f) => total + f, 0);
+  return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+}
+
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
 }
@@ -311,9 +317,9 @@ export class PeopleList {
     }
     return byPerson;
   });
-  /** Everyone's due-total added up, skipping those with none. */
+  /** Everyone's due-total added up, skipping those with none, trimmed of the highest and lowest. */
   protected readonly dueTotal = computed(() =>
-    money([...this.dueByPerson().values()].reduce<number>((sum, due) => sum + (due ?? 0), 0)),
+    money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
   );
   /** Each person's overdue claims that count: how many, and their dues added up in whole cents (none counting as 0). */
   private readonly overdueByPerson = computed(() => {
@@ -331,13 +337,14 @@ export class PeopleList {
     }
     return byPerson;
   });
-  /** Everyone's overdue claims added up. */
-  protected readonly overdueTotals = computed(() =>
-    [...this.overdueByPerson().values()].reduce<Overdue>(
-      (sum, o) => ({ count: sum.count + o.count, cents: sum.cents + o.cents }),
-      NO_OVERDUE,
-    ),
-  );
+  /** Everyone's overdue claims added up: the count of them all, the dues trimmed of the highest and lowest person's. */
+  protected readonly overdueTotals = computed(() => {
+    const overdue = [...this.overdueByPerson().values()];
+    return {
+      count: overdue.reduce((sum, o) => sum + o.count, 0),
+      cents: trimmedSum(overdue.map((o) => o.cents)),
+    };
+  });
   /** Each person's due-total for each period, in whole cents, by person id then period id: the dues as shown now
    *  of their claims whose date falls in it and that counted by the status they had at the end of its last day
    *  (none counting as 0); a closed period keeps the figures fixed when it was closed, 0 for a person added since. */
