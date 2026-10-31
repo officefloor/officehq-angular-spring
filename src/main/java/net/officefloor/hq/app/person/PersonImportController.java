@@ -25,8 +25,8 @@ public class PersonImportController {
     public record ImportForm(@NotNull @Size(max = 200_000) String text) {
     }
 
-    /** What an import did: how many people it added and the people, in the order added. */
-    public record ImportView(int added, List<PersonView> people) {
+    /** What an import did: how many people it added and updated, and those people, in line order. */
+    public record ImportView(int added, int updated, List<PersonView> people) {
     }
 
     private final PersonImportService imports;
@@ -42,10 +42,10 @@ public class PersonImportController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ImportForm request) {
-        List<Person> added = imports.importPeople(sheetId, user, request.text());
+        PersonImportService.Result result = imports.importPeople(sheetId, user, request.text());
         var today = people.today(sheetId);
         var used = people.usedInTree(sheetId);
-        List<PersonView> views = added.stream().map(p -> PersonView.of(p, today, PersonService.clashes(p, used))).toList();
-        return new ImportView(views.size(), views);
+        List<PersonView> views = result.people().stream().map(p -> PersonView.of(p, today, PersonService.clashes(p, used))).toList();
+        return new ImportView(result.added(), result.updated(), views);
     }
 }

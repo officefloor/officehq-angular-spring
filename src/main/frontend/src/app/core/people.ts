@@ -67,9 +67,10 @@ export interface BulkGradeView {
   people: PersonView[];
 }
 
-/** What an import did: how many people it added and the people, in the order added. */
+/** What an import did: how many people it added and updated, and those people, in line order. */
 export interface ImportView {
   added: number;
+  updated: number;
   people: PersonView[];
 }
 

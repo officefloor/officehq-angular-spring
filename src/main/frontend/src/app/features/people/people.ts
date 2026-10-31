@@ -164,6 +164,9 @@ function csvField(value: string): string {
         @if (importAdded() !== null) {
           Added <span data-testid="import-added">{{ importAdded() }}</span>
         }
+        @if (importUpdated() !== null) {
+          Updated <span data-testid="import-updated">{{ importUpdated() }}</span>
+        }
         @if (importError(); as err) {
           <p role="alert" data-testid="import-error">{{ err }}</p>
         }
@@ -710,6 +713,8 @@ export class PeopleList {
   protected readonly importing = signal(false);
   /** How many people the last import added; null while one runs or before any. */
   protected readonly importAdded = signal<number | null>(null);
+  /** How many people the last import updated; null while one runs or before any. */
+  protected readonly importUpdated = signal<number | null>(null);
 
   protected readonly importForm = new FormGroup({
     text: new FormControl('', { nonNullable: true }),
@@ -748,6 +753,7 @@ export class PeopleList {
           this.importForm.reset({ text: '' }, { emitEvent: false });
           this.importError.set(null);
           this.importAdded.set(null);
+          this.importUpdated.set(null);
           return sheet
             ? forkJoin({
                 people: this.api.list(sheet.id),
@@ -1292,11 +1298,12 @@ export class PeopleList {
     });
   }
 
-  /** Add a person per pasted line, as the person form would; when any line is refused, none is added. */
+  /** Add or update a person per pasted line, as the person form would; when any line is refused, none is imported. */
   protected importPeople(): void {
     if (this.importing()) return;
     this.importError.set(null);
     this.importAdded.set(null);
+    this.importUpdated.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
     const text = this.importForm.getRawValue().text;
@@ -1306,10 +1313,15 @@ export class PeopleList {
     }
     this.importing.set(true);
     this.api.importPeople(sheet.id, text).subscribe({
-      next: ({ added, people }) => {
+      next: ({ added, updated, people }) => {
         this.importing.set(false);
-        this.people.update((list) => [...list, ...people]);
+        this.people.update((list) => {
+          const byId = new Map(people.map((p) => [p.id, p]));
+          const kept = list.map((p) => byId.get(p.id) ?? p);
+          return [...kept, ...people.filter((p) => !list.some((q) => q.id === p.id))];
+        });
         this.importAdded.set(added);
+        this.importUpdated.set(updated);
       },
       error: (err: unknown) => {
         this.importing.set(false);

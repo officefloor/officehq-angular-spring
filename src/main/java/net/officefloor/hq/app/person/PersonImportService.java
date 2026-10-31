@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The import box: a person per pasted line, added as the person form adds them. */
+/** The import box: a person per pasted line, added or updated as the person form would. */
 @Service
 public class PersonImportService {
 
@@ -38,43 +38,66 @@ public class PersonImportService {
     private record Line(String name, String grade, Integer terms, String contact) {
     }
 
+    /** A checked line: the person on the sheet it updates, or null when it adds one. */
+    private record Step(Line line, Person match) {
+    }
+
+    /** What an import did: the people it added and those it updated, and all of them in line order. */
+    public record Result(int added, int updated, List<Person> people) {
+    }
+
     /**
-     * Add a person per line of {@code text} (name,grade,terms,contact; the terms and contact may be absent or blank),
-     * in order, each as the person form adds them. Every line is checked first by the person form's rules, and a
-     * name (ignoring case) or contact repeated within the paste is refused too: when any line is refused, nothing is
-     * added and nothing is recorded. Blank lines are skipped; a paste with no lines is refused.
+     * Take a person per line of {@code text} (name,grade,terms,contact; the terms and contact may be absent or blank),
+     * in order. A line whose name is a person's name or alias on the sheet (ignoring case) updates that person as the
+     * person form would: their grade recorded from the sheet's today, and their terms and contact set when the line
+     * gives them. Any other line adds a person as the person form adds them. Every line is checked first by the
+     * person form's rules, and a name (ignoring case), person or contact repeated within the paste is refused too:
+     * when any line is refused, nothing is imported and nothing is recorded. Blank lines are skipped; a paste with no
+     * lines is refused.
      */
     @Transactional
-    public List<Person> importPeople(String sheetId, String user, String text) {
+    public Result importPeople(String sheetId, String user, String text) {
         Set<String> used = people.usedInTree(sheetId);
         Set<String> names = new HashSet<>();
+        Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
-        List<Line> lines = new ArrayList<>();
+        List<Step> steps = new ArrayList<>();
         for (String raw : text.split("\\r?\\n")) {
             if (raw.isBlank()) {
                 continue;
             }
             Line line = read(raw);
             String lowerName = line.name().toLowerCase(Locale.ROOT);
-            if (!names.add(lowerName) || used.contains(lowerName)
-                    || store.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, line.name()).isPresent()) {
+            Person match = store.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, line.name()).orElse(null);
+            if (!names.add(lowerName) || used.contains(lowerName) || (match != null && !matched.add(match.getId()))) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "The name " + line.name() + " is already in use");
             }
-            if (line.contact() != null && (!contacts.add(line.contact())
-                    || store.existsBySheetIdAndContact(sheetId, line.contact()))) {
+            if (line.contact() != null && (!contacts.add(line.contact()) || (match != null
+                    ? store.existsBySheetIdAndContactAndIdNot(sheetId, line.contact(), match.getId())
+                    : store.existsBySheetIdAndContact(sheetId, line.contact())))) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "The contact " + line.contact() + " is already in use");
             }
-            lines.add(line);
+            steps.add(new Step(line, match));
         }
-        if (lines.isEmpty()) {
+        if (steps.isEmpty()) {
             throw refused("Paste at least one line");
         }
-        List<Person> added = new ArrayList<>();
-        for (Line line : lines) {
-            added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+        List<Person> done = new ArrayList<>();
+        int added = 0;
+        for (Step step : steps) {
+            Line line = step.line();
+            Person match = step.match();
+            if (match == null) {
+                done.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+                added++;
+            } else {
+                done.add(people.update(sheetId, user, match.getId(), match.getVersion(), match.getName(), line.grade(),
+                        null, line.terms() != null ? line.terms() : match.getTerms(),
+                        line.contact() != null ? line.contact() : match.getContact()));
+            }
         }
-        return added;
+        return new Result(added, done.size() - added, done);
     }
 
     private static Line read(String raw) {
