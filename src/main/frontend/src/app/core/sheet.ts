@@ -3,6 +3,15 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { Grade } from './people';
 
+/** A dated setting's value from its from-date (yyyy-mm-dd; null: from the beginning of time) until the next one's
+ *  of the same key; a null value means none. Keys: clerk-limit, floor, terms, terms-A/B/C, late-pct, cap. */
+export interface DatedSetting {
+  key: string;
+  from: string | null;
+  value: string | null;
+}
+
+/** The sheet as the screen shows it: each dated setting as it is in force on its today. */
 export interface SheetView {
   id: string;
   /** The sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it, never the clock. */
@@ -26,6 +35,19 @@ export interface SheetView {
   gradeTerms: Partial<Record<Grade, number>>;
   /** A person's due-total is at most this (two decimals); null: none. */
   cap: string | null;
+  /** Every dated value recorded for the settings that carry a figure. */
+  settings: DatedSetting[];
+}
+
+/** A setting's value in force on a date (yyyy-mm-dd): the one recorded with the latest from-date on or before it;
+ *  `start` (the sheet's starting value) before every from-date, or when it is none. */
+export function settingOn(settings: readonly DatedSetting[], key: string, date: string, start: string): string {
+  let inForce: DatedSetting | undefined;
+  for (const s of settings) {
+    if (s.key === key && (s.from === null || s.from <= date) && (inForce === undefined || inForce.from === null
+        || (s.from !== null && s.from > inForce.from))) inForce = s;
+  }
+  return inForce?.value ?? start;
 }
 
 /** The terms a sheet has until they are changed. */
@@ -60,31 +82,31 @@ export class Sheets {
       .pipe(tap((s) => this.active.set(s)));
   }
 
-  /** Change the active sheet's settings; a null clerk limit means no limit. */
-  setSettings(id: string, clerkLimit: string | null): Observable<SheetView> {
+  /** Record the active sheet's clerk limit from a date (null: its today); a null clerk limit means no limit. */
+  setSettings(id: string, clerkLimit: string | null, from: string | null): Observable<SheetView> {
     return this.http
-      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit })
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 
-  /** Change the active sheet's floor. */
-  setFloor(id: string, floor: string): Observable<SheetView> {
+  /** Record the active sheet's floor from a date (null: its today). */
+  setFloor(id: string, floor: string, from: string | null): Observable<SheetView> {
     return this.http
-      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/floor`, { floor })
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/floor`, { floor, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 
-  /** Change the active sheet's terms (days). */
-  setTerms(id: string, terms: number): Observable<SheetView> {
+  /** Record the active sheet's terms (days) from a date (null: its today). */
+  setTerms(id: string, terms: number, from: string | null): Observable<SheetView> {
     return this.http
-      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms`, { terms })
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms`, { terms, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 
-  /** Change a grade's own terms (days); null leaves the grade on the sheet's terms. */
-  setGradeTerms(id: string, grade: Grade, terms: number | null): Observable<SheetView> {
+  /** Record a grade's own terms (days) from a date (null: the sheet's today); null leaves the grade on the sheet's terms. */
+  setGradeTerms(id: string, grade: Grade, terms: number | null, from: string | null): Observable<SheetView> {
     return this.http
-      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms/${grade}`, { terms })
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms/${grade}`, { terms, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 
@@ -102,17 +124,17 @@ export class Sheets {
       .pipe(tap((s) => this.active.set(s)));
   }
 
-  /** Change the active sheet's late percent. */
-  setLatePct(id: string, latePct: string): Observable<SheetView> {
+  /** Record the active sheet's late percent from a date (null: its today). */
+  setLatePct(id: string, latePct: string, from: string | null): Observable<SheetView> {
     return this.http
-      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/late-pct`, { latePct })
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/late-pct`, { latePct, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 
-  /** Change the active sheet's cap; null means none. */
-  setCap(id: string, cap: string | null): Observable<SheetView> {
+  /** Record the active sheet's cap from a date (null: its today); null means none. */
+  setCap(id: string, cap: string | null, from: string | null): Observable<SheetView> {
     return this.http
-      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/cap`, { cap })
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/cap`, { cap, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 }

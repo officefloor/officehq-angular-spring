@@ -18,6 +18,12 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 /** A field of the settings form. */
 type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap';
 
+/** A setting that carries a figure: it is saved from a from-date. */
+type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom'>;
+
+/** The from-date field of each dated setting. */
+type FromField = `${DatedField}From`;
+
 /** The form field of each grade's own terms. */
 const GRADE_TERMS_FIELD: Record<Grade, 'termsA' | 'termsB' | 'termsC'> = { A: 'termsA', B: 'termsB', C: 'termsC' };
 
@@ -28,7 +34,7 @@ function isDate(value: string): boolean {
   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
 }
 
-// The sheet's settings: its clerk limit, its floor, its terms, each grade's own terms, its late percent, its policy date, its period numbering from, its cap, and the role assigned to each user name.
+// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, its late percent, its policy date, its period numbering from, its cap, and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -46,25 +52,42 @@ function isDate(value: string): boolean {
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ sheets.current()?.periodNumberingFrom ?? '' }}</span></p>
 
       <p>Cap: <span data-testid="setting-cap-current">{{ sheets.current()?.cap ?? '' }}</span></p>
+      <p>Each setting with a figure is saved from its from-date (blank: the sheet's today), keeping the values saved from
+        other dates; a claim takes the floor, late percent and terms in force on its date.</p>
 
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" (focus)="lastFocused = 'clerkLimit'"
                inputmode="decimal" autocomplete="off" />
+        <label for="setting-clerk-limit-from">Clerk limit from (yyyy-mm-dd; blank: today)</label>
+        <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" formControlName="clerkLimitFrom" (focus)="lastFocused = 'clerkLimit'"
+               placeholder="yyyy-mm-dd" autocomplete="off" />
         <label for="setting-floor">Floor (a claim's due is at least this)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" (focus)="lastFocused = 'floor'"
                inputmode="decimal" autocomplete="off" />
+        <label for="setting-floor-from">Floor from (yyyy-mm-dd; blank: today)</label>
+        <input id="setting-floor-from" data-testid="setting-floor-from" formControlName="floorFrom" (focus)="lastFocused = 'floor'"
+               placeholder="yyyy-mm-dd" autocomplete="off" />
         <label for="setting-terms">Terms (days a claim is due by after its date)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" (focus)="lastFocused = 'terms'"
                inputmode="numeric" autocomplete="off" />
+        <label for="setting-terms-from">Terms from (yyyy-mm-dd; blank: today)</label>
+        <input id="setting-terms-from" data-testid="setting-terms-from" formControlName="termsFrom" (focus)="lastFocused = 'terms'"
+               placeholder="yyyy-mm-dd" autocomplete="off" />
         @for (g of grades; track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (blank: the sheet's terms)</label>
           <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControlName]="gradeField[g]"
                  (focus)="lastFocused = gradeField[g]" inputmode="numeric" autocomplete="off" />
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from (yyyy-mm-dd; blank: today)</label>
+          <input [id]="'setting-terms-' + g + '-from'" [attr.data-testid]="'setting-terms-' + g + '-from'"
+                 [formControlName]="gradeField[g] + 'From'" (focus)="lastFocused = gradeField[g]" placeholder="yyyy-mm-dd" autocomplete="off" />
         }
         <label for="setting-late-pct">Late percent (added to an overdue claim's due for every full 30 days)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" (focus)="lastFocused = 'latePct'"
                inputmode="decimal" autocomplete="off" />
+        <label for="setting-late-pct-from">Late percent from (yyyy-mm-dd; blank: today)</label>
+        <input id="setting-late-pct-from" data-testid="setting-late-pct-from" formControlName="latePctFrom" (focus)="lastFocused = 'latePct'"
+               placeholder="yyyy-mm-dd" autocomplete="off" />
         <label for="setting-policy-date">Policy date (a claim dated before it rounds half up, on or after it half to even; blank: today)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" (focus)="lastFocused = 'policyDate'"
                placeholder="yyyy-mm-dd" autocomplete="off" />
@@ -74,6 +97,9 @@ function isDate(value: string): boolean {
         <label for="setting-cap">Cap (a person's due-total is at most this; blank: none)</label>
         <input id="setting-cap" data-testid="setting-cap" formControlName="cap" (focus)="lastFocused = 'cap'"
                inputmode="decimal" autocomplete="off" />
+        <label for="setting-cap-from">Cap from (yyyy-mm-dd; blank: today)</label>
+        <input id="setting-cap-from" data-testid="setting-cap-from" formControlName="capFrom" (focus)="lastFocused = 'cap'"
+               placeholder="yyyy-mm-dd" autocomplete="off" />
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -135,6 +161,14 @@ export class SettingsPanel {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
+    clerkLimitFrom: new FormControl('', { nonNullable: true }),
+    floorFrom: new FormControl('', { nonNullable: true }),
+    termsFrom: new FormControl('', { nonNullable: true }),
+    termsAFrom: new FormControl('', { nonNullable: true }),
+    termsBFrom: new FormControl('', { nonNullable: true }),
+    termsCFrom: new FormControl('', { nonNullable: true }),
+    latePctFrom: new FormControl('', { nonNullable: true }),
+    capFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -173,10 +207,14 @@ export class SettingsPanel {
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const capValue = cap.value.trim();
-    // Only the settings changed in the form are saved; with none changed, the field last focused (else the clerk
-    // limit) is saved as it is.
+    // Only the settings changed in the form (a value or its from-date) are saved; with none changed, the field last
+    // focused (else the clerk limit) is saved as it is.
     const unchanged = !this.settingsForm.dirty;
-    const isSaved = (field: SettingField) => this.settingsForm.controls[field].dirty || (unchanged && this.lastFocused === field);
+    const controls = this.settingsForm.controls;
+    const isSaved = (field: SettingField) => controls[field].dirty
+      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && controls[`${field}From`].dirty)
+      || (unchanged && this.lastFocused === field);
+    const fromOf = (field: DatedField): string | null => controls[`${field}From` as FromField].value.trim() || null;
     const saveFloor = isSaved('floor');
     const saveTerms = isSaved('terms');
     const saveLatePct = isSaved('latePct');
@@ -219,15 +257,24 @@ export class SettingsPanel {
       this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const datedFields: DatedField[] = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap'];
+    const badFrom = datedFields.find((f) => {
+      const from = fromOf(f);
+      return isSaved(f) && from !== null && !(DATE_PATTERN.test(from) && isDate(from));
+    });
+    if (badFrom !== undefined) {
+      this.settingsError.set('Type a from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+      return;
+    }
     const saves: Observable<SheetView>[] = [];
-    if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit));
-    if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue));
-    if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue)));
-    for (const t of gradeTermsSaved) saves.push(this.sheets.setGradeTerms(sheet.id, t.grade, t.value === '' ? null : Number(t.value)));
-    if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue));
+    if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit, fromOf('clerkLimit')));
+    if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue, fromOf('floor')));
+    if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue), fromOf('terms')));
+    for (const t of gradeTermsSaved) saves.push(this.sheets.setGradeTerms(sheet.id, t.grade, t.value === '' ? null : Number(t.value), fromOf(GRADE_TERMS_FIELD[t.grade])));
+    if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue, fromOf('latePct')));
     if (savePolicyDate) saves.push(this.sheets.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue));
     if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
-    if (saveCap) saves.push(this.sheets.setCap(sheet.id, capValue === '' ? null : capValue));
+    if (saveCap) saves.push(this.sheets.setCap(sheet.id, capValue === '' ? null : capValue, fromOf('cap')));
     this.savingSettings.set(true);
     concat(...saves).pipe(last()).subscribe({
       next: (saved) => {
@@ -241,9 +288,9 @@ export class SettingsPanel {
     });
   }
 
-  /** Show the sheet's settings in the form, as not yet changed. */
+  /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', cap: sheet?.cap ?? '' }, { emitEvent: false });
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', cap: sheet?.cap ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', latePctFrom: '', capFrom: '' }, { emitEvent: false });
   }
 
   protected saveRole(): void {

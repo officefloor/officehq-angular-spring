@@ -161,7 +161,7 @@ public class Rollup {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        BigDecimal floor = sheet == null ? null : sheet.getFloor();
+        BigDecimal floor = sheet == null ? null : sheet.floorOn(claim.getDate());
         RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN
                 : sheet.roundingFor(ClaimService.roundingDate(claim, sheetClaims));
         BigDecimal figure = claim.isBound() ? claim.getBoundDue()

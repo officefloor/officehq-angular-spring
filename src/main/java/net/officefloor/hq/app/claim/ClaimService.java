@@ -94,7 +94,7 @@ public class ClaimService {
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
         Rollup.Figures before = rollup.of(sheetId);
         LocalDate claimDate = date != null ? date : today;
-        LocalDate dueBy = claimDate.plusDays(sheet.termsFor(person.gradeOn(claimDate)));
+        LocalDate dueBy = claimDate.plusDays(sheet.termsFor(person.gradeOn(claimDate), claimDate));
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), claimDate, dueBy,
                 noteOf(note), corrects, claims.lastListed(sheetId) + 1));
         added.logStatus(user, today, shownDue(sheet, added, person));
@@ -336,7 +336,7 @@ public class ClaimService {
         String sheetId = sheet.getId();
         return Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
                 .map(Rate::getRate)
-                .map(rate -> liveFigure(claim, rate, sheet.getFloor(), sheet.roundingFor(roundingDate(claim,
+                .map(rate -> liveFigure(claim, rate, sheet.floorOn(claim.getDate()), sheet.roundingFor(roundingDate(claim,
                         claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, claim.getPersonId())))))
                 .orElse(null);
     }
@@ -432,7 +432,7 @@ public class ClaimService {
                 .map(Claim::getDate).findFirst().orElse(claim.getDate());
     }
 
-    /** The late charge an OPEN or PENDING claim has gained on its figure by the sheet's today: the sheet's late percent of
+    /** The late charge an OPEN or PENDING claim has gained on its figure by the sheet's today: the late percent in force on its date of
      *  the figure for every full 30 days past the day it is due by, rounded as the claim rounds; 0.00 when not overdue,
      *  it has no figure, or it is a correction. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
@@ -450,12 +450,12 @@ public class ClaimService {
             return none;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / 30;
-        return periods <= 0 ? none : dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)),
+        return periods <= 0 ? none : dueOn(figure, sheet.latePctOn(claim.getDate()).multiply(BigDecimal.valueOf(periods)),
                 sheet.roundingFor(claim.getDate()));
     }
 
-    /** A claim's live figure at a rate: its due on its amount, rounded as the claim rounds, raised to the sheet's
-     *  floor unless it is a correction. */
+    /** A claim's live figure at a rate: its due on its amount, rounded as the claim rounds, raised to the floor
+     *  (the one in force on its date) unless it is a correction. */
     public static BigDecimal liveFigure(Claim claim, BigDecimal rate, BigDecimal floor, RoundingMode rounding) {
         BigDecimal due = dueOn(claim.getAmount(), rate, rounding);
         return claim.isCorrection() ? due : floored(due, floor);

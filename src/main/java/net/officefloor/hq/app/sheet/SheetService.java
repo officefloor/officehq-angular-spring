@@ -54,70 +54,39 @@ public class SheetService {
         return saved;
     }
 
-    /** Set the sheet's clerk limit (null: no limit), starting the sheet if it has never been loaded. */
+    /** Record the sheet's clerk limit (null: no limit) from a date (null: the sheet's today), starting the sheet if
+     *  it has never been loaded. */
     @Transactional
-    public Sheet setClerkLimit(String id, String user, BigDecimal limit) {
-        load(id, user);
-        Sheet sheet = sheets.findLockedById(id).orElseThrow();
-        BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setClerkLimit(scaled);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
-                + " key=clerk-limit value=" + (scaled == null ? "" : scaled.toPlainString()));
-        return saved;
+    public Sheet setClerkLimit(String id, String user, BigDecimal limit, LocalDate from) {
+        return record(id, user, Sheet.CLERK_LIMIT, from, limit == null ? null : scaled(limit), false);
     }
 
-    /** Set the sheet's floor, starting the sheet if it has never been loaded. */
+    /** Record the sheet's floor from a date (null: the sheet's today), starting the sheet if it has never been
+     *  loaded. */
     @Transactional
-    public Sheet setFloor(String id, String user, BigDecimal floor) {
-        load(id, user);
-        Sheet sheet = sheets.findLockedById(id).orElseThrow();
-        Rollup.Figures before = rollup.of(id);
-        BigDecimal scaled = floor.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setFloor(scaled);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
-                + " key=floor value=" + scaled.toPlainString());
-        rollup.recordChanges(id, user, before);
-        return saved;
+    public Sheet setFloor(String id, String user, BigDecimal floor, LocalDate from) {
+        return record(id, user, Sheet.FLOOR, from, scaled(floor), true);
     }
 
-    /** Set the sheet's terms in days, starting the sheet if it has never been loaded. */
+    /** Record the sheet's terms in days from a date (null: the sheet's today), starting the sheet if it has never
+     *  been loaded. */
     @Transactional
-    public Sheet setTerms(String id, String user, int terms) {
-        load(id, user);
-        Sheet sheet = sheets.findLockedById(id).orElseThrow();
-        sheet.setTerms(terms);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
-        return saved;
+    public Sheet setTerms(String id, String user, int terms, LocalDate from) {
+        return record(id, user, Sheet.TERMS, from, String.valueOf(terms), false);
     }
 
-    /** Set a grade's own terms in days (null: the sheet's terms), starting the sheet if it has never been loaded. */
+    /** Record a grade's own terms in days (null: the sheet's terms) from a date (null: the sheet's today), starting
+     *  the sheet if it has never been loaded. */
     @Transactional
-    public Sheet setGradeTerms(String id, String user, String grade, Integer terms) {
-        load(id, user);
-        Sheet sheet = sheets.findLockedById(id).orElseThrow();
-        sheet.setGradeTerms(grade, terms);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms-" + grade
-                + " value=" + (terms == null ? "" : terms));
-        return saved;
+    public Sheet setGradeTerms(String id, String user, String grade, Integer terms, LocalDate from) {
+        return record(id, user, Sheet.TERMS + "-" + grade, from, terms == null ? null : String.valueOf(terms), false);
     }
 
-    /** Set the sheet's late percent, starting the sheet if it has never been loaded. */
+    /** Record the sheet's late percent from a date (null: the sheet's today), starting the sheet if it has never
+     *  been loaded. */
     @Transactional
-    public Sheet setLatePct(String id, String user, BigDecimal latePct) {
-        load(id, user);
-        Sheet sheet = sheets.findLockedById(id).orElseThrow();
-        Rollup.Figures before = rollup.of(id);
-        BigDecimal scaled = latePct.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setLatePct(scaled);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
-                + " key=late-pct value=" + scaled.toPlainString());
-        rollup.recordChanges(id, user, before);
-        return saved;
+    public Sheet setLatePct(String id, String user, BigDecimal latePct, LocalDate from) {
+        return record(id, user, Sheet.LATE_PCT, from, scaled(latePct), true);
     }
 
     /** Set the sheet's policy date (null: the sheet's today), starting the sheet if it has never been loaded. */
@@ -146,18 +115,31 @@ public class SheetService {
         return saved;
     }
 
-    /** Set the sheet's cap (null: none), starting the sheet if it has never been loaded. */
+    /** Record the sheet's cap (null: none) from a date (null: the sheet's today), starting the sheet if it has never
+     *  been loaded. */
     @Transactional
-    public Sheet setCap(String id, String user, BigDecimal cap) {
+    public Sheet setCap(String id, String user, BigDecimal cap, LocalDate from) {
+        return record(id, user, Sheet.CAP, from, cap == null ? null : scaled(cap), true);
+    }
+
+    /** Record a dated setting's value (null: none) from a date (null: the sheet's today), replacing the one it had
+     *  from that date; the audit line ends with the from-date when one was given. A setting a claim's due depends on
+     *  records how the figures moved. */
+    private Sheet record(String id, String user, String key, LocalDate from, String value, boolean movesFigures) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
-        Rollup.Figures before = rollup.of(id);
-        BigDecimal scaled = cap == null ? null : cap.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setCap(scaled);
+        Rollup.Figures before = movesFigures ? rollup.of(id) : null;
+        sheet.record(key, from != null ? from : sheet.getToday(), value);
         Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
-                + " key=cap value=" + (scaled == null ? "" : scaled.toPlainString()));
-        rollup.recordChanges(id, user, before);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key
+                + " value=" + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
+        if (movesFigures) {
+            rollup.recordChanges(id, user, before);
+        }
         return saved;
+    }
+
+    private static String scaled(BigDecimal amount) {
+        return amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
     }
 }

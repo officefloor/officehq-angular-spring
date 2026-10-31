@@ -7,19 +7,36 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 
 /** A sheet: the unit everything else in the app is kept under, chosen by its id. */
 @Entity
 @Table(name = "sheet")
 public class Sheet {
+
+    public static final String CLERK_LIMIT = "clerk-limit";
+    public static final String FLOOR = "floor";
+    public static final String TERMS = "terms";
+    public static final String LATE_PCT = "late-pct";
+    public static final String CAP = "cap";
+
+    /** The values a sheet starts with, in force before every from-date of their key. */
+    static final BigDecimal START_FLOOR = new BigDecimal("1.00");
+    static final int START_TERMS = 14;
+    static final BigDecimal START_LATE_PCT = new BigDecimal("0.00");
+
+    private static final List<String> GRADES = List.of("A", "B", "C");
 
     @Id
     private String id;
@@ -38,29 +55,11 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
-    /** A clerk can settle a claim only when its due is at or below this; null means no limit. */
-    @Column(name = "clerk_limit")
-    private BigDecimal clerkLimit;
-
-    /** A claim's live due is at least this (two decimals); fixed figures are left as they are. */
-    @Column(name = "floor", nullable = false, precision = 14, scale = 2)
-    private BigDecimal floor = new BigDecimal("1.00");
-
-    /** The sheet's terms in days: a claim is due by its date plus these. */
-    @Column(name = "terms", nullable = false)
-    private int terms = 14;
-
-    /** The terms in days set for a grade; a grade without its own uses the sheet's terms. */
+    /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
+     *  cap): each in force from its from-date until the next one's of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "sheet_grade_terms", joinColumns = @JoinColumn(name = "sheet_id"))
-    @MapKeyColumn(name = "grade")
-    @Column(name = "terms", nullable = false)
-    private Map<String, Integer> gradeTerms = new TreeMap<>();
-
-    /** The sheet's late percent (two decimals): an overdue claim's due gains this percent of its figure for every
-     *  full 30 days it is overdue. */
-    @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
-    private BigDecimal latePct = new BigDecimal("0.00");
+    @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
+    private List<DatedSetting> settings = new ArrayList<>();
 
     /** The sheet's policy date: a claim dated before it rounds half up, one on or after it half to even; null means
      *  the sheet's today. */
@@ -71,10 +70,6 @@ public class Sheet {
      *  its period; null means off. */
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
-
-    /** A person's due-total is at most this (two decimals); null means none. */
-    @Column(name = "cap", precision = 14, scale = 2)
-    private BigDecimal cap;
 
     protected Sheet() {
     }
@@ -106,55 +101,92 @@ public class Sheet {
         this.today = today;
     }
 
+    /** Every dated value recorded, by key and then from-date (none first). */
+    public List<DatedSetting> getSettings() {
+        return settings.stream()
+                .sorted(Comparator.comparing(DatedSetting::getKey)
+                        .thenComparing(DatedSetting::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .toList();
+    }
+
+    /** Record a setting's value from a date, replacing the one it had from that same date. */
+    public void record(String key, LocalDate from, String value) {
+        settings.removeIf(s -> s.getKey().equals(key) && Objects.equals(s.getFrom(), from));
+        settings.add(new DatedSetting(key, from, value));
+    }
+
+    /** The value of a setting recorded in force on a day: the one with the latest from-date on or before it;
+     *  empty when none is (before every from-date). */
+    private Optional<DatedSetting> recordOn(String key, LocalDate date) {
+        return settings.stream()
+                .filter(s -> s.getKey().equals(key) && s.startedBy(date))
+                .max(Comparator.comparing(DatedSetting::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())));
+    }
+
+    /** A setting's value in force on a day; null when none is recorded by then or it is none. */
+    private String valueOn(String key, LocalDate date) {
+        return recordOn(key, date).map(DatedSetting::getValue).orElse(null);
+    }
+
+    private BigDecimal amountOn(String key, LocalDate date, BigDecimal start) {
+        String value = valueOn(key, date);
+        return value == null ? start : new BigDecimal(value).setScale(2);
+    }
+
+    /** A clerk can settle a claim only when its due is at or below this, in force on the sheet's today; null means
+     *  no limit. */
     public BigDecimal getClerkLimit() {
-        return clerkLimit;
+        return amountOn(CLERK_LIMIT, today, null);
     }
 
-    public void setClerkLimit(BigDecimal clerkLimit) {
-        this.clerkLimit = clerkLimit;
+    /** A claim's live due is at least the floor in force on its date (two decimals). */
+    public BigDecimal floorOn(LocalDate date) {
+        return amountOn(FLOOR, date, START_FLOOR);
     }
 
+    /** The floor in force on the sheet's today. */
     public BigDecimal getFloor() {
-        return floor;
+        return floorOn(today);
     }
 
-    public void setFloor(BigDecimal floor) {
-        this.floor = floor;
+    /** The sheet's terms in days in force on a day: a claim dated then is due by its date plus these. */
+    public int termsOn(LocalDate date) {
+        String value = valueOn(TERMS, date);
+        return value == null ? START_TERMS : Integer.parseInt(value);
     }
 
+    /** The sheet's terms in force on its today. */
     public int getTerms() {
-        return terms;
+        return termsOn(today);
     }
 
-    public void setTerms(int terms) {
-        this.terms = terms;
-    }
-
-    /** The terms set per grade, by grade. */
+    /** The terms set per grade in force on the sheet's today, by grade; a grade without its own is missing. */
     public Map<String, Integer> getGradeTerms() {
-        return new TreeMap<>(gradeTerms);
-    }
-
-    /** Set a grade's own terms; null leaves the grade on the sheet's terms. */
-    public void setGradeTerms(String grade, Integer terms) {
-        if (terms == null) {
-            gradeTerms.remove(grade);
-        } else {
-            gradeTerms.put(grade, terms);
+        Map<String, Integer> byGrade = new TreeMap<>();
+        for (String grade : GRADES) {
+            String value = valueOn(TERMS + "-" + grade, today);
+            if (value != null) {
+                byGrade.put(grade, Integer.parseInt(value));
+            }
         }
+        return byGrade;
     }
 
-    /** The terms in days for a grade: its own, else the sheet's. */
-    public int termsFor(String grade) {
-        return gradeTerms.getOrDefault(grade, terms);
+    /** The terms in days for a grade in force on a day: its own then, else the sheet's then. */
+    public int termsFor(String grade, LocalDate date) {
+        String value = valueOn(TERMS + "-" + grade, date);
+        return value == null ? termsOn(date) : Integer.parseInt(value);
     }
 
+    /** The sheet's late percent in force on a day (two decimals): an overdue claim dated then gains this percent of
+     *  its figure for every full 30 days it is overdue. */
+    public BigDecimal latePctOn(LocalDate date) {
+        return amountOn(LATE_PCT, date, START_LATE_PCT);
+    }
+
+    /** The late percent in force on the sheet's today. */
     public BigDecimal getLatePct() {
-        return latePct;
-    }
-
-    public void setLatePct(BigDecimal latePct) {
-        this.latePct = latePct;
+        return latePctOn(today);
     }
 
     public LocalDate getPolicyDate() {
@@ -173,16 +205,14 @@ public class Sheet {
         this.periodNumberingFrom = periodNumberingFrom;
     }
 
+    /** A person's due-total is at most this (two decimals), in force on the sheet's today; null means none. */
     public BigDecimal getCap() {
-        return cap;
-    }
-
-    public void setCap(BigDecimal cap) {
-        this.cap = cap;
+        return amountOn(CAP, today, null);
     }
 
     /** A person's due-total as it counts: the sum of their figures, at most the cap when there is one. */
     public BigDecimal capped(BigDecimal sum) {
+        BigDecimal cap = getCap();
         return cap == null || sum.compareTo(cap) <= 0 ? sum : cap;
     }
 
