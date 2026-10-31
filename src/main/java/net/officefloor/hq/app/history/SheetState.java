@@ -180,6 +180,24 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         }).toList();
     }
 
+    /** The people as they stood then, unsaved, each with the id they had. */
+    public List<Person> rebuildPeople(String sheetId) {
+        return people.stream().map(p -> {
+            Person person = p.rebuild(sheetId);
+            person.rebuiltWithId(p.id());
+            return person;
+        }).toList();
+    }
+
+    /** The claims as they stood then, unsaved, each with the id it had, in the order the sheet listed them. */
+    public List<Claim> rebuildClaims(String sheetId) {
+        return claims.stream().map(c -> {
+            Claim claim = c.rebuild(sheetId);
+            claim.rebuiltWithId(c.id());
+            return claim;
+        }).toList();
+    }
+
     /** The person with this id as they stood then; empty when they were not on the sheet yet. */
     public Optional<PersonState> person(long id) {
         return people.stream().filter(p -> p.id() == id).findFirst();

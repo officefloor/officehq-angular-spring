@@ -755,10 +755,9 @@ export class PeopleList {
     money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
   );
   /** The sheet's own people count, due-total and overdue-total, as shown here, added to its descendants'; while
-   *  the sheet is shown as of a date, its own live figures, as the consolidated ones are not dated. */
+   *  the sheet is shown as of a date, its descendants' are as they stood then too. */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
-    if (this.sheets.asOf()) return d;
     return {
       peopleCount: this.people().length + d.peopleCount,
       dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
@@ -910,7 +909,8 @@ export class PeopleList {
   });
   /** Each person's carried figure for each period, by person id then period id: the due of their claims that
    *  count which belong to a period ending before this one starts and were still OPEN or PENDING at the end of
-   *  this period's last day, by the status log. */
+   *  this period's last day, by the status log; a closed or soft-closed period keeps the figure fixed when it was
+   *  closed. */
   private readonly carriedByPersonPeriod = computed(() => {
     const periods = this.periods.list();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
@@ -919,6 +919,10 @@ export class PeopleList {
     for (const p of this.people()) {
       const carried = new Map<number, number>();
       for (const pd of periods) {
+        if (pd.closed || pd.softClosed) {
+          carried.set(pd.id, cents(pd.closedPersonCarried?.[String(p.id)] ?? '0.00'));
+          continue;
+        }
         const counts = countsAtEndWithHolds(p.holds, today, pd.to, p.retiredFrom);
         let sum = 0;
         for (const c of this.claimsOf(p.id)) {
@@ -1043,7 +1047,7 @@ export class PeopleList {
                 patrons: this.patronsApi.list(sheet.id),
                 watched: this.watchesApi.list(sheet.id),
                 plans: this.plansApi.load(sheet.id),
-                descendants: this.consolidatedApi.descendants(sheet.id, this.sheets.asOf() !== null),
+                descendants: this.consolidatedApi.descendants(sheet.id),
               })
             : of({ people: [], claims: [], statements: [], snapshots: [], patrons: [], watched: [], plans: [], descendants: NO_DESCENDANTS });
         }),

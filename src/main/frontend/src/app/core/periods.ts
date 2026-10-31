@@ -22,6 +22,9 @@ export interface PeriodView {
   closedPersonTotals: Record<string, string>;
   /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
   cap: number | null;
+  /** Each person's carried figure for the period, by person id, fixed when it was closed or soft-closed; empty
+   *  while open (absent from what was kept before figures were fixed). A person missing has 0.00. */
+  closedPersonCarried?: Record<string, string> | null;
 }
 
 /** A period as the form submits it: a blank from-date takes the sheet's today. */

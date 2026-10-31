@@ -148,7 +148,8 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
         }
-        period.softClose(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()));
+        period.softClose(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()),
+                rollup.carriedByPerson(sheetId, period));
         Period closed = periods.saveAndFlush(period);
         audit.recordChangeOnCommit(sheetId, user, "PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period="
                 + closed.getName() + " total=" + closed.getClosedTotal().toPlainString());
@@ -170,7 +171,8 @@ public class PeriodService {
 
     /** Fix a period's due-total as it is now and record the close; the audit line ends with the suffix given. */
     private Period closeAndRecord(String sheetId, String user, Period period, String suffix) {
-        period.close(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()));
+        period.close(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()),
+                rollup.carriedByPerson(sheetId, period));
         Period closed = periods.saveAndFlush(period);
         BigDecimal total = closed.getClosedTotal();
         audit.recordChangeOnCommit(sheetId, user, "PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()

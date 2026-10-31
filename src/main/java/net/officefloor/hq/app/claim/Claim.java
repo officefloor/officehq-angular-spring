@@ -209,6 +209,12 @@ public class Claim {
         return id;
     }
 
+    /** Give an unsaved claim rebuilt from the sheet's history the id it had then, so its figures are worked out as
+     *  the live one's are; it is never saved. */
+    public void rebuiltWithId(long id) {
+        this.id = id;
+    }
+
     public String getSheetId() {
         return sheetId;
     }

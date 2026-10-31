@@ -15,6 +15,8 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
@@ -47,10 +49,12 @@ public class Rollup {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final RateChains rates;
+    private final PeriodRepository periods;
     private final Audit audit;
 
     public Rollup(SheetRepository sheets, PersonRepository people, ClaimRepository claims, RateChains rates,
-            Audit audit) {
+            PeriodRepository periods, Audit audit) {
+        this.periods = periods;
         this.sheets = sheets;
         this.people = people;
         this.claims = claims;
@@ -60,15 +64,19 @@ public class Rollup {
 
     /** The sheet's figures as the store holds them now. */
     public Figures of(String sheetId) {
-        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        return of(sheets.findById(sheetId).orElse(null), rates.of(sheetId),
+                people.findBySheetIdOrderByPositionAscIdAsc(sheetId), claims.findBySheetIdOrderByListedDescIdDesc(sheetId));
+    }
+
+    /** The figures of a sheet holding these rates, people (in list order) and claims (in list order), worked out on
+     *  its today: the live sheet's, or one rebuilt as it stood at a moment (none: no sheet). */
+    public Figures of(Sheet sheet, RateChain sheetRates, List<Person> sheetPeople, List<Claim> sheetClaims) {
         LocalDate today = sheet == null ? null : sheet.getToday();
-        RateChain sheetRates = rates.of(sheetId);
-        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<Long, PersonFigures> byPerson = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+        for (Person person : sheetPeople) {
             List<Claim> counting = sheetClaims.stream()
                     .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
                             && !c.isDeferredOn(today))
@@ -137,6 +145,45 @@ public class Rollup {
         for (Claim claim : sheetClaims) {
             Person person = personOf.get(claim.getPersonId());
             if (person == null || !person.countsAtEnd(claim, to, today) || claim.isDeferredOn(today) || claim.getDueBy().isBefore(from) || claim.getDueBy().isAfter(to)) {
+                continue;
+            }
+            BigDecimal due = dueOf(claim, person.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);
+            if (due != null) {
+                totals.merge(person.getId(), due, BigDecimal::add);
+            }
+        }
+        return totals;
+    }
+
+    /** Each person's carried figure for a period, by person id, as the screen shows it: the dues as shown now of
+     *  their claims that count (as for the period's figures) which are due by in a period of the sheet ending before
+     *  this one starts and were still OPEN or PENDING at the end of this period's last day, none counting as 0; every
+     *  person on the sheet has one. */
+    public Map<Long, BigDecimal> carriedByPerson(String sheetId, Period period) {
+        RateChain sheetRates = rates.of(sheetId);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        LocalDate end = period.getToDate();
+        List<Period> sheetPeriods = periods.findBySheetIdOrderByFromDateAsc(sheetId);
+        Map<Long, Person> personOf = new LinkedHashMap<>();
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> {
+            personOf.put(p.getId(), p);
+            totals.put(p.getId(), BigDecimal.ZERO.setScale(2));
+        });
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+        for (Claim claim : sheetClaims) {
+            Person person = personOf.get(claim.getPersonId());
+            if (person == null || !person.countsAtEnd(claim, end, today) || claim.isDeferredOn(today)) {
+                continue;
+            }
+            ClaimStatus status = claim.statusAt(end);
+            if (status != ClaimStatus.OPEN && status != ClaimStatus.PENDING) {
+                continue;
+            }
+            boolean earlier = sheetPeriods.stream().filter(p -> p.contains(claim.getDueBy())).findFirst()
+                    .map(own -> own.getToDate().isBefore(period.getFromDate())).orElse(false);
+            if (!earlier) {
                 continue;
             }
             BigDecimal due = dueOf(claim, person.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);

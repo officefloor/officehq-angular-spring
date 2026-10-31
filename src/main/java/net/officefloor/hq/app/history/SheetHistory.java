@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.Optional;
+import java.util.stream.Stream;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -19,6 +20,7 @@ import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateController.RateView;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rate.RateChains;
 import net.officefloor.hq.app.holiday.HolidayController.HolidayView;
 import net.officefloor.hq.app.holiday.HolidayRepository;
@@ -147,6 +149,14 @@ public class SheetHistory {
     public Optional<SheetState> asOf(String sheetId, LocalDate date) {
         return snapshots.findFirstBySheetIdAndAsOfLessThanEqualOrderByAsOfDescIdDesc(sheetId, date)
                 .map(s -> json.readValue(s.getState(), SheetState.class));
+    }
+
+    /** The line of rates as it stood at the end of a date: the sheet's own then, then each of its ancestors' as
+     *  they stood then (none for one with no change made on it by then). */
+    @Transactional(readOnly = true)
+    public RateChain ratesAsOf(String sheetId, LocalDate date) {
+        return new RateChain(Stream.concat(Stream.of(sheetId), rates.ancestorsOf(sheetId).stream())
+                .map(id -> asOf(id, date).map(state -> state.rebuildRates(id)).orElse(List.<Rate>of())).toList());
     }
 
     /** The claim as kept: no one's editor lock is part of what the sheet held. */
