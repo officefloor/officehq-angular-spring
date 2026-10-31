@@ -1,0 +1,830 @@
+diff --git a/src/main/frontend/src/app/core/delegations.ts b/src/main/frontend/src/app/core/delegations.ts
+new file mode 100644
+index 000000000..95ba9942e
+--- /dev/null
++++ b/src/main/frontend/src/app/core/delegations.ts
+@@ -0,0 +1,45 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { Observable, tap } from 'rxjs';
++
++/** A steward's delegation of the steward role to a user, from a from-date to a to-date, inclusive. */
++export interface DelegationView {
++  id: number;
++  user: string;
++  by: string;
++  from: string;
++  to: string;
++}
++
++/** A delegation as the form submits it; a blank date is the sheet's today. */
++export interface DelegationForm {
++  user: string;
++  from: string | null;
++  to: string | null;
++}
++
++// The steward role's delegations on the active sheet, in the order they were made.
++@Injectable({ providedIn: 'root' })
++export class Delegations {
++  private readonly http = inject(HttpClient);
++  private readonly list = signal<DelegationView[]>([]);
++  readonly all = this.list.asReadonly();
++
++  /** Re-read a sheet's delegations from the store; null clears them. */
++  load(sheetId: string | null): Observable<DelegationView[]> | null {
++    this.list.set([]);
++    if (sheetId === null) return null;
++    return this.http.get<DelegationView[]>(this.base(sheetId)).pipe(tap((list) => this.list.set(list)));
++  }
++
++  /** Delegate the steward role; refused unless the signed-in user is a steward and the range runs forward. */
++  delegate(sheetId: string, form: DelegationForm): Observable<DelegationView> {
++    return this.http
++      .post<DelegationView>(this.base(sheetId), form)
++      .pipe(tap((saved) => this.list.update((list) => [...list, saved])));
++  }
++
++  private base(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}/delegations`;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/delegations/delegations.ts b/src/main/frontend/src/app/features/delegations/delegations.ts
+new file mode 100644
+index 000000000..d7d64da47
+--- /dev/null
++++ b/src/main/frontend/src/app/features/delegations/delegations.ts
+@@ -0,0 +1,96 @@
++import { Component, inject, signal } from '@angular/core';
++import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { EMPTY, switchMap } from 'rxjs';
++import { Delegations } from '../../core/delegations';
++import { Sheets } from '../../core/sheet';
++
++/** A date the form accepts: yyyy-mm-dd. */
++const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
++
++// A steward delegates the steward role to a user for a from-date to a to-date, inclusive, by the sheet's today.
++@Component({
++  selector: 'app-delegations',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="delegations-heading">
++      <h3 id="delegations-heading">Delegations</h3>
++      <p>While the sheet's today is in its range, a delegated user acts as a steward.</p>
++      <ul aria-label="Delegations made">
++        @for (d of delegations.all(); track d.id) {
++          <li data-testid="delegate-line">{{ d.by }} to {{ d.user }}: {{ d.from }} to {{ d.to }}</li>
++        }
++      </ul>
++
++      <form [formGroup]="form" (ngSubmit)="delegate()" aria-label="Delegate the steward role">
++        <label for="delegate-user">User name</label>
++        <input id="delegate-user" data-testid="delegate-user" formControlName="user" autocomplete="off" />
++        <label for="delegate-from">From (blank: today)</label>
++        <input id="delegate-from" data-testid="delegate-from" formControlName="from" autocomplete="off" placeholder="yyyy-mm-dd" />
++        <label for="delegate-to">To (blank: today)</label>
++        <input id="delegate-to" data-testid="delegate-to" formControlName="to" autocomplete="off" placeholder="yyyy-mm-dd" />
++        <button type="submit" data-testid="delegate-submit" [disabled]="saving()">Delegate</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="delegate-error">{{ err }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class DelegationsPanel {
++  protected readonly delegations = inject(Delegations);
++  private readonly sheets = inject(Sheets);
++
++  protected readonly error = signal<string | null>(null);
++  protected readonly saving = signal(false);
++  protected readonly form = new FormGroup({
++    user: new FormControl('', { nonNullable: true }),
++    from: new FormControl('', { nonNullable: true }),
++    to: new FormControl('', { nonNullable: true }),
++  });
++
++  constructor() {
++    // Each (re)load of a sheet re-reads its delegations from the store.
++    toObservable(this.sheets.loaded)
++      .pipe(
++        switchMap((sheet) => {
++          this.error.set(null);
++          return this.delegations.load(sheet?.id ?? null) ?? EMPTY;
++        }),
++        takeUntilDestroyed(),
++      )
++      .subscribe({ error: () => this.error.set('Could not read the delegations.') });
++    // An error is removed as soon as its form is changed.
++    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
++  }
++
++  protected delegate(): void {
++    // A second submit before the first has answered is ignored, so it stores one delegation.
++    if (this.saving()) return;
++    this.error.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const user = this.form.controls.user.value.trim();
++    const from = this.form.controls.from.value.trim();
++    const to = this.form.controls.to.value.trim();
++    if (!user) {
++      this.error.set('Type the user name to delegate the steward role to.');
++      return;
++    }
++    if ((from && !DATE_PATTERN.test(from)) || (to && !DATE_PATTERN.test(to))) {
++      this.error.set('Type each date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
++      return;
++    }
++    this.saving.set(true);
++    this.delegations.delegate(sheet.id, { user, from: from || null, to: to || null }).subscribe({
++      next: () => {
++        this.saving.set(false);
++        this.form.reset({ user: '', from: '', to: '' }, { emitEvent: false });
++      },
++      error: () => {
++        this.saving.set(false);
++        this.error.set('Could not delegate: only a steward can, and the to-date must not be before the from-date.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index edd75784f..ce68dd389 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Session } from '../../core/session';
+ import { Sheets } from '../../core/sheet';
++import { DelegationsPanel } from '../delegations/delegations';
+ import { PeopleList } from '../people/people';
+ import { RatesPanel } from '../rates/rates';
+ import { SettingsPanel } from '../settings/settings';
+@@ -9,7 +10,7 @@ import { SettingsPanel } from '../settings/settings';
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel],
++  imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -38,6 +39,7 @@ import { SettingsPanel } from '../settings/settings';
+ 
+         <app-rates />
+         <app-settings />
++        <app-delegations />
+         <app-people />
+       } @else {
+         <p data-testid="sheet-none">Load a sheet to begin.</p>
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index ed8e905ad..7cc3b5757 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
++import net.officefloor.hq.app.role.Delegations;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.support.TransactionSynchronization;
+@@ -24,9 +25,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
+ public class Audit {
+ 
+     private final Path file;
++    private final Delegations delegations;
+ 
+-    public Audit(@Value("${app.audit.file:.run/audit.log}") String path) {
++    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, Delegations delegations) {
+         this.file = Path.of(path);
++        this.delegations = delegations;
+     }
+ 
+     /** Append one audit record. Tests assert the exact line(s) in the file. */
+@@ -60,6 +63,15 @@ public class Audit {
+         });
+     }
+ 
++    /**
++     * Append the record of a change the user made on the sheet once the current transaction commits, ending it with
++     * {@code for=<steward>} while the user acts as a steward by that steward's delegation. A record that only reports
++     * figures (a rollup, the totals, a notice) is appended with {@link #recordOnCommit} instead.
++     */
++    public void recordChangeOnCommit(String sheetId, String user, String entry) {
++        recordOnCommit(delegations.actingFor(sheetId, user).map(steward -> entry + " for=" + steward).orElse(entry));
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2b9abc86e..6c45298c5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -101,7 +101,7 @@ public class ClaimService {
+         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), claimDate, dueBy,
+                 noteOf(note), corrects, claims.lastListed(sheetId) + 1));
+         added.logStatus(user, today, shownDue(sheet, added, person));
+-        audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_ADDED", user, person, added, added.getNumber()));
+         rollup.recordChanges(sheetId, user, before);
+         return added;
+     }
+@@ -132,7 +132,7 @@ public class ClaimService {
+         claim.setNote(noteOf(note));
+         Claim edited = claims.saveAndFlush(claim);
+         Person person = people.findByIdAndSheetId(edited.getPersonId(), sheetId).orElseThrow();
+-        audit.recordOnCommit(entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
+         rollup.recordChanges(sheetId, user, before);
+         return edited;
+     }
+@@ -208,7 +208,7 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED) {
+             line += " due=" + dueText(changed);
+         }
+-        audit.recordOnCommit(line);
++        audit.recordChangeOnCommit(sheetId, user, line);
+         if (next == ClaimStatus.SETTLED) {
+             watches.notifyWatchers(sheetId, user, person, number);
+         }
+@@ -237,7 +237,7 @@ public class ClaimService {
+         Rollup.Figures before = rollup.of(sheetId);
+         claim.setDeferredUntil(until);
+         Claim deferred = claims.saveAndFlush(claim);
+-        audit.recordOnCommit(entry("CLAIM_DEFERRED", user, person, deferred, deferred.getNumber()) + " until=" + until);
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_DEFERRED", user, person, deferred, deferred.getNumber()) + " until=" + until);
+         rollup.recordChanges(sheetId, user, before);
+         return deferred;
+     }
+@@ -258,7 +258,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+         claim.addProof();
+         Claim proven = claims.saveAndFlush(claim);
+-        audit.recordOnCommit(entry("CLAIM_PROOF_ADDED", user, person, proven, proven.getNumber())
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_PROOF_ADDED", user, person, proven, proven.getNumber())
+                 + " proofs=" + proven.getProofs());
+         return proven;
+     }
+@@ -282,7 +282,7 @@ public class ClaimService {
+         claim.setSettledDue(due);
+         claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
+         Claim changed = claims.saveAndFlush(claim);
+-        audit.recordOnCommit(entry("CLAIM_APPROVED", user, person, changed, changed.getNumber())
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_APPROVED", user, person, changed, changed.getNumber())
+                 + " due=" + dueText(changed));
+         watches.notifyWatchers(sheetId, user, person, changed.getNumber());
+         rollup.recordChanges(sheetId, user, before);
+@@ -302,7 +302,7 @@ public class ClaimService {
+         claim.setStatus(ClaimStatus.OPEN);
+         claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
+         Claim changed = claims.saveAndFlush(claim);
+-        audit.recordOnCommit(entry("CLAIM_REJECTED", user, person, changed, changed.getNumber())
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REJECTED", user, person, changed, changed.getNumber())
+                 + " reason=" + reason.trim());
+         rollup.recordChanges(sheetId, user, before);
+         return changed;
+@@ -334,7 +334,7 @@ public class ClaimService {
+         claim.setSettledDue(due);
+         claim.logStatus(user, sheet.getToday(), due);
+         Claim changed = claims.saveAndFlush(claim);
+-        audit.recordOnCommit(entry("CLAIM_RESETTLED", user, person, changed, changed.getNumber())
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_RESETTLED", user, person, changed, changed.getNumber())
+                 + " old=" + old + " new=" + dueText(changed));
+         watches.notifyWatchers(sheetId, user, person, changed.getNumber());
+         rollup.recordChanges(sheetId, user, before);
+@@ -372,7 +372,7 @@ public class ClaimService {
+         claim.unbind();
+         claim.reassign(to.getId(), claims.lastListed(sheetId) + 1);
+         Claim moved = claims.saveAndFlush(claim);
+-        audit.recordOnCommit(entry("CLAIM_REASSIGNED", user, to, moved, moved.getNumber())
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REASSIGNED", user, to, moved, moved.getNumber())
+                 + " from=" + from.getName() + " to=" + to.getName());
+         rollup.recordChanges(sheetId, user, before);
+         return moved;
+@@ -419,9 +419,9 @@ public class ClaimService {
+         added.openAsSplit(nextNumber(sheet, date), user, original.getNumber());
+         added.logStatus(user, sheet.getToday(), shownDue(sheet, added, person));
+         added = claims.saveAndFlush(added);
+-        audit.recordOnCommit(entry("CLAIM_SPLIT", user, person, original, original.getNumber())
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_SPLIT", user, person, original, original.getNumber())
+                 + " into=" + added.getNumber());
+-        audit.recordOnCommit(entry("CLAIM_OPENED", user, person, added, added.getNumber()));
++        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_OPENED", user, person, added, added.getNumber()));
+         rollup.recordChanges(sheetId, user, before);
+         return new Split(original, added);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/patron/PatronService.java b/src/main/java/net/officefloor/hq/app/patron/PatronService.java
+index 741bec33a..87712bbd3 100644
+--- a/src/main/java/net/officefloor/hq/app/patron/PatronService.java
++++ b/src/main/java/net/officefloor/hq/app/patron/PatronService.java
+@@ -54,7 +54,7 @@ public class PatronService {
+             // Another user named the same patron at the same moment: theirs stands.
+             throw alreadyPatron();
+         }
+-        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user
++        audit.recordChangeOnCommit(sheetId, user, "PATRON_ADDED sheet=" + sheetId + " by=" + user
+                 + " name=" + person.getName() + " patron=" + patron.getName());
+         return added;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 60cb85a5d..63efeb6c0 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -71,7 +71,7 @@ public class PeriodService {
+         } catch (DataIntegrityViolationException raced) {
+             throw nameInUse();
+         }
+-        audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
++        audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+                 + " from=" + added.getFromDate() + " to=" + added.getToDate());
+         return added;
+     }
+@@ -98,7 +98,7 @@ public class PeriodService {
+                 continue;
+             }
+             Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
+-            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
++            audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+                     + " from=" + added.getFromDate() + " to=" + added.getToDate());
+             made.add(added);
+         }
+@@ -140,7 +140,7 @@ public class PeriodService {
+         period.close(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()));
+         Period closed = periods.saveAndFlush(period);
+         BigDecimal total = closed.getClosedTotal();
+-        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
++        audit.recordChangeOnCommit(sheetId, user, "PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
+                 + " total=" + total.toPlainString() + suffix);
+         return closed;
+     }
+@@ -161,7 +161,7 @@ public class PeriodService {
+         }
+         period.reopen();
+         Period reopened = periods.saveAndFlush(period);
+-        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + reopened.getName());
++        audit.recordChangeOnCommit(sheetId, user, "PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + reopened.getName());
+         return reopened;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 7544d8434..d1825a430 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -44,7 +44,7 @@ public class PersonService {
+         }
+         Rollup.Figures before = rollup.of(sheetId);
+         Person added = save(new Person(sheetId, trimmed, grade));
+-        audit.recordOnCommit(entry("PERSON_ADDED", user, added, grade));
++        audit.recordChangeOnCommit(sheetId, user, entry("PERSON_ADDED", user, added, grade));
+         rollup.recordChanges(sheetId, user, before);
+         return added;
+     }
+@@ -79,7 +79,7 @@ public class PersonService {
+             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
+         }
+         Person edited = save(person);
+-        audit.recordOnCommit(entry("PERSON_EDITED", user, edited, edited.gradeOn(today)));
++        audit.recordChangeOnCommit(sheetId, user, entry("PERSON_EDITED", user, edited, edited.gradeOn(today)));
+         rollup.recordChanges(sheetId, user, before);
+         return edited;
+     }
+@@ -92,7 +92,7 @@ public class PersonService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+         person.setRetiredFrom(from != null ? from : today);
+         Person retired = save(person);
+-        audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
++        audit.recordChangeOnCommit(sheetId, user, "PERSON_RETIRED sheet=" + sheetId + " by=" + user
+                 + " name=" + retired.getName() + " from=" + retired.getRetiredFrom());
+         return retired;
+     }
+@@ -111,7 +111,7 @@ public class PersonService {
+         Rollup.Figures before = rollup.of(sheetId);
+         person.addHold(new Hold(start, to));
+         Person saved = save(person);
+-        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
++        audit.recordChangeOnCommit(sheetId, user, "PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                 + " from=" + start);
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 7af2a64fe..9f8cae3d9 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -56,7 +56,7 @@ public class RateService {
+         row.setRate(scaled);
+         row.setToDate(to);
+         Rate saved = rates.saveAndFlush(row);
+-        audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
++        audit.recordChangeOnCommit(sheetId, user, "RATE_SET sheet=" + sheetId + " by=" + user
+                 + " grade=" + saved.getGrade() + " rate=" + saved.getRate().toPlainString()
+                 + (from == null ? "" : " from=" + from)
+                 + (to == null ? "" : " to=" + to));
+diff --git a/src/main/java/net/officefloor/hq/app/role/Delegation.java b/src/main/java/net/officefloor/hq/app/role/Delegation.java
+new file mode 100644
+index 000000000..7f6265d2a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/Delegation.java
+@@ -0,0 +1,75 @@
++package net.officefloor.hq.app.role;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A steward's delegation of the steward role to a user name: while the sheet's today is from its from-date to its
++ *  to-date, inclusive, the user acts as a steward on behalf of the steward who delegated. */
++@Entity
++@Table(name = "delegation")
++public class Delegation {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "user_name", nullable = false)
++    private String userName;
++
++    @Column(name = "delegated_by", nullable = false)
++    private String delegatedBy;
++
++    @Column(name = "from_date", nullable = false)
++    private LocalDate fromDate;
++
++    @Column(name = "to_date", nullable = false)
++    private LocalDate toDate;
++
++    protected Delegation() {
++    }
++
++    public Delegation(String sheetId, String userName, String delegatedBy, LocalDate fromDate, LocalDate toDate) {
++        this.sheetId = sheetId;
++        this.userName = userName;
++        this.delegatedBy = delegatedBy;
++        this.fromDate = fromDate;
++        this.toDate = toDate;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getUserName() {
++        return userName;
++    }
++
++    public String getDelegatedBy() {
++        return delegatedBy;
++    }
++
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++
++    public LocalDate getToDate() {
++        return toDate;
++    }
++
++    /** Whether the delegation is in force on the day. */
++    public boolean covers(LocalDate day) {
++        return !day.isBefore(fromDate) && !day.isAfter(toDate);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/DelegationController.java b/src/main/java/net/officefloor/hq/app/role/DelegationController.java
+new file mode 100644
+index 000000000..0996af7ac
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/DelegationController.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.role;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The steward role's delegations on a sheet. The caller's signed-in name comes in the {@code X-User} header. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/delegations")
++public class DelegationController {
++
++    /** A delegation as the screen shows it. */
++    public record DelegationView(long id, String user, String by, LocalDate from, LocalDate to) {
++
++        static DelegationView of(Delegation d) {
++            return new DelegationView(d.getId(), d.getUserName(), d.getDelegatedBy(), d.getFromDate(), d.getToDate());
++        }
++    }
++
++    /** A delegation as the form submits it; a blank date is the sheet's today. */
++    public record DelegationForm(@NotBlank @Size(max = 100) @Pattern(regexp = "\\S(.*\\S)?") String user,
++            LocalDate from, LocalDate to) {
++    }
++
++    private final DelegationService delegations;
++
++    public DelegationController(DelegationService delegations) {
++        this.delegations = delegations;
++    }
++
++    @GetMapping
++    public List<DelegationView> list(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        return delegations.list(sheetId).stream().map(DelegationView::of).toList();
++    }
++
++    @PostMapping
++    public DelegationView delegate(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody DelegationForm request) {
++        return DelegationView.of(delegations.delegate(sheetId, user, request.user(), request.from(), request.to()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/DelegationRepository.java b/src/main/java/net/officefloor/hq/app/role/DelegationRepository.java
+new file mode 100644
+index 000000000..f66402234
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/DelegationRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.role;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface DelegationRepository extends JpaRepository<Delegation, Long> {
++
++    List<Delegation> findBySheetIdOrderByIdAsc(String sheetId);
++
++    List<Delegation> findBySheetIdAndUserNameOrderByIdDesc(String sheetId, String userName);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/DelegationService.java b/src/main/java/net/officefloor/hq/app/role/DelegationService.java
+new file mode 100644
+index 000000000..864f56ed5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/DelegationService.java
+@@ -0,0 +1,58 @@
++package net.officefloor.hq.app.role;
++
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The steward role's delegations on a sheet. */
++@Service
++public class DelegationService {
++
++    private final DelegationRepository delegations;
++    private final RoleService roles;
++    private final SheetService sheets;
++    private final SheetRepository sheetStore;
++    private final Audit audit;
++
++    public DelegationService(DelegationRepository delegations, RoleService roles, SheetService sheets,
++            SheetRepository sheetStore, Audit audit) {
++        this.delegations = delegations;
++        this.roles = roles;
++        this.sheets = sheets;
++        this.sheetStore = sheetStore;
++        this.audit = audit;
++    }
++
++    /** The sheet's delegations, in the order they were made. */
++    @Transactional(readOnly = true)
++    public List<Delegation> list(String sheetId) {
++        return delegations.findBySheetIdOrderByIdAsc(sheetId);
++    }
++
++    /** Delegate the steward role to a user name from a from-date to a to-date, inclusive (each defaulting to the
++     *  sheet's today). Only a steward assigned the role may delegate it: one acting as a steward by delegation may not.
++     *  A to-date before the from-date is refused. */
++    @Transactional
++    public Delegation delegate(String sheetId, String user, String userName, LocalDate from, LocalDate to) {
++        sheets.load(sheetId, user);
++        LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
++        if (!Role.STEWARD.equals(roles.assignedRoleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can delegate the steward role");
++        }
++        LocalDate fromDate = from != null ? from : today;
++        LocalDate toDate = to != null ? to : today;
++        if (toDate.isBefore(fromDate)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date");
++        }
++        Delegation saved = delegations.saveAndFlush(new Delegation(sheetId, userName, user, fromDate, toDate));
++        audit.recordChangeOnCommit(sheetId, user, "DELEGATED sheet=" + sheetId + " by=" + user
++                + " user=" + saved.getUserName() + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
++        return saved;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/Delegations.java b/src/main/java/net/officefloor/hq/app/role/Delegations.java
+new file mode 100644
+index 000000000..6da3e05c0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/Delegations.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app.role;
++
++import java.util.Optional;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Component;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Which steward, if any, a user acts for on a sheet's today. Kept apart from {@link DelegationService} so the audit
++ *  sink and the role rules can ask it without depending on what records audit lines. */
++@Component
++public class Delegations {
++
++    private final DelegationRepository delegations;
++    private final SheetRepository sheets;
++
++    public Delegations(DelegationRepository delegations, SheetRepository sheets) {
++        this.delegations = delegations;
++        this.sheets = sheets;
++    }
++
++    /** The steward who delegated the steward role to the user for a range holding the sheet's today (the latest such
++     *  delegation), or empty when the user acts for no one. */
++    @Transactional(readOnly = true)
++    public Optional<String> actingFor(String sheetId, String user) {
++        return sheets.findById(sheetId).map(Sheet::getToday).flatMap(today ->
++                delegations.findBySheetIdAndUserNameOrderByIdDesc(sheetId, user).stream()
++                        .filter(d -> d.covers(today))
++                        .map(Delegation::getDelegatedBy)
++                        .findFirst());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 368babecd..2ea22f10f 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -14,10 +14,13 @@ public class RoleService {
+     private final RoleRepository roles;
+     private final SheetService sheets;
+     private final SheetRepository sheetStore;
++    private final Delegations delegations;
+     private final Audit audit;
+ 
+-    public RoleService(RoleRepository roles, SheetService sheets, SheetRepository sheetStore, Audit audit) {
++    public RoleService(RoleRepository roles, SheetService sheets, SheetRepository sheetStore, Delegations delegations,
++            Audit audit) {
+         this.roles = roles;
++        this.delegations = delegations;
+         this.sheets = sheets;
+         this.sheetStore = sheetStore;
+         this.audit = audit;
+@@ -29,9 +32,19 @@ public class RoleService {
+         return roles.findBySheetIdOrderByUserName(sheetId);
+     }
+ 
+-    /** The role of a user name on the sheet: the one assigned, else clerk. */
++    /** The role a user name acts in on the sheet: steward while a delegation of the role to it holds the sheet's
++     *  today, else the one assigned. */
+     @Transactional(readOnly = true)
+     public String roleOf(String sheetId, String userName) {
++        if (delegations.actingFor(sheetId, userName).isPresent()) {
++            return Role.STEWARD;
++        }
++        return assignedRoleOf(sheetId, userName);
++    }
++
++    /** The role assigned to a user name on the sheet, else clerk; a delegation does not change it. */
++    @Transactional(readOnly = true)
++    public String assignedRoleOf(String sheetId, String userName) {
+         return roles.findBySheetIdAndUserName(sheetId, userName).map(Role::getRole).orElse(Role.CLERK);
+     }
+ 
+@@ -51,7 +64,7 @@ public class RoleService {
+                 .orElseGet(() -> new Role(sheetId, userName, role));
+         row.setRole(role);
+         Role saved = roles.saveAndFlush(row);
+-        audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + user
++        audit.recordChangeOnCommit(sheetId, user, "ROLE_SET sheet=" + sheetId + " by=" + user
+                 + " user=" + saved.getUserName() + " role=" + saved.getRole());
+         return saved;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 238503689..ca0289f12 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -111,7 +111,7 @@ public class SheetService {
+         Rollup.Figures before = rollup.of(id);
+         sheet.setPolicyDate(policyDate);
+         Sheet saved = sheets.saveAndFlush(sheet);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
++        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                 + " key=policy-date value=" + (policyDate == null ? "" : policyDate));
+         rollup.recordChanges(id, user, before);
+         return saved;
+@@ -124,7 +124,7 @@ public class SheetService {
+         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+         sheet.setPeriodNumberingFrom(from);
+         Sheet saved = sheets.saveAndFlush(sheet);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
++        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                 + " key=period-numbering-from value=" + (from == null ? "" : from));
+         return saved;
+     }
+@@ -136,7 +136,7 @@ public class SheetService {
+         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+         sheet.setGraceDays(graceDays);
+         Sheet saved = sheets.saveAndFlush(sheet);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
++        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                 + " key=grace-days value=" + (graceDays == null ? "" : graceDays));
+         return saved;
+     }
+@@ -169,7 +169,7 @@ public class SheetService {
+         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+         sheet.setPermission(action, value);
+         Sheet saved = sheets.saveAndFlush(sheet);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
++        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
+         return saved;
+     }
+ 
+@@ -182,7 +182,7 @@ public class SheetService {
+         Rollup.Figures before = movesFigures ? rollup.of(id) : null;
+         sheet.record(key, from != null ? from : sheet.getToday(), value);
+         Sheet saved = sheets.saveAndFlush(sheet);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key
++        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key
+                 + " value=" + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
+         if (movesFigures) {
+             rollup.recordChanges(id, user, before);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 2d0e6a375..983f66aa5 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -114,7 +114,7 @@ public class StatementService {
+         String dueTotal = !anyRate && !anyDue ? "n/a" : sheet.capped(total).toPlainString();
+         claims.saveAllAndFlush(theirs);
+         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today));
+-        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++        audit.recordChangeOnCommit(sheetId, user, "STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                 + " due-total=" + dueTotal + " claims=" + counted);
+         rollup.recordChanges(sheetId, user, before);
+         List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+diff --git a/src/main/java/net/officefloor/hq/app/watch/WatchService.java b/src/main/java/net/officefloor/hq/app/watch/WatchService.java
+index bd4a9a931..5b36a6536 100644
+--- a/src/main/java/net/officefloor/hq/app/watch/WatchService.java
++++ b/src/main/java/net/officefloor/hq/app/watch/WatchService.java
+@@ -54,7 +54,7 @@ public class WatchService {
+             watches.delete(existing.get());
+             watches.flush();
+         }
+-        audit.recordOnCommit((watched ? "PERSON_WATCHED" : "PERSON_UNWATCHED") + " sheet=" + sheetId + " by=" + user
++        audit.recordChangeOnCommit(sheetId, user, (watched ? "PERSON_WATCHED" : "PERSON_UNWATCHED") + " sheet=" + sheetId + " by=" + user
+                 + " name=" + person.getName());
+         return watched;
+     }
+diff --git a/src/main/resources/db/migration/V43__delegation.sql b/src/main/resources/db/migration/V43__delegation.sql
+new file mode 100644
+index 000000000..9bfe7cb49
+--- /dev/null
++++ b/src/main/resources/db/migration/V43__delegation.sql
+@@ -0,0 +1,12 @@
++-- A steward's delegation of the steward role to a user name for a from-date to a to-date, inclusive, by the
++-- sheet's today. Ids rise in the order delegations were made.
++CREATE TABLE delegation (
++    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id     VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name    VARCHAR(100) NOT NULL,
++    delegated_by VARCHAR(100) NOT NULL,
++    from_date    DATE         NOT NULL,
++    to_date      DATE         NOT NULL,
++    CHECK (to_date >= from_date)
++);
++CREATE INDEX delegation_sheet_user ON delegation (sheet_id, user_name);
