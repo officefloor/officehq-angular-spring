@@ -58,6 +58,9 @@ export interface ClaimView {
   voidReason: string | null;
   /** The claim's comments, oldest first. */
   comments: ClaimComment[];
+  /** The signed-in name of the user who last edited the claim; null if no one has. Like its opener, they
+   *  cannot settle or approve it. */
+  editedBy: string | null;
 }
 
 /** A comment on a claim: the signed-in name of who wrote it, the sheet's today (yyyy-mm-dd) then, and its text. */

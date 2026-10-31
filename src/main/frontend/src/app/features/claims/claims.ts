@@ -391,6 +391,8 @@ export class PersonClaims {
           : err instanceof HttpErrorResponse && err.status === 403
           ? status === 'SETTLED' && c.openedBy === this.session.user()
             ? 'You opened this claim, so someone else must settle it.'
+            : status === 'SETTLED' && c.editedBy === this.session.user()
+            ? 'You last edited this claim, so someone else must settle it.'
             : status === 'VOID' && c.status === 'SETTLED'
               ? 'Only a steward may void a settled claim.'
             : `Your role may not ${STATUS_ACTION[status] ?? 'move'} a claim.`
@@ -478,6 +480,8 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 403
           ? c.openedBy === this.session.user()
             ? 'You opened this claim, so another steward must approve it.'
+            : c.editedBy === this.session.user()
+            ? 'You last edited this claim, so another steward must approve it.'
             : 'Only a steward can approve a claim.'
           : this.refusal(err, c, 'approved'),
       }),

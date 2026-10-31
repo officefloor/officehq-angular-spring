@@ -43,13 +43,13 @@ public class ClaimController {
      * lateEntry is whether it was added while its period was soft-closed; remindedOn is the last day a reminder was
      * written for it (null if never); tags are its tags, sorted (none when it has none); voidReason is the reason it
      * was voided with (null when it was voided without one, or is not void); comments are its comments, oldest
-     * first.
+     * first; editedBy is who last edited it (null if no one has).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
-            String voidReason, List<CommentLine> comments) {
+            String voidReason, List<CommentLine> comments, String editedBy) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -60,7 +60,7 @@ public class ClaimController {
                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), claim.tagList(), claim.getVoidReason(),
-                    claim.getComments().stream().map(CommentLine::of).toList());
+                    claim.getComments().stream().map(CommentLine::of).toList(), claim.getEditedBy());
         }
     }
 

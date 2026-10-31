@@ -151,7 +151,7 @@ public class ClaimService {
      *  a draft can be changed: to change an open claim, void it and add a new one. Its due-by stays as it was fixed.
      *  Refused when its due-by is inside a closed period, or when it would be a correction that does not name a
      *  SETTLED claim of its person, when its external reference is already used by another claim on the sheet, or
-     *  while another user has its editor open. Saving releases its lock. */
+     *  while another user has its editor open. Saving releases its lock and records this user as its last editor. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, String tags) {
@@ -179,6 +179,7 @@ public class ClaimService {
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
         claim.setLockedBy(null);
+        claim.setEditedBy(user);
         Claim edited = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(edited.getPersonId(), sheetId).orElseThrow();
         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
@@ -193,7 +194,7 @@ public class ClaimService {
      * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
      * at the rate in force on its date of its person's grade in force on that date, as rates are now, with the late charge it has gained
      * added on top, so later rate changes leave it as it is. The user
-     * who opened a claim cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
+     * who opened a claim, or last edited it, cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
      * makes it PENDING instead, for a steward to approve or reject (a claim with no due is within any limit); a
      * steward settles anything. Opening, settling and voiding are each refused for a role the sheet's permission
      * matrix does not allow. Only a steward may void a SETTLED claim, and only within {@value #SETTLED_VOID_DAYS}
@@ -238,8 +239,9 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
         }
-        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
+        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened or last edited a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal due = dueNow(sheet, claim, person);
@@ -448,15 +450,16 @@ public class ClaimService {
     }
 
     /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
-     *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim, for a
+     *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
      *  claim that is not PENDING and for one due by inside a closed period. */
     @Transactional
     public Claim approve(String sheetId, String user, long id) {
         sheets.load(sheetId, user);
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = pendingClaim(sheetId, user, id);
-        if (user.equals(claim.getOpenedBy())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot approve it");
+        if (claim.isOpenedOrEditedBy(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened or last edited a claim cannot approve it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal due = dueNow(sheet, claim, person);
