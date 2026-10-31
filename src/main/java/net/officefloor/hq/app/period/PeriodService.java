@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -22,9 +24,11 @@ public class PeriodService {
     private final SheetRepository sheetStore;
     private final Audit audit;
     private final Rollup rollup;
+    private final RoleService roles;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit,
-            Rollup rollup) {
+            Rollup rollup, RoleService roles) {
+        this.roles = roles;
         this.periods = periods;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
@@ -86,6 +90,26 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
                 + " total=" + total.toPlainString());
         return closed;
+    }
+
+    /** Reopen a closed period, making its due-total live again; only a steward may, and it is refused
+     *  when the period is open. */
+    @Transactional
+    public Period reopen(String sheetId, String user, String name) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reopen a period");
+        }
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
+        if (!period.isClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed");
+        }
+        period.reopen();
+        Period reopened = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + reopened.getName());
+        return reopened;
     }
 
     private static ResponseStatusException nameInUse() {

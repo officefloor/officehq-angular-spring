@@ -23,6 +23,8 @@ import { Sheets } from '../../core/sheet';
             — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</span>
             <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
                     [attr.aria-label]="'Close period ' + p.name">Close</button>
+            <button type="button" data-testid="period-reopen" (click)="reopen(p)" [disabled]="closing() === p.id"
+                    [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
             @if (periodError()?.id === p.id) {
               <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
             }
@@ -54,7 +56,7 @@ export class PeriodsPanel {
 
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
-  /** The period being closed, so a second press waits for the first. */
+  /** The period being closed or reopened, so a second press waits for the first. */
   protected readonly closing = signal<number | null>(null);
   /** The error of the last action taken on a period's row, until the next action on that row. */
   protected readonly periodError = signal<{ id: number; message: string } | null>(null);
@@ -96,6 +98,29 @@ export class PeriodsPanel {
           message: err instanceof HttpErrorResponse && err.status === 409
             ? 'That period is already closed.'
             : 'Could not close that period.',
+        });
+      },
+    });
+  }
+
+  protected reopen(p: PeriodView): void {
+    if (this.closing() === p.id) return;
+    this.periodError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.closing.set(p.id);
+    this.periods.reopen(sheet.id, p.name).subscribe({
+      next: () => this.closing.set(null),
+      error: (err: unknown) => {
+        this.closing.set(null);
+        const status = err instanceof HttpErrorResponse ? err.status : 0;
+        this.periodError.set({
+          id: p.id,
+          message: status === 403
+            ? 'Only a steward can reopen a period.'
+            : status === 409
+              ? 'That period is not closed.'
+              : 'Could not reopen that period.',
         });
       },
     });

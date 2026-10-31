@@ -56,6 +56,13 @@ export class Periods {
       .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
   }
 
+  /** Reopen a closed period, making its due-total live again; only a steward may. */
+  reopen(sheetId: string, name: string): Observable<PeriodView> {
+    return this.http
+      .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/reopen`, {})
+      .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
+  }
+
   private base(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
   }

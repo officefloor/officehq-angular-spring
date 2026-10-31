@@ -63,4 +63,12 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PeriodView.of(periods.close(sheetId, user, name));
     }
+
+    @PostMapping("/{name}/reopen")
+    public PeriodView reopen(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @NotBlank @Size(max = 100) String name,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(periods.reopen(sheetId, user, name));
+    }
 }

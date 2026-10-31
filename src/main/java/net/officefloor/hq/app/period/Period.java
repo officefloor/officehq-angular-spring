@@ -91,4 +91,10 @@ public class Period {
         this.closed = true;
         this.closedTotal = total;
     }
+
+    /** Reopen the period: its due-total is live again. */
+    public void reopen() {
+        this.closed = false;
+        this.closedTotal = null;
+    }
 }
