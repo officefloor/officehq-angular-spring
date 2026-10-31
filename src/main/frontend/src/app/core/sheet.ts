@@ -46,6 +46,8 @@ export interface SheetView {
   /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the new
    *  today is closed; null: off. Not dated. */
   graceDays: number | null;
+  /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
+  archived: boolean;
 }
 
 /** The actions the permission matrix covers. */
@@ -92,6 +94,13 @@ export class Sheets {
           this.lastLoad.set(s);
         }),
       );
+  }
+
+  /** Archive the active sheet (a steward only). */
+  archive(id: string): Observable<SheetView> {
+    return this.http
+      .post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null)
+      .pipe(tap((s) => this.active.set(s)));
   }
 
   /** Change the active sheet's today. */

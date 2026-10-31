@@ -13,6 +13,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Sheet endpoints. The caller's signed-in name comes in the {@code X-User} header. */
 @RestController
@@ -31,10 +35,10 @@ public class SheetController {
     /** A sheet as the screen shows it, each dated setting as it is in force on the sheet's today, with every dated value
      *  recorded; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
      *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off; the cap (two decimals) is null when there is none, as is the proof threshold (two decimals); the permissions are the
-     *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off. */
+     *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off; archived is whether the sheet is archived. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays) {
+            List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -44,7 +48,7 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     sheet.getSettings().stream().map(s -> new DatedSettingView(s.getKey(), s.getFrom(), s.getValue())).toList(),
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
-                    sheet.getPermissions(), sheet.getGraceDays());
+                    sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived());
         }
     }
 
@@ -100,9 +104,11 @@ public class SheetController {
     }
 
     private final SheetService sheets;
+    private final RoleService roles;
 
-    public SheetController(SheetService sheets) {
+    public SheetController(SheetService sheets, RoleService roles) {
         this.sheets = sheets;
+        this.roles = roles;
     }
 
     /** Load (re-read) a sheet by id, starting it empty if it has never been loaded. */
@@ -111,6 +117,17 @@ public class SheetController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return SheetView.of(sheets.load(id, user));
+    }
+
+    /** Archive the sheet: a steward only. */
+    @PostMapping("/{id}/archive")
+    public SheetView archive(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        if (!Role.STEWARD.equals(roles.roleOf(id, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can archive the sheet");
+        }
+        return SheetView.of(sheets.archive(id, user));
     }
 
     /** Change the sheet's today (an ISO date). */

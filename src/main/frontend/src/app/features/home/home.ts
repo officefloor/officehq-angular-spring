@@ -27,6 +27,10 @@ import { SettingsPanel } from '../settings/settings';
       @if (sheets.current(); as sheet) {
         <p>Sheet: <strong data-testid="sheet-current-id">{{ sheet.id }}</strong></p>
         <p>Today: <strong data-testid="sheet-today">{{ sheet.today }}</strong></p>
+        <p>
+          Archived: <strong data-testid="sheet-archived">{{ sheet.archived ? 'yes' : 'no' }}</strong>
+          <button type="button" data-testid="sheet-archive" [disabled]="archiving()" (click)="archive()">Archive sheet</button>
+        </p>
 
         <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Change the sheet's today">
           <label for="sheet-today-input">Change today</label>
@@ -74,6 +78,7 @@ export class Home {
   protected readonly todayError = signal<string | null>(null);
   protected readonly loading = signal(false);
   protected readonly savingToday = signal(false);
+  protected readonly archiving = signal(false);
 
   constructor() {
     // An error is removed as soon as its form is changed.
@@ -113,6 +118,22 @@ export class Home {
       error: () => {
         this.loading.set(false);
         this.sheetError.set('Could not load that sheet.');
+      },
+    });
+  }
+
+  protected archive(): void {
+    // A second press before the first has answered is ignored.
+    if (this.archiving()) return;
+    this.todayError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.archiving.set(true);
+    this.sheets.archive(sheet.id).subscribe({
+      next: () => this.archiving.set(false),
+      error: () => {
+        this.archiving.set(false);
+        this.todayError.set('Could not archive the sheet.');
       },
     });
   }

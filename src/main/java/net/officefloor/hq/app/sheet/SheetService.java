@@ -54,6 +54,27 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElse(null);
     }
 
+    /** Whether the sheet is archived; a sheet never loaded is not. */
+    @Transactional(readOnly = true)
+    public boolean isArchived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+    }
+
+    /** Archive the sheet, starting it if it has never been loaded. Who may archive it is checked by the caller;
+     *  an archived sheet is refused before it gets here (see {@link ArchiveGuard}), and again under the lock. */
+    @Transactional
+    public Sheet archive(String id, String user) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        if (sheet.isArchived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is archived");
+        }
+        sheet.archive();
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SHEET_ARCHIVED sheet=" + id + " by=" + user);
+        return saved;
+    }
+
     /** Set the sheet's today, starting the sheet if it has never been loaded; then close every open period past its
      *  grace days. */
     @Transactional

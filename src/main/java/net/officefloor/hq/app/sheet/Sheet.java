@@ -92,6 +92,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
+    @Column(name = "archived", nullable = false)
+    private boolean archived;
+
     protected Sheet() {
     }
 
@@ -252,6 +256,15 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    /** Archive the sheet; it is never unarchived. */
+    public void archive() {
+        this.archived = true;
     }
 
     /** Whether a period ending on this day is closed by itself at the sheet's today: grace days are set and the day
