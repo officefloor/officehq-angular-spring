@@ -140,7 +140,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         LocalDate claimDate = date != null ? date : sheet.defaultClaimDate();
-        int terms = termsOf(sheet, person, claimDate);
+        int terms = termsOf(sheet, person);
         LocalDate dueBy = holidays.dueBy(sheetId, claimDate, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, claimDate);
@@ -181,7 +181,7 @@ public class ClaimService {
         if (person == null || person.refusesClaimOn(date)) {
             return false;
         }
-        LocalDate dueBy = holidays.dueBy(sheetId, date, termsOf(sheet, person, date));
+        LocalDate dueBy = holidays.dueBy(sheetId, date, termsOf(sheet, person));
         return !periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, dueBy, dueBy);
     }
 
@@ -777,7 +777,7 @@ public class ClaimService {
 
     /** Split an amount (more than 0.00 and less than its amount) off an OPEN claim: it keeps the rest and loses any
      *  figure a statement bound it to; a new OPEN claim of the same person with the amount split off, the same date
-     *  and note, the next number, opened by this user, a due-by fixed now from the terms in force on the date and
+     *  and note, the next number, opened by this user, a due-by fixed now from the terms in force on the sheet's today and
      *  naming the original as the claim it was split from, is listed as the person's newest; it is a late entry when
      *  the original is, and is numbered within the period of its own due-by. Refused for a claim
      *  that is not OPEN or is deferred, one with lines, one due by inside a closed period, an amount out of range, and a role the
@@ -811,7 +811,7 @@ public class ClaimService {
         claim.unbind();
         Claim original = claims.saveAndFlush(claim);
         LocalDate date = original.getDate();
-        int terms = termsOf(sheet, person, date);
+        int terms = termsOf(sheet, person);
         LocalDate dueBy = holidays.dueBy(sheetId, date, terms);
         Claim added = new Claim(sheetId, person.getId(), part, date, dueBy, original.getNote(), null,
                 claims.lastListed(sheetId) + 1);
@@ -1145,11 +1145,13 @@ public class ClaimService {
         return floor != null && due.compareTo(floor) < 0 ? floor : due;
     }
 
-    /** The terms in days a claim of the person dated {@code date} is due by: the person's own, else their grade's
-     *  in force then, else the sheet's then. */
-    private static int termsOf(Sheet sheet, Person person, LocalDate date) {
-        Integer own = person.termsOn(date);
-        return own != null ? own : sheet.termsFor(person.gradeOn(date), date);
+    /** The terms in days a claim of the person created now is due by: those in force on the sheet's today, the day
+     *  it is created (whatever its date): the person's own then, else those of the grade they have then, else the
+     *  sheet's then. */
+    private static int termsOf(Sheet sheet, Person person) {
+        LocalDate today = sheet.getToday();
+        Integer own = person.termsOn(today);
+        return own != null ? own : sheet.termsFor(person.gradeOn(today), today);
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

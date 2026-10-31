@@ -65,7 +65,7 @@ public class Claim {
 
     /** The day the claim is due by: fixed when it is added: the terms-th business day after its date (skipping
      *  Saturdays, Sundays and the sheet's holidays then), on its person's own terms, else the terms of their grade
-     *  in force then, else the sheet's then; it does not change when the terms or its date
+     *  then, else the sheet's then, each in force on the sheet's today when it is added; it does not change when the terms or its date
      *  change later. Adding a holiday on or before it fixes it again (unless the claim is SETTLED or VOID): from
      *  its date, on its terms, over the holidays on the sheet then. */
     @Column(name = "due_by", nullable = false)
