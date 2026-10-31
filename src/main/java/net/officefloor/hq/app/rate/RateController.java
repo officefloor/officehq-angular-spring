@@ -2,6 +2,7 @@ package net.officefloor.hq.app.rate;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.rollup.Rollup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Rates on a sheet: each grade's, by from-date. The caller's signed-in name comes in the {@code X-User} header. */
@@ -50,6 +52,15 @@ public class RateController {
     public RateController(RateService rates, SheetHistory history) {
         this.history = history;
         this.rates = rates;
+    }
+
+    /** What a candidate rate for a grade, applied on every date, would change; nothing is saved. */
+    @GetMapping("/{grade}/preview")
+    public Rollup.RatePreview preview(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestParam @NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal rate) {
+        return rates.preview(sheetId, grade, rate);
     }
 
     @GetMapping

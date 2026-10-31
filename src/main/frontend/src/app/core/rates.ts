@@ -5,6 +5,13 @@ import { ClaimStatus, addDays, cents, isOverdue } from './claims';
 import { Grade } from './people';
 import { SheetView, Sheets, graceOn, settingOn } from './sheet';
 
+/** What a candidate rate would change: how many claims would show a different due, and the sum of the differences
+ *  (two decimals, negative when lower). */
+export interface RatePreview {
+  count: number;
+  diff: string;
+}
+
 export interface RateView {
   grade: Grade;
   /** The percent with exactly two decimals, e.g. "12.50". */
@@ -169,6 +176,11 @@ export class Rates {
           this.list.update((list) => [...list.filter((r) => r.grade !== saved.grade || r.from !== saved.from), saved]),
         ),
       );
+  }
+
+  /** What a candidate rate for a grade, applied on every date, would change; nothing is saved. */
+  preview(sheetId: string, grade: Grade, rate: string): Observable<RatePreview> {
+    return this.http.get<RatePreview>(`${this.base(sheetId)}/${grade}/preview`, { params: { rate } });
   }
 
   private base(sheetId: string): string {

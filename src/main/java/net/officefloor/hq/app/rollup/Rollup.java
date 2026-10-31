@@ -13,6 +13,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -142,6 +143,42 @@ public class Rollup {
             }
         }
         return totals;
+    }
+
+    /** What a candidate rate would change: how many claims would show a different due, and the sum of the
+     *  differences (new due minus current due), with two decimals. */
+    public record RatePreview(int count, String diff) {
+    }
+
+    /** How the OPEN and PENDING claims of people on a grade (in force on each claim's date) would change were a rate
+     *  to apply to that grade on every date: a claim bound by a statement does not change and a settled one is not
+     *  counted; a due of none counts as 0 in the sum. Nothing is stored. */
+    public RatePreview preview(String sheetId, String grade, BigDecimal rate) {
+        List<Rate> sheetRates = rates.findBySheetId(sheetId);
+        List<Rate> candidate = Stream.concat(sheetRates.stream().filter(r -> !r.getGrade().equals(grade)),
+                Stream.of(new Rate(sheetId, grade, null, rate.setScale(2, RoundingMode.UNNECESSARY)))).toList();
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        Map<Long, Person> personOf = new LinkedHashMap<>();
+        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+        int count = 0;
+        BigDecimal diff = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : sheetClaims) {
+            Person person = personOf.get(claim.getPersonId());
+            if (person == null || claim.getSettledDue() != null
+                    || (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING)
+                    || !grade.equals(person.gradeOn(claim.getDate()))) {
+                continue;
+            }
+            BigDecimal now = dueOf(claim, grade, sheetRates, sheet, sheetClaims);
+            BigDecimal then = dueOf(claim, grade, candidate, sheet, sheetClaims);
+            if (!Objects.equals(now, then)) {
+                count++;
+                diff = diff.add(then == null ? BigDecimal.ZERO : then)
+                        .subtract(now == null ? BigDecimal.ZERO : now);
+            }
+        }
+        return new RatePreview(count, diff.setScale(2).toPlainString());
     }
 
     /**

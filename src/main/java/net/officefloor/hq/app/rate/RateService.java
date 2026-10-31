@@ -38,6 +38,12 @@ public class RateService {
                 .toList();
     }
 
+    /** What a candidate rate for a grade would change were it to apply on every date; nothing is stored. */
+    @Transactional(readOnly = true)
+    public Rollup.RatePreview preview(String sheetId, String grade, BigDecimal rate) {
+        return rollup.preview(sheetId, grade, rate);
+    }
+
     /** Set a grade's rate from a date (null: from the beginning of time) through a to-date (null: it
      *  does not end), replacing the rate it had from that same date, if any. A to-date before the
      *  from-date is refused. */

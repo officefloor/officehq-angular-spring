@@ -3,7 +3,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, switchMap } from 'rxjs';
 import { GRADES, Grade } from '../../core/people';
-import { NOT_AVAILABLE, RATE_PATTERN, Rates } from '../../core/rates';
+import { NOT_AVAILABLE, RATE_PATTERN, RatePreview, Rates } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 
 // The sheet's rates for each grade: the one in force today, each by from-date, and a form to set one.
@@ -49,6 +49,27 @@ import { Sheets } from '../../core/sheet';
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
         }
       </form>
+
+      <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview a rate">
+        <label for="rate-preview-grade">Grade</label>
+        <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input id="rate-preview-pct" data-testid="rate-preview-pct" formControlName="pct" inputmode="decimal" autocomplete="off" />
+        <button type="submit" data-testid="rate-preview" [disabled]="previewing()">Preview</button>
+        @if (previewed(); as p) {
+          <p aria-live="polite">
+            Claims that would change: <span data-testid="rate-preview-count">{{ p.count }}</span>,
+            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+          </p>
+        }
+        @if (previewError(); as err) {
+          <p role="alert" data-testid="rate-preview-error">{{ err }}</p>
+        }
+      </form>
     </section>
   `,
 })
@@ -68,12 +89,22 @@ export class RatesPanel {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly previewForm = new FormGroup({
+    grade: new FormControl<Grade>('A', { nonNullable: true }),
+    pct: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly previewed = signal<RatePreview | null>(null);
+  protected readonly previewError = signal<string | null>(null);
+  protected readonly previewing = signal(false);
+
   constructor() {
     // Each (re)load of a sheet re-reads its rates from the store.
     toObservable(this.sheets.loaded)
       .pipe(
         switchMap((sheet) => {
           this.error.set(null);
+          this.previewed.set(null);
+          this.previewError.set(null);
           return this.rates.load(sheet?.id ?? null) ?? EMPTY;
         }),
         takeUntilDestroyed(),
@@ -81,6 +112,33 @@ export class RatesPanel {
       .subscribe({ error: () => this.error.set('Could not read the rates.') });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+    this.previewForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.previewError.set(null));
+  }
+
+  protected preview(): void {
+    if (this.previewing()) return;
+    // A press clears the last result, so two presses with the same result can be told apart.
+    this.previewed.set(null);
+    this.previewError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const { grade, pct } = this.previewForm.getRawValue();
+    const rate = pct.trim();
+    if (!RATE_PATTERN.test(rate)) {
+      this.previewError.set('Type a rate of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    this.previewing.set(true);
+    this.rates.preview(sheet.id, grade, rate).subscribe({
+      next: (result) => {
+        this.previewing.set(false);
+        this.previewed.set(result);
+      },
+      error: () => {
+        this.previewing.set(false);
+        this.previewError.set('Could not preview that rate.');
+      },
+    });
   }
 
   protected submit(): void {
