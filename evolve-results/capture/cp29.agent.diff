@@ -1,0 +1,155 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index 5b9f6abe9..c01f31c5e 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -56,6 +56,13 @@ export class Periods {
+       .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
+   }
+ 
++  /** Reopen a closed period, making its due-total live again; only a steward may. */
++  reopen(sheetId: string, name: string): Observable<PeriodView> {
++    return this.http
++      .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/reopen`, {})
++      .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
++  }
++
+   private base(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
+   }
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 3b4c00e2b..84f2398c4 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -23,6 +23,8 @@ import { Sheets } from '../../core/sheet';
+             — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</span>
+             <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
+                     [attr.aria-label]="'Close period ' + p.name">Close</button>
++            <button type="button" data-testid="period-reopen" (click)="reopen(p)" [disabled]="closing() === p.id"
++                    [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
+             @if (periodError()?.id === p.id) {
+               <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
+             }
+@@ -54,7 +56,7 @@ export class PeriodsPanel {
+ 
+   protected readonly error = signal<string | null>(null);
+   protected readonly saving = signal(false);
+-  /** The period being closed, so a second press waits for the first. */
++  /** The period being closed or reopened, so a second press waits for the first. */
+   protected readonly closing = signal<number | null>(null);
+   /** The error of the last action taken on a period's row, until the next action on that row. */
+   protected readonly periodError = signal<{ id: number; message: string } | null>(null);
+@@ -101,6 +103,29 @@ export class PeriodsPanel {
+     });
+   }
+ 
++  protected reopen(p: PeriodView): void {
++    if (this.closing() === p.id) return;
++    this.periodError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.closing.set(p.id);
++    this.periods.reopen(sheet.id, p.name).subscribe({
++      next: () => this.closing.set(null),
++      error: (err: unknown) => {
++        this.closing.set(null);
++        const status = err instanceof HttpErrorResponse ? err.status : 0;
++        this.periodError.set({
++          id: p.id,
++          message: status === 403
++            ? 'Only a steward can reopen a period.'
++            : status === 409
++              ? 'That period is not closed.'
++              : 'Could not reopen that period.',
++        });
++      },
++    });
++  }
++
+   protected submit(): void {
+     // A second submit before the first has answered is ignored, so it stores one record.
+     if (this.saving()) return;
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index e97b76cc0..a2bd6125d 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -91,4 +91,10 @@ public class Period {
+         this.closed = true;
+         this.closedTotal = total;
+     }
++
++    /** Reopen the period: its due-total is live again. */
++    public void reopen() {
++        this.closed = false;
++        this.closedTotal = null;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 5dff675f0..d8e0ada3f 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -63,4 +63,12 @@ public class PeriodController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         return PeriodView.of(periods.close(sheetId, user, name));
+     }
++
++    @PostMapping("/{name}/reopen")
++    public PeriodView reopen(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @NotBlank @Size(max = 100) String name,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return PeriodView.of(periods.reopen(sheetId, user, name));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 526c3b27e..835a24f03 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -4,6 +4,8 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.math.BigDecimal;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -22,9 +24,11 @@ public class PeriodService {
+     private final SheetRepository sheetStore;
+     private final Audit audit;
+     private final Rollup rollup;
++    private final RoleService roles;
+ 
+     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit,
+-            Rollup rollup) {
++            Rollup rollup, RoleService roles) {
++        this.roles = roles;
+         this.periods = periods;
+         this.sheets = sheets;
+         this.sheetStore = sheetStore;
+@@ -88,6 +92,26 @@ public class PeriodService {
+         return closed;
+     }
+ 
++    /** Reopen a closed period, making its due-total live again; only a steward may, and it is refused
++     *  when the period is open. */
++    @Transactional
++    public Period reopen(String sheetId, String user, String name) {
++        sheets.load(sheetId, user);
++        sheetStore.findLockedById(sheetId).orElseThrow();
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reopen a period");
++        }
++        Period period = periods.findBySheetIdAndName(sheetId, name)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
++        if (!period.isClosed()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed");
++        }
++        period.reopen();
++        Period reopened = periods.saveAndFlush(period);
++        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + reopened.getName());
++        return reopened;
++    }
++
+     private static ResponseStatusException nameInUse() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "That period name is already in use on this sheet");
+     }
