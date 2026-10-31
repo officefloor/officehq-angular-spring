@@ -109,6 +109,9 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           — reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"
                   [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
+          — waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="claim-waive" (click)="waive(c)"
+                  [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
           split from No. <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           — late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <label [for]="'claim-split-amount-' + c.id">Amount to split off</label>
@@ -587,6 +590,23 @@ export class PersonClaims {
           : c.status === 'OPEN' || c.status === 'PENDING'
             ? 'This claim was already reminded today.'
             : `A ${c.status} claim cannot be reminded.`,
+      }),
+    });
+  }
+
+  protected waive(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.api.waive(sheet.id, c.id).subscribe({
+      next: (saved) => this.saved.emit(saved),
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can waive a late charge.'
+          : c.status === 'OPEN' || c.status === 'PENDING'
+            ? "This claim's late charge was already waived."
+            : `A ${c.status} claim cannot be waived.`,
       }),
     });
   }

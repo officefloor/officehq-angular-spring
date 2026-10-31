@@ -124,6 +124,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** How many proofs have been given for the claim. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -196,6 +200,7 @@ public class Claim {
         copy.deferredUntil = deferredUntil;
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
+        copy.waived = waived;
         copy.proofs = proofs;
         copy.lateEntry = lateEntry;
         log.forEach(l -> copy.log.add(new ClaimLogEntry(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
@@ -472,6 +477,15 @@ public class Claim {
     /** Record that a reminder escalated the claim. */
     public void escalate() {
         this.escalated = true;
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    /** Record that a steward waived the claim's late charge. */
+    public void waive() {
+        this.waived = true;
     }
 
     public int getProofs() {

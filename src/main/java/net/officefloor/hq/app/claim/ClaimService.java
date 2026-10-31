@@ -587,6 +587,31 @@ public class ClaimService {
         return reminded;
     }
 
+    /** A steward waives an OPEN or PENDING claim's late charge: it bears none from then on, whatever its overdue
+     *  state. Refused for anyone but a steward, a claim in any other status and a claim already waived. */
+    @Transactional
+    public Claim waive(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward waives a claim's late charge");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be waived; only an OPEN or PENDING one can");
+        }
+        if (claim.isWaived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge was already waived");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        claim.waive();
+        Claim waived = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_WAIVED", user, person, waived, waived.getNumber()));
+        return waived;
+    }
+
     /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its bound figure, else its live
      *  one, with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
      *  claim that is not PENDING and for one due by inside a closed period. */
@@ -1054,7 +1079,7 @@ public class ClaimService {
     /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure by the sheet's today: for each
      *  full 30 days past its due-by plus its grade's grace days ({@code grade}: its person's grade in force on its
      *  date), the late percent in force on that boundary date (that day plus 30, 60, 90 ... days) of the figure
-     *  plus the charges of the boundaries before it (compounding), rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, or it is a correction. */
+     *  plus the charges of the boundaries before it (compounding), rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, it is a correction or its late charge was waived. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet, String grade) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (!claim.getStatus().isOpen() || claim.isDeferredOn(sheet.getToday())) {
@@ -1066,7 +1091,7 @@ public class ClaimService {
     /** The late charge a claim would have gained on its figure by the sheet's today were it still open. */
     private static BigDecimal lateChargeAsOpen(Claim claim, BigDecimal figure, Sheet sheet, String grade) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (figure == null || claim.isCorrection()) {
+        if (figure == null || claim.isCorrection() || claim.isWaived()) {
             return none;
         }
         LocalDate from = overdueFrom(claim, sheet, grade);

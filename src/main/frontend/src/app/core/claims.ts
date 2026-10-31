@@ -52,6 +52,8 @@ export interface ClaimView {
   lateEntry: boolean;
   /** The last day (yyyy-mm-dd) a reminder was written for the claim; null if it was never reminded. */
   remindedOn: string | null;
+  /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
+  waived: boolean;
   /** The claim's external reference, unique on its sheet without regard to case; null when it has none. */
   ref: string | null;
   /** The claim's tags, sorted; empty when it has none. */
@@ -340,6 +342,11 @@ export class Claims {
   /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
   timeline(sheetId: string, id: number): Observable<string[]> {
     return this.http.get<string[]>(`${this.base(sheetId)}/claims/${id}/timeline`);
+  }
+
+  /** A steward waives an OPEN or PENDING claim's late charge; refused once it was waived. */
+  waive(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/waiver`, {});
   }
 
   /** Write a reminder for an OPEN or PENDING claim, dated the sheet's today; refused once it was reminded today. */

@@ -140,14 +140,15 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
 /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure (in whole cents) by the sheet's today:
  *  for each full 30 days past its due-by plus its grade's grace days, the late percent in force on that boundary date
  *  (that day plus 30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding),
- *  rounded as the claim rounds, added up. A correction (a negative amount) gains none. */
+ *  rounded as the claim rounds, added up. A correction (a negative amount) gains none, nor does a claim whose late
+ *  charge was waived. */
 export function lateChargeCents(
-  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null },
+  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; waived?: boolean },
   figureCents: number,
   sheet: DueTerms,
   graceDays = 0,
 ): number {
-  if (cents(c.amount) < 0 || !isOverdue(c, sheet.today, graceDays)) return 0;
+  if (cents(c.amount) < 0 || c.waived || !isOverdue(c, sheet.today, graceDays)) return 0;
   const from = addDays(c.dueBy, graceDays);
   const days = (Date.parse(sheet.today) - Date.parse(from)) / 86_400_000;
   const periods = Math.floor(days / 30);
@@ -166,7 +167,7 @@ export function lateChargeCents(
  *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. `grade` is its
  *  person's grade in force on its date, whose grace days delay its late charge. */
 export function claimDueCents(
-  c: { id?: number; amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null },
+  c: { id?: number; amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null; waived?: boolean },
   gradeRates: RateLine,
   sheet: DueTerms,
   roundsOn: string,

@@ -97,7 +97,8 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
 
     public record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
             String corrects, long listed, ClaimStatus status, String number, BigDecimal settledDue, boolean stated,
-            BigDecimal statedDue, LocalDate deferredUntil, LocalDate remindedOn, String ref, String tags) {
+            BigDecimal statedDue, LocalDate deferredUntil, LocalDate remindedOn, String ref, String tags,
+            boolean waived) {
 
         /** The claim as it stood then, unsaved. */
         public Claim rebuild(String sheetId) {
@@ -109,6 +110,9 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
             claim.remind(remindedOn);
             claim.setRef(ref);
             claim.setTags(tags);
+            if (waived) {
+                claim.waive();
+            }
             if (stated) {
                 claim.bind(statedDue);
             }
@@ -127,7 +131,8 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 people.stream().map(SheetState::stateOf).toList(),
                 claims.stream().map(c -> new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(),
                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
-                        c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil(), c.getRemindedOn(), c.getRef(), c.getTags())).toList(),
+                        c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil(), c.getRemindedOn(), c.getRef(), c.getTags(),
+                        c.isWaived())).toList(),
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),
