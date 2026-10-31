@@ -66,6 +66,9 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     public record GradeState(LocalDate from, String grade) {
     }
 
+    public record TermsState(LocalDate from, Integer terms) {
+    }
+
     public record HoldState(LocalDate from, LocalDate to) {
     }
 
@@ -73,13 +76,16 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     }
 
     public record PersonState(long id, String name, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
-            List<HoldState> holds, List<RetirementState> pastRetirements) {
+            List<HoldState> holds, List<RetirementState> pastRetirements, List<TermsState> datedTerms) {
 
         /** The person as they stood then, unsaved. */
         public Person rebuild(String sheetId) {
             Person person = new Person(sheetId, name, grades.get(0).grade());
             grades.stream().skip(1).forEach(g -> person.setGradeFrom(g.from(), g.grade()));
             person.setTerms(terms);
+            if (datedTerms != null) {
+                datedTerms.forEach(t -> person.setTermsFrom(t.from(), t.terms()));
+            }
             person.setRetiredFrom(retiredFrom);
             holds.forEach(h -> person.addHold(new Hold(h.from(), h.to())));
             if (pastRetirements != null) {
@@ -131,9 +137,10 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     /** The people as the screen read them then, each with the grade in force on {@code today}. */
     public List<PersonView> people(String sheetId, LocalDate today) {
         return views.people().stream().map(v -> person(v.id())
-                .map(p -> new PersonView(v.id(), v.name(), p.rebuild(sheetId).gradeOn(today), v.grades(), v.terms(),
+                .map(p -> new PersonView(v.id(), v.name(), p.rebuild(sheetId).gradeOn(today), v.grades(),
+                        p.rebuild(sheetId).termsOn(today),
                         v.version(), v.retired(), v.retiredFrom(), v.held(), v.holds(), v.contact(), v.aliases(), v.clashing(), v.origin(),
-                        v.pastRetirements(), v.tags()))
+                        v.pastRetirements(), v.tags(), v.undatedTerms(), v.datedTerms()))
                 .orElse(v)).toList();
     }
 
@@ -142,7 +149,8 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         return new PersonState(p.getId(), p.getName(),
                 grades.stream().map(g -> new GradeState(g.getFromDate(), g.getGrade())).toList(), p.getTerms(),
                 p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.getFromDate(), h.getToDate())).toList(),
-                p.getPastRetirements().stream().map(r -> new RetirementState(r.getFromDate(), r.getToDate())).toList());
+                p.getPastRetirements().stream().map(r -> new RetirementState(r.getFromDate(), r.getToDate())).toList(),
+                p.getDatedTerms().stream().map(t -> new TermsState(t.getFromDate(), t.getTerms())).toList());
     }
 
     /** The sheet as it stood then, unsaved, with {@code today} standing in for its today. */

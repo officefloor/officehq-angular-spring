@@ -71,9 +71,10 @@ const NO_AGED: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
 /** A person's terms the form accepts: a whole number of days, 0 or more. */
 const TERMS_PATTERN = /^\d{1,5}$/;
 
-/** A person's own terms as the form shows them: blank for none. */
+/** A person's own terms from the beginning of time as the form shows them: blank for none. */
 function termsText(p: PersonView): string {
-  return p.terms === null ? '' : String(p.terms);
+  const terms = p.undatedTerms === undefined ? p.terms : p.undatedTerms;
+  return terms === null ? '' : String(terms);
 }
 
 /** A CSV field: wrapped in double quotes, with any quote inside doubled, when it holds a comma, a quote or a line break. */
@@ -147,6 +148,10 @@ function csvField(value: string): string {
         }
         <label for="person-form-terms">Terms (business days; blank: none of their own)</label>
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
+        @if (editingId() !== null) {
+          <label for="person-form-terms-from">Terms from (blank: from the beginning of time)</label>
+          <input id="person-form-terms-from" type="date" data-testid="person-form-terms-from" formControlName="termsFrom" />
+        }
         <label for="person-form-contact">Contact (blank: none)</label>
         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" autocomplete="off" />
         <label for="person-form-tags">Tags (comma separated)</label>
@@ -980,6 +985,8 @@ export class PeopleList {
     gradeFrom: new FormControl('', { nonNullable: true }),
     /** The person's own terms in days; blank for none. */
     terms: new FormControl('', { nonNullable: true }),
+    /** While editing: the date the terms are from (yyyy-mm-dd); blank: from the beginning of time. */
+    termsFrom: new FormControl('', { nonNullable: true }),
     /** The person's contact; blank for none. */
     contact: new FormControl('', { nonNullable: true }),
     /** The person's tags, comma separated; blank for none. */
@@ -1318,8 +1325,8 @@ export class PeopleList {
     const sheet = this.sheets.current();
     if (!sheet) return;
     this.inlineGrading.set(p.id);
-    this.api.update(sheet.id, p.id, p.version, { name: p.name, grade: grade as Grade, gradeFrom: null, terms: p.terms,
-      contact: p.contact ?? '', tags: p.tags.join(', ') }).subscribe({
+    this.api.update(sheet.id, p.id, p.version, { name: p.name, grade: grade as Grade, gradeFrom: null,
+      terms: p.undatedTerms === undefined ? p.terms : p.undatedTerms, termsFrom: null, contact: p.contact ?? '', tags: p.tags.join(', ') }).subscribe({
       next: (saved) => {
         this.inlineGrading.set(null);
         this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
@@ -1809,13 +1816,13 @@ export class PeopleList {
     this.patronError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p), termsFrom: '', contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
     this.error.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', termsFrom: '', contact: '', tags: '' }, { emitEvent: false });
     this.error.set(null);
   }
 
@@ -1844,6 +1851,7 @@ export class PeopleList {
       ? this.api.add(sheet.id, { name: value.name, grade: value.grade, terms, contact: value.contact, tags: value.tags })
       : this.api.update(sheet.id, id, this.editingVersion,
           { name: value.name, grade: value.grade, gradeFrom: value.gradeFrom === '' ? null : value.gradeFrom, terms,
+            termsFrom: value.termsFrom === '' ? null : value.termsFrom,
             contact: value.contact, tags: value.tags });
     request.subscribe({
       next: (saved) => {
@@ -1875,7 +1883,7 @@ export class PeopleList {
         const current = people.find((p) => p.id === id);
         if (current && this.editingId() === id) {
           this.editingVersion = current.version;
-          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current), contact: current.contact ?? '', tags: current.tags.join(', ') },
+          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current), termsFrom: '', contact: current.contact ?? '', tags: current.tags.join(', ') },
             { emitEvent: false });
         }
       },

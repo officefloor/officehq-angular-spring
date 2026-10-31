@@ -12,6 +12,13 @@ export interface GradeFrom {
   from: string | null;
 }
 
+/** A person's own terms recorded from a date (yyyy-mm-dd) until their next dated ones'; null terms: none of
+ *  their own then. */
+export interface TermsFrom {
+  terms: number | null;
+  from: string;
+}
+
 /** A hold on a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; a null to-date has no end. */
 export interface HoldView {
   from: string;
@@ -25,8 +32,13 @@ export interface PersonView {
   grade: Grade;
   /** Every grade recorded, in the order they take effect. */
   grades: GradeFrom[];
-  /** The person's own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+  /** The person's own terms in days in force on the sheet's today, ahead of their grade's and the sheet's; null
+   *  when they have none in force. */
   terms: number | null;
+  /** The person's own terms from the beginning of time (before any dated ones); missing in an older snapshot. */
+  undatedTerms?: number | null;
+  /** The person's dated terms, in the order they take effect; missing in an older snapshot. */
+  datedTerms?: TermsFrom[] | null;
   /** Raised on every save; an edit names the version it was made from. */
   version: number;
   /** Retired as soon as a retirement date is set, whatever the date. */
@@ -73,6 +85,9 @@ export interface PersonForm {
 /** An edit of a person: the grade is recorded from `gradeFrom` (yyyy-mm-dd; null takes the sheet's today). */
 export interface PersonEdit extends PersonForm {
   gradeFrom: string | null;
+  /** The date the terms are recorded from (yyyy-mm-dd), keeping those from other dates; null: from the beginning
+   *  of time. */
+  termsFrom: string | null;
 }
 
 /** What a bulk grade did: how many people it changed, and those people as saved. */

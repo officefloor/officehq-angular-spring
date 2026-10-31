@@ -53,6 +53,11 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's dated terms: each in force from its from-date until the next one's, ahead of the undated. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_terms", joinColumns = @JoinColumn(name = "person_id"))
+    private List<TermsFrom> datedTerms = new ArrayList<>();
+
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     @Column(name = "contact")
     private String contact;
@@ -106,6 +111,7 @@ public class Person {
         copy.position = position;
         grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
         copy.terms = terms;
+        datedTerms.forEach(t -> copy.datedTerms.add(new TermsFrom(t.getFromDate(), t.getTerms())));
         copy.contact = contact;
         copy.tags = tags;
         copy.retiredFrom = retiredFrom;
@@ -183,6 +189,28 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The dated terms recorded, in the order they take effect. */
+    public List<TermsFrom> getDatedTerms() {
+        return datedTerms.stream().sorted(TermsFrom.BY_FROM).toList();
+    }
+
+    /** Record {@code terms} (null: none of their own) from {@code from}, replacing those recorded from that same
+     *  date, if any. */
+    public void setTermsFrom(LocalDate from, Integer terms) {
+        datedTerms.removeIf(t -> t.getFromDate().equals(from));
+        datedTerms.add(new TermsFrom(from, terms));
+    }
+
+    /** The person's own terms in force on {@code date}: the dated ones with the latest from-date on or before it,
+     *  else the undated ones; null when none are in force. A null date takes the latest terms recorded. */
+    public Integer termsOn(LocalDate date) {
+        TermsFrom dated = datedTerms.stream()
+                .filter(t -> date == null || !t.getFromDate().isAfter(date))
+                .max(TermsFrom.BY_FROM)
+                .orElse(null);
+        return dated != null ? dated.getTerms() : terms;
     }
 
     public String getContact() {

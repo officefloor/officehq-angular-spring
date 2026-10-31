@@ -137,8 +137,8 @@ public class PersonService {
             LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, person.getContact(), person.getTags(),
-                false);
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, null, person.getContact(),
+                person.getTags(), false);
     }
 
     /**
@@ -152,24 +152,26 @@ public class PersonService {
             LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, person.getTags(), true);
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, null, contact, person.getTags(), true);
     }
 
     /**
      * Edit a person through the person form as
      * {@link #update(String, String, long, long, String, String, LocalDate, Integer, String)} does, their tags
      * becoming {@code tags} (comma separated; each trimmed and lower-cased, blanks and repeats dropped; blank or
-     * null: none).
+     * null: none), and their own terms recorded from {@code termsFrom}, keeping those recorded from other dates
+     * (null: recorded from the beginning of time, as the edit without a from-date does).
      */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, String tags) {
-        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, ClaimService.tagsOf(tags),
-                true);
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tags) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, termsFrom, contact,
+                ClaimService.tagsOf(tags), true);
     }
 
     private Person update(String sheetId, String user, long id, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, String tags, boolean throughForm) {
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tags,
+            boolean throughForm) {
         LocalDate today = sheets.load(sheetId, user).getToday();
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
@@ -196,14 +198,21 @@ public class PersonService {
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
         }
-        boolean termsChanged = !Objects.equals(person.getTerms(), terms);
-        person.setTerms(terms);
+        boolean termsChanged;
+        if (termsFrom != null) {
+            termsChanged = person.getDatedTerms().stream().noneMatch(
+                    t -> t.getFromDate().equals(termsFrom) && Objects.equals(t.getTerms(), terms));
+            person.setTermsFrom(termsFrom, terms);
+        } else {
+            termsChanged = !Objects.equals(person.getTerms(), terms);
+            person.setTerms(terms);
+        }
         boolean contactChanged = !Objects.equals(person.getContact(), reach);
         person.setContact(reach);
         person.setTags(tags);
         Person edited = save(person);
         audit.recordChangeOnCommit(sheetId, user, entry("PERSON_EDITED", user, edited, edited.gradeOn(today))
-                + (termsChanged ? " terms=" + (terms != null ? terms : "") : "")
+                + (termsChanged ? " terms=" + Objects.toString(edited.termsOn(today), "") : "")
                 + (contactChanged ? " contact=" + (reach != null ? reach : "") : ""));
         rollup.recordChanges(sheetId, user, before);
         return edited;

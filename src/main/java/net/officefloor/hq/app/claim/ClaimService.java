@@ -1099,7 +1099,8 @@ public class ClaimService {
     /** The terms in days a claim of the person dated {@code date} is due by: the person's own, else their grade's
      *  in force then, else the sheet's then. */
     private static int termsOf(Sheet sheet, Person person, LocalDate date) {
-        return person.getTerms() != null ? person.getTerms() : sheet.termsFor(person.gradeOn(date), date);
+        Integer own = person.termsOn(date);
+        return own != null ? own : sheet.termsFor(person.gradeOn(date), date);
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

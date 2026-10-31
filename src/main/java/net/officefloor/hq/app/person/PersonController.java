@@ -38,11 +38,12 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements,
-            List<String> tags) {
+            List<String> tags, Integer undatedTerms, List<TermsView> datedTerms) {
 
-        /** A view read back without tags (taken before people had them) has none. */
+        /** A view read back without tags or dated terms (taken before people had them) has none. */
         public PersonView {
             tags = tags == null ? List.of() : tags;
+            datedTerms = datedTerms == null ? List.of() : datedTerms;
         }
 
         public static PersonView of(Person person, LocalDate today) {
@@ -51,11 +52,12 @@ public class PersonController {
 
         public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
-                    person.getGrades().stream().map(GradeView::of).toList(), person.getTerms(), person.getVersion(),
+                    person.getGrades().stream().map(GradeView::of).toList(), person.termsOn(today), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getContact(),
                     person.getAliases(), clashing, person.getOriginSheetId(),
-                    person.getPastRetirements().stream().map(RetirementView::of).toList(), person.tagList());
+                    person.getPastRetirements().stream().map(RetirementView::of).toList(), person.tagList(),
+                    person.getTerms(), person.getDatedTerms().stream().map(TermsView::of).toList());
         }
     }
 
@@ -64,6 +66,14 @@ public class PersonController {
 
         static GradeView of(GradeFrom grade) {
             return new GradeView(grade.getGrade(), grade.getFromDate());
+        }
+    }
+
+    /** A person's own terms recorded from {@code from} (null terms: none of their own then). */
+    public record TermsView(Integer terms, LocalDate from) {
+
+        static TermsView of(TermsFrom terms) {
+            return new TermsView(terms.getTerms(), terms.getFromDate());
         }
     }
 
@@ -92,8 +102,8 @@ public class PersonController {
 
     /** An edit of a person: their new values, the date the grade is from (missing: the sheet's today), their own
      *  terms (missing: none), their contact (blank or missing: none), their tags (comma separated; blank or missing:
-     *  none) and the version of the person the editor
-     *  loaded. */
+     *  none), the version of the person the editor loaded, and the date their terms are from (missing: from the
+     *  beginning of time). */
     public record PersonEdit(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
@@ -101,7 +111,8 @@ public class PersonController {
             @Min(0) @Max(36500) Integer terms,
             @NotNull Long version,
             @Size(max = 200) String contact,
-            @Size(max = 1000) String tags) {
+            @Size(max = 1000) String tags,
+            LocalDate termsFrom) {
     }
 
     /** An alias as the row submits it; stored trimmed, and refused when blank. */
@@ -195,7 +206,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonEdit request) {
         Person edited = people.update(sheetId, user, id, request.version(), request.name(), request.grade(),
-                request.gradeFrom(), request.terms(), request.contact(), request.tags());
+                request.gradeFrom(), request.terms(), request.termsFrom(), request.contact(), request.tags());
         return view(sheetId, edited);
     }
 
