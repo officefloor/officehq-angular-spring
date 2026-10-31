@@ -42,6 +42,9 @@ const NO_RATES: readonly RateView[] = [];
     <ul [attr.aria-label]="'Claims of ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input type="checkbox" data-testid="claim-select" [checked]="selected().has(c.id)"
+                 (change)="selectToggled.emit({ id: c.id, selected: $any($event.target).checked })"
+                 [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
           No. <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           on <span data-testid="claim-date">{{ c.date }}</span>
@@ -91,7 +94,10 @@ export class PersonClaims {
   readonly periods = input.required<readonly PeriodView[]>();
   /** Whether the person is on hold: their OPEN claims then count in no total. */
   readonly held = input(false);
+  /** The ids of the claims selected for a bulk action. */
+  readonly selected = input<ReadonlySet<number>>(new Set());
   readonly saved = output<ClaimView>();
+  readonly selectToggled = output<{ id: number; selected: boolean }>();
 
   protected readonly claimed = computed(() => money(this.claims().filter(countsWhile(this.held())).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);

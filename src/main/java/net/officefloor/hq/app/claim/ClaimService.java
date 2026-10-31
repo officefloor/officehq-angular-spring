@@ -5,7 +5,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -55,6 +58,18 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
+    }
+
+    /** The ids of those given that are claims on the sheet, in list order: people in the order they are listed,
+     *  each person's claims newest first. */
+    @Transactional(readOnly = true)
+    public List<Long> inListOrder(String sheetId, Collection<Long> ids) {
+        Set<Long> wanted = new HashSet<>(ids);
+        return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> wanted.contains(c.getId()))
+                .sorted(Comparator.comparing(Claim::getPersonId))
+                .map(Claim::getId)
+                .toList();
     }
 
     /** Add a claim for a person; a missing date takes the sheet's today, a missing note is empty. Refused

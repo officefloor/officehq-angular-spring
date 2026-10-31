@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Claims on a sheet. The caller's signed-in name comes in the {@code X-User} header. */
 @RestController
@@ -55,6 +57,14 @@ public class ClaimController {
 
     /** The status a claim is to move to. */
     public record StatusChange(@NotNull ClaimStatus status) {
+    }
+
+    /** The claims selected to be opened together. */
+    public record BulkOpen(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {
+    }
+
+    /** What a bulk open did: how many it opened and refused, and the claims it opened, in the order opened. */
+    public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
     }
 
     private final ClaimService claims;
@@ -96,5 +106,28 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody StatusChange request) {
         return ClaimView.of(claims.changeStatus(sheetId, user, id, request.status()));
+    }
+
+    /**
+     * Open each selected claim that can be opened, one at a time in list order (people in the order listed,
+     * newest claim first within a person), so they are numbered in that order; each that cannot be opened, or is
+     * not on the sheet, is refused and left as it is.
+     */
+    @PostMapping("/claims/bulk-open")
+    public BulkOpenView bulkOpen(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkOpen request) {
+        List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+        int refused = (int) request.ids().stream().distinct().count() - ordered.size();
+        List<ClaimView> opened = new ArrayList<>();
+        for (long id : ordered) {
+            try {
+                opened.add(ClaimView.of(claims.changeStatus(sheetId, user, id, ClaimStatus.OPEN)));
+            } catch (ResponseStatusException refusal) {
+                refused++;
+            }
+        }
+        return new BulkOpenView(opened.size(), refused, opened);
     }
 }

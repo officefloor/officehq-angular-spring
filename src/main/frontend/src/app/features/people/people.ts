@@ -93,6 +93,17 @@ function csvField(value: string): string {
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
       </p>
 
+      <p>
+        <button type="button" data-testid="bulk-open" (click)="bulkOpen()" [disabled]="bulkOpening()">Open selected claims</button>
+        @if (bulkOpenResult(); as r) {
+          Opened <span data-testid="bulk-opened">{{ r.opened }}</span>,
+          refused <span data-testid="bulk-refused">{{ r.refused }}</span>
+        }
+        @if (bulkOpenError(); as err) {
+          <span role="alert" data-testid="bulk-open-error">{{ err }}</span>
+        }
+      </p>
+
       <ul data-testid="person-list">
         @for (p of listed(); track p.id) {
           <li [attr.data-testid]="'person-row-' + p.id">
@@ -136,6 +147,7 @@ function csvField(value: string): string {
             }
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.ratesByGrade()" [grades]="p"
                                [periods]="periods.list()" [held]="p.held"
+                               [selected]="selectedClaims()" (selectToggled)="toggleSelected($event)"
                                (saved)="claimSaved($event)" />
           </li>
         }
@@ -165,6 +177,13 @@ export class PeopleList {
   protected readonly holding = signal<number | null>(null);
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
+  /** The ids of the claims selected for a bulk action. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** What the last bulk open did, until the button is pressed again. */
+  protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkOpenError = signal<string | null>(null);
+  /** Whether a bulk open is running, so a second press waits for the first. */
+  protected readonly bulkOpening = signal(false);
   /** Each person's statements, by person; one with none is missing. */
   private readonly statements = signal<Map<number, StatementSummary>>(new Map());
   /** The person whose statement is being taken, so a second press waits for the first. */
@@ -308,6 +327,9 @@ export class PeopleList {
         switchMap((sheet) => {
           this.people.set([]);
           this.claims.set([]);
+          this.selectedClaims.set(new Set());
+          this.bulkOpenResult.set(null);
+          this.bulkOpenError.set(null);
           this.statements.set(new Map());
           this.patrons.set([]);
           this.personError.set(null);
@@ -482,6 +504,37 @@ export class PeopleList {
       error: () => {
         this.holding.set(null);
         this.personError.set({ id: p.id, message: 'Could not ' + (p.held ? 'release ' : 'hold ') + p.name + '.' });
+      },
+    });
+  }
+
+  protected toggleSelected({ id, selected }: { id: number; selected: boolean }): void {
+    this.selectedClaims.update((ids) => {
+      const next = new Set(ids);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Open the selected claims together: each that can be is opened, numbered in list order; the rest are left as they are. */
+  protected bulkOpen(): void {
+    if (this.bulkOpening()) return;
+    this.bulkOpenResult.set(null);
+    this.bulkOpenError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.bulkOpening.set(true);
+    this.claimsApi.bulkOpen(sheet.id, [...this.selectedClaims()]).subscribe({
+      next: ({ opened, refused, claims }) => {
+        this.bulkOpening.set(false);
+        claims.forEach((c) => this.claimSaved(c));
+        this.selectedClaims.set(new Set());
+        this.bulkOpenResult.set({ opened, refused });
+      },
+      error: () => {
+        this.bulkOpening.set(false);
+        this.bulkOpenError.set('Could not open the selected claims.');
       },
     });
   }
