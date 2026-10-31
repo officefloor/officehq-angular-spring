@@ -72,8 +72,8 @@ public class StatementService {
     /**
      * Take a statement of a person: record their due-total now (with the late charges their overdue claims have gained), bind each of their claims that counts
      * to the figure it has now (its settled figure, else the figure it is bound to, else its amount at
-     * its grade's rate in force on its date) and leave the rest unbound. A late charge is never bound: it keeps
-     * following the sheet's today. The sheet is locked first, so
+     * its grade's rate in force on its date, not raised to the floor) and leave the rest unbound. A late charge is never
+     * bound: it keeps following the sheet's today, and the floor is applied last, to the figure with its charge. The sheet is locked first, so
      * a statement is not taken while a claim on it changes.
      */
     @Transactional
@@ -99,12 +99,14 @@ public class StatementService {
             BigDecimal fixed = claim.getSettledDue() != null ? claim.getSettledDue() : claim.getBoundDue();
             BigDecimal figure = fixed != null || claim.isBound() ? fixed
                     : Rate.inForceOn(ratesOf(sheetRates, person.gradeOn(claim.getDate())), claim.getDate())
-                            .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), sheet.floorOn(claim.getDate()),
+                            .map(rate -> ClaimService.liveFigure(claim, rate.getRate(),
                                     sheet.roundingFor(ClaimService.roundingDate(claim, theirs))))
                             .orElse(null);
             anyDue |= figure != null;
             grades.add(person.gradeOn(claim.getDate()));
-            total = figure == null ? total : total.add(figure).add(ClaimService.lateCharge(claim, figure, sheet));
+            total = figure == null ? total
+                    : total.add(claim.getSettledDue() != null ? figure
+                            : ClaimService.floored(claim, figure.add(ClaimService.lateCharge(claim, figure, sheet)), sheet));
             claim.bind(figure);
             counted++;
         }

@@ -99,8 +99,8 @@ export function lateChargeCents(
 }
 
 /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
- *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date raised to the
- *  floor in force on its date (a correction is not), with any late charge added on top of it; null when it has none. Its live
+ *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date, with any late
+ *  charge added on top of it, the sum raised to the floor in force on its date (a correction is not); null when it has none. Its live
  *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. */
 export function claimDueCents(
   c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null },
@@ -117,10 +117,10 @@ export function claimDueCents(
   } else {
     const rate = rateOn(gradeRates, c.date);
     if (rate === undefined) return null;
-    const due = dueCents(cents(c.amount), rate, roundsHalfUp(roundsOn, sheet));
-    figure = due < 0 ? due : Math.max(due, cents(floorOn(sheet, c.date)));
+    figure = dueCents(cents(c.amount), rate, roundsHalfUp(roundsOn, sheet));
   }
-  return figure + lateChargeCents(c, figure, sheet);
+  const due = figure + lateChargeCents(c, figure, sheet);
+  return cents(c.amount) < 0 ? due : Math.max(due, cents(floorOn(sheet, c.date)));
 }
 
 

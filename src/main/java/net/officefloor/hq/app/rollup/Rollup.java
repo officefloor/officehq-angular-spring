@@ -172,18 +172,19 @@ public class Rollup {
     }
 
     /** A claim's due: its settled figure, else its stated one (none while PENDING), else its amount at the rate in force on its date of
-     *  its person's grade in force on that date, rounded as the claim rounds (by the sheet's policy date), raised to the sheet's floor unless it is a correction; an overdue claim's late charge is added on top of the figure. */
+     *  its person's grade in force on that date, rounded as the claim rounds (by the sheet's policy date); an overdue claim's late charge is added on top of the figure, and the
+     *  sum is raised to the floor in force on its date unless it is a correction. */
     private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Sheet sheet, List<Claim> sheetClaims) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        BigDecimal floor = sheet == null ? null : sheet.floorOn(claim.getDate());
         RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN
                 : sheet.roundingFor(ClaimService.roundingDate(claim, sheetClaims));
         BigDecimal figure = claim.isBound() ? claim.getBoundDue()
                 : Rate.inForceOn(gradeRates, claim.getDate())
-                        .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), floor, rounding))
+                        .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), rounding))
                         .orElse(null);
-        return figure == null || sheet == null ? figure : figure.add(ClaimService.lateCharge(claim, figure, sheet));
+        return figure == null || sheet == null ? figure
+                : ClaimService.floored(claim, figure.add(ClaimService.lateCharge(claim, figure, sheet)), sheet);
     }
 }
