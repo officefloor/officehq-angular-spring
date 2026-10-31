@@ -1,0 +1,72 @@
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index 7185761d8..aa4da48d3 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -50,6 +50,11 @@ export class Pools {
+     return this.http.get<PoolView[]>(this.base(sheetId)).pipe(tap((list) => this.list.set(list)));
+   }
+ 
++  /** Re-read a sheet's pools from the store, keeping the ones shown until they are in. */
++  refresh(sheetId: string): Observable<PoolView[]> {
++    return this.http.get<PoolView[]>(this.base(sheetId)).pipe(tap((list) => this.list.set(list)));
++  }
++
+   /** Add a pool; refused when the name is blank or already a pool on the sheet. */
+   add(sheetId: string, name: string): Observable<PoolView> {
+     return this.http.post<PoolView>(this.base(sheetId), { name }).pipe(
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index d09744849..4b01d62e1 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -15,6 +15,11 @@ type MemberForm = FormGroup<{
+ 
+ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+ 
++/** A CSV field: quoted, with its quotes doubled, when it has a comma, quote or line break. */
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
++}
++
+ // The sheet's pools: each has members chosen from the sheet's people and its other pools, with a share percent of it.
+ @Component({
+   selector: 'app-pools',
+@@ -76,6 +81,9 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+           <p role="alert" data-testid="pool-form-error">{{ err }}</p>
+         }
+       </form>
++      <p>
++        <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools as CSV</button>
++      </p>
+     </section>
+   `,
+ })
+@@ -221,6 +229,29 @@ export class PoolsPanel {
+     });
+   }
+ 
++  /** Download the pools as CSV, re-read from the store: one line per member, pools and members in the order added. */
++  protected exportCsv(): void {
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.pools.refresh(sheet.id).subscribe({
++      next: (list) => {
++        const lines = [
++          ['pool', 'member', 'share', 'cut'],
++          ...list.flatMap((pool) => pool.members.map((m) => [
++            pool.name, m.memberPoolId !== null ? 'pool:' + m.name : m.name, m.share, m.cut ?? '',
++          ])),
++        ].map((fields) => fields.map(csvField).join(',') + '\n');
++        const url = URL.createObjectURL(new Blob(lines, { type: 'text/csv' }));
++        const link = document.createElement('a');
++        link.href = url;
++        link.download = 'pools-' + sheet.id + '.csv';
++        link.click();
++        setTimeout(() => URL.revokeObjectURL(url));
++      },
++      error: () => this.error.set('Could not read the pools.'),
++    });
++  }
++
+   private setError(poolId: number, message: string | null): void {
+     this.errors.update((m) => {
+       const next = new Map(m);
