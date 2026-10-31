@@ -105,6 +105,10 @@ public class ClaimController {
     public record ReassignForm(@NotNull Long personId) {
     }
 
+    /** The due-by a steward sets on a claim. */
+    public record DueByForm(@NotNull LocalDate dueBy) {
+    }
+
     /** The date a claim is deferred until. */
     public record DeferForm(@NotNull LocalDate until) {
     }
@@ -386,6 +390,15 @@ public class ClaimController {
             @Valid @RequestBody RedateForm form) {
         String sheet = sheetId.trim();
         return view(sheet, claims.redate(sheet, user.trim(), claimId, form.date()));
+    }
+
+    /** A steward sets a DRAFT, OPEN or PENDING claim's due-by directly. */
+    @PostMapping("/claims/{claimId}/due-by")
+    public PersonView setDueBy(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId, @RequestHeader("X-User") @NotBlank String user,
+            @Valid @RequestBody DueByForm form) {
+        String sheet = sheetId.trim();
+        return view(sheet, claims.setDueBy(sheet, user.trim(), claimId, form.dueBy()));
     }
 
     /** Split an amount off an OPEN claim into a new OPEN claim of the same person. */

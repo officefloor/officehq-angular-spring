@@ -111,10 +111,15 @@ public class Claim {
     /**
      * The date the claim is due by, fixed when it was added: the terms-th business day after its date, by the
      * terms then of its person's grade on its date and the holidays on the sheet then. A holiday added later
-     * fixes it again over the holidays then, with the same terms (see {@link #terms}).
+     * fixes it again over the holidays then, with the same terms (see {@link #terms}), unless a steward set it
+     * (see {@link #dueBySet}).
      */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** Whether a steward set the due-by directly: it then stays as set, a holiday added later does not move it. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
 
     /** The terms (in business days) the claim's due-by was fixed with. */
     @Column(name = "terms", nullable = false)
@@ -248,6 +253,7 @@ public class Claim {
         arrived.settledDue = settledDue;
         arrived.correctsDate = correctsDate;
         arrived.dueBy = dueBy;
+        arrived.dueBySet = dueBySet;
         arrived.terms = terms;
         arrived.deferredUntil = deferredUntil;
         arrived.remindedOn = remindedOn;
@@ -322,6 +328,14 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public boolean isDueBySet() {
+        return dueBySet;
+    }
+
+    public void setDueBySet(boolean dueBySet) {
+        this.dueBySet = dueBySet;
     }
 
     public int getTerms() {

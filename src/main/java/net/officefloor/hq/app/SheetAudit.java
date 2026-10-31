@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimDeferred;
 import net.officefloor.hq.app.claim.ClaimProofAdded;
 import net.officefloor.hq.app.claim.ClaimReassigned;
 import net.officefloor.hq.app.claim.ClaimRedated;
+import net.officefloor.hq.app.claim.ClaimDueBySet;
 import net.officefloor.hq.app.claim.ClaimShared;
 import net.officefloor.hq.app.claim.ClaimReminded;
 import net.officefloor.hq.app.claim.ClaimWaived;
@@ -222,6 +223,14 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(ClaimRedated e) {
         change(e.sheetId(), e.user(), "CLAIM_REDATED sheet=" + e.sheetId() + " by=" + e.user()
+                + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
+                + " old=" + e.old() + " new=" + e.fresh());
+    }
+
+    @TransactionalEventListener
+    public void on(ClaimDueBySet e) {
+        change(e.sheetId(), e.user(), "CLAIM_DUE_BY_SET sheet=" + e.sheetId() + " by=" + e.user()
                 + " person=" + e.person() + " amount=" + e.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + " date=" + e.date() + (e.number() == null ? "" : " number=" + e.number())
                 + " old=" + e.old() + " new=" + e.fresh());

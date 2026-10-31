@@ -423,6 +423,17 @@ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
           <button type="button" data-testid="claim-redate" (click)="redate(c)">
             Re-date<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
           </button>
+          <label [for]="'claim-due-by-new-' + c.id">New due-by</label>
+          <input
+            [id]="'claim-due-by-new-' + c.id"
+            type="date"
+            data-testid="claim-due-by-new"
+            [value]="newDueBys()[c.id] ?? ''"
+            (input)="setNewDueBy(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-set-due-by" (click)="setDueBy(c)">
+            Set due-by<span class="visually-hidden"> claim {{ c.amount }} {{ c.date }}</span>
+          </button>
           <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -619,6 +630,7 @@ export class Claims implements OnInit {
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The new date typed for re-dating each claim, by claim id. */
   protected readonly newDates = signal<Record<number, string>>({});
+  protected readonly newDueBys = signal<Record<number, string>>({});
   /** The amount typed for splitting off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
 
@@ -754,6 +766,45 @@ export class Claims implements OnInit {
       const refusal =
         err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
       this.claimError.set({ id: c.id, message: refusal ?? 'The claim cannot be re-dated to that date.' });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected setNewDueBy(id: number, date: string): void {
+    this.newDueBys.update((all) => ({ ...all, [id]: date }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** A steward sets a DRAFT, OPEN or PENDING claim's due-by to the date typed; a refusal shows on the claim's row. */
+  protected async setDueBy(c: Claim): Promise<void> {
+    if (this.busy) return;
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const dueBy = (this.newDueBys()[c.id] ?? '').trim();
+    if (!DATE.test(dueBy)) {
+      this.claimError.set({ id: c.id, message: 'Enter the new due-by of the claim.' });
+      return;
+    }
+    const headers = { 'X-User': this.session.user() ?? '' };
+    this.busy = true;
+    try {
+      const person = await firstValueFrom(
+        this.http.post<PersonWithClaims>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/due-by`,
+          { dueBy },
+          { headers },
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.newDueBys.update((all) => ({ ...all, [c.id]: '' }));
+      this.saved.emit(person);
+    } catch (err) {
+      if (this.session.sheet() !== sheet) return;
+      const refusal =
+        err instanceof HttpErrorResponse && (err.status === 409 || err.status === 403) ? err.error?.message : undefined;
+      this.claimError.set({ id: c.id, message: refusal ?? "The claim's due-by cannot be set to that date." });
     } finally {
       this.busy = false;
     }

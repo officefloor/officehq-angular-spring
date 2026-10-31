@@ -645,6 +645,38 @@ public class ClaimService {
     }
 
     /**
+     * A steward sets a DRAFT, OPEN or PENDING claim's due-by directly; it then stays as set (a holiday added later
+     * does not move it), and overdue, the late charge, grace and the claim's period follow it. A claim of any
+     * other status, one due by (or to be due by) a date inside a closed period, or a set by anyone but a steward
+     * is refused and nothing changes. Returns the person it belongs to.
+     */
+    @Transactional
+    public long setDueBy(String sheetId, String user, long claimId, LocalDate dueBy) {
+        Claim claim = claim(sheetId, claimId);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a steward can set a claim's due-by");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && claim.getStatus() != ClaimStatus.OPEN
+                && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus()
+                    + " claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can");
+        }
+        periods.requireOpen(sheetId, claim.getDueBy());
+        periods.requireOpen(sheetId, dueBy);
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Rollup.Figures before = rollup.figures(sheetId);
+        LocalDate old = claim.getDueBy();
+        claim.setDueBy(dueBy);
+        claim.setDueBySet(true);
+        claims.flush();
+        events.publishEvent(new ClaimDueBySet(sheetId, user, owner.getName(), claim.getAmount(), claim.getDate(),
+                claim.getShownNumber(), old, dueBy));
+        rollup.changed(sheetId, user, before);
+        return claim.getPersonId();
+    }
+
+    /**
      * Split an amount (more than 0.00 and less than the claim's amount) off an OPEN claim. The claim keeps
      * the rest and is released from any figure a statement bound it to; a new OPEN claim of the same person
      * takes the amount split off, with the same date and note, unnumbered, opened by the user and

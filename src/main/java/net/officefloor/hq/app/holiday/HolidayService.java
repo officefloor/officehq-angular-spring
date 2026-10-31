@@ -19,7 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
  * The holidays on a sheet, earliest first; no date is on it twice. A claim's due-by, when it is fixed as the
  * claim is added, is the terms-th business day after its date, skipping weekends and the holidays on the sheet
  * then (see {@link #dueBy}). A holiday added later fixes again the due-by of every claim on the sheet that is
- * not SETTLED or VOID and is due on or after it, from the claim's date with the terms it was fixed with.
+ * not SETTLED or VOID and is due on or after it, from the claim's date with the terms it was fixed with; a
+ * due-by a steward set directly stays as set.
  */
 @Service
 public class HolidayService {
@@ -62,7 +63,7 @@ public class HolidayService {
         Set<LocalDate> days = list(sheetId).stream().map(Holiday::getDay).collect(Collectors.toSet());
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (claim.getStatus() != ClaimStatus.SETTLED && claim.getStatus() != ClaimStatus.VOID
-                    && !claim.getDueBy().isBefore(date)) {
+                    && !claim.isDueBySet() && !claim.getDueBy().isBefore(date)) {
                 claim.setDueBy(businessDaysAfter(claim.getDate(), claim.getTerms(), days));
             }
         }
