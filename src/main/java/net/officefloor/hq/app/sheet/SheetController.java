@@ -26,13 +26,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days. */
-    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct) {
+    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
+     *  the policy date is null when it is the sheet's today. */
+    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+            LocalDate policyDate) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString());
+                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate());
         }
     }
 
@@ -53,6 +55,10 @@ public class SheetController {
 
     /** The sheet's late percent as the form submits it. */
     public record LatePctChange(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal latePct) {
+    }
+
+    /** The sheet's policy date as the form submits it; a missing one means the sheet's today. */
+    public record PolicyDateChange(LocalDate policyDate) {
     }
 
     private final SheetService sheets;
@@ -112,5 +118,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody LatePctChange request) {
         return SheetView.of(sheets.setLatePct(id, user, request.latePct()));
+    }
+
+    /** Change the sheet's policy date. */
+    @PutMapping("/{id}/settings/policy-date")
+    public SheetView setPolicyDate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PolicyDateChange request) {
+        return SheetView.of(sheets.setPolicyDate(id, user, request.policyDate()));
     }
 }

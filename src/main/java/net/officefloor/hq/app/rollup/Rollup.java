@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -76,7 +77,7 @@ public class Rollup {
                     .anyMatch(grade -> Rate.inForceOn(ratesOf(sheetRates, grade), today).isPresent());
             String due = NOT_AVAILABLE;
             if (anyFixed || anyRate) {
-                BigDecimal total = counting.stream().map(c -> dueOf(c, ratesOf(sheetRates, person.gradeOn(c.getDate())), sheet))
+                BigDecimal total = counting.stream().map(c -> dueOf(c, ratesOf(sheetRates, person.gradeOn(c.getDate())), sheet, sheetClaims))
                         .filter(Objects::nonNull)
                         .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
                 dueTotal = dueTotal.add(total);
@@ -95,12 +96,13 @@ public class Rollup {
         Map<Long, Person> personOf = new LinkedHashMap<>();
         people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        for (Claim claim : sheetClaims) {
             Person person = personOf.get(claim.getPersonId());
             if (person == null || !person.counts(claim.getStatus()) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
-            BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet);
+            BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet, sheetClaims);
             if (due != null) {
                 total = total.add(due);
             }
@@ -134,15 +136,17 @@ public class Rollup {
     }
 
     /** A claim's due: its settled figure, else its stated one, else its amount at the rate in force on its date of
-     *  its person's grade in force on that date, raised to the sheet's floor unless it is a correction; an overdue claim's late charge is added on top of the figure. */
-    private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Sheet sheet) {
+     *  its person's grade in force on that date, rounded as the claim rounds (by the sheet's policy date), raised to the sheet's floor unless it is a correction; an overdue claim's late charge is added on top of the figure. */
+    private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Sheet sheet, List<Claim> sheetClaims) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
         BigDecimal floor = sheet == null ? null : sheet.getFloor();
+        RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN
+                : sheet.roundingFor(ClaimService.roundingDate(claim, sheetClaims));
         BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue()
                 : Rate.inForceOn(gradeRates, claim.getDate())
-                        .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), floor))
+                        .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), floor, rounding))
                         .orElse(null);
         return figure == null || sheet == null ? figure : figure.add(ClaimService.lateCharge(claim, figure, sheet));
     }

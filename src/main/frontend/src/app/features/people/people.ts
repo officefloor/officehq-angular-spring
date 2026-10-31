@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, isOverdue, money } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, isOverdue, money, roundingDate } from '../../core/claims';
 import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
@@ -341,7 +341,8 @@ export class PeopleList {
 
   /** A claim's due in whole cents, at the rates of its person's grade in force on its date; null with none. */
   private claimDue(p: PersonView, c: ClaimView, dueTerms: DueTerms): number | null {
-    return claimDueCents(c, this.rates.ratesByGrade().get(gradeOn(p, c.date)) ?? NO_RATES, dueTerms);
+    return claimDueCents(c, this.rates.ratesByGrade().get(gradeOn(p, c.date)) ?? NO_RATES, dueTerms,
+      roundingDate(c, this.claimsOf(p.id)));
   }
 
   protected dueOf(p: PersonView): string {

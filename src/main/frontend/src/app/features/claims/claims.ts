@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money } from '../../core/claims';
+import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money, roundingDate } from '../../core/claims';
 import { Grade, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
@@ -114,7 +114,7 @@ export class PersonClaims {
 
   protected dueOf(c: ClaimView): string {
     const rates = this.ratesByGrade().get(gradeOn(this.grades(), c.date)) ?? NO_RATES;
-    const due = claimDueCents(c, rates, this.sheets.current() ?? DEFAULT_DUE_TERMS);
+    const due = claimDueCents(c, rates, this.sheets.current() ?? DEFAULT_DUE_TERMS, roundingDate(c, this.claims()));
     return due === null ? NOT_AVAILABLE : money(due);
   }
 

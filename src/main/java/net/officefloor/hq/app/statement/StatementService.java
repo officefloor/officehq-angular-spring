@@ -99,7 +99,8 @@ public class StatementService {
             BigDecimal fixed = claim.getSettledDue() != null ? claim.getSettledDue() : claim.getStatedDue();
             BigDecimal figure = fixed != null ? fixed
                     : Rate.inForceOn(ratesOf(sheetRates, person.gradeOn(claim.getDate())), claim.getDate())
-                            .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), sheet.getFloor()))
+                            .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), sheet.getFloor(),
+                                    sheet.roundingFor(ClaimService.roundingDate(claim, theirs))))
                             .orElse(null);
             anyFixed |= fixed != null;
             grades.add(person.gradeOn(claim.getDate()));

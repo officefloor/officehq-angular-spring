@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
@@ -134,7 +135,10 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
-                .map(Rate::getRate).map(rate -> liveFigure(claim, rate, sheet.getFloor())).orElse(null);
+                .map(Rate::getRate)
+                .map(rate -> liveFigure(claim, rate, sheet.getFloor(), sheet.roundingFor(roundingDate(claim,
+                        claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId())))))
+                .orElse(null);
         // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
         BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue() : live;
         BigDecimal due = figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
@@ -220,13 +224,25 @@ public class ClaimService {
                 + (number == null ? "" : " number=" + number);
     }
 
-    /** The due on an amount at a rate (a percent): amount × rate / 100, rounded half to even to the cent. */
-    public static BigDecimal dueOn(BigDecimal amount, BigDecimal rate) {
-        return amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    /** The due on an amount at a rate (a percent): amount × rate / 100, rounded to the cent as the claim it is on
+     *  rounds (half up rounds a negative half away from zero, as its opposite would). */
+    public static BigDecimal dueOn(BigDecimal amount, BigDecimal rate, RoundingMode rounding) {
+        return amount.multiply(rate).movePointLeft(2).setScale(2, rounding);
+    }
+
+    /** The date that decides how a claim's live figures round: its own date, or for a correction the date of the
+     *  claim of the same person it corrects. */
+    public static LocalDate roundingDate(Claim claim, Collection<Claim> sheetClaims) {
+        if (claim.getCorrects() == null) {
+            return claim.getDate();
+        }
+        return sheetClaims.stream()
+                .filter(c -> c.getPersonId().equals(claim.getPersonId()) && claim.getCorrects().equals(c.getNumber()))
+                .map(Claim::getDate).findFirst().orElse(claim.getDate());
     }
 
     /** The late charge an OPEN claim has gained on its figure by the sheet's today: the sheet's late percent of
-     *  the figure for every full 30 days past the day it is due by, rounded as a due is; 0.00 when not overdue,
+     *  the figure for every full 30 days past the day it is due by, rounded as the claim rounds; 0.00 when not overdue,
      *  it has no figure, or it is a correction. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
@@ -234,12 +250,14 @@ public class ClaimService {
             return none;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday()) / 30;
-        return periods <= 0 ? none : dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)));
+        return periods <= 0 ? none : dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)),
+                sheet.roundingFor(claim.getDate()));
     }
 
-    /** A claim's live figure at a rate: its due on its amount, raised to the sheet's floor unless it is a correction. */
-    public static BigDecimal liveFigure(Claim claim, BigDecimal rate, BigDecimal floor) {
-        BigDecimal due = dueOn(claim.getAmount(), rate);
+    /** A claim's live figure at a rate: its due on its amount, rounded as the claim rounds, raised to the sheet's
+     *  floor unless it is a correction. */
+    public static BigDecimal liveFigure(Claim claim, BigDecimal rate, BigDecimal floor, RoundingMode rounding) {
+        BigDecimal due = dueOn(claim.getAmount(), rate, rounding);
         return claim.isCorrection() ? due : floored(due, floor);
     }
 

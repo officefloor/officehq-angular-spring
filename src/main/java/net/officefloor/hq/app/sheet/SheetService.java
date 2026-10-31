@@ -107,4 +107,18 @@ public class SheetService {
         rollup.recordChanges(id, user, before);
         return saved;
     }
+
+    /** Set the sheet's policy date (null: the sheet's today), starting the sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setPolicyDate(String id, String user, LocalDate policyDate) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        Rollup.Figures before = rollup.of(id);
+        sheet.setPolicyDate(policyDate);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=policy-date value=" + (policyDate == null ? "" : policyDate));
+        rollup.recordChanges(id, user, before);
+        return saved;
+    }
 }

@@ -42,6 +42,16 @@ export function countsWhile(held: boolean): (c: ClaimView) => boolean {
   return held ? (c) => c.status === 'SETTLED' : counts;
 }
 
+/** The date (yyyy-mm-dd) that decides how a claim's live figures round: its own, or for a correction the date
+ *  of the claim of the same person it corrects, found among that person's claims. */
+export function roundingDate(
+  c: Pick<ClaimView, 'date' | 'corrects'>,
+  theirs: readonly Pick<ClaimView, 'date' | 'number'>[],
+): string {
+  if (c.corrects === null) return c.date;
+  return theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
+}
+
 /** The day a claim is due by (yyyy-mm-dd): its date plus the sheet's terms in days. */
 export function dueBy(c: Pick<ClaimView, 'date'>, terms: number): string {
   const [y, m, d] = c.date.split('-').map(Number);
