@@ -1,0 +1,68 @@
+{
+  "checkpoint": 232,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp232_grade-merge-retroactive",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    225
+  ],
+  "replaced_tests": [
+    "cp225_grade-merge.spec.ts::grade merge"
+  ],
+  "request": {
+    "spec": "A grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "80bc3cbfb84c75a7b0ef5ce955d27ab793575ef0",
+  "reset_sha": "",
+  "preagent_sha": "29a20164f685169ce42a12c33b9662fae9cfc002",
+  "prev_sha": "29a20164f685169ce42a12c33b9662fae9cfc002",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4735866,
+    "input_tokens": 20,
+    "output_tokens": 4762,
+    "cache_read_tokens": 332413,
+    "cache_creation_tokens": 38973,
+    "num_turns": 11,
+    "duration_ms": 245909,
+    "duration_api_ms": 48595,
+    "model": "claude-opus-5-5",
+    "session_id": "16b63d8b-60d7-48af-8337-2e58d2bca75b",
+    "stop_reason": "success",
+    "result_text": "A grade merge is now retroactive, and all 4 tests in the spec pass under `bin/e2e`.\n\n**How it works:**\n- **What hasn't changed:** the merge still edits each person on the merged grade as of the sheet's today, the same way as before. A person who can't be edited is still left as they are.\n- **What's new:** after those edits, every grade record on the merged grade belonging to someone it moved is rewritten to the other grade, keeping its from-date. A record dated later stays on its own grade. For example, a \"B from 2026-03-20\" is untouched when merging A into C. Because of the rewrite, all of that person's claims use the other grade's rates, terms and thresholds, whatever their date.\n- **Audit:** the sequence matches the spec. The per-person edit writes its `PERSON_EDITED` line and the figures that edit moved. Then the merge writes one more `ROLLUP`/`TOTALS` pair showing the figures after the rewrite.\n- **Frozen and statement-bound figures:** I didn't add anything for these. They stay unchanged because the existing due calculation already holds them, and the tests confirm it.\n\n**Changes:**\n- `person/Person.java`: a new `regrade(from, into)` method that rewrites matching grade records.\n- `person/GradeMergeService.java`: keeps track of who was moved, then calls `regrade` on each of them in the merge's final step, just before the figures are written to the audit file.\n\nThere were no changes to the database schema or the front end.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4735866,
+        "num_turns": 11,
+        "duration_ms": 245909,
+        "duration_api_ms": 48595,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp232.agent.jsonl",
+  "agent_diff_file": "cp232.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
