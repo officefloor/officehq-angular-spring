@@ -107,6 +107,17 @@ function csvField(value: string): string {
         }
       </p>
 
+      <p>
+        <button type="button" data-testid="bulk-settle" (click)="bulkSettle()" [disabled]="bulkSettling()">Settle selected claims</button>
+        @if (bulkSettleResult(); as r) {
+          Settled <span data-testid="bulk-settled">{{ r.settled }}</span>,
+          refused <span data-testid="bulk-settle-refused">{{ r.refused }}</span>
+        }
+        @if (bulkSettleError(); as err) {
+          <span role="alert" data-testid="bulk-settle-error">{{ err }}</span>
+        }
+      </p>
+
       <ul data-testid="person-list">
         @for (p of listed(); track p.id) {
           <li [attr.data-testid]="'person-row-' + p.id">
@@ -201,6 +212,11 @@ export class PeopleList {
   protected readonly bulkOpenError = signal<string | null>(null);
   /** Whether a bulk open is running, so a second press waits for the first. */
   protected readonly bulkOpening = signal(false);
+  /** What the last bulk settle did, until the button is pressed again. */
+  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+  protected readonly bulkSettleError = signal<string | null>(null);
+  /** Whether a bulk settle is running, so a second press waits for the first. */
+  protected readonly bulkSettling = signal(false);
   /** Each person's statements, by person; one with none is missing. */
   private readonly statements = signal<Map<number, StatementSummary>>(new Map());
   /** The person whose statement is being taken, so a second press waits for the first. */
@@ -365,6 +381,8 @@ export class PeopleList {
           this.selectedClaims.set(new Set());
           this.bulkOpenResult.set(null);
           this.bulkOpenError.set(null);
+          this.bulkSettleResult.set(null);
+          this.bulkSettleError.set(null);
           this.statements.set(new Map());
           this.patrons.set([]);
           this.personError.set(null);
@@ -582,6 +600,28 @@ export class PeopleList {
       error: () => {
         this.bulkOpening.set(false);
         this.bulkOpenError.set('Could not open the selected claims.');
+      },
+    });
+  }
+
+  /** Settle the selected claims together, in list order, each by the rules of settling one; the rest are left as they are. */
+  protected bulkSettle(): void {
+    if (this.bulkSettling()) return;
+    this.bulkSettleResult.set(null);
+    this.bulkSettleError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.bulkSettling.set(true);
+    this.claimsApi.bulkSettle(sheet.id, [...this.selectedClaims()]).subscribe({
+      next: ({ settled, refused, claims }) => {
+        this.bulkSettling.set(false);
+        claims.forEach((c) => this.claimSaved(c));
+        this.selectedClaims.set(new Set());
+        this.bulkSettleResult.set({ settled, refused });
+      },
+      error: () => {
+        this.bulkSettling.set(false);
+        this.bulkSettleError.set('Could not settle the selected claims.');
       },
     });
   }

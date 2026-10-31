@@ -101,6 +101,13 @@ export interface BulkOpenView {
   claims: ClaimView[];
 }
 
+/** What a bulk settle did: how many it settled (PENDING ones included) and refused, and the claims it settled. */
+export interface BulkSettleView {
+  settled: number;
+  refused: number;
+  claims: ClaimView[];
+}
+
 /** An amount the form accepts: 0.00 or more, with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
 
@@ -167,6 +174,12 @@ export class Claims {
   /** Open each of the claims that can be opened, numbered in list order; the rest are refused and left as they are. */
   bulkOpen(sheetId: string, ids: readonly number[]): Observable<BulkOpenView> {
     return this.http.post<BulkOpenView>(`${this.base(sheetId)}/claims/bulk-open`, { ids });
+  }
+
+  /** Settle each of the claims that can be settled, in list order, as a single settle would; the rest are refused
+   *  and left as they are. */
+  bulkSettle(sheetId: string, ids: readonly number[]): Observable<BulkSettleView> {
+    return this.http.post<BulkSettleView>(`${this.base(sheetId)}/claims/bulk-settle`, { ids });
   }
 
   private base(sheetId: string): string {

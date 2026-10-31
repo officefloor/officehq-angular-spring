@@ -87,6 +87,15 @@ public class ClaimController {
     public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
     }
 
+    /** The claims selected to be settled together. */
+    public record BulkSettle(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {
+    }
+
+    /** What a bulk settle did: how many it settled (a claim that went to PENDING counts) and refused, and the
+     *  claims it settled, in the order settled. */
+    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
+    }
+
     private final ClaimService claims;
 
     public ClaimController(ClaimService claims) {
@@ -175,5 +184,29 @@ public class ClaimController {
             }
         }
         return new BulkOpenView(opened.size(), refused, opened);
+    }
+
+    /**
+     * Settle each selected claim that can be settled, one at a time in list order (people in the order listed,
+     * newest claim first within a person), by exactly the rules of settling one claim; a claim a clerk's limit
+     * makes PENDING counts as settled. Each that cannot be settled, or is not on the sheet, is refused and left as
+     * it is.
+     */
+    @PostMapping("/claims/bulk-settle")
+    public BulkSettleView bulkSettle(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkSettle request) {
+        List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+        int refused = (int) request.ids().stream().distinct().count() - ordered.size();
+        List<ClaimView> settled = new ArrayList<>();
+        for (long id : ordered) {
+            try {
+                settled.add(ClaimView.of(claims.changeStatus(sheetId, user, id, ClaimStatus.SETTLED)));
+            } catch (ResponseStatusException refusal) {
+                refused++;
+            }
+        }
+        return new BulkSettleView(settled.size(), refused, settled);
     }
 }
