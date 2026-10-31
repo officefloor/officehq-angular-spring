@@ -33,17 +33,22 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonController {
 
     /** A person as listed: {@code grade} is the one in force on the sheet's today; {@code grades} all those
-     *  recorded, in the order they take effect. */
+     *  recorded, in the order they take effect; {@code clashing} whether their name or an alias is used on another
+     *  sheet of the sheet's tree. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
-            List<String> aliases) {
+            List<String> aliases, boolean clashing) {
 
         public static PersonView of(Person person, LocalDate today) {
+            return of(person, today, false);
+        }
+
+        public static PersonView of(Person person, LocalDate today, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getTerms(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getContact(),
-                    person.getAliases());
+                    person.getAliases(), clashing);
         }
     }
 
@@ -138,7 +143,8 @@ public class PersonController {
             return history.peopleAsOf(sheetId, asOf);
         }
         LocalDate today = people.today(sheetId);
-        return people.list(sheetId).stream().map(p -> PersonView.of(p, today)).toList();
+        Set<String> used = people.usedInTree(sheetId);
+        return people.list(sheetId).stream().map(p -> PersonView.of(p, today, PersonService.clashes(p, used))).toList();
     }
 
     @PostMapping
@@ -148,7 +154,7 @@ public class PersonController {
             @Valid @RequestBody PersonForm request) {
         Person added = people.add(sheetId, user, request.name(), request.grade(), request.terms(),
                 request.contact());
-        return PersonView.of(added, people.today(sheetId));
+        return view(sheetId, added);
     }
 
     @PutMapping("/{id}")
@@ -159,7 +165,7 @@ public class PersonController {
             @Valid @RequestBody PersonEdit request) {
         Person edited = people.update(sheetId, user, id, request.version(), request.name(), request.grade(),
                 request.gradeFrom(), request.terms(), request.contact());
-        return PersonView.of(edited, people.today(sheetId));
+        return view(sheetId, edited);
     }
 
     /**
@@ -183,7 +189,7 @@ public class PersonController {
                 try {
                     Person edited = people.update(sheetId, user, person.getId(), person.getVersion(),
                             person.getName(), request.grade(), request.from(), person.getTerms());
-                    changed.add(PersonView.of(edited, people.today(sheetId)));
+                    changed.add(view(sheetId, edited));
                 } catch (ResponseStatusException refusal) {
                     // Saved by someone else meanwhile: theirs stands, and this person is not changed.
                 }
@@ -198,7 +204,7 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody Retirement request) {
-        return PersonView.of(people.retire(sheetId, user, id, request.from()), people.today(sheetId));
+        return view(sheetId, people.retire(sheetId, user, id, request.from()));
     }
 
     /** Give the person an alias. */
@@ -208,7 +214,7 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody AliasForm request) {
-        return PersonView.of(people.addAlias(sheetId, user, id, request.alias()), people.today(sheetId));
+        return view(sheetId, people.addAlias(sheetId, user, id, request.alias()));
     }
 
     /** Merge the person into another of the sheet: the person merged into, as saved. */
@@ -218,7 +224,7 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MergeForm request) {
-        return PersonView.of(merges.merge(sheetId, user, id, request.intoId()), people.today(sheetId));
+        return view(sheetId, merges.merge(sheetId, user, id, request.intoId()));
     }
 
     /** Transfer the person to another sheet; they leave this one. */
@@ -238,6 +244,11 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody HoldForm request) {
-        return PersonView.of(people.hold(sheetId, user, id, request.from(), request.to()), people.today(sheetId));
+        return view(sheetId, people.hold(sheetId, user, id, request.from(), request.to()));
+    }
+
+    /** The person as listed, with whether they clash on the sheet's tree. */
+    private PersonView view(String sheetId, Person person) {
+        return PersonView.of(person, people.today(sheetId), PersonService.clashes(person, people.usedInTree(sheetId)));
     }
 }

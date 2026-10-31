@@ -1,11 +1,15 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -22,9 +26,12 @@ public class PersonService {
     private final SheetService sheets;
     private final Audit audit;
     private final Rollup rollup;
+    private final SheetRepository sheetStore;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit, Rollup rollup) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit, Rollup rollup,
+            SheetRepository sheetStore) {
         this.people = people;
+        this.sheetStore = sheetStore;
         this.sheets = sheets;
         this.audit = audit;
         this.rollup = rollup;
@@ -50,13 +57,15 @@ public class PersonService {
     }
 
     /** Add a person with their own terms (null: none) and contact (stored trimmed and lower-cased; blank or null:
-     *  none); the name and the contact must not already be in use on the sheet. */
+     *  none); the name and the contact must not already be in use on the sheet, nor the name, as a name or an alias,
+     *  on another sheet of its tree. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)
-                || people.findBySheetIdAndAliasIgnoreCase(sheetId, trimmed).isPresent()) {
+                || people.findBySheetIdAndAliasIgnoreCase(sheetId, trimmed).isPresent()
+                || usedInTree(sheetId).contains(lower(trimmed))) {
             throw nameInUse();
         }
         String reach = contactOf(contact);
@@ -72,6 +81,31 @@ public class PersonService {
                 + (terms != null ? " terms=" + terms : "") + (reach != null ? " contact=" + reach : ""));
         rollup.recordChanges(sheetId, user, before);
         return added;
+    }
+
+    /** The names and aliases, lower-cased, used on the other sheets of the sheet's tree: its ancestors and its
+     *  descendants, among the sheets that exist. */
+    @Transactional(readOnly = true)
+    public Set<String> usedInTree(String sheetId) {
+        List<String> tree = new ArrayList<>(sheetStore.ancestorsOf(sheetId, Integer.MAX_VALUE));
+        tree.addAll(sheetStore.descendantsOf(sheetId));
+        tree.remove(sheetId);
+        Set<String> used = new HashSet<>();
+        if (!tree.isEmpty()) {
+            used.addAll(people.findLowerNamesBySheetIdIn(tree));
+            used.addAll(people.findLowerAliasesBySheetIdIn(tree));
+        }
+        return used;
+    }
+
+    /** Whether the person's name or any alias is among {@code used} (lower-cased names and aliases). */
+    public static boolean clashes(Person person, Set<String> used) {
+        return used.contains(lower(person.getName()))
+                || person.getAliases().stream().anyMatch(a -> used.contains(lower(a)));
+    }
+
+    private static String lower(String name) {
+        return name.toLowerCase(Locale.ROOT);
     }
 
     /** The sheet's today, or null for a sheet never loaded. */
@@ -91,17 +125,23 @@ public class PersonService {
             LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, person.getContact());
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, person.getContact(), false);
     }
 
     /**
      * Edit a person as {@link #update(String, String, long, long, String, String, LocalDate, Integer)} does, their
      * contact becoming {@code contact} (stored trimmed and lower-cased; blank or null: none): refused when another
-     * person on the sheet has it.
+     * person on the sheet has it. As an edit through the person form, it is also refused while the new name or any
+     * of the person's aliases is used on another sheet of the sheet's tree.
      */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, true);
+    }
+
+    private Person update(String sheetId, String user, long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, boolean throughForm) {
         LocalDate today = sheets.load(sheetId, user).getToday();
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
@@ -112,6 +152,12 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)
                 || people.findBySheetIdAndAliasIgnoreCase(sheetId, trimmed).isPresent()) {
             throw nameInUse();
+        }
+        if (throughForm) {
+            Set<String> used = usedInTree(sheetId);
+            if (used.contains(lower(trimmed)) || person.getAliases().stream().anyMatch(a -> used.contains(lower(a)))) {
+                throw nameInUse();
+            }
         }
         String reach = contactOf(contact);
         if (reach != null && people.existsBySheetIdAndContactAndIdNot(sheetId, reach, id)) {
@@ -171,7 +217,7 @@ public class PersonService {
     }
 
     /** Give the person an alias, stored trimmed: refused when blank, or when it is, without regard to case, any
-     *  name or alias on the sheet. */
+     *  name or alias on the sheet or on another sheet of its tree. */
     @Transactional
     public Person addAlias(String sheetId, String user, long id, String alias) {
         sheets.load(sheetId, user);
@@ -181,7 +227,8 @@ public class PersonService {
         if (trimmed.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An alias cannot be blank");
         }
-        if (people.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, trimmed).isPresent()) {
+        if (people.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, trimmed).isPresent()
+                || usedInTree(sheetId).contains(lower(trimmed))) {
             throw nameInUse();
         }
         person.addAlias(trimmed);

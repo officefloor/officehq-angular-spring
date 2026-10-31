@@ -50,6 +50,7 @@ public class QuickAddController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody QuickAddForm request) {
         QuickAddService.Added added = quickAdd.add(sheetId, user, request.name(), request.amount());
-        return new QuickAddView(PersonView.of(added.person(), people.today(sheetId)), added.personAdded(), ClaimView.of(added.claim()));
+        return new QuickAddView(PersonView.of(added.person(), people.today(sheetId),
+                PersonService.clashes(added.person(), people.usedInTree(sheetId))), added.personAdded(), ClaimView.of(added.claim()));
     }
 }

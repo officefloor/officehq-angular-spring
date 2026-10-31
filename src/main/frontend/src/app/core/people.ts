@@ -42,6 +42,9 @@ export interface PersonView {
   contact: string | null;
   /** The other names the person is found by, sorted as names are compared; missing in an older snapshot. */
   aliases?: string[] | null;
+  /** Whether the person's name or an alias is used on another sheet of the sheet's tree; missing in an older
+   *  snapshot. */
+  clashing?: boolean;
 }
 
 export interface PersonForm {

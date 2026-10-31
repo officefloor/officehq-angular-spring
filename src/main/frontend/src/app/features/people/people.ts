@@ -234,6 +234,7 @@ function csvField(value: string): string {
             — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
             — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
             — aliases <span data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</span>
+            — clashing <span data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</span>
             <label [attr.for]="'person-alias-input-' + p.id">Alias</label>
             <input [id]="'person-alias-input-' + p.id" data-testid="person-alias-input" #aliasInput autocomplete="off"
                    (input)="clearPersonError(p.id)" />
