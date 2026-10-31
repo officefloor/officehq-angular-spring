@@ -32,20 +32,22 @@ public class PeriodController {
      *  when it was closed or soft-closed (null while open), and closedPersonTotals each person's, by person id, fixed
      *  then (empty while open; a person missing has 0.00). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
-            String closedTotal, Map<Long, String> closedPersonTotals) {
+            String closedTotal, Map<Long, String> closedPersonTotals, Integer cap) {
 
         public static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
-                    personTotals);
+                    personTotals, period.getClaimCap());
         }
     }
 
     /** A period as the form submits it: a name, and its from and to dates, inclusive; a blank
-     *  from-date takes the sheet's today. */
-    public record PeriodForm(@NotBlank @Size(max = 100) String name, LocalDate from, @NotNull LocalDate to) {
+     *  from-date takes the sheet's today. The cap, when given, is the most OPEN or PENDING claims a person may have
+     *  in it. */
+    public record PeriodForm(@NotBlank @Size(max = 100) String name, LocalDate from, @NotNull LocalDate to,
+            @Min(1) @Max(1_000_000) Integer cap) {
     }
 
     /** A generate request: one period per calendar month from the from-date's month to the to-date's; a blank
@@ -84,7 +86,8 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PeriodForm request) {
-        return PeriodView.of(periods.add(sheetId, user, request.name(), request.from(), request.to()));
+        return PeriodView.of(periods.add(sheetId, user, request.name(), request.from(), request.to(),
+                request.cap()));
     }
 
     @PostMapping("/generate")

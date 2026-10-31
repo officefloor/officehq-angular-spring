@@ -21,6 +21,7 @@ import { Sheets } from '../../core/sheet';
             to <span data-testid="period-to">{{ p.to }}</span>
             — due <span data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</span>
             — <span data-testid="period-fy">{{ fiscalYearOf(p.from) }}</span>
+            — cap <span data-testid="period-cap">{{ p.cap ?? '' }}</span>
             — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</span>
             <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
                     [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -42,6 +43,9 @@ import { Sheets } from '../../core/sheet';
         <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
         <label for="period-form-to">To</label>
         <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
+        <label for="period-form-cap">Open claims per person (blank: no cap)</label>
+        <input id="period-form-cap" data-testid="period-form-cap" formControlName="cap" inputmode="numeric"
+               autocomplete="off" />
         <button type="submit" data-testid="period-form-submit" [disabled]="saving()">Add period</button>
         @if (error(); as err) {
           <p role="alert" data-testid="period-form-error">{{ err }}</p>
@@ -99,6 +103,7 @@ export class PeriodsPanel {
     name: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -190,6 +195,7 @@ export class PeriodsPanel {
     const name = value.name.trim();
     const from = value.from.trim();
     const to = value.to.trim();
+    const cap = value.cap.trim();
     if (name === '') {
       this.error.set('Type a name for the period.');
       return;
@@ -206,11 +212,15 @@ export class PeriodsPanel {
       this.error.set('A period cannot end before it starts.');
       return;
     }
+    if (cap !== '' && (!/^\d+$/.test(cap) || Number(cap) < 1 || Number(cap) > 1_000_000)) {
+      this.error.set('A cap is a whole number of open claims from 1, or blank for none.');
+      return;
+    }
     this.saving.set(true);
-    this.periods.add(sheet.id, { name, from: from === '' ? null : from, to }).subscribe({
+    this.periods.add(sheet.id, { name, from: from === '' ? null : from, to, cap: cap === '' ? null : Number(cap) }).subscribe({
       next: () => {
         this.saving.set(false);
-        this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+        this.form.reset({ name: '', from: '', to: '', cap: '' }, { emitEvent: false });
       },
       error: (err: unknown) => {
         this.saving.set(false);

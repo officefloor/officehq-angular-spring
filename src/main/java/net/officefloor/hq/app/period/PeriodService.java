@@ -47,9 +47,10 @@ public class PeriodService {
 
     /** Add a period; the name is stored trimmed. Refused when the name is in use on the sheet, the
      *  to-date is before the from-date, or it shares a day with another period of the sheet. With no
-     *  from-date it starts on the sheet's today. */
+     *  from-date it starts on the sheet's today. A cap, when given, is the most OPEN or PENDING claims a person may
+     *  have in it. */
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate fromDate, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate fromDate, LocalDate to, Integer cap) {
         sheets.load(sheetId, user);
         // The sheet is locked so two periods added at the same moment cannot overlap.
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
@@ -67,12 +68,13 @@ public class PeriodService {
         }
         Period added;
         try {
-            added = periods.saveAndFlush(new Period(sheetId, trimmed, from, to));
+            added = periods.saveAndFlush(new Period(sheetId, trimmed, from, to, cap));
         } catch (DataIntegrityViolationException raced) {
             throw nameInUse();
         }
         audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
-                + " from=" + added.getFromDate() + " to=" + added.getToDate());
+                + " from=" + added.getFromDate() + " to=" + added.getToDate()
+                + (added.getClaimCap() == null ? "" : " cap=" + added.getClaimCap()));
         return added;
     }
 

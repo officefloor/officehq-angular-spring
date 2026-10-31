@@ -285,6 +285,7 @@ public class ClaimService {
             refuseUnproven(sheet, claim, person, due);
         } else if (next == ClaimStatus.OPEN) {
             refuseUnnoted(sheet, claim, due);
+            refuseOverCap(sheetId, claim);
         }
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, due)) {
             next = ClaimStatus.PENDING;
@@ -907,6 +908,26 @@ public class ClaimService {
     private void refuseIfClosed(String sheetId, LocalDate date) {
         if (periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date, date)) {
             throw new ResponseStatusException(HttpStatus.LOCKED, "That claim's due-by is inside a closed period");
+        }
+    }
+
+    /** Refuse opening a claim whose due-by is inside a period with a cap its person already has that many OPEN or
+     *  PENDING claims in. */
+    private void refuseOverCap(String sheetId, Claim claim) {
+        for (Period period : periods.findBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId,
+                claim.getDueBy(), claim.getDueBy())) {
+            if (period.getClaimCap() == null) {
+                continue;
+            }
+            long held = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, claim.getPersonId()).stream()
+                    .filter(c -> !c.getId().equals(claim.getId()))
+                    .filter(c -> c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                    .filter(c -> period.contains(c.getDueBy()))
+                    .count();
+            if (held >= period.getClaimCap()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "This person already has " + held
+                        + " open claims in period " + period.getName() + ", its cap");
+            }
         }
     }
 

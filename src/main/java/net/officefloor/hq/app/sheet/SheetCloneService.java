@@ -130,7 +130,7 @@ public class SheetCloneService {
                 .map(t -> new ClaimTemplate(target, t.getName(), t.getAmount(), t.getNote())).toList());
         periods.saveAllAndFlush(periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
                 .sorted(Comparator.comparing(Period::getId))
-                .map(p -> new Period(target, p.getName(), p.getFromDate(), p.getToDate())).toList());
+                .map(p -> new Period(target, p.getName(), p.getFromDate(), p.getToDate(), p.getClaimCap())).toList());
 
         List<Person> originals = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, Long> personOf = new HashMap<>();

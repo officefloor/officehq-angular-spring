@@ -20,6 +20,8 @@ export interface PeriodView {
   /** Each person's due-total for the period, by person id, fixed when it was closed or soft-closed; empty while open. A person
    *  missing (added later) has 0.00. */
   closedPersonTotals: Record<string, string>;
+  /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
+  cap: number | null;
 }
 
 /** A period as the form submits it: a blank from-date takes the sheet's today. */
@@ -27,6 +29,8 @@ export interface PeriodForm {
   name: string;
   from: string | null;
   to: string;
+  /** The most OPEN or PENDING claims a person may have in the period, a whole number from 1; null for no cap. */
+  cap: number | null;
 }
 
 /** What a generate made: how many periods, and the periods themselves. */

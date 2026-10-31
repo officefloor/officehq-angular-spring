@@ -58,6 +58,10 @@ public class Period {
     @Column(name = "due_total", nullable = false, precision = 14, scale = 2)
     private Map<Long, BigDecimal> closedPersonTotals = new HashMap<>();
 
+    /** The most OPEN or PENDING claims a person may have in the period; none means no cap. */
+    @Column(name = "claim_cap")
+    private Integer claimCap;
+
     protected Period() {
     }
 
@@ -66,6 +70,11 @@ public class Period {
         this.name = name;
         this.fromDate = fromDate;
         this.toDate = toDate;
+    }
+
+    public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate, Integer claimCap) {
+        this(sheetId, name, fromDate, toDate);
+        this.claimCap = claimCap;
     }
 
     /** Whether a date falls inside this period. */
@@ -96,6 +105,10 @@ public class Period {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    public Integer getClaimCap() {
+        return claimCap;
     }
 
     public boolean isClosed() {
