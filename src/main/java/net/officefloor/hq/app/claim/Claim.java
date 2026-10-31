@@ -89,6 +89,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The last sheet's today on which a reminder was written for the claim; none if it was never reminded. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** How many proofs have been given for the claim. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -281,6 +285,15 @@ public class Claim {
      *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    /** Record that a reminder was written for the claim on this day. */
+    public void remind(LocalDate on) {
+        this.remindedOn = on;
     }
 
     public int getProofs() {

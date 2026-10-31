@@ -48,6 +48,8 @@ export interface ClaimView {
   lockedBy: string | null;
   /** Whether the claim was added while the period its due-by is in was soft-closed. */
   lateEntry: boolean;
+  /** The last day (yyyy-mm-dd) a reminder was written for the claim; null if it was never reminded. */
+  remindedOn: string | null;
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
@@ -254,6 +256,11 @@ export class Claims {
   /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
   addProof(sheetId: string, id: number): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/proofs`, {});
+  }
+
+  /** Write a reminder for an OPEN or PENDING claim, dated the sheet's today; refused once it was reminded today. */
+  remind(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/reminders`, {});
   }
 
   /** A steward approves a PENDING claim: it is SETTLED, its due fixed as it is now. */

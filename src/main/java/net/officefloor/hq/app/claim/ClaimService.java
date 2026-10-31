@@ -357,6 +357,28 @@ public class ClaimService {
         return proven;
     }
 
+    /** Write a reminder for an OPEN or PENDING claim, dated the sheet's today. Refused for a claim in any other
+     *  status and one already reminded on the sheet's today. */
+    @Transactional
+    public Claim remind(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reminded; only an OPEN or PENDING one can");
+        }
+        if (sheet.getToday().equals(claim.getRemindedOn())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim was already reminded today");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        claim.remind(sheet.getToday());
+        Claim reminded = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("REMIND", user, person, reminded, reminded.getNumber()));
+        return reminded;
+    }
+
     /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
      *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim, for a
      *  claim that is not PENDING and for one due by inside a closed period. */
