@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Session } from '../../core/session';
+import { LOCALES, Locale, Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
 import { AuditPanel } from '../audit/audit';
 import { DelegationsPanel } from '../delegations/delegations';
@@ -20,6 +20,20 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+
+      <form [formGroup]="localeForm" (ngSubmit)="saveLocale()" aria-label="Choose your locale">
+        <p>Locale: <strong data-testid="user-locale-current">{{ session.locale() }}</strong></p>
+        <label for="user-locale">Show figures as</label>
+        <select id="user-locale" data-testid="user-locale" formControlName="locale">
+          @for (l of locales; track l) {
+            <option [value]="l">{{ l }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="user-locale-save" [disabled]="savingLocale()">Save locale</button>
+        @if (localeError(); as err) {
+          <p role="alert" data-testid="user-locale-error">{{ err }}</p>
+        }
+      </form>
 
       <form [formGroup]="sheetForm" (ngSubmit)="loadSheet()" aria-label="Load a sheet">
         <label for="sheet-id">Sheet id</label>
@@ -97,6 +111,13 @@ export class Home {
   protected readonly signInForm = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
+  /** The signed-in user's locale, which decides how figures are shown to them. */
+  protected readonly locales = LOCALES;
+  protected readonly localeForm = new FormGroup({
+    locale: new FormControl<Locale>('en', { nonNullable: true }),
+  });
+  protected readonly localeError = signal<string | null>(null);
+  protected readonly savingLocale = signal(false);
   protected readonly sheetForm = new FormGroup({
     id: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
@@ -126,6 +147,7 @@ export class Home {
   constructor() {
     // An error is removed as soon as its form is changed.
     this.signInForm.valueChanges.subscribe(() => this.signInError.set(null));
+    this.localeForm.valueChanges.subscribe(() => this.localeError.set(null));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.todayForm.valueChanges.subscribe(() => this.todayError.set(null));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(null));
@@ -202,7 +224,23 @@ export class Home {
       return;
     }
     this.session.signIn(name).subscribe({
+      next: (u) => this.localeForm.setValue({ locale: u.locale }, { emitEvent: false }),
       error: () => this.signInError.set('Could not sign in with that name.'),
+    });
+  }
+
+  /** Save the locale chosen for the signed-in user. */
+  protected saveLocale(): void {
+    // A second submit before the first has answered is ignored.
+    if (this.savingLocale()) return;
+    this.localeError.set(null);
+    this.savingLocale.set(true);
+    this.session.setLocale(this.localeForm.controls.locale.value).subscribe({
+      next: () => this.savingLocale.set(false),
+      error: () => {
+        this.savingLocale.set(false);
+        this.localeError.set('Could not save your locale.');
+      },
     });
   }
 

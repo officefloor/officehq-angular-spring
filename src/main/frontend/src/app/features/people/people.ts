@@ -24,6 +24,7 @@ import { Pools } from '../../core/pools';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
 import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
 import { VoidReasons } from '../../core/void-reasons';
+import { FigurePipe } from '../../core/figure';
 
 const NO_CLAIMS: ClaimView[] = [];
 const NO_SNAPSHOTS: SnapshotView[] = [];
@@ -88,7 +89,7 @@ function csvField(value: string): string {
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, PersonPlans, PlanGenerate],
+  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, PersonPlans, PlanGenerate],
   template: `
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
@@ -103,26 +104,26 @@ function csvField(value: string): string {
       <h2 id="people-heading">People</h2>
       <p>Consolidated over this sheet and its descendants:
         people <strong data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</strong>,
-        due <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</strong>,
-        overdue <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</strong></p>
-      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+        due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong>,
+        overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></p>
+      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ (claimedTotal()) | figure }}</strong></p>
+      <p>Due in total: <strong data-testid="rollup-due-total">{{ (dueTotal()) | figure }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong>
-        claims, due <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
-      <p>Settled in total: <strong data-testid="rollup-settled-total">{{ money(splitTotals().settled) }}</strong>,
-        open in total: <strong data-testid="rollup-open-total">{{ money(splitTotals().open) }}</strong></p>
-      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
+        claims, due <strong data-testid="rollup-overdue-total">{{ (money(overdueTotals().cents)) | figure }}</strong></p>
+      <p>Settled in total: <strong data-testid="rollup-settled-total">{{ (money(splitTotals().settled)) | figure }}</strong>,
+        open in total: <strong data-testid="rollup-open-total">{{ (money(splitTotals().open)) | figure }}</strong></p>
+      <p>Cut in total: <strong data-testid="rollup-cut-total">{{ (money(cutTotal())) | figure }}</strong></p>
       @if (tagTotals().length > 0) {
         <ul aria-label="Due by tag">
           @for (t of tagTotals(); track t.tag) {
-            <li>{{ t.tag }}: <span [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) }}</span></li>
+            <li>{{ t.tag }}: <span [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ (money(t.cents)) | figure }}</span></li>
           }
         </ul>
       }
       @if (monthTotals().length > 0) {
         <ul aria-label="Due by month">
           @for (m of monthTotals(); track m.month) {
-            <li>{{ m.month }}: <span [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) }}</span></li>
+            <li>{{ m.month }}: <span [attr.data-testid]="'month-' + m.month + '-due-total'">{{ (money(m.cents)) | figure }}</span></li>
           }
         </ul>
       }
@@ -328,21 +329,21 @@ function csvField(value: string): string {
                    (input)="clearPersonError(p.id)" />
             <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
                     [disabled]="aliasing() === p.id" [attr.aria-label]="'Add an alias of ' + p.name">Add alias</button>
-            — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
+            — due <span data-testid="person-due-total">{{ (dueOf(p)) | figure }}</span>
             @for (pd of periods.list(); track pd.id) {
-              — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd.id) }}</span>
+              — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (periodDueOf(p.id, pd.id)) | figure }}</span>
             }
-            settled <span data-testid="person-settled-total">{{ money(splitOf(p.id).settled) }}</span>
-            open <span data-testid="person-open-total">{{ money(splitOf(p.id).open) }}</span>
-            excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span>
-            cut <span data-testid="person-cut-total">{{ money(cutOf(p.id)) }}</span>
+            settled <span data-testid="person-settled-total">{{ (money(splitOf(p.id).settled)) | figure }}</span>
+            open <span data-testid="person-open-total">{{ (money(splitOf(p.id).open)) | figure }}</span>
+            excess <span data-testid="person-excess">{{ (money(excessOf(p.id))) | figure }}</span>
+            cut <span data-testid="person-cut-total">{{ (money(cutOf(p.id))) | figure }}</span>
             — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
-            due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
-            — aged 0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) }}</span>
-            31–60 <span data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) }}</span>
-            61+ <span data-testid="person-aged-61">{{ money(agedOf(p.id).over60) }}</span>
+            due <span data-testid="person-overdue-total">{{ (money(overdueOf(p.id).cents)) | figure }}</span>
+            — aged 0–30 <span data-testid="person-aged-0-30">{{ (money(agedOf(p.id).upTo30)) | figure }}</span>
+            31–60 <span data-testid="person-aged-31-60">{{ (money(agedOf(p.id).upTo60)) | figure }}</span>
+            61+ <span data-testid="person-aged-61">{{ (money(agedOf(p.id).over60)) | figure }}</span>
             — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
-            — last stated <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span>
+            — last stated <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span>
             on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
             @if (snapshotsOf(p.id).length > 0) {
               <ul [attr.aria-label]="'Snapshots of ' + p.name">
@@ -393,7 +394,7 @@ function csvField(value: string): string {
             <button type="button" data-testid="person-unretire" (click)="unretire(p)" [disabled]="retiring() === p.id"
                     [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
             — patrons <span data-testid="person-patrons">{{ patronsOf(p.id) }}</span>
-            — backing <span data-testid="person-backing">{{ backingOf(p.id) }}</span>
+            — backing <span data-testid="person-backing">{{ (backingOf(p.id)) | figure }}</span>
             <label [attr.for]="'person-patron-select-' + p.id">Patron</label>
             <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
                     (change)="patronError.set(null)">

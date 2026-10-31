@@ -10,6 +10,7 @@ import { Session } from '../../core/session';
 import { Sheets, graceOn } from '../../core/sheet';
 import { Templates } from '../../core/templates';
 import { VoidReasons } from '../../core/void-reasons';
+import { FigurePipe } from '../../core/figure';
 
 const NO_RATES: RateLine = [];
 
@@ -25,9 +26,9 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
 
 @Component({
   selector: 'app-person-claims',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
-    <p>Claimed: <span data-testid="person-claimed">{{ claimed() }}</span></p>
+    <p>Claimed: <span data-testid="person-claimed">{{ (claimed()) | figure }}</span></p>
 
     <form [formGroup]="form" (ngSubmit)="submit()"
           [attr.aria-label]="(editingId() === null ? 'Add a claim for ' : 'Edit a claim of ') + personName()">
@@ -73,9 +74,9 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
                  (change)="selectToggled.emit({ id: c.id, selected: $any($event.target).checked })"
                  [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
           No. <span data-testid="claim-number">{{ c.number ?? '' }}</span>
-          <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-amount">{{ (c.amount) | figure }}</span>
           on <span data-testid="claim-date">{{ c.date }}</span>
-          — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
+          — due <span data-testid="claim-due">{{ (dueOf(c)) | figure }}</span>
           by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
           — overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           in period <span data-testid="claim-period">{{ periodOf(c) }}</span>

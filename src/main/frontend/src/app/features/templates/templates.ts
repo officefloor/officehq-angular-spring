@@ -5,11 +5,12 @@ import { EMPTY, switchMap } from 'rxjs';
 import { AMOUNT_PATTERN } from '../../core/claims';
 import { Sheets } from '../../core/sheet';
 import { Templates } from '../../core/templates';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's claim templates: each person's row adds a DRAFT claim from one of them.
 @Component({
   selector: 'app-templates',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="templates-heading">
       <h3 id="templates-heading">Claim templates</h3>
@@ -17,7 +18,7 @@ import { Templates } from '../../core/templates';
         @for (t of templates.all(); track t.id) {
           <li [attr.data-testid]="'template-row-' + t.name">
             <span data-testid="template-name">{{ t.name }}</span>:
-            <span data-testid="template-amount">{{ t.amount }}</span>
+            <span data-testid="template-amount">{{ (t.amount) | figure }}</span>
             <span data-testid="template-note">{{ t.note }}</span>
           </li>
         }

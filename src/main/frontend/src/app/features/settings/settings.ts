@@ -6,6 +6,7 @@ import { GRADES, Grade } from '../../core/people';
 import { Rates } from '../../core/rates';
 import { ROLES, RoleName, Roles } from '../../core/roles';
 import { PERM_ACTIONS, PermAction, STANDING_PERMISSIONS, SheetView, Sheets } from '../../core/sheet';
+import { FigurePipe } from '../../core/figure';
 
 /** A clerk limit the form accepts: an amount of 0.00 or more with up to two decimals. */
 const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
@@ -54,12 +55,12 @@ function isDate(value: string): boolean {
 // The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, each grade's grace days, its late percent, its policy date, its period numbering from, its grace days (not dated), its pot (not dated), its alert threshold (not dated), its parent sheet (not dated), its cap, its proof threshold, its note threshold, its review threshold, its permission matrix (not dated), and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
-      <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ sheets.current()?.clerkLimit ?? '' }}</span></p>
-      <p>Floor: <span data-testid="setting-floor-current">{{ sheets.current()?.floor ?? '' }}</span></p>
+      <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ (sheets.current()?.clerkLimit ?? '') | figure }}</span></p>
+      <p>Floor: <span data-testid="setting-floor-current">{{ (sheets.current()?.floor ?? '') | figure }}</span></p>
       <p>Terms (business days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
       @for (g of grades; track g) {
         <p>Terms for grade {{ g }} (days): <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ sheets.current()?.gradeTerms?.[g] ?? '' }}</span></p>
@@ -67,23 +68,23 @@ function isDate(value: string): boolean {
       @for (g of grades; track g) {
         <p>Grace days for grade {{ g }}: <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ sheets.current()?.gradeGrace?.[g] ?? '' }}</span></p>
       }
-      <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
+      <p>Late percent: <span data-testid="setting-late-pct-current">{{ (sheets.current()?.latePct ?? '') | figure }}</span></p>
       <p>Policy date: <span data-testid="setting-policy-date-current">{{ sheets.current()?.policyDate ?? '' }}</span></p>
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ sheets.current()?.periodNumberingFrom ?? '' }}</span></p>
       <p>Entry date: <span data-testid="setting-entry-date-current">{{ sheets.current()?.entryDate ?? '' }}</span></p>
       <p>Grace days: <span data-testid="setting-grace-days-current">{{ sheets.current()?.graceDays ?? '' }}</span></p>
       <p>Fiscal year start month: <span data-testid="setting-fiscal-start-month-current">{{ sheets.current()?.fiscalStartMonth ?? '' }}</span></p>
-      <p>Pot: <span data-testid="setting-pot-current">{{ sheets.current()?.pot ?? '' }}</span></p>
-      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ sheets.current()?.alertThreshold ?? '' }}</span></p>
+      <p>Pot: <span data-testid="setting-pot-current">{{ (sheets.current()?.pot ?? '') | figure }}</span></p>
+      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ (sheets.current()?.alertThreshold ?? '') | figure }}</span></p>
       <p>Parent sheet: <span data-testid="setting-parent-current">{{ sheets.current()?.parent ?? '' }}</span></p>
 
-      <p>Cap: <span data-testid="setting-cap-current">{{ sheets.current()?.cap ?? '' }}</span></p>
-      <p>Proof threshold: <span data-testid="setting-proof-threshold-current">{{ sheets.current()?.proofThreshold ?? '' }}</span></p>
+      <p>Cap: <span data-testid="setting-cap-current">{{ (sheets.current()?.cap ?? '') | figure }}</span></p>
+      <p>Proof threshold: <span data-testid="setting-proof-threshold-current">{{ (sheets.current()?.proofThreshold ?? '') | figure }}</span></p>
       @for (g of grades; track g) {
-        <p>Proof threshold for grade {{ g }}: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ sheets.current()?.gradeProofThreshold?.[g] ?? '' }}</span></p>
+        <p>Proof threshold for grade {{ g }}: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (sheets.current()?.gradeProofThreshold?.[g] ?? '') | figure }}</span></p>
       }
-      <p>Note threshold: <span data-testid="setting-note-threshold-current">{{ sheets.current()?.noteThreshold ?? '' }}</span></p>
-      <p>Review threshold: <span data-testid="setting-review-threshold-current">{{ sheets.current()?.reviewThreshold ?? '' }}</span></p>
+      <p>Note threshold: <span data-testid="setting-note-threshold-current">{{ (sheets.current()?.noteThreshold ?? '') | figure }}</span></p>
+      <p>Review threshold: <span data-testid="setting-review-threshold-current">{{ (sheets.current()?.reviewThreshold ?? '') | figure }}</span></p>
       <p>Rounding mode: <span data-testid="setting-rounding-current">{{ sheets.current()?.rounding ?? '' }}</span></p>
       @for (a of permActions; track a) {
         <p>Who may {{ a }}: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ sheets.current()?.permissions?.[a] ?? '' }}</span></p>

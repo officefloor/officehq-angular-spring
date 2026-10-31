@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, ClaimView } from '../../core/claims';
 import { Plans } from '../../core/plans';
 import { Sheets } from '../../core/sheet';
+import { FigurePipe } from '../../core/figure';
 
 /** An interval the plan form accepts: a whole number of days. */
 const EVERY_PATTERN = /^\d{1,5}$/;
@@ -13,13 +14,13 @@ const DAY_PATTERN = /^\d{1,2}$/;
 // A person's plans, and the form on their row that adds one.
 @Component({
   selector: 'app-person-plans',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     @if (plans.of(personId()).length > 0) {
       <ul [attr.aria-label]="'Plans of ' + personName()">
         @for (pl of plans.of(personId()); track pl.id) {
           <li [attr.data-testid]="'plan-row-' + pl.id">
-            <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
+            <span data-testid="plan-amount-shown">{{ (pl.amount) | figure }}</span>
             from <span data-testid="plan-start">{{ pl.start }}</span>
             @if (pl.day !== null) {
               monthly on day <span data-testid="plan-day">{{ pl.day }}</span>

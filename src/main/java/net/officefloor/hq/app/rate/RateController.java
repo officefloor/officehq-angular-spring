@@ -64,7 +64,7 @@ public class RateController {
 
     /** A rate as the form submits it: a percent of 0.00 or more with up to two decimals, and an
      *  optional from-date and to-date. */
-    public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal rate,
+    public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal rate,
             LocalDate from, LocalDate to) {
     }
 
@@ -81,7 +81,7 @@ public class RateController {
     public Rollup.RatePreview preview(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
-            @RequestParam @NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal rate) {
+            @RequestParam @NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal rate) {
         return rates.preview(sheetId, grade, rate);
     }
 

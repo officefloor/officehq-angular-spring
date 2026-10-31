@@ -5,6 +5,7 @@ import { EMPTY, distinctUntilChanged, skip, switchMap } from 'rxjs';
 import { PersonView } from '../../core/people';
 import { PoolMemberView, Pools, SHARE_PATTERN } from '../../core/pools';
 import { Sheets } from '../../core/sheet';
+import { FigurePipe } from '../../core/figure';
 
 type MemberForm = FormGroup<{
   personId: FormControl<string>;
@@ -23,7 +24,7 @@ function csvField(value: string): string {
 // The sheet's pools: each has members chosen from the sheet's people and its other pools, with a share percent of it.
 @Component({
   selector: 'app-pools',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="pools-heading">
       <h3 id="pools-heading">Pools</h3>
@@ -31,14 +32,14 @@ function csvField(value: string): string {
         @for (pool of pools.all(); track pool.id) {
           <li [attr.data-testid]="'pool-row-' + pool.name">
             <span data-testid="pool-name">{{ pool.name }}</span>:
-            total share <span data-testid="pool-total-share">{{ pool.totalShare }}</span>,
+            total share <span data-testid="pool-total-share">{{ (pool.totalShare) | figure }}</span>,
             balanced <span data-testid="pool-balanced">{{ pool.balanced ? 'yes' : 'no' }}</span>
             <ul [attr.aria-label]="'Members of ' + pool.name">
               @for (m of pool.members; track memberKey(m)) {
                 <li [attr.data-testid]="'pool-member-' + pool.name + '-' + memberKey(m)">
                   <span data-testid="pool-member-name">{{ m.name }}</span>:
-                  <span data-testid="pool-share">{{ m.share }}</span>,
-                  cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
+                  <span data-testid="pool-share">{{ (m.share) | figure }}</span>,
+                  cut <span data-testid="pool-cut">{{ (m.cut ?? '') | figure }}</span>
                   @if (m.from || m.to) { (from {{ m.from ?? 'any day' }} to {{ m.to ?? 'any day' }}) }
                   @if (m.retired) { (retired) }
                 </li>

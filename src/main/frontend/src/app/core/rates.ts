@@ -85,8 +85,8 @@ function byFrom(a: RateView, b: RateView): number {
   return a.from === b.from ? 0 : a.from === null ? -1 : b.from === null ? 1 : a.from < b.from ? -1 : 1;
 }
 
-/** A rate the form accepts: a percent of 0.00 or more, up to 999.99, with up to two decimals. */
-export const RATE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+/** A rate the form accepts: a percent of 0.00 or more, up to 9999999.99, with up to two decimals. */
+export const RATE_PATTERN = /^\d{1,7}(\.\d{1,2})?$/;
 
 /** The floor a sheet starts with. */
 export const DEFAULT_FLOOR = '1.00';

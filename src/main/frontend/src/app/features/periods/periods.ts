@@ -5,11 +5,12 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, Observable, switchMap } from 'rxjs';
 import { PeriodView, Periods } from '../../core/periods';
 import { Sheets } from '../../core/sheet';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's periods, each with its due-total, and a form to add one.
 @Component({
   selector: 'app-periods',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -19,9 +20,9 @@ import { Sheets } from '../../core/sheet';
             <span data-testid="period-name">{{ p.name }}</span>
             from <span data-testid="period-from">{{ p.from }}</span>
             to <span data-testid="period-to">{{ p.to }}</span>
-            — due <span data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</span>
+            — due <span data-testid="period-due-total">{{ (dueTotals().get(p.id) ?? '0.00') | figure }}</span>
             — <span data-testid="period-fy">{{ fiscalYearOf(p.from) }}</span>
-            — cap <span data-testid="period-cap">{{ p.cap ?? '' }}</span>
+            — cap <span data-testid="period-cap">{{ (p.cap ?? '') | figure }}</span>
             — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</span>
             <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
                     [attr.aria-label]="'Close period ' + p.name">Close</button>

@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -32,16 +33,18 @@ public class PlanService {
     private final ClaimService claims;
     private final SheetService sheets;
     private final SheetRepository sheetStore;
+    private final RoleService roles;
     private final Audit audit;
 
     public PlanService(PlanRepository plans, PlanClaimRepository made, PersonRepository people, ClaimService claims,
-            SheetService sheets, SheetRepository sheetStore, Audit audit) {
+            SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit) {
         this.plans = plans;
         this.made = made;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
+        this.roles = roles;
         this.audit = audit;
     }
 
@@ -111,12 +114,16 @@ public class PlanService {
      * Make, for every plan on the sheet in the order they were added, a DRAFT claim with the plan's amount for each
      * plan date (its start, then every so many days; or its day in each month from the start's) up to its end and the
      * sheet's today that it has made none for yet, dated that day with an empty note, by the claim form's rules: a date
-     * the form refuses is skipped, and tried again the next time.
+     * the form refuses is skipped, and tried again the next time. A viewer, who can change nothing, has every date
+     * refused, so makes none.
      */
     @Transactional
     public Generated generate(String sheetId, String user) {
         sheets.load(sheetId, user);
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
+        if (roles.isViewer(sheetId, user.trim())) {
+            return new Generated(List.of(), list(sheetId));
+        }
         List<Plan> all = plans.findBySheetIdOrderByIdAsc(sheetId);
         Set<String> done = new HashSet<>();
         for (PlanClaim pc : made.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList())) {

@@ -18,8 +18,8 @@ public class RateImportService {
     /** The grades the rate form takes. */
     private static final Pattern GRADE = Pattern.compile("[ABC]");
 
-    /** A rate the rate form takes: a percent of 0.00 or more, up to 999.99, with up to two decimals. */
-    private static final Pattern RATE = Pattern.compile("\\d{1,3}(\\.\\d{1,2})?");
+    /** A rate the rate form takes: a percent of 0.00 or more, up to 9999999.99, with up to two decimals. */
+    private static final Pattern RATE = Pattern.compile("\\d{1,7}(\\.\\d{1,2})?");
 
     private final RateService rates;
 

@@ -5,22 +5,23 @@ import { EMPTY, switchMap } from 'rxjs';
 import { GRADES, Grade } from '../../core/people';
 import { NOT_AVAILABLE, RATE_PATTERN, RatePreview, Rates } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's rates for each grade: the one in force today, each by from-date, and a form to set one.
 @Component({
   selector: 'app-rates',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
       <ul aria-label="Rate for each grade">
         @for (g of grades; track g) {
           <li>
-            Grade {{ g }}, today: <span [attr.data-testid]="'rate-current-' + g">{{ rates.byGrade().get(g) ?? notAvailable }}</span>
+            Grade {{ g }}, today: <span [attr.data-testid]="'rate-current-' + g">{{ (rates.byGrade().get(g) ?? notAvailable) | figure }}</span>
             <ul [attr.aria-label]="'Rates of grade ' + g">
               @for (r of rates.ratesByGrade().get(g) ?? []; track r.from) {
                 <li [attr.data-testid]="'rate-row-' + g + '-' + (r.from ?? 'start')">
-                  <span data-testid="rate-pct">{{ r.rate }}</span>% from {{ r.from ?? 'the start' }}
+                  <span data-testid="rate-pct">{{ (r.rate) | figure }}</span>% from {{ r.from ?? 'the start' }}
                   @if (r.to !== null) {
                     through <span data-testid="rate-to">{{ r.to }}</span>
                   }
@@ -76,7 +77,7 @@ import { Sheets } from '../../core/sheet';
         @if (previewed(); as p) {
           <p aria-live="polite">
             Claims that would change: <span data-testid="rate-preview-count">{{ p.count }}</span>,
-            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+            difference: <span data-testid="rate-preview-diff">{{ (p.diff) | figure }}</span>
           </p>
         }
         @if (previewError(); as err) {
