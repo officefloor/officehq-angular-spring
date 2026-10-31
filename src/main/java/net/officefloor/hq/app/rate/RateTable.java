@@ -119,10 +119,12 @@ public record RateTable(List<Rate> rates, LocalDate today, DatedSettings setting
     }
 
     /**
-     * What a due-total's sum plus the person's cut total is above the cap: 0.00 when it is not, or when n/a (null).
+     * What a due-total's sum loses to the cap less the person's cut total (see {@link #capped(BigDecimal, BigDecimal)}):
+     * the sum plus the cut total above the cap, but never more than the sum; 0.00 when it is not above, or when
+     * n/a (null).
      */
     public BigDecimal excess(BigDecimal sum, BigDecimal cut) {
-        return sum == null ? BigDecimal.ZERO : excess(sum.add(cut));
+        return sum == null ? BigDecimal.ZERO : sum.subtract(capped(sum, cut));
     }
 
     /** The percent in force for the grade on the sheet's today; null when none is. */

@@ -204,7 +204,7 @@ function csvField(value: string): string {
       }
     </section>
     <app-rates (changed)="reloadSheet()" />
-    <app-grades />
+    <app-grades (changed)="reloadSheet()" />
     <app-access [settingsSaved]="reloadAfterSettings" />
     <app-periods [people]="people()" [(periods)]="periods" />
     <app-holidays />

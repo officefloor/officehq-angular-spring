@@ -122,7 +122,7 @@ public class PersonController {
     /**
      * A person with the grade in force on the sheet's today, their own terms in force on it (null: none), their claims, newest first, claimed: the sum of the amounts of the claims (see
      * {@link Dues#claimed}: a hold leaves a claim in it), dueTotal: the sum of the due figures of the claims that count (see
-     * {@link Dues#total}, held to the sheet's cap less their cut total, not below 0.00), excess: what the sum plus their cut total is above the cap (0.00 when it is not), and their statements: how many were taken, the last one's due-total (null when
+     * {@link Dues#total}, held to the sheet's cap less their cut total, not below 0.00), excess: what the sum loses to that held cap (0.00 when nothing), and their statements: how many were taken, the last one's due-total (null when
      * there is none or it was n/a) and date (null when there is none), whether they are retired and
      * the date they are retired from (null when not), whether they have any hold and their holds, and how many of the claims
      * that count are overdue and the sum of their due figures, the ids of their patrons, and whether they are

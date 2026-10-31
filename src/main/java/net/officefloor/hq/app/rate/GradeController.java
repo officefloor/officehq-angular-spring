@@ -1,9 +1,11 @@
 package net.officefloor.hq.app.rate;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.person.GradeMergeService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -25,10 +28,16 @@ public class GradeController {
     public record GradeView(String grade, boolean retired) {
     }
 
-    private final GradeService service;
+    /** A merge of one grade into another. */
+    public record MergeForm(@NotBlank @Size(max = 10) String from, @NotBlank @Size(max = 10) String into) {
+    }
 
-    public GradeController(GradeService service) {
+    private final GradeService service;
+    private final GradeMergeService merges;
+
+    public GradeController(GradeService service, GradeMergeService merges) {
         this.service = service;
+        this.merges = merges;
     }
 
     @GetMapping
@@ -42,6 +51,13 @@ public class GradeController {
             @PathVariable @NotBlank @Size(max = 10) String grade, @RequestHeader("X-User") @NotBlank String user) {
         service.retire(sheetId.trim(), user.trim(), grade.trim());
         return new GradeView(grade.trim(), true);
+    }
+
+    /** Merge a grade into another; answers how many people were moved onto it. */
+    @PostMapping("/merge")
+    public GradeMergeService.Result merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody MergeForm form) {
+        return merges.merge(sheetId.trim(), user.trim(), form.from().trim(), form.into().trim());
     }
 
     /** Another user retired the same grade at the same moment: this one is refused. */

@@ -55,6 +55,7 @@ import net.officefloor.hq.app.crew.CrewAdded;
 import net.officefloor.hq.app.crew.CrewMemberAdded;
 import net.officefloor.hq.app.pool.PoolAdded;
 import net.officefloor.hq.app.pool.PoolMemberAdded;
+import net.officefloor.hq.app.rate.GradeMerged;
 import net.officefloor.hq.app.rate.GradeRetired;
 import net.officefloor.hq.app.rate.RateChanged;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -315,6 +316,12 @@ public class SheetAudit {
     @TransactionalEventListener
     public void on(GradeRetired e) {
         change(e.sheetId(), e.user(), "GRADE_RETIRED sheet=" + e.sheetId() + " by=" + e.user() + " grade=" + e.grade());
+    }
+
+    @TransactionalEventListener
+    public void on(GradeMerged e) {
+        change(e.sheetId(), e.user(), "GRADE_MERGED sheet=" + e.sheetId() + " by=" + e.user()
+                + " from=" + e.from() + " into=" + e.into());
     }
 
     @TransactionalEventListener

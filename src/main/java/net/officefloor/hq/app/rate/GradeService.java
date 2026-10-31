@@ -3,6 +3,8 @@ package net.officefloor.hq.app.rate;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
@@ -24,9 +26,11 @@ public class GradeService {
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final ApplicationEventPublisher events;
+    private final AccessService access;
 
     public GradeService(RetiredGradeRepository retired, SheetService sheets, SheetRepository sheetRows,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events, AccessService access) {
+        this.access = access;
         this.retired = retired;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -70,5 +74,26 @@ public class GradeService {
         }
         retired.saveAndFlush(new RetiredGrade(sheetId, grade));
         events.publishEvent(new GradeRetired(sheetId, user, grade));
+    }
+
+    /**
+     * Record a steward's merge of a grade into another (the people on it are moved by the caller). Anyone but
+     * a steward, a grade not on the list, the same grade twice or a retired grade to merge into is refused.
+     */
+    @Transactional
+    public void merged(String sheetId, String user, String from, String into) {
+        if (!GRADES.contains(from) || !GRADES.contains(into)) {
+            throw new GradeRefused("Choose two grades.");
+        }
+        sheets.load(sheetId, user);
+        sheetRows.lockById(sheetId);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new GradeRefused("Only a steward can merge grades.");
+        }
+        if (from.equals(into)) {
+            throw new GradeRefused("A grade cannot be merged into itself.");
+        }
+        choosable(sheetId, into);
+        events.publishEvent(new GradeMerged(sheetId, user, from, into));
     }
 }
