@@ -23,10 +23,10 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ROUNDING_MODES = ['half-up', 'half-even'];
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'proofKinds' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | PermField;
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'proofKinds' | 'defaultGrade' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | PermField;
 
 /** A setting that carries a figure: it is saved from a from-date. */
-type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'proofKinds' | PermField>;
+type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'proofKinds' | 'defaultGrade' | PermField>;
 
 /** The from-date field of each dated setting. */
 type FromField = `${DatedField}From`;
@@ -87,6 +87,7 @@ function isDate(value: string): boolean {
         <p>Proof threshold for grade {{ g }}: <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (sheets.current()?.gradeProofThreshold?.[g] ?? '') | figure }}</span></p>
       }
       <p>Proof kinds: <span data-testid="setting-proof-kinds-current">{{ sheets.current()?.proofKinds ?? '' }}</span></p>
+      <p>Default grade: <span data-testid="setting-default-grade-current">{{ sheets.current()?.defaultGrade ?? '' }}</span></p>
       <p>Note threshold: <span data-testid="setting-note-threshold-current">{{ (sheets.current()?.noteThreshold ?? '') | figure }}</span></p>
       <p>Review threshold: <span data-testid="setting-review-threshold-current">{{ (sheets.current()?.reviewThreshold ?? '') | figure }}</span></p>
       <p>Rounding mode: <span data-testid="setting-rounding-current">{{ sheets.current()?.rounding ?? '' }}</span></p>
@@ -190,6 +191,9 @@ function isDate(value: string): boolean {
         <label for="setting-proof-kinds">Proof kinds (comma separated, of receipt and photo: a claim above the proof threshold needs a proof of each to be settled; blank: none)</label>
         <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds" (focus)="lastFocused = 'proofKinds'"
                autocomplete="off" />
+        <label for="setting-default-grade">Default grade (A, B or C: the grade a person added by the quick-add bar or imported with a blank grade is given; blank: A)</label>
+        <input id="setting-default-grade" data-testid="setting-default-grade" formControlName="defaultGrade" (focus)="lastFocused = 'defaultGrade'"
+               autocomplete="off" />
         <label for="setting-note-threshold">Note threshold (a claim due above this on its date needs a note to be opened; blank: none)</label>
         <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold" (focus)="lastFocused = 'noteThreshold'"
                inputmode="decimal" autocomplete="off" />
@@ -289,6 +293,7 @@ export class SettingsPanel {
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     proofKinds: new FormControl('', { nonNullable: true }),
+    defaultGrade: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
@@ -353,7 +358,7 @@ export class SettingsPanel {
     this.settingsError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, escalateAfter, reviewSla, fiscalStartMonth, pot, alertThreshold, parent, proofKinds, cap, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, escalateAfter, reviewSla, fiscalStartMonth, pot, alertThreshold, parent, proofKinds, defaultGrade, cap, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -367,6 +372,7 @@ export class SettingsPanel {
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const potValue = pot.value.trim();
     const proofKindsValue = proofKinds.value.split(',').map((k) => k.trim()).filter((k) => k !== '');
+    const defaultGradeValue = defaultGrade.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
     const parentValue = parent.value.trim();
     const capValue = cap.value.trim();
@@ -379,7 +385,7 @@ export class SettingsPanel {
     const unchanged = !this.settingsForm.dirty;
     const controls = this.settingsForm.controls;
     const isSaved = (field: SettingField) => controls[field].dirty
-      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && field !== 'escalateAfter' && field !== 'reviewSla' && field !== 'fiscalStartMonth' && field !== 'pot' && field !== 'alertThreshold' && field !== 'parent' && field !== 'proofKinds' && !field.startsWith('perm_')
+      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && field !== 'escalateAfter' && field !== 'reviewSla' && field !== 'fiscalStartMonth' && field !== 'pot' && field !== 'alertThreshold' && field !== 'parent' && field !== 'proofKinds' && field !== 'defaultGrade' && !field.startsWith('perm_')
         && controls[`${field as DatedField}From`].dirty)
       || (unchanged && this.lastFocused === field);
     const fromOf = (field: DatedField): string | null => controls[`${field}From` as FromField].value.trim() || null;
@@ -395,6 +401,7 @@ export class SettingsPanel {
     const saveFiscalStartMonth = isSaved('fiscalStartMonth');
     const savePot = isSaved('pot');
     const saveProofKinds = isSaved('proofKinds');
+    const saveDefaultGrade = isSaved('defaultGrade');
     const saveAlertThreshold = isSaved('alertThreshold');
     const saveParent = isSaved('parent');
     const saveLimit = isSaved('clerkLimit');
@@ -465,6 +472,10 @@ export class SettingsPanel {
       this.settingsError.set('Type proof kinds as a comma separated list of receipt and photo, each at most once, or leave it blank for none.');
       return;
     }
+    if (saveDefaultGrade && defaultGradeValue !== '' && !(GRADES as readonly string[]).includes(defaultGradeValue)) {
+      this.settingsError.set(`Type a default grade of ${GRADES.join(', ')}, or leave it blank for A.`);
+      return;
+    }
     if (savePot && potValue !== '' && !LIMIT_PATTERN.test(potValue)) {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
@@ -533,6 +544,7 @@ export class SettingsPanel {
     if (saveReviewSla) saves.push(this.sheets.setReviewSla(sheet.id, reviewSlaValue === '' ? null : Number(reviewSlaValue)));
     if (saveFiscalStartMonth) saves.push(this.sheets.setFiscalStartMonth(sheet.id, Number(fiscalStartMonthValue)));
     if (saveProofKinds) saves.push(this.sheets.setProofKinds(sheet.id, proofKindsValue.length === 0 ? null : proofKindsValue.join(',')));
+    if (saveDefaultGrade) saves.push(this.sheets.setDefaultGrade(sheet.id, defaultGradeValue === '' ? null : defaultGradeValue));
     if (savePot) saves.push(this.sheets.setPot(sheet.id, potValue === '' ? null : potValue));
     if (saveAlertThreshold) saves.push(this.sheets.setAlertThreshold(sheet.id, alertThresholdValue === '' ? null : alertThresholdValue));
     if (saveParent) saves.push(this.sheets.setParent(sheet.id, parentValue === '' ? null : parentValue));
@@ -560,7 +572,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), escalateAfter: String(sheet?.escalateAfter ?? ''), reviewSla: String(sheet?.reviewSla ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', proofKinds: sheet?.proofKinds ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', reviewThreshold: sheet?.reviewThreshold ?? '', rounding: sheet?.rounding ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '', reviewThresholdFrom: '', roundingFrom: '',
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), escalateAfter: String(sheet?.escalateAfter ?? ''), reviewSla: String(sheet?.reviewSla ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', proofKinds: sheet?.proofKinds ?? '', defaultGrade: sheet?.defaultGrade ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', reviewThreshold: sheet?.reviewThreshold ?? '', rounding: sheet?.rounding ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '', reviewThresholdFrom: '', roundingFrom: '',
       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
   }

@@ -47,6 +47,7 @@ public class SheetController {
      *  escalateAfter is the escalation gap in days, null when it is off;
      *  reviewSla is the review SLA in days, null when there is none;
      *  proofKinds is the sheet's proof kinds, comma separated, null when there are none;
+     *  defaultGrade is the sheet's default grade, null when it sets none (then A);
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
@@ -54,7 +55,7 @@ public class SheetController {
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
-            String proofKinds) {
+            String proofKinds, String defaultGrade) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -77,7 +78,8 @@ public class SheetController {
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getRounding(),
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
-                    sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds());
+                    sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
+                    sheet.getDefaultGrade());
         }
     }
 
@@ -155,6 +157,10 @@ public class SheetController {
     /** The sheet's proof kinds as the form submits them: a comma separated list of receipt and photo, each at most
      *  once; a missing (or blank) one means none. */
     public record ProofKindsChange(@Size(max = 200) @Pattern(regexp = "|(receipt|photo)(,(receipt|photo))*") String proofKinds) {
+    }
+
+    /** The sheet's default grade as the form submits it: A, B or C; a missing (or blank) one means none (then A). */
+    public record DefaultGradeChange(@Pattern(regexp = "|[ABC]") String defaultGrade) {
     }
 
     /** The sheet's cap as the form submits it; a missing one means none. */
@@ -382,6 +388,16 @@ public class SheetController {
             @Valid @RequestBody ProofKindsChange request) {
         String kinds = request.proofKinds() == null || request.proofKinds().isEmpty() ? null : request.proofKinds();
         return SheetView.of(sheets.setProofKinds(id, user, kinds));
+    }
+
+    /** Change the sheet's default grade. */
+    @PutMapping("/{id}/settings/default-grade")
+    public SheetView setDefaultGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DefaultGradeChange request) {
+        String grade = request.defaultGrade() == null || request.defaultGrade().isEmpty() ? null : request.defaultGrade();
+        return SheetView.of(sheets.setDefaultGrade(id, user, grade));
     }
 
     /** Change the sheet's parent sheet. */

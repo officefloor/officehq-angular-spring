@@ -13,9 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class QuickAddService {
 
-    /** The grade a person added by the quick-add bar is given. */
-    static final String NEW_PERSON_GRADE = "A";
-
     /** What a quick-add made: the person the claim is for (new or already on the sheet) and the claim. */
     public record Added(Person person, boolean personAdded, Claim claim) {
     }
@@ -33,12 +30,13 @@ public class QuickAddService {
     /**
      * Add a DRAFT claim of {@code amount}, dated the sheet's entry date while set, else its today, with an empty note, for the person
      * whose name or an alias matches {@code name} (trimmed, ignoring case); one not on the sheet is added first with
-     * grade A. One change: when the claim is refused the person is not added and nothing is recorded.
+     * the sheet's default grade. One change: when the claim is refused the person is not added and nothing is recorded.
      */
     @Transactional
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         Person existing = people.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, name.trim()).orElse(null);
-        Person person = existing != null ? existing : personService.add(sheetId, user, name, NEW_PERSON_GRADE);
+        Person person = existing != null ? existing : personService.add(sheetId, user, name,
+                personService.defaultGrade(sheetId));
         Claim claim = claims.add(sheetId, user, person.getId(), amount, null, "", null, null);
         return new Added(person, existing == null, claim);
     }

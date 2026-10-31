@@ -280,6 +280,19 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's default grade (A, B or C; null: none, then A), starting the sheet if it has never been loaded.
+     *  Not dated; no one's grade changes with it. */
+    @Transactional
+    public Sheet setDefaultGrade(String id, String user, String grade) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setDefaultGrade(grade);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=default-grade value=" + (grade == null ? "" : grade));
+        return saved;
+    }
+
     /** Set the sheet's parent sheet (null: none), starting the sheet if it has never been loaded. Not dated. Refused
      *  for the sheet itself, for a sheet never loaded, and for a sheet that has this one as an ancestor. */
     @Transactional

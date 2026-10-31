@@ -150,6 +150,11 @@ public class Sheet {
     @Column(name = "proof_kinds", length = 200)
     private String proofKinds;
 
+    /** The sheet's default grade (A, B or C): the grade the quick-add bar gives a new person, and the one an
+     *  imported line with a blank grade takes; null means A. Not dated. */
+    @Column(name = "default_grade", length = 1)
+    private String defaultGrade;
+
     /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -183,6 +188,7 @@ public class Sheet {
         copy.parentId = parentId;
         copy.clonedFrom = this.id;
         copy.proofKinds = proofKinds;
+        copy.defaultGrade = defaultGrade;
         copy.lastSettleBatch = lastSettleBatch;
         return copy;
     }
@@ -423,6 +429,19 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
+    }
+
+    /** The grade a new person takes when none is given: the default grade, A when it sets none. */
+    public String defaultGradeOrA() {
+        return defaultGrade == null ? "A" : defaultGrade;
     }
 
     /** The sheet's proof kinds, in the order set; none when it sets none. */

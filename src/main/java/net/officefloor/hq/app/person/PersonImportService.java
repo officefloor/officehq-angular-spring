@@ -18,8 +18,8 @@ public class PersonImportService {
     /** The longest name or contact the person form takes. */
     private static final int TEXT_MAX = 200;
 
-    /** The grades the person form takes. */
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    /** The grades the person form takes; blank takes the sheet's default grade. */
+    private static final Pattern GRADE = Pattern.compile("[ABC]?");
 
     /** Terms the person form takes: a whole number of days from 0 to 36500. */
     private static final Pattern TERMS = Pattern.compile("\\d{1,5}");
@@ -47,7 +47,8 @@ public class PersonImportService {
     }
 
     /**
-     * Take a person per line of {@code text} (name,grade,terms,contact; the terms and contact may be absent or blank),
+     * Take a person per line of {@code text} (name,grade,terms,contact; the terms and contact may be absent or blank,
+     * and a blank grade is the sheet's default grade),
      * in order. A line whose name is a person's name or alias on the sheet (ignoring case) updates that person as the
      * person form would: their grade recorded from the sheet's today, and their terms and contact set when the line
      * gives them. Any other line adds a person as the person form adds them. Every line is checked first by the
@@ -62,11 +63,12 @@ public class PersonImportService {
         Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         List<Step> steps = new ArrayList<>();
+        String defaultGrade = people.defaultGrade(sheetId);
         for (String raw : text.split("\\r?\\n")) {
             if (raw.isBlank()) {
                 continue;
             }
-            Line line = read(raw);
+            Line line = read(raw, defaultGrade);
             String lowerName = line.name().toLowerCase(Locale.ROOT);
             Person match = store.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, line.name()).orElse(null);
             if (!names.add(lowerName) || used.contains(lowerName) || (match != null && !matched.add(match.getId()))) {
@@ -100,7 +102,7 @@ public class PersonImportService {
         return new Result(added, done.size() - added, done);
     }
 
-    private static Line read(String raw) {
+    private static Line read(String raw, String defaultGrade) {
         String[] fields = raw.split(",", -1);
         if (fields.length < 2 || fields.length > 4) {
             throw refused("Each line is name,grade,terms,contact");
@@ -126,7 +128,7 @@ public class PersonImportService {
             throw refused("A contact is at most " + TEXT_MAX + " characters");
         }
         contact = contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
-        return new Line(name, grade, terms, contact);
+        return new Line(name, grade.isEmpty() ? defaultGrade : grade, terms, contact);
     }
 
     private static ResponseStatusException refused(String reason) {

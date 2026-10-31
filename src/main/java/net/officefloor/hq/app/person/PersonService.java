@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -97,6 +98,13 @@ public class PersonService {
                 + (terms != null ? " terms=" + terms : "") + (reach != null ? " contact=" + reach : ""));
         rollup.recordChanges(sheetId, user, before);
         return added;
+    }
+
+    /** The grade a new person takes when none is given: the sheet's default grade, A when it sets none or has never
+     *  been loaded. */
+    @Transactional(readOnly = true)
+    public String defaultGrade(String sheetId) {
+        return sheetStore.findById(sheetId).map(Sheet::defaultGradeOrA).orElse("A");
     }
 
     /** The names and aliases, lower-cased, used on the other sheets of the sheet's tree: its ancestors and its

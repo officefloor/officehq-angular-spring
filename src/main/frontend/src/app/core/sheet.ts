@@ -77,6 +77,9 @@ export interface SheetView {
   /** The sheet's proof kinds, comma separated (receipt, photo): while set, a claim above the proof threshold needs a
    *  proof of each before it can be settled or approved; null when there are none. Not dated. */
   proofKinds: string | null;
+  /** The sheet's default grade (A, B or C): the grade the quick-add bar gives a new person, and the one an imported
+   *  line with a blank grade takes; null when it sets none (then A). Not dated. */
+  defaultGrade: string | null;
   /** The alert threshold (two decimals): a person whose due-total rises from at or below it to above it is alerted;
    *  null when it is off. Not dated. */
   alertThreshold: string | null;
@@ -275,6 +278,13 @@ export class Sheets {
   setProofKinds(id: string, proofKinds: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/proof-kinds`, { proofKinds })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's default grade; null means none (then A). Not dated. */
+  setDefaultGrade(id: string, defaultGrade: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/default-grade`, { defaultGrade })
       .pipe(tap((s) => this.active.set(s)));
   }
 

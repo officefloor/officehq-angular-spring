@@ -34,7 +34,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate,
         Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth, BigDecimal alertThreshold,
         Integer escalateAfter, Integer reviewSla, String proofKinds, List<AncestorState> ancestors,
-        List<PoolState> pools, List<CrewState> crews) {
+        List<PoolState> pools, List<CrewState> crews, String defaultGrade) {
 
     /** A pool as it stood, with its memberships in the order they were added (pools and crews are null in a state
      *  kept before they were recorded). */
@@ -160,7 +160,8 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),
-                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors, pools, crews);
+                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors, pools, crews,
+                sheet.getDefaultGrade());
     }
 
     /** The rates as they stand now. */
@@ -205,6 +206,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         sheet.setPot(pot);
         sheet.setAlertThreshold(alertThreshold);
         sheet.setProofKinds(proofKinds);
+        sheet.setDefaultGrade(defaultGrade);
         sheet.setFiscalStartMonth(fiscalStartMonth == null ? 1 : fiscalStartMonth);
         // The parent is not dated: it is the one the sheet names now.
         sheet.setParentId(live.getParentId());
