@@ -11,6 +11,7 @@ import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCe
 import { Sheets, graceOn } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { Watches } from '../../core/watches';
+import { Session } from '../../core/session';
 import { Consolidated, DescendantFigures, NO_DESCENDANTS } from '../../core/consolidated';
 import { PersonClaims } from '../claims/claims';
 import { SheetHeader } from '../header/header';
@@ -74,7 +75,8 @@ function csvField(value: string): string {
   imports: [ReactiveFormsModule, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, PoolsPanel],
   template: `
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
-                [overdueTotal]="money(overdueTotals().cents)" />
+                [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
+                [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''" />
     <app-periods [dueTotals]="dueByPeriod()" />
     <app-pools [people]="people()" />
     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()"
@@ -382,6 +384,14 @@ export class PeopleList {
   private readonly consolidatedApi = inject(Consolidated);
   protected readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);
+  private readonly session = inject(Session);
+  /** The person on the sheet with the signed-in user's name, by name or alias as names are compared; null when none. */
+  protected readonly me = computed(() => {
+    const user = this.session.user()?.trim().toLowerCase();
+    if (!user) return null;
+    return this.people().find((p) =>
+      p.name.toLowerCase() === user || (p.aliases ?? []).some((a) => a.toLowerCase() === user)) ?? null;
+  });
   private readonly pools = inject(Pools);
 
   protected readonly grades = GRADES;
