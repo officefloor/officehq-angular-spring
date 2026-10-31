@@ -1,0 +1,57 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 48cb4be68..de81074dc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -283,6 +283,15 @@ function csvField(value: string): string {
+             <button type="button" data-testid="person-move-down" (click)="move(p, 'down')" [disabled]="moving() === p.id"
+                     [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
+             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
++            <label [attr.for]="'person-inline-grade-' + p.id">Grade</label>
++            <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
++                    [value]="gradeToday(p)" (change)="clearPersonError(p.id)">
++              @for (g of grades; track g) {
++                <option [value]="g" [selected]="g === gradeToday(p)">{{ g }}</option>
++              }
++            </select>
++            <button type="button" data-testid="person-inline-grade-save" (click)="saveInlineGrade(p, inlineGrade.value)"
++                    [disabled]="inlineGrading() === p.id" [attr.aria-label]="'Save the grade of ' + p.name">Save grade</button>
+             — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
+             — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
+             — tags <span data-testid="person-tags">{{ p.tags.join(', ') }}</span>
+@@ -457,6 +466,8 @@ export class PeopleList {
+   });
+   /** The person being retired, so a second press waits for the first. */
+   protected readonly retiring = signal<number | null>(null);
++  /** The person whose row grade is being saved, so a second press waits for the first. */
++  protected readonly inlineGrading = signal<number | null>(null);
+   /** The person being moved, so a second press waits for the first. */
+   protected readonly moving = signal<number | null>(null);
+   /** The person a hold is being added to, so a second press waits for the first. */
+@@ -1128,6 +1139,27 @@ export class PeopleList {
+     });
+   }
+ 
++  /** Save the grade chosen on the row from the sheet's today, as an edit in the person form would. */
++  protected saveInlineGrade(p: PersonView, grade: string): void {
++    if (this.inlineGrading() === p.id) return;
++    this.personError.set(null);
++    this.patronError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.inlineGrading.set(p.id);
++    this.api.update(sheet.id, p.id, p.version, { name: p.name, grade: grade as Grade, gradeFrom: null, terms: p.terms,
++      contact: p.contact ?? '', tags: p.tags.join(', ') }).subscribe({
++      next: (saved) => {
++        this.inlineGrading.set(null);
++        this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
++      },
++      error: () => {
++        this.inlineGrading.set(null);
++        this.personError.set({ id: p.id, message: 'Could not save the grade of ' + p.name + '.' });
++      },
++    });
++  }
++
+   /** Retire the person from a date; a blank date takes the sheet's today. */
+   protected retire(p: PersonView, from: string): void {
+     if (this.retiring() === p.id) return;
