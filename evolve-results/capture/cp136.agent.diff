@@ -1,0 +1,191 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 97b058ba4..f9d1d0a7f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -220,8 +220,8 @@ public class Claim {
+     }
+ 
+     /** Move the claim to another sheet and person, listed there at {@code listed} and numbered {@code number}
+-     *  (none for a claim without one): it loses its reference, its settle batch, its editor's lock and any figure
+-     *  a statement bound it to; a correction or split names the number given to the claim it names there. */
++     *  (none for a claim without one): it loses its reference, its settle batch and its editor's lock, keeping any
++     *  figure a statement bound it to; a correction or split names the number given to the claim it names there. */
+     public void transferTo(String sheetId, Long personId, long listed, String number, String corrects,
+             String splitFrom) {
+         this.sheetId = sheetId;
+@@ -233,7 +233,6 @@ public class Claim {
+         this.ref = null;
+         this.settleBatch = null;
+         this.lockedBy = null;
+-        unbind();
+     }
+ 
+     /** The sheet's today on which the claim was first opened (took a status past DRAFT), as its log records it;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index 9f2ee7554..2396326ae 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -18,7 +18,7 @@ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+-import net.officefloor.hq.app.statement.StatementRepository;
++import net.officefloor.hq.app.statement.StatementService;
+ import net.officefloor.hq.app.watch.WatchRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -33,7 +33,7 @@ public class PersonMergeService {
+     private final ClaimRepository claims;
+     private final PatronRepository patrons;
+     private final PoolMemberRepository poolMembers;
+-    private final StatementRepository statements;
++    private final StatementService statements;
+     private final WatchRepository watches;
+     private final SheetService sheets;
+     private final SheetRepository sheetStore;
+@@ -43,7 +43,7 @@ public class PersonMergeService {
+     private final PlanService plans;
+ 
+     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
+-            PoolMemberRepository poolMembers, StatementRepository statements, WatchRepository watches,
++            PoolMemberRepository poolMembers, StatementService statements, WatchRepository watches,
+             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit, Rollup rollup,
+             PlanService plans) {
+         this.plans = plans;
+@@ -62,11 +62,12 @@ public class PersonMergeService {
+ 
+     /**
+      * A steward merges a person into another of the sheet. The merged person's claims move to the other, keeping
+-     * their numbers and dates, listed as the other's newest in the order they were added, each losing any figure a
+-     * statement bound it to; their name and aliases become aliases of the other; their patrons are added to the
++     * their numbers and dates, listed as the other's newest in the order they were added, each keeping any figure a
++     * statement bound it to; their statements move to the other, whose count becomes their own plus the merged
++     * person's and whose last statement stays theirs (or, having none, becomes the merged person's last); their name and aliases become aliases of the other; their patrons are added to the
+      * other's (never the other themselves, nor one twice), anyone naming them as patron names the other instead (once),
+      * and their pool memberships move to the other (shares added where the other is already a member). Their
+-     * statements, holds, watchers and contact are dropped with them. Refused for anyone but a steward, a merge into
++     * holds, watchers and contact are dropped with them. Refused for anyone but a steward, a merge into
+      * the same person, and when either of them is retired.
+      */
+     @Transactional
+@@ -92,7 +93,6 @@ public class PersonMergeService {
+         List<Claim> moving = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, from.getId()).stream()
+                 .sorted(Comparator.comparing(Claim::getId)).toList();
+         for (Claim claim : moving) {
+-            claim.unbind();
+             claim.reassign(into.getId(), ++listed);
+         }
+         claims.saveAll(moving);
+@@ -129,7 +129,7 @@ public class PersonMergeService {
+         }
+         poolMembers.flush();
+ 
+-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
++        statements.move(sheetId, from.getId(), sheetId, into.getId());
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+         plans.reassign(from.getId(), into.getId());
+         String fromName = from.getName();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index 6b12ad710..5eda7c453 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -25,7 +25,7 @@ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+-import net.officefloor.hq.app.statement.StatementRepository;
++import net.officefloor.hq.app.statement.StatementService;
+ import net.officefloor.hq.app.watch.WatchRepository;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -47,7 +47,7 @@ public class PersonTransferService {
+     private final ClaimService claimService;
+     private final PatronRepository patrons;
+     private final PoolMemberRepository poolMembers;
+-    private final StatementRepository statements;
++    private final StatementService statements;
+     private final WatchRepository watches;
+     private final SheetService sheets;
+     private final SheetRepository sheetStore;
+@@ -57,7 +57,7 @@ public class PersonTransferService {
+     private final PlanService plans;
+ 
+     public PersonTransferService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
+-            PatronRepository patrons, PoolMemberRepository poolMembers, StatementRepository statements,
++            PatronRepository patrons, PoolMemberRepository poolMembers, StatementService statements,
+             WatchRepository watches, SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit,
+             Rollup rollup, PlanService plans) {
+         this.plans = plans;
+@@ -78,10 +78,11 @@ public class PersonTransferService {
+     /**
+      * A steward transfers a person to another sheet (started empty if never loaded). They arrive there with every
+      * grade they were given, their terms, contact and aliases, and their claims with their status, dates, notes,
+-     * tags, frozen figures and logs, listed in the order they had; each claim that had a number takes the other
+-     * sheet's next, in the order the claims were opened. Figures a statement bound are lost, and so are references,
+-     * settle batches and holds. They leave this sheet entirely: their statements, patron links (either way), pool
+-     * memberships and watches are dropped. When the other sheet already has a person with their name or one of
++     * tags, frozen figures, figures a statement bound and logs, listed in the order they had; each claim that had a
++     * number takes the other sheet's next, in the order the claims were opened. Their statements go with them (when
++     * merged, the person there counts their own plus these, and their last statement stays theirs or, having none,
++     * becomes this person's last). References, settle batches and holds are lost. They leave this sheet entirely:
++     * their patron links (either way), pool memberships and watches are dropped. When the other sheet already has a person with their name or one of
+      * their aliases (as a name or alias), they are merged into that person there, exactly as a merge does: their
+      * claims are listed after that person's, their name and aliases become that person's aliases and their contact is
+      * dropped. Refused for anyone but a steward, a retired person, a transfer to this sheet itself or to an archived
+@@ -135,7 +136,7 @@ public class PersonTransferService {
+                 .filter(p -> p.getPersonId().equals(person.getId()) || p.getPatronId().equals(person.getId()))
+                 .toList());
+         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
+-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, person.getId()));
++        statements.move(sheetId, person.getId(), target, into == null ? person.getId() : into.getId());
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));
+         plans.removeOf(person.getId());
+         patrons.flush();
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statement.java b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+index 065e2259d..93f0a229f 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+@@ -40,6 +40,11 @@ public class Statement {
+         this.takenOn = takenOn;
+     }
+ 
++    /** A copy of this statement taken of another person, on another sheet. */
++    public Statement copyFor(String sheetId, Long personId) {
++        return new Statement(sheetId, personId, dueTotal, takenOn);
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index ab4a3050c..1ac3a8e1c 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -89,6 +89,27 @@ public class StatementService {
+         return List.copyOf(byPerson.values());
+     }
+ 
++    /**
++     * The statements of a person ({@code fromId}) move to another ({@code intoId}, on {@code intoSheetId}), as a merge
++     * or a transfer moves their claims: the other's count becomes their own plus the person's, and their last
++     * statement stays theirs (or, having none, becomes the person's last).
++     */
++    public void move(String fromSheetId, long fromId, String intoSheetId, long intoId) {
++        List<Statement> from = statements.findBySheetIdAndPersonIdOrderByIdAsc(fromSheetId, fromId);
++        List<Statement> into = fromId == intoId && fromSheetId.equals(intoSheetId) ? List.of()
++                : statements.findBySheetIdAndPersonIdOrderByIdAsc(intoSheetId, intoId);
++        if (from.isEmpty()) {
++            return;
++        }
++        // Statements are read in the order taken (by id), so the other's own are taken again after the person's.
++        List<Statement> moved = Stream.concat(from.stream(), into.stream())
++                .map(s -> s.copyFor(intoSheetId, intoId)).toList();
++        statements.deleteAll(from);
++        statements.deleteAll(into);
++        statements.flush();
++        statements.saveAllAndFlush(moved);
++    }
++
+     /**
+      * Take a statement of a person: record their due-total now (with the late charges their overdue claims have gained), bind each of their claims that counts
+      * to the figure it has now (its settled figure, else the figure it is bound to, else its amount at
