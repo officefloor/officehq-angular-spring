@@ -299,7 +299,7 @@ public class ClaimService {
                         claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, claim.getPersonId())))))
                 .orElse(null);
         // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
-        BigDecimal figure = claim.getBoundDue() != null ? claim.getBoundDue() : live;
+        BigDecimal figure = claim.isBound() ? claim.getBoundDue() : live;
         return figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
     }
 

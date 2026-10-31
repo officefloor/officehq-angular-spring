@@ -27,7 +27,7 @@ export interface ClaimView {
   /** Whether its person's last statement binds the claim, to `statedDue`. */
   stated: boolean;
   /** The figure the claim had at its person's last statement, while bound by it, with exactly two
-   *  decimals; null when not bound, while PENDING, or if it had no figure then (it then follows the rate). */
+   *  decimals; null when not bound, while PENDING (it then follows the rate), or if it had no figure then (it stays n/a). */
   statedDue: string | null;
   /** The number of the SETTLED claim of the same person a correction (a negative amount) corrects; null on
    *  any other claim. */

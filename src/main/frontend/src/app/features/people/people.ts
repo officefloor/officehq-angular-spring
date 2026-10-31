@@ -239,7 +239,7 @@ export class PeopleList {
   );
   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none);
    *  null when neither their grade in force today nor the grade any of those claims is at has a rate in
-   *  force today, and none of those claims keeps a settled figure. */
+   *  force today, and none of those claims has a due. */
   private readonly dueByPerson = computed(() => {
     const today = this.rates.byGrade();
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
@@ -247,11 +247,12 @@ export class PeopleList {
     for (const p of this.people()) {
       const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds));
       const grades = [this.gradeToday(p), ...counting.map((c) => gradeOn(p, c.date))];
-      if (!grades.some((g) => today.has(g)) && !counting.some((c) => c.settledDue !== null || c.statedDue !== null)) {
+      const dues = counting.map((c) => this.claimDue(p, c, dueTerms)).filter((due) => due !== null);
+      if (!grades.some((g) => today.has(g)) && dues.length === 0) {
         byPerson.set(p.id, null);
         continue;
       }
-      byPerson.set(p.id, counting.reduce((sum, c) => sum + (this.claimDue(p, c, dueTerms) ?? 0), 0));
+      byPerson.set(p.id, dues.reduce((sum, due) => sum + due, 0));
     }
     return byPerson;
   });

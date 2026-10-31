@@ -89,7 +89,7 @@ public class StatementService {
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId);
 
         BigDecimal total = BigDecimal.ZERO.setScale(2);
-        boolean anyFixed = false;
+        boolean anyDue = false;
         int counted = 0;
         for (Claim claim : theirs) {
             if (!person.countsUnbound(claim)) {
@@ -97,21 +97,21 @@ public class StatementService {
                 continue;
             }
             BigDecimal fixed = claim.getSettledDue() != null ? claim.getSettledDue() : claim.getBoundDue();
-            BigDecimal figure = fixed != null ? fixed
+            BigDecimal figure = fixed != null || claim.isBound() ? fixed
                     : Rate.inForceOn(ratesOf(sheetRates, person.gradeOn(claim.getDate())), claim.getDate())
                             .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), sheet.getFloor(),
                                     sheet.roundingFor(ClaimService.roundingDate(claim, theirs))))
                             .orElse(null);
-            anyFixed |= fixed != null;
+            anyDue |= figure != null;
             grades.add(person.gradeOn(claim.getDate()));
             total = figure == null ? total : total.add(figure).add(ClaimService.lateCharge(claim, figure, sheet));
             claim.bind(figure);
             counted++;
         }
         // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any
-        // of their claims that count is at, and no fixed figure, the person has no due-total.
+        // of their claims that count is at, and no claim that has a due, the person has no due-total.
         boolean anyRate = grades.stream().anyMatch(g -> Rate.inForceOn(ratesOf(sheetRates, g), today).isPresent());
-        String dueTotal = !anyRate && !anyFixed ? "n/a" : total.toPlainString();
+        String dueTotal = !anyRate && !anyDue ? "n/a" : total.toPlainString();
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

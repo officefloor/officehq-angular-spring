@@ -26,18 +26,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** A grade's rate as the screen shows it: a percent with exactly two decimals, and the day it
-     *  takes effect (null when it applies from the beginning of time). */
-    public record RateView(String grade, String rate, LocalDate from) {
+     *  takes effect (null when it applies from the beginning of time) and the last day it applies
+     *  (null when it does not end). */
+    public record RateView(String grade, String rate, LocalDate from, LocalDate to) {
 
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFromDate());
+            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFromDate(),
+                    rate.getToDate());
         }
     }
 
     /** A rate as the form submits it: a percent of 0.00 or more with up to two decimals, and an
-     *  optional from-date. */
+     *  optional from-date and to-date. */
     public record RateForm(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal rate,
-            LocalDate from) {
+            LocalDate from, LocalDate to) {
     }
 
     private final RateService rates;
@@ -58,6 +60,6 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RateForm request) {
-        return RateView.of(rates.set(sheetId, user, grade, request.from(), request.rate()));
+        return RateView.of(rates.set(sheetId, user, grade, request.from(), request.to(), request.rate()));
     }
 }

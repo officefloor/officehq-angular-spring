@@ -21,6 +21,9 @@ import { Sheets } from '../../core/sheet';
               @for (r of rates.ratesByGrade().get(g) ?? []; track r.from) {
                 <li [attr.data-testid]="'rate-row-' + g + '-' + (r.from ?? 'start')">
                   <span data-testid="rate-pct">{{ r.rate }}</span>% from {{ r.from ?? 'the start' }}
+                  @if (r.to !== null) {
+                    through <span data-testid="rate-to">{{ r.to }}</span>
+                  }
                 </li>
               }
             </ul>
@@ -39,6 +42,8 @@ import { Sheets } from '../../core/sheet';
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" autocomplete="off" />
         <label for="rate-form-from">From (blank: from the start)</label>
         <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
+        <label for="rate-form-to">To (blank: does not end)</label>
+        <input id="rate-form-to" type="date" data-testid="rate-form-to" formControlName="to" />
         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
@@ -60,6 +65,7 @@ export class RatesPanel {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -83,17 +89,21 @@ export class RatesPanel {
     this.error.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { grade, pct, from } = this.form.getRawValue();
+    const { grade, pct, from, to } = this.form.getRawValue();
     const rate = pct.trim();
     if (!RATE_PATTERN.test(rate)) {
       this.error.set('Type a rate of 0.00 or more, with up to two decimals.');
       return;
     }
+    if (from !== '' && to !== '' && to < from) {
+      this.error.set('A rate cannot end before it starts.');
+      return;
+    }
     this.saving.set(true);
-    this.rates.set(sheet.id, grade, rate, from === '' ? null : from).subscribe({
+    this.rates.set(sheet.id, grade, rate, from === '' ? null : from, to === '' ? null : to).subscribe({
       next: () => {
         this.saving.set(false);
-        this.form.reset({ grade, pct: '', from: '' }, { emitEvent: false });
+        this.form.reset({ grade, pct: '', from: '', to: '' }, { emitEvent: false });
       },
       error: () => {
         this.saving.set(false);

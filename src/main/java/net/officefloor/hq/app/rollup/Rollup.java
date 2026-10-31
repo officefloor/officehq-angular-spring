@@ -70,16 +70,17 @@ public class Rollup {
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             claimedTotal = claimedTotal.add(claimed);
             // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade
-            // any of their claims is at, and no fixed figure, the person has no due-total.
-            boolean anyFixed = counting.stream().anyMatch(c -> c.getSettledDue() != null || c.getBoundDue() != null);
+            // any of their claims is at, and no claim that has a due, the person has no due-total.
+            List<BigDecimal> dues = counting.stream()
+                    .map(c -> dueOf(c, ratesOf(sheetRates, person.gradeOn(c.getDate())), sheet, sheetClaims))
+                    .filter(Objects::nonNull)
+                    .toList();
             boolean anyRate = today != null && Stream.concat(Stream.of(person.gradeOn(today)),
                             counting.stream().map(c -> person.gradeOn(c.getDate())))
                     .anyMatch(grade -> Rate.inForceOn(ratesOf(sheetRates, grade), today).isPresent());
             String due = NOT_AVAILABLE;
-            if (anyFixed || anyRate) {
-                BigDecimal total = counting.stream().map(c -> dueOf(c, ratesOf(sheetRates, person.gradeOn(c.getDate())), sheet, sheetClaims))
-                        .filter(Objects::nonNull)
-                        .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            if (!dues.isEmpty() || anyRate) {
+                BigDecimal total = dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
                 dueTotal = dueTotal.add(total);
                 due = total.toPlainString();
             }
@@ -144,7 +145,7 @@ public class Rollup {
         BigDecimal floor = sheet == null ? null : sheet.getFloor();
         RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN
                 : sheet.roundingFor(ClaimService.roundingDate(claim, sheetClaims));
-        BigDecimal figure = claim.getBoundDue() != null ? claim.getBoundDue()
+        BigDecimal figure = claim.isBound() ? claim.getBoundDue()
                 : Rate.inForceOn(gradeRates, claim.getDate())
                         .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), floor, rounding))
                         .orElse(null);

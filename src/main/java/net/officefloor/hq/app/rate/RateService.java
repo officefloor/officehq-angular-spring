@@ -9,8 +9,10 @@ import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /** The rate set for each grade on a sheet. */
 @Service
@@ -36,10 +38,14 @@ public class RateService {
                 .toList();
     }
 
-    /** Set a grade's rate from a date (null: from the beginning of time), replacing the rate it had
-     *  from that same date, if any. */
+    /** Set a grade's rate from a date (null: from the beginning of time) through a to-date (null: it
+     *  does not end), replacing the rate it had from that same date, if any. A to-date before the
+     *  from-date is refused. */
     @Transactional
-    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal rate) {
+    public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal rate) {
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rate cannot end before it starts");
+        }
         sheets.load(sheetId, user);
         BigDecimal scaled = rate.setScale(2, RoundingMode.UNNECESSARY);
         Rollup.Figures before = rollup.of(sheetId);
@@ -48,10 +54,12 @@ public class RateService {
                 .findFirst()
                 .orElseGet(() -> new Rate(sheetId, grade, from, scaled));
         row.setRate(scaled);
+        row.setToDate(to);
         Rate saved = rates.saveAndFlush(row);
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + saved.getGrade() + " rate=" + saved.getRate().toPlainString()
-                + (from == null ? "" : " from=" + from));
+                + (from == null ? "" : " from=" + from)
+                + (to == null ? "" : " to=" + to));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

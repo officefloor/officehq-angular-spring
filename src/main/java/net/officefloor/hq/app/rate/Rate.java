@@ -13,7 +13,8 @@ import java.util.List;
 import java.util.Optional;
 
 /** A sheet's rate for one grade: a percent with two decimals, in force from its from-date (or, with
- *  none, from the beginning of time) until the grade's next rate takes over. */
+ *  none, from the beginning of time) until the grade's next rate takes over, and never after its
+ *  to-date (if it has one). */
 @Entity
 @Table(name = "rate")
 public class Rate {
@@ -35,6 +36,9 @@ public class Rate {
     @Column(name = "from_date")
     private LocalDate fromDate;
 
+    @Column(name = "to_date")
+    private LocalDate toDate;
+
     @Column(name = "rate", nullable = false)
     private BigDecimal rate;
 
@@ -49,11 +53,13 @@ public class Rate {
     }
 
     /** The rate among a grade's rates in force on a date: the one with the latest from-date on or
-     *  before it; none when the date is before every one of them. */
+     *  before it, unless the date is after its to-date; none when the date is before every one of
+     *  them, or that rate has ended by then (an earlier rate does not take over again). */
     public static Optional<Rate> inForceOn(List<Rate> gradeRates, LocalDate date) {
         return gradeRates.stream()
                 .filter(r -> r.fromDate == null || !r.fromDate.isAfter(date))
-                .max(BY_FROM);
+                .max(BY_FROM)
+                .filter(r -> r.toDate == null || !date.isAfter(r.toDate));
     }
 
     public Long getId() {
@@ -71,6 +77,15 @@ public class Rate {
     /** The day the rate takes effect; null when it applies from the beginning of time. */
     public LocalDate getFromDate() {
         return fromDate;
+    }
+
+    /** The last day the rate applies; null when it does not end. */
+    public LocalDate getToDate() {
+        return toDate;
+    }
+
+    public void setToDate(LocalDate toDate) {
+        this.toDate = toDate;
     }
 
     public BigDecimal getRate() {

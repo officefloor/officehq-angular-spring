@@ -31,7 +31,7 @@ public class ClaimController {
      * A claim as the screen shows it; the amount is given with exactly two decimals, as is the due
      * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
      * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
-     * statedDue (null if it had no figure then, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
+     * statedDue (null if it had no figure then, when it stays n/a, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
      * on any other claim); log is its status log, oldest first.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
