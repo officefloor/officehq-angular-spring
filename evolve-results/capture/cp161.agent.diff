@@ -1,0 +1,70 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 6af747c21..aee0c19a8 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -276,9 +276,11 @@ public class Person {
+         return at != null && at.counts() && (claim.isStated() || !heldOn(claim, today));
+     }
+ 
+-    /** Whether a claim of this person counts when no statement binds it, as a new statement finds it. */
++    /** Whether a claim of this person counts as a new statement finds it: as when no statement binds it, except that
++     *  an open claim a statement binds still counts once {@code today} reaches the retirement date. */
+     public boolean countsUnbound(Claim claim, LocalDate today) {
+-        return claim.getStatus().counts() && !heldOn(claim, today);
++        return claim.getStatus().counts() && !(claim.getStatus().isOpen()
++                && ((!claim.isStated() && retiredOn(today)) || holds.stream().anyMatch(h -> h.covers(claim.getDate()))));
+     }
+ 
+     /** Whether the claim is open and dated within one of the person's holds, or open once {@code today} reaches
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index b37aceb57..8d27af619 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -9,7 +9,10 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.function.Function;
+ import java.util.stream.Collectors;
++import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.history.SheetHistory;
++import net.officefloor.hq.app.history.SheetState;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -113,9 +116,11 @@ public class PoolService {
+     private final SheetService sheets;
+     private final SheetRepository sheetStore;
+     private final Audit audit;
++    private final SheetHistory history;
+ 
+     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
+-            SheetService sheets, SheetRepository sheetStore, Audit audit) {
++            SheetService sheets, SheetRepository sheetStore, Audit audit, SheetHistory history) {
++        this.history = history;
+         this.pools = pools;
+         this.members = members;
+         this.people = people;
+@@ -131,14 +136,19 @@ public class PoolService {
+     }
+ 
+     /** The sheet's pools as {@link #list(String)}, with {@code on} (null: the sheet's today) standing in for the
+-     *  sheet's today, as a sheet shown as of a date reads them. */
++     *  sheet's today, as a sheet shown as of a date reads them: then the pot and the people (retired or held) are as
++     *  they stood at the end of that date (see {@link SheetHistory}), a person not on the sheet by then is no member,
++     *  and the pools and their memberships are as they are now. */
+     @Transactional(readOnly = true)
+     public List<PoolWithMembers> list(String sheetId, LocalDate on) {
+         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
+-        BigDecimal sheetPot = sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
++        Optional<SheetState> then = on == null ? Optional.empty() : history.asOf(sheetId, on);
++        BigDecimal sheetPot = on != null ? then.map(SheetState::pot).orElse(null)
++                : sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
+         LocalDate today = on != null ? on : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
+-        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+-                .collect(Collectors.toMap(Person::getId, Function.identity()));
++        List<Person> sheetPeople = on != null ? then.map(s -> s.rebuildPeople(sheetId)).orElse(List.of())
++                : people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
++        Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+         Map<Long, Pool> poolsById = list.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
+         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())
+                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
