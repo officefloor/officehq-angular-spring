@@ -109,6 +109,10 @@ public class PersonController {
     public record Retirement(LocalDate from) {
     }
 
+    /** A move of a person one place up or down the list. */
+    public record Move(@NotNull @Pattern(regexp = "up|down") String direction) {
+    }
+
     /** People selected to be given a grade together, from {@code from} (missing: the sheet's today). */
     public record BulkGrade(
             @NotNull @Size(max = 1000) List<@NotNull Long> ids,
@@ -196,6 +200,19 @@ public class PersonController {
             }
         }
         return new BulkGradeView(changed.size(), changed);
+    }
+
+    /** Swap the person with the one above or below them: everyone on the sheet, in list order, as moved. */
+    @PostMapping("/{id}/move")
+    public List<PersonView> move(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody Move request) {
+        List<Person> listed = people.move(sheetId, user, id, "up".equals(request.direction()));
+        LocalDate today = people.today(sheetId);
+        Set<String> used = people.usedInTree(sheetId);
+        return listed.stream().map(p -> PersonView.of(p, today, PersonService.clashes(p, used))).toList();
     }
 
     @PostMapping("/{id}/retire")

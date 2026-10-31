@@ -245,6 +245,10 @@ function csvField(value: string): string {
             <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
                    (change)="togglePerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
             <span data-testid="person-name">{{ p.name }}</span>
+            <button type="button" data-testid="person-move-up" (click)="move(p, 'up')" [disabled]="moving() === p.id"
+                    [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
+            <button type="button" data-testid="person-move-down" (click)="move(p, 'down')" [disabled]="moving() === p.id"
+                    [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
             — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
             — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
@@ -368,6 +372,8 @@ export class PeopleList {
   );
   /** The person being retired, so a second press waits for the first. */
   protected readonly retiring = signal<number | null>(null);
+  /** The person being moved, so a second press waits for the first. */
+  protected readonly moving = signal<number | null>(null);
   /** The person a hold is being added to, so a second press waits for the first. */
   protected readonly holding = signal<number | null>(null);
   /** Every claim on the sheet, newest first. */
@@ -1082,6 +1088,26 @@ export class PeopleList {
     });
   }
 
+  /** Swap the person with the one above or below them in the list. */
+  protected move(p: PersonView, direction: 'up' | 'down'): void {
+    if (this.moving() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.moving.set(p.id);
+    this.api.move(sheet.id, p.id, direction).subscribe({
+      next: (people) => {
+        this.moving.set(null);
+        this.people.set(people);
+      },
+      error: () => {
+        this.moving.set(null);
+        this.personError.set({ id: p.id, message: 'Could not move ' + p.name + ' ' + direction + '.' });
+      },
+    });
+  }
+
   /** Clear the error shown on a person's row once its form is changed. */
   protected clearPersonError(id: number): void {
     if (this.personError()?.id === id) this.personError.set(null);
@@ -1113,7 +1139,8 @@ export class PeopleList {
     if (!sheet) return;
     const ids = this.people().map((p) => p.id).filter((id) => this.selectedPeople().has(id));
     const first = ids[0];
-    if (first !== undefined) this.clearPersonError(first);
+    // A bulk grade is the next action on each selected row: no row's old error stays showing.
+    this.personError.set(null);
     const { grade, from } = this.bulkGradeForm.getRawValue();
     this.bulkGrading.set(true);
     this.api.bulkGrade(sheet.id, ids, grade, from === '' ? null : from).subscribe({

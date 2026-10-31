@@ -119,7 +119,7 @@ public class SheetHistory {
             return;
         }
         List<Rate> sheetRates = rates.findBySheetId(sheetId);
-        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<String, List<Long>> watched = new TreeMap<>();
         watches.findBySheetIdOrderByIdAsc(sheetId).forEach(w ->

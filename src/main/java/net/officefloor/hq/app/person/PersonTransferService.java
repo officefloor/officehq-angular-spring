@@ -136,6 +136,7 @@ public class PersonTransferService {
                     claim.getSplitFrom() == null ? null : renumbered.getOrDefault(claim.getSplitFrom(), claim.getSplitFrom()));
         }
         person.transferTo(target);
+        person.setPosition(people.findMaxPositionBySheetId(target) + 1);
         people.saveAndFlush(person);
         claims.saveAllAndFlush(moving);
 

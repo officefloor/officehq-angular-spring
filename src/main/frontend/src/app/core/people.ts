@@ -83,7 +83,7 @@ export function gradeOn(p: Pick<PersonView, 'grade' | 'grades'>, date: string): 
   return inForce?.grade ?? p.grade;
 }
 
-// The people kept on a sheet, listed in the order they were added.
+// The people kept on a sheet, listed in their positions; new people go to the end.
 @Injectable({ providedIn: 'root' })
 export class People {
   private readonly http = inject(HttpClient);
@@ -111,6 +111,11 @@ export class People {
   /** Retire the person from `from` (yyyy-mm-dd); null takes the sheet's today. */
   retire(sheetId: string, id: number, from: string | null): Observable<PersonView> {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/retire`, { from });
+  }
+
+  /** Swap the person with the one above or below them: everyone on the sheet, in list order, as moved. */
+  move(sheetId: string, id: number, direction: 'up' | 'down'): Observable<PersonView[]> {
+    return this.http.post<PersonView[]>(`${this.base(sheetId)}/${id}/move`, { direction });
   }
 
   /** Put the person on hold from `from` (null takes the sheet's today) to `to` (null: no end). */

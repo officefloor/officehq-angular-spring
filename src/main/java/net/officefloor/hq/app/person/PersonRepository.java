@@ -3,12 +3,23 @@ package net.officefloor.hq.app.person;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
-    List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+    /** Everyone on the sheet, in list order. */
+    List<Person> findBySheetIdOrderByPositionAscIdAsc(String sheetId);
+
+    /** The highest position taken on the sheet; 0 when it has no one. */
+    @Query("select coalesce(max(p.position), 0) from Person p where p.sheetId = :sheetId")
+    int findMaxPositionBySheetId(@Param("sheetId") String sheetId);
+
+    /** Put the person at {@code position} in the list, leaving their version as it is: a move is no edit of them. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Person p set p.position = :position where p.id = :id")
+    void setPosition(@Param("id") Long id, @Param("position") int position);
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 

@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -37,10 +38,10 @@ public class PersonService {
         this.rollup = rollup;
     }
 
-    /** Everyone on the sheet, in the order they were added. */
+    /** Everyone on the sheet, in list order. */
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** Add a person on no terms of their own. */
@@ -76,6 +77,7 @@ public class PersonService {
         Person person = new Person(sheetId, trimmed, grade);
         person.setTerms(terms);
         person.setContact(reach);
+        person.setPosition(people.findMaxPositionBySheetId(sheetId) + 1);
         Person added = save(person);
         audit.recordChangeOnCommit(sheetId, user, entry("PERSON_ADDED", user, added, grade)
                 + (terms != null ? " terms=" + terms : "") + (reach != null ? " contact=" + reach : ""));
@@ -236,6 +238,41 @@ public class PersonService {
         audit.recordChangeOnCommit(sheetId, user, "PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user
                 + " name=" + saved.getName() + " alias=" + trimmed);
         return saved;
+    }
+
+    /** Swap the person with the one just above them in the list ({@code up}) or just below; refused for the top
+     *  person moving up and the bottom one moving down. Everyone on the sheet, in list order, as moved. */
+    @Transactional
+    public List<Person> move(String sheetId, String user, long id, boolean up) {
+        sheets.load(sheetId, user);
+        // The sheet is locked so moves on it are made one at a time, each from the list as the last left it.
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        List<Person> listed = new ArrayList<>(people.findBySheetIdOrderByPositionAscIdAsc(sheetId));
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId() == id) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    up ? "The top person cannot move up" : "The bottom person cannot move down");
+        }
+        Collections.swap(listed, at, to);
+        Person moved = listed.get(to);
+        // The whole list is renumbered from 1, so positions stay apart however people have come and gone.
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getPosition() != i + 1) {
+                people.setPosition(listed.get(i).getId(), i + 1);
+            }
+        }
+        audit.recordChangeOnCommit(sheetId, user, "PERSON_MOVED sheet=" + sheetId + " by=" + user
+                + " name=" + moved.getName() + " position=" + (to + 1));
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     private static String entry(String event, String user, Person person, String grade) {

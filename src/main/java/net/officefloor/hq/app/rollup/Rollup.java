@@ -68,7 +68,7 @@ public class Rollup {
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             List<Claim> counting = sheetClaims.stream()
                     .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
                             && !c.isDeferredOn(today))
@@ -128,7 +128,7 @@ public class Rollup {
         LocalDate today = sheet == null ? null : sheet.getToday();
         Map<Long, Person> personOf = new LinkedHashMap<>();
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
-        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> {
             personOf.put(p.getId(), p);
             totals.put(p.getId(), BigDecimal.ZERO.setScale(2));
         });
@@ -161,7 +161,7 @@ public class Rollup {
                 Stream.of(new Rate(sheetId, grade, null, rate.setScale(2, RoundingMode.UNNECESSARY)))).toList());
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         Map<Long, Person> personOf = new LinkedHashMap<>();
-        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         int count = 0;
         BigDecimal diff = BigDecimal.ZERO.setScale(2);

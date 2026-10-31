@@ -97,7 +97,7 @@ public class PoolService {
     public List<PoolWithMembers> list(String sheetId) {
         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
         BigDecimal sheetPot = sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, Pool> poolsById = list.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())

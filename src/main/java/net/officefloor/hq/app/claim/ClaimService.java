@@ -7,9 +7,11 @@ import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
@@ -91,9 +93,14 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Long> inListOrder(String sheetId, Collection<Long> ids) {
         Set<Long> wanted = new HashSet<>(ids);
+        Map<Long, Integer> place = new HashMap<>();
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        for (int i = 0; i < listed.size(); i++) {
+            place.put(listed.get(i).getId(), i);
+        }
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
                 .filter(c -> wanted.contains(c.getId()))
-                .sorted(Comparator.comparing(Claim::getPersonId))
+                .sorted(Comparator.comparing(c -> place.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
                 .map(Claim::getId)
                 .toList();
     }

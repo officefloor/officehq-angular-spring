@@ -35,6 +35,10 @@ public class Person {
     @Column(name = "name", nullable = false)
     private String name;
 
+    /** The person's place in the sheet's list: the list is in ascending position. */
+    @Column(name = "position", nullable = false)
+    private int position;
+
     /** The grades recorded for the person; the first given has no from-date (from the beginning of time). */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
@@ -90,6 +94,14 @@ public class Person {
     public void transferTo(String sheetId) {
         this.sheetId = sheetId;
         this.holds.clear();
+    }
+
+    public int getPosition() {
+        return position;
+    }
+
+    public void setPosition(int position) {
+        this.position = position;
     }
 
     public String getName() {
