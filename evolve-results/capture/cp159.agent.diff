@@ -1,0 +1,58 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fed35ba00..604be20fe 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { forkJoin, of, switchMap } from 'rxjs';
+-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsWithHolds, isOverdue, money, roundingDate } from '../../core/claims';
++import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsWithHolds, isOverdue, money, roundingDate, statusAt } from '../../core/claims';
+ import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
+ import { PatronView, Patrons } from '../../core/patrons';
+ import { Periods, periodOn } from '../../core/periods';
+@@ -349,6 +349,7 @@ function csvField(value: string): string {
+             }
+             @for (pd of periods.list(); track pd.id) {
+               — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ (periodDueOf(p.id, pd.id)) | figure }}</span>
++              carried <span [attr.data-testid]="'person-period-' + pd.name + '-carried'">{{ (periodCarriedOf(p.id, pd.id)) | figure }}</span>
+             }
+             settled <span data-testid="person-settled-total">{{ (money(splitOf(p.id).settled)) | figure }}</span>
+             open <span data-testid="person-open-total">{{ (money(splitOf(p.id).open)) | figure }}</span>
+@@ -907,6 +908,36 @@ export class PeopleList {
+       count: claims.filter((c) => c.status === 'VOID' && c.voidReason === reason).length,
+     }));
+   });
++  /** Each person's carried figure for each period, by person id then period id: the due of their claims that
++   *  count which belong to a period ending before this one starts and were still OPEN or PENDING at the end of
++   *  this period's last day, by the status log. */
++  private readonly carriedByPersonPeriod = computed(() => {
++    const periods = this.periods.list();
++    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
++    const today = this.todayNow();
++    const byPerson = new Map<number, Map<number, number>>();
++    for (const p of this.people()) {
++      const carried = new Map<number, number>();
++      for (const pd of periods) {
++        const counts = countsAtEndWithHolds(p.holds, today, pd.to, p.retiredFrom);
++        let sum = 0;
++        for (const c of this.claimsOf(p.id)) {
++          const own = periodOn(periods, c.dueBy);
++          const status = statusAt(c, pd.to);
++          if (own && own.to < pd.from && (status === 'OPEN' || status === 'PENDING') && counts(c)) {
++            sum += this.claimDue(p, c, dueTerms) ?? 0;
++          }
++        }
++        carried.set(pd.id, sum);
++      }
++      byPerson.set(p.id, carried);
++    }
++    return byPerson;
++  });
++  /** A person's carried figure for a period, with two decimals. */
++  protected periodCarriedOf(personId: number, periodId: number): string {
++    return money(this.carriedByPersonPeriod().get(personId)?.get(periodId) ?? 0);
++  }
+   /** A person's due-total for a period, with two decimals. */
+   protected periodDueOf(personId: number, periodId: number): string {
+     return money(this.dueByPersonPeriod().get(personId)?.get(periodId) ?? 0);
