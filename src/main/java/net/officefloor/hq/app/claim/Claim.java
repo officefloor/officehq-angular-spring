@@ -120,6 +120,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether a reminder ever escalated the claim; a claim is escalated at most once. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** How many proofs have been given for the claim. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -191,6 +195,7 @@ public class Claim {
         copy.splitFrom = splitFrom;
         copy.deferredUntil = deferredUntil;
         copy.remindedOn = remindedOn;
+        copy.escalated = escalated;
         copy.proofs = proofs;
         copy.lateEntry = lateEntry;
         log.forEach(l -> copy.log.add(new ClaimLogEntry(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
@@ -458,6 +463,15 @@ public class Claim {
     /** Record that a reminder was written for the claim on this day. */
     public void remind(LocalDate on) {
         this.remindedOn = on;
+    }
+
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    /** Record that a reminder escalated the claim. */
+    public void escalate() {
+        this.escalated = true;
     }
 
     public int getProofs() {

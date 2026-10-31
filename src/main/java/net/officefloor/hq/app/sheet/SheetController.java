@@ -44,13 +44,14 @@ public class SheetController {
      *  rounding is the rounding mode in force on the sheet's today (half-up or half-even), null when there is none;
      *  parent is the id of the sheet's parent sheet, null when it has none;
      *  reviewThreshold is the review threshold (two decimals) in force on the sheet's today, null when there is none;
+     *  escalateAfter is the escalation gap in days, null when it is off;
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
-            String alertThreshold, String rounding, String reviewThreshold) {
+            String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -72,7 +73,8 @@ public class SheetController {
                     sheet.getFiscalStartMonth(),
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getRounding(),
-                    sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString());
+                    sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
+                    sheet.getEscalateAfter());
         }
     }
 
@@ -121,6 +123,10 @@ public class SheetController {
 
     /** The sheet's grace days as the form submits them; missing ones mean off. */
     public record GraceDaysChange(@Min(0) @Max(36500) Integer graceDays) {
+    }
+
+    /** The sheet's escalation gap, in days, as the form submits it; a missing one means off. */
+    public record EscalateAfterChange(@Min(0) @Max(36500) Integer escalateAfter) {
     }
 
     /** The sheet's fiscal year start month as the form submits it, 1 to 12. */
@@ -309,6 +315,15 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody GraceDaysChange request) {
         return SheetView.of(sheets.setGraceDays(id, user, request.graceDays()));
+    }
+
+    /** Change the sheet's escalation gap. */
+    @PutMapping("/{id}/settings/escalate-after")
+    public SheetView setEscalateAfter(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody EscalateAfterChange request) {
+        return SheetView.of(sheets.setEscalateAfter(id, user, request.escalateAfter()));
     }
 
     /** Change the sheet's fiscal year start month. */

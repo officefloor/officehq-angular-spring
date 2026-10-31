@@ -63,6 +63,9 @@ export interface SheetView {
   /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the new
    *  today is closed; null: off. Not dated. */
   graceDays: number | null;
+  /** The sheet's escalation gap, in days: reminding a claim whose previous reminder was at least these days before
+   *  the sheet's today escalates it (once per claim); null: off. Not dated. */
+  escalateAfter: number | null;
   /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
    *  named FY<yyyy> by the calendar year it starts in. Not dated. */
   fiscalStartMonth: number;
@@ -231,6 +234,13 @@ export class Sheets {
   setGraceDays(id: string, graceDays: number | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/grace-days`, { graceDays })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's escalation gap in days; null means off. Not dated. */
+  setEscalateAfter(id: string, escalateAfter: number | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/escalate-after`, { escalateAfter })
       .pipe(tap((s) => this.active.set(s)));
   }
 

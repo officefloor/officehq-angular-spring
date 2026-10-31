@@ -22,10 +22,10 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ROUNDING_MODES = ['half-up', 'half-even'];
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | PermField;
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | PermField;
 
 /** A setting that carries a figure: it is saved from a from-date. */
-type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | PermField>;
+type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | PermField>;
 
 /** The from-date field of each dated setting. */
 type FromField = `${DatedField}From`;
@@ -73,6 +73,7 @@ function isDate(value: string): boolean {
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ sheets.current()?.periodNumberingFrom ?? '' }}</span></p>
       <p>Entry date: <span data-testid="setting-entry-date-current">{{ sheets.current()?.entryDate ?? '' }}</span></p>
       <p>Grace days: <span data-testid="setting-grace-days-current">{{ sheets.current()?.graceDays ?? '' }}</span></p>
+      <p>Escalate after: <span data-testid="setting-escalate-after-current">{{ sheets.current()?.escalateAfter ?? '' }}</span></p>
       <p>Fiscal year start month: <span data-testid="setting-fiscal-start-month-current">{{ sheets.current()?.fiscalStartMonth ?? '' }}</span></p>
       <p>Pot: <span data-testid="setting-pot-current">{{ (sheets.current()?.pot ?? '') | figure }}</span></p>
       <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ (sheets.current()?.alertThreshold ?? '') | figure }}</span></p>
@@ -144,6 +145,9 @@ function isDate(value: string): boolean {
                placeholder="yyyy-mm-dd" autocomplete="off" />
         <label for="setting-grace-days">Grace days (when today changes, an open period ended more than these days before it is closed; blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" (focus)="lastFocused = 'graceDays'"
+               inputmode="numeric" autocomplete="off" />
+        <label for="setting-escalate-after">Escalate after (days: reminding a claim whose previous reminder was at least these days before today escalates it; blank: off)</label>
+        <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" (focus)="lastFocused = 'escalateAfter'"
                inputmode="numeric" autocomplete="off" />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth" (focus)="lastFocused = 'fiscalStartMonth'"
@@ -271,6 +275,7 @@ export class SettingsPanel {
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
+    escalateAfter: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
@@ -337,7 +342,7 @@ export class SettingsPanel {
     this.settingsError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, fiscalStartMonth, pot, alertThreshold, parent, cap, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, escalateAfter, fiscalStartMonth, pot, alertThreshold, parent, cap, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -346,6 +351,7 @@ export class SettingsPanel {
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const entryDateValue = entryDate.value.trim();
     const graceDaysValue = graceDays.value.trim();
+    const escalateAfterValue = escalateAfter.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const potValue = pot.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
@@ -360,7 +366,7 @@ export class SettingsPanel {
     const unchanged = !this.settingsForm.dirty;
     const controls = this.settingsForm.controls;
     const isSaved = (field: SettingField) => controls[field].dirty
-      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && field !== 'fiscalStartMonth' && field !== 'pot' && field !== 'alertThreshold' && field !== 'parent' && !field.startsWith('perm_')
+      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && field !== 'escalateAfter' && field !== 'fiscalStartMonth' && field !== 'pot' && field !== 'alertThreshold' && field !== 'parent' && !field.startsWith('perm_')
         && controls[`${field as DatedField}From`].dirty)
       || (unchanged && this.lastFocused === field);
     const fromOf = (field: DatedField): string | null => controls[`${field}From` as FromField].value.trim() || null;
@@ -371,6 +377,7 @@ export class SettingsPanel {
     const savePeriodNumberingFrom = isSaved('periodNumberingFrom');
     const saveEntryDate = isSaved('entryDate');
     const saveGraceDays = isSaved('graceDays');
+    const saveEscalateAfter = isSaved('escalateAfter');
     const saveFiscalStartMonth = isSaved('fiscalStartMonth');
     const savePot = isSaved('pot');
     const saveAlertThreshold = isSaved('alertThreshold');
@@ -424,6 +431,10 @@ export class SettingsPanel {
     }
     if (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue)) {
       this.settingsError.set('Type grace days as 0 or more whole days, or leave them blank for off.');
+      return;
+    }
+    if (saveEscalateAfter && escalateAfterValue !== '' && !TERMS_PATTERN.test(escalateAfterValue)) {
+      this.settingsError.set('Type an escalation gap as 0 or more whole days, or leave it blank for off.');
       return;
     }
     if (saveFiscalStartMonth && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonthValue)) {
@@ -494,6 +505,7 @@ export class SettingsPanel {
     if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
     if (saveEntryDate) saves.push(this.sheets.setEntryDate(sheet.id, entryDateValue === '' ? null : entryDateValue));
     if (saveGraceDays) saves.push(this.sheets.setGraceDays(sheet.id, graceDaysValue === '' ? null : Number(graceDaysValue)));
+    if (saveEscalateAfter) saves.push(this.sheets.setEscalateAfter(sheet.id, escalateAfterValue === '' ? null : Number(escalateAfterValue)));
     if (saveFiscalStartMonth) saves.push(this.sheets.setFiscalStartMonth(sheet.id, Number(fiscalStartMonthValue)));
     if (savePot) saves.push(this.sheets.setPot(sheet.id, potValue === '' ? null : potValue));
     if (saveAlertThreshold) saves.push(this.sheets.setAlertThreshold(sheet.id, alertThresholdValue === '' ? null : alertThresholdValue));
@@ -522,7 +534,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', reviewThreshold: sheet?.reviewThreshold ?? '', rounding: sheet?.rounding ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '', reviewThresholdFrom: '', roundingFrom: '',
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), escalateAfter: String(sheet?.escalateAfter ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', reviewThreshold: sheet?.reviewThreshold ?? '', rounding: sheet?.rounding ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '', reviewThresholdFrom: '', roundingFrom: '',
       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
   }

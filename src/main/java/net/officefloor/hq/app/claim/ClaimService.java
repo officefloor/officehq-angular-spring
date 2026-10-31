@@ -572,9 +572,18 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim was already reminded today");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        LocalDate previous = claim.getRemindedOn();
+        boolean escalates = !claim.isEscalated() && sheet.getEscalateAfter() != null && previous != null
+                && !previous.plusDays(sheet.getEscalateAfter()).isAfter(sheet.getToday());
         claim.remind(sheet.getToday());
+        if (escalates) {
+            claim.escalate();
+        }
         Claim reminded = claims.saveAndFlush(claim);
         audit.recordChangeOnCommit(sheetId, user, entry("REMIND", user, person, reminded, reminded.getNumber()));
+        if (escalates) {
+            audit.recordChangeOnCommit(sheetId, user, entry("ESCALATE", user, person, reminded, reminded.getNumber()));
+        }
         return reminded;
     }
 

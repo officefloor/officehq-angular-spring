@@ -202,6 +202,18 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's escalation gap in days (null: off), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setEscalateAfter(String id, String user, Integer escalateAfter) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setEscalateAfter(escalateAfter);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=escalate-after value=" + (escalateAfter == null ? "" : escalateAfter));
+        return saved;
+    }
+
     /** Set the sheet's fiscal year start month, 1 to 12, starting the sheet if it has never been loaded. Not dated. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

@@ -110,6 +110,11 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The sheet's escalation gap, in days: reminding a claim whose previous reminder was at least these days before
+     *  the sheet's today escalates it (once per claim); null means off. Not dated. */
+    @Column(name = "escalate_after")
+    private Integer escalateAfter;
+
     /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
      *  named FY by the calendar year it starts in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -153,6 +158,7 @@ public class Sheet {
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.entryDate = entryDate;
         copy.graceDays = graceDays;
+        copy.escalateAfter = escalateAfter;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
@@ -344,6 +350,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public Integer getEscalateAfter() {
+        return escalateAfter;
+    }
+
+    public void setEscalateAfter(Integer escalateAfter) {
+        this.escalateAfter = escalateAfter;
     }
 
     public int getFiscalStartMonth() {
