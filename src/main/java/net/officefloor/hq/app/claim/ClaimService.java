@@ -752,10 +752,11 @@ public class ClaimService {
     }
 
     /** The next number for a claim due by this day, opened now: within its period (<period name>-<n>, or X-<n>
-     *  in no period) while the sheet's period numbering is on by its today, else the sheet's next number. */
+     *  in no period) while the sheet's period numbering is on by its today, else the next number in the sheet-wide
+     *  sequence its tree shares. */
     private String nextNumber(Sheet sheet, LocalDate date) {
         if (!sheet.numbersPerPeriod()) {
-            return String.valueOf(sheet.nextClaimNumber());
+            return String.valueOf(sheet.nextClaimNumberAfter(lastNumberInTree(sheet)));
         }
         String prefix = prefixOn(sheet, date);
         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(sheet.getId(), prefix)
@@ -763,6 +764,21 @@ public class ClaimService {
         String number = sequence.next();
         sequences.save(sequence);
         return number;
+    }
+
+    /** The last sheet-wide number given anywhere in the sheet's tree: the sheet at the top of its line of parents
+     *  and all of that sheet's descendants. The top sheet is locked so the tree's numbers are given one at a time. */
+    private int lastNumberInTree(Sheet sheet) {
+        List<String> ancestors = sheetStore.ancestorsOf(sheet.getId(), Integer.MAX_VALUE);
+        String top = ancestors.isEmpty() ? sheet.getId() : ancestors.get(ancestors.size() - 1);
+        if (!top.equals(sheet.getId())) {
+            sheetStore.findLockedById(top);
+        }
+        Set<String> others = new HashSet<>(sheetStore.descendantsOf(top));
+        others.add(top);
+        others.remove(sheet.getId());
+        int last = sheet.getLastClaimNumber();
+        return others.isEmpty() ? last : Math.max(last, sheetStore.lastClaimNumberOf(others));
     }
 
     /** The prefix of the numbers given within the period a day is in: its name, or X in no period. */

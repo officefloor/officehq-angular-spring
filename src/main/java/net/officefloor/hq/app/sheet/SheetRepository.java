@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
 import jakarta.persistence.LockModeType;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +19,10 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from Sheet s where s.id = :id")
     Optional<Sheet> findLockedById(@Param("id") String id);
+
+    /** The last claim number given on any of these sheets, read from the store; 0 when none was given. */
+    @Query("select coalesce(max(s.lastClaimNumber), 0) from Sheet s where s.id in :ids")
+    int lastClaimNumberOf(@Param("ids") Collection<String> ids);
 
     /** The sheet's children: the sheets naming it as their parent. */
     List<Sheet> findByParentIdOrderByIdAsc(String parentId);

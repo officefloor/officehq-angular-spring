@@ -424,9 +424,16 @@ public class Sheet {
         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
-    /** Take the next claim number on this sheet; it is never given out again. */
-    public int nextClaimNumber() {
-        return ++lastClaimNumber;
+    /** The last number given to a claim opened on this sheet; 0 before the first. */
+    public int getLastClaimNumber() {
+        return lastClaimNumber;
+    }
+
+    /** Take the next claim number on this sheet after the last one given anywhere in its tree (this sheet's own
+     *  last included); it is never given out again. */
+    public int nextClaimNumberAfter(int lastInTree) {
+        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
+        return lastClaimNumber;
     }
 
     /** The number of the last settle batch on this sheet; 0 when there has been none. */
