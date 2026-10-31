@@ -13,6 +13,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -39,9 +40,10 @@ public class StatementService {
     private final SheetService sheets;
     private final SheetRepository sheetStore;
     private final Audit audit;
+    private final Rollup rollup;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, PersonRepository people,
-            RateRepository rates, SheetService sheets, SheetRepository sheetStore, Audit audit) {
+            RateRepository rates, SheetService sheets, SheetRepository sheetStore, Audit audit, Rollup rollup) {
         this.statements = statements;
         this.claims = claims;
         this.people = people;
@@ -49,6 +51,7 @@ public class StatementService {
         this.sheets = sheets;
         this.sheetStore = sheetStore;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** The summary of each person on the sheet who has had a statement taken. */
@@ -75,6 +78,7 @@ public class StatementService {
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        Rollup.Figures before = rollup.of(sheetId);
         List<Rate> gradeRates = rates.findBySheetIdAndGrade(sheetId, person.getGrade());
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
 
@@ -101,6 +105,7 @@ public class StatementService {
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted);
+        rollup.recordChanges(sheetId, user, before);
         List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         return new Taken(new Summary(personId, taken.size(), dueTotal, today), theirs);
     }

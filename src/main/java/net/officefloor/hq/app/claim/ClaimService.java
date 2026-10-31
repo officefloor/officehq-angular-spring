@@ -9,6 +9,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -27,15 +28,17 @@ public class ClaimService {
     private final SheetRepository sheetStore;
     private final RateRepository rates;
     private final Audit audit;
+    private final Rollup rollup;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
-            SheetRepository sheetStore, RateRepository rates, Audit audit) {
+            SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup) {
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
         this.rates = rates;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** Every claim on the sheet, newest first. */
@@ -50,8 +53,10 @@ public class ClaimService {
         LocalDate today = sheets.load(sheetId, user).getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        Rollup.Figures before = rollup.of(sheetId);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note)));
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
+        rollup.recordChanges(sheetId, user, before);
         return added;
     }
 
@@ -61,12 +66,14 @@ public class ClaimService {
         LocalDate today = sheets.load(sheetId, user).getToday();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        Rollup.Figures before = rollup.of(sheetId);
         claim.setAmount(scaled(amount));
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
         Claim edited = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(edited.getPersonId(), sheetId).orElseThrow();
         audit.recordOnCommit(entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
+        rollup.recordChanges(sheetId, user, before);
         return edited;
     }
 
@@ -91,6 +98,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
         Integer number = claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
@@ -115,6 +123,7 @@ public class ClaimService {
             line += " due=" + (changed.getSettledDue() == null ? "n/a" : changed.getSettledDue().toPlainString());
         }
         audit.recordOnCommit(line);
+        rollup.recordChanges(sheetId, user, before);
         return changed;
     }
 

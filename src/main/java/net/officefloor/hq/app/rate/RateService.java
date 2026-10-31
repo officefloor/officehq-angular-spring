@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,11 +19,13 @@ public class RateService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
+    private final Rollup rollup;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup) {
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** The rates set on the sheet, by grade, each grade's in the order they take effect. */
@@ -39,6 +42,7 @@ public class RateService {
     public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal rate) {
         sheets.load(sheetId, user);
         BigDecimal scaled = rate.setScale(2, RoundingMode.UNNECESSARY);
+        Rollup.Figures before = rollup.of(sheetId);
         Rate row = rates.findBySheetIdAndGrade(sheetId, grade).stream()
                 .filter(r -> Objects.equals(r.getFromDate(), from))
                 .findFirst()
@@ -48,6 +52,7 @@ public class RateService {
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + saved.getGrade() + " rate=" + saved.getRate().toPlainString()
                 + (from == null ? "" : " from=" + from));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 }

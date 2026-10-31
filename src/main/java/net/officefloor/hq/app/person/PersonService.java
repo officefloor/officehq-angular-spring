@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -17,11 +18,13 @@ public class PersonService {
     private final PersonRepository people;
     private final SheetService sheets;
     private final Audit audit;
+    private final Rollup rollup;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit, Rollup rollup) {
         this.people = people;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** Everyone on the sheet, in the order they were added. */
@@ -38,8 +41,10 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
+        Rollup.Figures before = rollup.of(sheetId);
         Person added = save(new Person(sheetId, trimmed, grade));
         audit.recordOnCommit(entry("PERSON_ADDED", user, added));
+        rollup.recordChanges(sheetId, user, before);
         return added;
     }
 
@@ -55,10 +60,12 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)) {
             throw nameInUse();
         }
+        Rollup.Figures before = rollup.of(sheetId);
         person.setName(trimmed);
         person.setGrade(grade);
         Person edited = save(person);
         audit.recordOnCommit(entry("PERSON_EDITED", user, edited));
+        rollup.recordChanges(sheetId, user, before);
         return edited;
     }
 
