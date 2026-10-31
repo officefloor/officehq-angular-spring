@@ -1,0 +1,236 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 5ff81a90b..e8cf0ec53 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -5,6 +5,13 @@ import { ClaimStatus, addDays, cents, isOverdue } from './claims';
+ import { Grade } from './people';
+ import { SheetView, Sheets, graceOn, settingOn } from './sheet';
+ 
++/** What a candidate rate would change: how many claims would show a different due, and the sum of the differences
++ *  (two decimals, negative when lower). */
++export interface RatePreview {
++  count: number;
++  diff: string;
++}
++
+ export interface RateView {
+   grade: Grade;
+   /** The percent with exactly two decimals, e.g. "12.50". */
+@@ -171,6 +178,11 @@ export class Rates {
+       );
+   }
+ 
++  /** What a candidate rate for a grade, applied on every date, would change; nothing is saved. */
++  preview(sheetId: string, grade: Grade, rate: string): Observable<RatePreview> {
++    return this.http.get<RatePreview>(`${this.base(sheetId)}/${grade}/preview`, { params: { rate } });
++  }
++
+   private base(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}/rates`;
+   }
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 81d238281..71a3a0052 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -3,7 +3,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { EMPTY, switchMap } from 'rxjs';
+ import { GRADES, Grade } from '../../core/people';
+-import { NOT_AVAILABLE, RATE_PATTERN, Rates } from '../../core/rates';
++import { NOT_AVAILABLE, RATE_PATTERN, RatePreview, Rates } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ 
+ // The sheet's rates for each grade: the one in force today, each by from-date, and a form to set one.
+@@ -49,6 +49,27 @@ import { Sheets } from '../../core/sheet';
+           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
+         }
+       </form>
++
++      <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview a rate">
++        <label for="rate-preview-grade">Grade</label>
++        <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <label for="rate-preview-pct">Candidate rate (%)</label>
++        <input id="rate-preview-pct" data-testid="rate-preview-pct" formControlName="pct" inputmode="decimal" autocomplete="off" />
++        <button type="submit" data-testid="rate-preview" [disabled]="previewing()">Preview</button>
++        @if (previewed(); as p) {
++          <p aria-live="polite">
++            Claims that would change: <span data-testid="rate-preview-count">{{ p.count }}</span>,
++            difference: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
++          </p>
++        }
++        @if (previewError(); as err) {
++          <p role="alert" data-testid="rate-preview-error">{{ err }}</p>
++        }
++      </form>
+     </section>
+   `,
+ })
+@@ -68,12 +89,22 @@ export class RatesPanel {
+     to: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly previewForm = new FormGroup({
++    grade: new FormControl<Grade>('A', { nonNullable: true }),
++    pct: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly previewed = signal<RatePreview | null>(null);
++  protected readonly previewError = signal<string | null>(null);
++  protected readonly previewing = signal(false);
++
+   constructor() {
+     // Each (re)load of a sheet re-reads its rates from the store.
+     toObservable(this.sheets.loaded)
+       .pipe(
+         switchMap((sheet) => {
+           this.error.set(null);
++          this.previewed.set(null);
++          this.previewError.set(null);
+           return this.rates.load(sheet?.id ?? null) ?? EMPTY;
+         }),
+         takeUntilDestroyed(),
+@@ -81,6 +112,33 @@ export class RatesPanel {
+       .subscribe({ error: () => this.error.set('Could not read the rates.') });
+     // An error is removed as soon as its form is changed.
+     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
++    this.previewForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.previewError.set(null));
++  }
++
++  protected preview(): void {
++    if (this.previewing()) return;
++    // A press clears the last result, so two presses with the same result can be told apart.
++    this.previewed.set(null);
++    this.previewError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const { grade, pct } = this.previewForm.getRawValue();
++    const rate = pct.trim();
++    if (!RATE_PATTERN.test(rate)) {
++      this.previewError.set('Type a rate of 0.00 or more, with up to two decimals.');
++      return;
++    }
++    this.previewing.set(true);
++    this.rates.preview(sheet.id, grade, rate).subscribe({
++      next: (result) => {
++        this.previewing.set(false);
++        this.previewed.set(result);
++      },
++      error: () => {
++        this.previewing.set(false);
++        this.previewError.set('Could not preview that rate.');
++      },
++    });
+   }
+ 
+   protected submit(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index bc2bbea46..73ded1ef3 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.rate;
+ 
+ import org.springframework.format.annotation.DateTimeFormat;
+ import net.officefloor.hq.app.history.SheetHistory;
++import net.officefloor.hq.app.rollup.Rollup;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.DecimalMin;
+ import jakarta.validation.constraints.Digits;
+@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** Rates on a sheet: each grade's, by from-date. The caller's signed-in name comes in the {@code X-User} header. */
+@@ -52,6 +54,15 @@ public class RateController {
+         this.rates = rates;
+     }
+ 
++    /** What a candidate rate for a grade, applied on every date, would change; nothing is saved. */
++    @GetMapping("/{grade}/preview")
++    public Rollup.RatePreview preview(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestParam @NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal rate) {
++        return rates.preview(sheetId, grade, rate);
++    }
++
+     @GetMapping
+     public List<RateView> list(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 9f8cae3d9..bf5ce6e07 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -38,6 +38,12 @@ public class RateService {
+                 .toList();
+     }
+ 
++    /** What a candidate rate for a grade would change were it to apply on every date; nothing is stored. */
++    @Transactional(readOnly = true)
++    public Rollup.RatePreview preview(String sheetId, String grade, BigDecimal rate) {
++        return rollup.preview(sheetId, grade, rate);
++    }
++
+     /** Set a grade's rate from a date (null: from the beginning of time) through a to-date (null: it
+      *  does not end), replacing the rate it had from that same date, if any. A to-date before the
+      *  from-date is refused. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index f4ef0117e..3b88ab08d 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -13,6 +13,7 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+@@ -144,6 +145,42 @@ public class Rollup {
+         return totals;
+     }
+ 
++    /** What a candidate rate would change: how many claims would show a different due, and the sum of the
++     *  differences (new due minus current due), with two decimals. */
++    public record RatePreview(int count, String diff) {
++    }
++
++    /** How the OPEN and PENDING claims of people on a grade (in force on each claim's date) would change were a rate
++     *  to apply to that grade on every date: a claim bound by a statement does not change and a settled one is not
++     *  counted; a due of none counts as 0 in the sum. Nothing is stored. */
++    public RatePreview preview(String sheetId, String grade, BigDecimal rate) {
++        List<Rate> sheetRates = rates.findBySheetId(sheetId);
++        List<Rate> candidate = Stream.concat(sheetRates.stream().filter(r -> !r.getGrade().equals(grade)),
++                Stream.of(new Rate(sheetId, grade, null, rate.setScale(2, RoundingMode.UNNECESSARY)))).toList();
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
++        Map<Long, Person> personOf = new LinkedHashMap<>();
++        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
++        int count = 0;
++        BigDecimal diff = BigDecimal.ZERO.setScale(2);
++        for (Claim claim : sheetClaims) {
++            Person person = personOf.get(claim.getPersonId());
++            if (person == null || claim.getSettledDue() != null
++                    || (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING)
++                    || !grade.equals(person.gradeOn(claim.getDate()))) {
++                continue;
++            }
++            BigDecimal now = dueOf(claim, grade, sheetRates, sheet, sheetClaims);
++            BigDecimal then = dueOf(claim, grade, candidate, sheet, sheetClaims);
++            if (!Objects.equals(now, then)) {
++                count++;
++                diff = diff.add(then == null ? BigDecimal.ZERO : then)
++                        .subtract(now == null ? BigDecimal.ZERO : now);
++            }
++        }
++        return new RatePreview(count, diff.setScale(2).toPlainString());
++    }
++
+     /**
+      * Record, once the change commits, how the sheet's figures moved since {@code before}: a ROLLUP line
+      * for each person whose figures changed (one who did not exist before counting as changed), then a
