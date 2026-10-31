@@ -587,8 +587,8 @@ public class ClaimService {
         return reminded;
     }
 
-    /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
-     *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
+    /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its bound figure, else its live
+     *  one, with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
      *  claim that is not PENDING and for one due by inside a closed period. */
     @Transactional
     public Claim approve(String sheetId, String user, long id) {
@@ -645,7 +645,7 @@ public class ClaimService {
         return changed;
     }
 
-    /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by its person's last
+    /** A steward rejects a PENDING claim with a reason: it is OPEN again, still bound by its person's last
      *  statement if that statement included it. Refused for a clerk, for a claim that is not PENDING and for one
      *  due by inside a closed period. */
     @Transactional

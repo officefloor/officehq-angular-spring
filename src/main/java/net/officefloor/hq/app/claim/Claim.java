@@ -376,16 +376,16 @@ public class Claim {
         return statedDue;
     }
 
-    /** Whether a statement binds the claim now: it is stated and not PENDING (a PENDING claim follows its live
-     *  figure). A bound claim keeps its bound figure, even when it had none (n/a). */
+    /** Whether a statement binds the claim now: it is stated, whatever its status (a PENDING claim too). A bound
+     *  claim keeps its bound figure, even when it had none (n/a). */
     public boolean isBound() {
-        return stated && status != ClaimStatus.PENDING;
+        return stated;
     }
 
-    /** The figure a statement binds the claim to now: its stated one, except while PENDING, when no statement
-     *  binds it and it follows its live figure; null when not bound, or bound with no figure (n/a). */
+    /** The figure a statement binds the claim to now: its stated one; null when not bound, or bound with no
+     *  figure (n/a). */
     public BigDecimal getBoundDue() {
-        return status == ClaimStatus.PENDING ? null : statedDue;
+        return statedDue;
     }
 
     /** Bind the claim to the figure it has at a statement. */

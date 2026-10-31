@@ -279,7 +279,7 @@ public class Rollup {
         return !NOT_AVAILABLE.equals(figures.dueTotal()) && new BigDecimal(figures.dueTotal()).compareTo(threshold) > 0;
     }
 
-    /** A claim's due: its settled figure, else its stated one (none while PENDING), else its amount at the rate in force on its date of
+    /** A claim's due: its settled figure, else its stated one, else its amount at the rate in force on its date of
      *  its person's grade in force on that date (the sheet's own, else its nearest ancestor's), rounded as the claim rounds (by the sheet's policy date); an overdue claim's late charge is added on top of the figure, and the
      *  sum is raised to the floor in force on its date unless it is a correction. */
     private static BigDecimal dueOf(Claim claim, String grade, RateChain sheetRates, Sheet sheet, List<Claim> sheetClaims) {

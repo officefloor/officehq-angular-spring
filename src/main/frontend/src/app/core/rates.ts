@@ -174,7 +174,7 @@ export function claimDueCents(
 ): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
   let figure: number;
-  if (c.stated && c.status !== 'PENDING') {
+  if (c.stated) {
     // A statement binds the claim to its figure then, or to none (n/a).
     if (c.statedDue === null) return null;
     figure = cents(c.statedDue);

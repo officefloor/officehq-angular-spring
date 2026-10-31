@@ -36,7 +36,7 @@ public class ClaimController {
      * A claim as the screen shows it; the amount is given with exactly two decimals, as is the due
      * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
      * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
-     * statedDue (null if it had no figure then, when it stays n/a, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
+     * statedDue (null if it had no figure then, when it stays n/a); corrects is the number of the claim a correction corrects (null
      * on any other claim); deferredUntil is the day it was deferred until (null if never deferred); log is its status log, oldest first;
      * proofs is how many proofs have been given for it; splitFrom is the number of the claim it was split off (null
      * on any other claim); lockedBy is who has its editor open, locking it for other users (null when no one has);
