@@ -1,0 +1,79 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 044073d7a..035c516de 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -29,6 +29,13 @@ interface Overdue {
+ }
+ const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
+ 
++/** A due-total split in whole cents: the dues of the SETTLED claims that count, and of the OPEN and PENDING ones. */
++interface Split {
++  settled: number;
++  open: number;
++}
++const NO_SPLIT: Split = { settled: 0, open: 0 };
++
+ /** The dues in whole cents of a person's OPEN and PENDING claims that count, by the claim's age on the sheet's
+  *  today: 0 to 30 days (a claim dated after today included), 31 to 60, and 61 or more. */
+ interface Aged {
+@@ -73,6 +80,8 @@ function csvField(value: string): string {
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong>
+         claims, due <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
++      <p>Settled in total: <strong data-testid="rollup-settled-total">{{ money(splitTotals().settled) }}</strong>,
++        open in total: <strong data-testid="rollup-open-total">{{ money(splitTotals().open) }}</strong></p>
+ 
+       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
+         <label for="person-form-name">Name</label>
+@@ -182,6 +191,8 @@ function csvField(value: string): string {
+             @for (pd of periods.list(); track pd.id) {
+               — {{ pd.name }} due <span [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd.id) }}</span>
+             }
++            settled <span data-testid="person-settled-total">{{ money(splitOf(p.id).settled) }}</span>
++            open <span data-testid="person-open-total">{{ money(splitOf(p.id).open) }}</span>
+             excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span>
+             — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
+             due <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span>
+@@ -374,6 +385,31 @@ export class PeopleList {
+     }
+     return byPerson;
+   });
++  /** Each person's due-total before the cap split by status, in whole cents: the dues of their SETTLED claims that
++   *  count (at their frozen figures, corrections included) and of their OPEN and PENDING claims that count. */
++  private readonly splitByPerson = computed(() => {
++    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
++    const byPerson = new Map<number, Split>();
++    for (const p of this.people()) {
++      const split = { ...NO_SPLIT };
++      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
++        const due = this.claimDue(p, c, dueTerms) ?? 0;
++        if (c.status === 'SETTLED') split.settled += due;
++        else if (c.status === 'OPEN' || c.status === 'PENDING') split.open += due;
++      }
++      byPerson.set(p.id, split);
++    }
++    return byPerson;
++  });
++  /** Everyone's settled-total and open-total, each simply added up (not trimmed). */
++  protected readonly splitTotals = computed(() => {
++    const total = { ...NO_SPLIT };
++    for (const split of this.splitByPerson().values()) {
++      total.settled += split.settled;
++      total.open += split.open;
++    }
++    return total;
++  });
+   /** Everyone's due-total added up, skipping those with none, trimmed of the highest and lowest. */
+   protected readonly dueTotal = computed(() =>
+     money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
+@@ -597,6 +633,10 @@ export class PeopleList {
+     return due === null || due === undefined ? NOT_AVAILABLE : money(due);
+   }
+ 
++  protected splitOf(personId: number): Split {
++    return this.splitByPerson().get(personId) ?? NO_SPLIT;
++  }
++
+   /** How far the person's figures add up above the cap, in whole cents; 0 when they do not, or have no due-total. */
+   protected excessOf(personId: number): number {
+     const sum = this.uncappedDueByPerson().get(personId) ?? null;
