@@ -1,0 +1,64 @@
+{
+  "checkpoint": 79,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp79_entry-date",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a9ae24c29b068e4e9f9a2100163c9fd2558a3343",
+  "reset_sha": "",
+  "preagent_sha": "27dc80bf2faa880cbdcdc27d0f3ef769d4da8538",
+  "prev_sha": "27dc80bf2faa880cbdcdc27d0f3ef769d4da8538",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2182811999999998,
+    "input_tokens": 58,
+    "output_tokens": 12026,
+    "cache_read_tokens": 1699806,
+    "cache_creation_tokens": 79696,
+    "num_turns": 31,
+    "duration_ms": 483897,
+    "duration_api_ms": 119055,
+    "model": "claude-opus-5-5",
+    "session_id": "ac2d205c-d86b-4c19-8f85-bdf38747f87e",
+    "stop_reason": "success",
+    "result_text": "The entry date setting is in, and all 4 tests in `bin/e2e` pass.\n\n**What it does**\n- The settings screen has a new \"Entry date\" field and shows the date in force. Blank means off. It applies to the whole sheet, not from a chosen date. Saving it writes `SETTING_CHANGED \u2026 key=entry-date value=<date>` to the audit file, with an empty value when it is cleared.\n- While it is set, any new claim without a date gets the entry date instead of the sheet's today. That covers the claim form (including corrections), the quick-add bar and pasted lines with a blank date. The checks for closed periods and retired people now use that date too, so a default date inside a closed period is refused.\n- Editing an existing claim with the date left blank still uses the sheet's today. The request listed only the four places above, so I left editing alone.\n\n**Where the changes are**\n- **Stored data:** a new `entry_date` column on the sheet (`V49__sheet_entry_date.sql`). It is also kept in the sheet's saved history, so viewing the sheet as of a past date shows the entry date it had then.\n- **Server:** a new `PUT /api/sheets/{id}/settings/entry-date` endpoint, and `ClaimService.add` picks the default date. The quick-add bar and paste both go through that one method.\n- **Front end:** `core/sheet.ts` and `features/settings/settings.ts`, built the same way as the existing \"Policy date\" setting.\n\n**One fix outside the request:** scenario 1 failed at first because a viewer's bulk grade was refused with an error. The test expects it to go through and change nobody (count 0), as viewers' bulk actions on claims already do. The guard that blocks viewers skipped claim bulk actions but not the people one. I added the people bulk actions to that exception, and `PersonController.bulkGrade` now returns 0 for a viewer without changing anyone. This bug was in the code before my change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2182811999999998,
+        "num_turns": 31,
+        "duration_ms": 483897,
+        "duration_api_ms": 119055,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp79.agent.jsonl",
+  "agent_diff_file": "cp79.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

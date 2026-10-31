@@ -1,0 +1,398 @@
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index 11293b4f5..25180b48d 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -54,6 +54,9 @@ export interface SheetView {
+   /** The date (yyyy-mm-dd) the sheet is shown as of: it is as it stood at the end of that day, which stands in for
+    *  its today; null when it is shown as it is now. */
+   asOf: string | null;
++  /** The sheet's entry date (yyyy-mm-dd): while set, a new claim given no date takes it in place of the sheet's
++   *  today; null: off. Not dated. */
++  entryDate: string | null;
+ }
+ 
+ /** The actions the permission matrix covers. */
+@@ -161,6 +164,13 @@ export class Sheets {
+       .pipe(tap((s) => this.active.set(s)));
+   }
+ 
++  /** Change the active sheet's entry date; null means off. Not dated. */
++  setEntryDate(id: string, entryDate: string | null): Observable<SheetView> {
++    return this.http
++      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/entry-date`, { entryDate })
++      .pipe(tap((s) => this.active.set(s)));
++  }
++
+   /** Change the active sheet's period numbering from; null means off. */
+   setPeriodNumberingFrom(id: string, periodNumberingFrom: string | null): Observable<SheetView> {
+     return this.http
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index c143112e7..7e26796d0 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -16,10 +16,10 @@ const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ /** A field of the settings form. */
+-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'graceDays' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
++type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
+ 
+ /** A setting that carries a figure: it is saved from a from-date. */
+-type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'graceDays' | PermField>;
++type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | PermField>;
+ 
+ /** The from-date field of each dated setting. */
+ type FromField = `${DatedField}From`;
+@@ -56,6 +56,7 @@ function isDate(value: string): boolean {
+       <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
+       <p>Policy date: <span data-testid="setting-policy-date-current">{{ sheets.current()?.policyDate ?? '' }}</span></p>
+       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ sheets.current()?.periodNumberingFrom ?? '' }}</span></p>
++      <p>Entry date: <span data-testid="setting-entry-date-current">{{ sheets.current()?.entryDate ?? '' }}</span></p>
+       <p>Grace days: <span data-testid="setting-grace-days-current">{{ sheets.current()?.graceDays ?? '' }}</span></p>
+ 
+       <p>Cap: <span data-testid="setting-cap-current">{{ sheets.current()?.cap ?? '' }}</span></p>
+@@ -106,6 +107,9 @@ function isDate(value: string): boolean {
+         <label for="setting-period-numbering-from">Period numbering from (from this day, a claim opened is numbered within its period; blank: off)</label>
+         <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom" (focus)="lastFocused = 'periodNumberingFrom'"
+                placeholder="yyyy-mm-dd" autocomplete="off" />
++        <label for="setting-entry-date">Entry date (a new claim given no date takes it in place of today; blank: off)</label>
++        <input id="setting-entry-date" data-testid="setting-entry-date" formControlName="entryDate" (focus)="lastFocused = 'entryDate'"
++               placeholder="yyyy-mm-dd" autocomplete="off" />
+         <label for="setting-grace-days">Grace days (when today changes, an open period ended more than these days before it is closed; blank: off)</label>
+         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" (focus)="lastFocused = 'graceDays'"
+                inputmode="numeric" autocomplete="off" />
+@@ -195,6 +199,7 @@ export class SettingsPanel {
+     latePct: new FormControl('', { nonNullable: true }),
+     policyDate: new FormControl('', { nonNullable: true }),
+     periodNumberingFrom: new FormControl('', { nonNullable: true }),
++    entryDate: new FormControl('', { nonNullable: true }),
+     graceDays: new FormControl('', { nonNullable: true }),
+     cap: new FormControl('', { nonNullable: true }),
+     proofThreshold: new FormControl('', { nonNullable: true }),
+@@ -245,13 +250,14 @@ export class SettingsPanel {
+     this.settingsError.set(null);
+     const sheet = this.sheets.current();
+     if (!sheet) return;
+-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
++    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
+     const limit = clerkLimit.value.trim();
+     const floorValue = floor.value.trim();
+     const termsValue = terms.value.trim();
+     const latePctValue = latePct.value.trim();
+     const policyDateValue = policyDate.value.trim();
+     const periodNumberingFromValue = periodNumberingFrom.value.trim();
++    const entryDateValue = entryDate.value.trim();
+     const graceDaysValue = graceDays.value.trim();
+     const capValue = cap.value.trim();
+     const proofThresholdValue = proofThreshold.value.trim();
+@@ -261,7 +267,7 @@ export class SettingsPanel {
+     const unchanged = !this.settingsForm.dirty;
+     const controls = this.settingsForm.controls;
+     const isSaved = (field: SettingField) => controls[field].dirty
+-      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'graceDays' && !field.startsWith('perm_')
++      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && !field.startsWith('perm_')
+         && controls[`${field as DatedField}From`].dirty)
+       || (unchanged && this.lastFocused === field);
+     const fromOf = (field: DatedField): string | null => controls[`${field}From` as FromField].value.trim() || null;
+@@ -270,6 +276,7 @@ export class SettingsPanel {
+     const saveLatePct = isSaved('latePct');
+     const savePolicyDate = isSaved('policyDate');
+     const savePeriodNumberingFrom = isSaved('periodNumberingFrom');
++    const saveEntryDate = isSaved('entryDate');
+     const saveGraceDays = isSaved('graceDays');
+     const saveLimit = isSaved('clerkLimit');
+     const saveCap = isSaved('cap');
+@@ -306,6 +313,10 @@ export class SettingsPanel {
+       this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
+       return;
+     }
++    if (saveEntryDate && entryDateValue !== '' && !(DATE_PATTERN.test(entryDateValue) && isDate(entryDateValue))) {
++      this.settingsError.set('Type an entry date as yyyy-mm-dd, or leave it blank for off.');
++      return;
++    }
+     if (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue)) {
+       this.settingsError.set('Type grace days as 0 or more whole days, or leave them blank for off.');
+       return;
+@@ -345,6 +356,7 @@ export class SettingsPanel {
+     if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue, fromOf('latePct')));
+     if (savePolicyDate) saves.push(this.sheets.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue));
+     if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
++    if (saveEntryDate) saves.push(this.sheets.setEntryDate(sheet.id, entryDateValue === '' ? null : entryDateValue));
+     if (saveGraceDays) saves.push(this.sheets.setGraceDays(sheet.id, graceDaysValue === '' ? null : Number(graceDaysValue)));
+     if (saveCap) saves.push(this.sheets.setCap(sheet.id, capValue === '' ? null : capValue, fromOf('cap')));
+     if (saveProofThreshold) saves.push(this.sheets.setProofThreshold(sheet.id, proofThresholdValue === '' ? null : proofThresholdValue, fromOf('proofThreshold')));
+@@ -365,7 +377,7 @@ export class SettingsPanel {
+ 
+   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
+   private resetSettings(sheet: SheetView | null): void {
+-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', graceDays: String(sheet?.graceDays ?? ''), cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', noteThresholdFrom: '',
++    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', noteThresholdFrom: '',
+       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
+       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 812a59e4f..395e0e11d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -84,7 +84,7 @@ public class ClaimService {
+                 .toList();
+     }
+ 
+-    /** Add a claim for a person; a missing date takes the sheet's today, a missing note is empty. One dated inside a
++    /** Add a claim for a person; a missing date takes the sheet's entry date while set, else its today, a missing note is empty. One dated inside a
+      *  soft-closed period is a late entry. Refused
+      *  when its date is inside a closed period, or when it is a correction that does not name a SETTLED claim of
+      *  the person. */
+@@ -96,11 +96,11 @@ public class ClaimService {
+         LocalDate today = sheet.getToday();
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+-        refuseIfClosed(sheetId, date != null ? date : today);
+-        refuseIfRetired(person, date != null ? date : today);
++        LocalDate claimDate = date != null ? date : sheet.defaultClaimDate();
++        refuseIfClosed(sheetId, claimDate);
++        refuseIfRetired(person, claimDate);
+         refuseUnlessCorrects(sheetId, personId, amount, corrects);
+         Rollup.Figures before = rollup.of(sheetId);
+-        LocalDate claimDate = date != null ? date : today;
+         LocalDate dueBy = claimDate.plusDays(termsOf(sheet, person, claimDate));
+         Claim claim = new Claim(sheetId, personId, scaled(amount), claimDate, dueBy, noteOf(note), corrects,
+                 claims.lastListed(sheetId) + 1);
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+index 280fa4e38..1fa397eba 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetState.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -28,7 +28,7 @@ import net.officefloor.hq.app.sheet.Sheet;
+  *  as the screen reads it: its other settings, and each list the screen reads (see {@link Views}). */
+ public record SheetState(List<SettingState> settings, LocalDate policyDate, List<RateState> rates,
+         List<PersonState> people, List<ClaimState> claims, Map<String, String> permissions,
+-        LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views) {
++        LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate) {
+ 
+     /** Each list the screen reads of the sheet, as it read it then; a person's grade there is the one in force on the
+      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
+@@ -96,7 +96,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
+                         c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil())).toList(),
+                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
+-                sheet.isArchived(), views);
++                sheet.isArchived(), views, sheet.getEntryDate());
+     }
+ 
+     /** The people as the screen read them then, each with the grade in force on {@code today}. */
+@@ -124,6 +124,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+         }
+         sheet.setPeriodNumberingFrom(periodNumberingFrom);
+         sheet.setGraceDays(graceDays);
++        sheet.setEntryDate(entryDate);
+         if (archived) {
+             sheet.archive();
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/paste/PasteService.java b/src/main/java/net/officefloor/hq/app/paste/PasteService.java
+index 4b488233b..dce450987 100644
+--- a/src/main/java/net/officefloor/hq/app/paste/PasteService.java
++++ b/src/main/java/net/officefloor/hq/app/paste/PasteService.java
+@@ -38,7 +38,7 @@ public class PasteService {
+ 
+     /**
+      * Add a DRAFT claim per line of {@code text} (name,amount,date,note; the note may hold commas, a blank date
+-     * takes the sheet's today, the note may be absent), in order, for the person on the sheet whose name matches
++     * takes the sheet's entry date while set, else its today, the note may be absent), in order, for the person on the sheet whose name matches
+      * (trimmed, ignoring case). Each line is checked by exactly the claim form's rules; one change: when any line
+      * is refused, nothing is added and nothing is recorded. Blank lines are skipped; a paste with no lines is
+      * refused.
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 683319f70..b54e15381 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -14,6 +14,7 @@ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
++import net.officefloor.hq.app.role.RoleService;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -99,10 +100,12 @@ public class PersonController {
+ 
+     private final PersonService people;
+     private final SheetHistory history;
++    private final RoleService roles;
+ 
+-    public PersonController(PersonService people, SheetHistory history) {
++    public PersonController(PersonService people, SheetHistory history, RoleService roles) {
+         this.people = people;
+         this.history = history;
++        this.roles = roles;
+     }
+ 
+     @GetMapping
+@@ -146,6 +149,10 @@ public class PersonController {
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody BulkGrade request) {
++        if (roles.isViewer(sheetId, user)) {
++            // A viewer's bulk action goes through with nothing done: no selected person is changed.
++            return new BulkGradeView(0, List.of());
++        }
+         Set<Long> selected = new HashSet<>(request.ids());
+         List<PersonView> changed = new ArrayList<>();
+         for (Person person : people.list(sheetId)) {
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+index f50524942..887dc82a8 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+@@ -31,7 +31,7 @@ public class QuickAddService {
+     }
+ 
+     /**
+-     * Add a DRAFT claim of {@code amount}, dated the sheet's today with an empty note, for the person
++     * Add a DRAFT claim of {@code amount}, dated the sheet's entry date while set, else its today, with an empty note, for the person
+      * whose name matches {@code name} (trimmed, ignoring case); one not on the sheet is added first with
+      * grade A. One change: when the claim is refused the person is not added and nothing is recorded.
+      */
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuardConfig.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuardConfig.java
+index d020f96c1..98b8c64de 100644
+--- a/src/main/java/net/officefloor/hq/app/role/ViewerGuardConfig.java
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuardConfig.java
+@@ -4,7 +4,7 @@ import org.springframework.context.annotation.Configuration;
+ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ 
+-/** Puts the {@link ViewerGuard} in front of a sheet's API, except loading it and its bulk actions. */
++/** Puts the {@link ViewerGuard} in front of a sheet's API, except loading it and its bulk actions (on claims and on people). */
+ @Configuration
+ public class ViewerGuardConfig implements WebMvcConfigurer {
+ 
+@@ -18,6 +18,7 @@ public class ViewerGuardConfig implements WebMvcConfigurer {
+     public void addInterceptors(InterceptorRegistry registry) {
+         registry.addInterceptor(guard)
+                 .addPathPatterns("/api/sheets/**")
+-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*");
++                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
++                        "/api/sheets/*/people/bulk-*");
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 1bc182e1d..0f69cfbf3 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -88,6 +88,11 @@ public class Sheet {
+     @Column(name = "period_numbering_from")
+     private LocalDate periodNumberingFrom;
+ 
++    /** The sheet's entry date: while set, a new claim given no date takes it in place of the sheet's today; null
++     *  means off. Not dated. */
++    @Column(name = "entry_date")
++    private LocalDate entryDate;
++
+     /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the
+      *  new today is closed; null means off. Not dated. */
+     @Column(name = "grace_days")
+@@ -243,6 +248,19 @@ public class Sheet {
+         this.policyDate = policyDate;
+     }
+ 
++    public LocalDate getEntryDate() {
++        return entryDate;
++    }
++
++    public void setEntryDate(LocalDate entryDate) {
++        this.entryDate = entryDate;
++    }
++
++    /** The date a new claim given no date takes: the entry date while set, else the sheet's today. */
++    public LocalDate defaultClaimDate() {
++        return entryDate != null ? entryDate : today;
++    }
++
+     public LocalDate getPeriodNumberingFrom() {
+         return periodNumberingFrom;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index de6370c15..1262853ca 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -38,11 +38,12 @@ public class SheetController {
+      *  recorded; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
+      *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off; the cap (two decimals) is null when there is none, as are the proof threshold and the note threshold (two decimals); the permissions are the
+      *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off; archived is whether the sheet is archived;
++     *  the entry date is null when it is off;
+      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
+     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
+-            LocalDate asOf, String noteThreshold) {
++            LocalDate asOf, String noteThreshold, LocalDate entryDate) {
+ 
+         static SheetView of(Sheet sheet) {
+             return of(sheet, null);
+@@ -57,7 +58,8 @@ public class SheetController {
+                     sheet.getSettings().stream().map(s -> new DatedSettingView(s.getKey(), s.getFrom(), s.getValue())).toList(),
+                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
+                     sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived(), asOf,
+-                    sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString());
++                    sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
++                    sheet.getEntryDate());
+         }
+     }
+ 
+@@ -92,6 +94,10 @@ public class SheetController {
+     public record PolicyDateChange(LocalDate policyDate) {
+     }
+ 
++    /** The sheet's entry date as the form submits it; a missing one means off. */
++    public record EntryDateChange(LocalDate entryDate) {
++    }
++
+     /** The sheet's period numbering from as the form submits it; a missing one means off. */
+     public record PeriodNumberingFromChange(LocalDate periodNumberingFrom) {
+     }
+@@ -212,6 +218,15 @@ public class SheetController {
+         return SheetView.of(sheets.setPolicyDate(id, user, request.policyDate()));
+     }
+ 
++    /** Change the sheet's entry date. */
++    @PutMapping("/{id}/settings/entry-date")
++    public SheetView setEntryDate(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody EntryDateChange request) {
++        return SheetView.of(sheets.setEntryDate(id, user, request.entryDate()));
++    }
++
+     /** Change the sheet's period numbering from. */
+     @PutMapping("/{id}/settings/period-numbering-from")
+     public SheetView setPeriodNumberingFrom(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 304619f53..91d9cda43 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -152,6 +152,18 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** Set the sheet's entry date (null: off), starting the sheet if it has never been loaded. Not dated. */
++    @Transactional
++    public Sheet setEntryDate(String id, String user, LocalDate entryDate) {
++        load(id, user);
++        Sheet sheet = sheets.findLockedById(id).orElseThrow();
++        sheet.setEntryDate(entryDate);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
++                + " key=entry-date value=" + (entryDate == null ? "" : entryDate));
++        return saved;
++    }
++
+     /** Set the sheet's period numbering from (null: off), starting the sheet if it has never been loaded. */
+     @Transactional
+     public Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {
+diff --git a/src/main/resources/db/migration/V49__sheet_entry_date.sql b/src/main/resources/db/migration/V49__sheet_entry_date.sql
+new file mode 100644
+index 000000000..e97699247
+--- /dev/null
++++ b/src/main/resources/db/migration/V49__sheet_entry_date.sql
+@@ -0,0 +1,3 @@
++-- The sheet's entry date: while set, the date a new claim takes when none is given, in place of the sheet's
++-- today. None means off. Not dated.
++ALTER TABLE sheet ADD COLUMN entry_date DATE;
