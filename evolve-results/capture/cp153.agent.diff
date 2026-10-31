@@ -1,0 +1,271 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index f587a7d4f..ef3997beb 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -20,6 +20,8 @@ export interface RateView {
+   from: string | null;
+   /** The last day it applies (yyyy-mm-dd); null when it does not end. */
+   to: string | null;
++  /** How many versions the rate has had; the one shown is the newest. */
++  version: number;
+ }
+ 
+ /** What a rate import did: how many rates it set, and those rates, in line order. */
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 272dd5868..b4c4e3b58 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -24,6 +24,7 @@ import { Sheets } from '../../core/sheet';
+                   @if (r.to !== null) {
+                     through <span data-testid="rate-to">{{ r.to }}</span>
+                   }
++                  (version <span data-testid="rate-version">{{ r.version }}</span>)
+                 </li>
+               }
+             </ul>
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index fffa803d1..28a3cd9d1 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -42,6 +42,9 @@ public class Rate {
+     @Column(name = "rate", nullable = false)
+     private BigDecimal rate;
+ 
++    @Column(name = "version", nullable = false)
++    private int version = 1;
++
+     protected Rate() {
+     }
+ 
+@@ -95,4 +98,13 @@ public class Rate {
+     public void setRate(BigDecimal rate) {
+         this.rate = rate;
+     }
++
++    /** The number of the version in force: how many versions the rate has had, the newest being this one. */
++    public int getVersion() {
++        return version;
++    }
++
++    public void setVersion(int version) {
++        this.version = version;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 21a051673..9d3a25826 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -31,12 +31,17 @@ public class RateController {
+ 
+     /** A grade's rate as the screen shows it: a percent with exactly two decimals, and the day it
+      *  takes effect (null when it applies from the beginning of time) and the last day it applies
+-     *  (null when it does not end). */
+-    public record RateView(String grade, String rate, LocalDate from, LocalDate to) {
++     *  (null when it does not end), and how many versions it has had (the one shown is the newest). */
++    public record RateView(String grade, String rate, LocalDate from, LocalDate to, int version) {
++
++        /** A view kept before rates had versions has none recorded: it was the first. */
++        public RateView {
++            version = Math.max(version, 1);
++        }
+ 
+         public static RateView of(Rate rate) {
+             return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFromDate(),
+-                    rate.getToDate());
++                    rate.getToDate(), rate.getVersion());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index ba4c0c9ff..77d253355 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -23,8 +23,11 @@ public class RateService {
+     private final Audit audit;
+     private final Rollup rollup;
+     private final RateChains chains;
++    private final RateVersionRepository versions;
+ 
+-    public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup, RateChains chains) {
++    public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup, RateChains chains,
++            RateVersionRepository versions) {
++        this.versions = versions;
+         this.chains = chains;
+         this.rates = rates;
+         this.sheets = sheets;
+@@ -53,8 +56,9 @@ public class RateService {
+     }
+ 
+     /** Set a grade's rate from a date (null: from the beginning of time) through a to-date (null: it
+-     *  does not end), replacing the rate it had from that same date, if any. A to-date before the
+-     *  from-date is refused. */
++     *  does not end). When the grade already has a rate from that same date, the value it replaces is
++     *  kept as an older version and the new one becomes the newest version, the one in force. A to-date
++     *  before the from-date is refused. */
+     @Transactional
+     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal rate) {
+         if (from != null && to != null && to.isBefore(from)) {
+@@ -66,7 +70,13 @@ public class RateService {
+         Rate row = rates.findBySheetIdAndGrade(sheetId, grade).stream()
+                 .filter(r -> Objects.equals(r.getFromDate(), from))
+                 .findFirst()
+-                .orElseGet(() -> new Rate(sheetId, grade, from, scaled));
++                .orElse(null);
++        if (row == null) {
++            row = new Rate(sheetId, grade, from, scaled);
++        } else {
++            versions.save(new RateVersion(row.getId(), row.getVersion(), row.getRate(), row.getToDate()));
++            row.setVersion(row.getVersion() + 1);
++        }
+         row.setRate(scaled);
+         row.setToDate(to);
+         Rate saved = rates.saveAndFlush(row);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersion.java b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+new file mode 100644
+index 000000000..c6cca3487
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+@@ -0,0 +1,62 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** An older version of a rate: the value (and to-date) a grade's rate from a from-date had before it was set again. */
++@Entity
++@Table(name = "rate_version")
++public class RateVersion {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "rate_id", nullable = false)
++    private Long rateId;
++
++    @Column(name = "version", nullable = false)
++    private int version;
++
++    @Column(name = "rate", nullable = false)
++    private BigDecimal rate;
++
++    @Column(name = "to_date")
++    private LocalDate toDate;
++
++    protected RateVersion() {
++    }
++
++    public RateVersion(Long rateId, int version, BigDecimal rate, LocalDate toDate) {
++        this.rateId = rateId;
++        this.version = version;
++        this.rate = rate;
++        this.toDate = toDate;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getRateId() {
++        return rateId;
++    }
++
++    public int getVersion() {
++        return version;
++    }
++
++    public BigDecimal getRate() {
++        return rate;
++    }
++
++    public LocalDate getToDate() {
++        return toDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
+new file mode 100644
+index 000000000..78c806a9a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersionRepository.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.rate;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface RateVersionRepository extends JpaRepository<RateVersion, Long> {
++
++    List<RateVersion> findByRateIdOrderByVersionAsc(Long rateId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 59babdf07..ae13c37ec 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -26,6 +26,8 @@ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateRepository;
++import net.officefloor.hq.app.rate.RateVersion;
++import net.officefloor.hq.app.rate.RateVersionRepository;
+ import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleRepository;
+ import net.officefloor.hq.app.role.RoleService;
+@@ -56,6 +58,7 @@ public class SheetCloneService {
+     private final RoleService roleService;
+     private final RoleRepository roles;
+     private final RateRepository rates;
++    private final RateVersionRepository rateVersions;
+     private final HolidayRepository holidays;
+     private final VoidReasonRepository voidReasons;
+     private final ClaimTemplateRepository templates;
+@@ -73,7 +76,8 @@ public class SheetCloneService {
+             RoleRepository roles, RateRepository rates, HolidayRepository holidays, VoidReasonRepository voidReasons,
+             ClaimTemplateRepository templates, PersonRepository people, PatronRepository patrons, PoolRepository pools,
+             PoolMemberRepository poolMembers, PeriodRepository periods, ClaimRepository claims,
+-            ClaimService claimService, Rollup rollup, Audit audit) {
++            ClaimService claimService, Rollup rollup, Audit audit, RateVersionRepository rateVersions) {
++        this.rateVersions = rateVersions;
+         this.sheets = sheets;
+         this.sheetStore = sheetStore;
+         this.roleService = roleService;
+@@ -116,11 +120,14 @@ public class SheetCloneService {
+ 
+         roles.saveAll(roles.findBySheetIdOrderByUserName(sheetId).stream()
+                 .map(r -> new Role(target, r.getUserName(), r.getRole())).toList());
+-        rates.saveAll(rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).map(r -> {
++        rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).forEach(r -> {
+             Rate copy = new Rate(target, r.getGrade(), r.getFromDate(), r.getRate());
+             copy.setToDate(r.getToDate());
+-            return copy;
+-        }).toList());
++            copy.setVersion(r.getVersion());
++            Long copyId = rates.save(copy).getId();
++            rateVersions.saveAll(rateVersions.findByRateIdOrderByVersionAsc(r.getId()).stream()
++                    .map(v -> new RateVersion(copyId, v.getVersion(), v.getRate(), v.getToDate())).toList());
++        });
+         holidays.saveAll(holidays.findBySheetIdOrderByDateAsc(sheetId).stream()
+                 .map(h -> new Holiday(target, h.getDate())).toList());
+         voidReasons.saveAll(voidReasons.findBySheetIdOrderByIdAsc(sheetId).stream()
+diff --git a/src/main/resources/db/migration/V82__rate_version.sql b/src/main/resources/db/migration/V82__rate_version.sql
+new file mode 100644
+index 000000000..00b41e565
+--- /dev/null
++++ b/src/main/resources/db/migration/V82__rate_version.sql
+@@ -0,0 +1,11 @@
++-- A rate is kept as versions: setting a rate for a grade and from-date that already has one keeps the value it
++-- replaces as an older version. The rate row holds the newest version (the one in force) and its number.
++ALTER TABLE rate ADD COLUMN version INT NOT NULL DEFAULT 1 CHECK (version >= 1);
++CREATE TABLE rate_version (
++    id      BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    rate_id BIGINT        NOT NULL REFERENCES rate (id),
++    version INT           NOT NULL,
++    rate    DECIMAL(5, 2) NOT NULL CHECK (rate >= 0),
++    to_date DATE,
++    CONSTRAINT rate_version_rate_version UNIQUE (rate_id, version)
++);
