@@ -1,0 +1,557 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 95e729182..dd701228c 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -40,13 +40,13 @@ export function countsWhile(held: boolean): (c: ClaimView) => boolean {
+ }
+ 
+ /** The day a claim is due by (yyyy-mm-dd): its date plus the sheet's terms in days. */
+-export function dueBy(c: ClaimView, terms: number): string {
++export function dueBy(c: Pick<ClaimView, 'date'>, terms: number): string {
+   const [y, m, d] = c.date.split('-').map(Number);
+   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+ }
+ 
+ /** Whether a claim is overdue on the sheet's today: OPEN and due by a day before it. */
+-export function isOverdue(c: ClaimView, terms: number, today: string): boolean {
++export function isOverdue(c: Pick<ClaimView, 'date' | 'status'>, terms: number, today: string): boolean {
+   return c.status === 'OPEN' && dueBy(c, terms) < today;
+ }
+ 
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 78856caec..a586fd073 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -1,8 +1,9 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { Observable, tap } from 'rxjs';
++import { ClaimStatus, dueBy, isOverdue } from './claims';
+ import { Grade } from './people';
+-import { Sheets } from './sheet';
++import { DEFAULT_TERMS, SheetView, Sheets } from './sheet';
+ 
+ export interface RateView {
+   grade: Grade;
+@@ -31,6 +32,9 @@ export const RATE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+ /** The floor a sheet starts with. */
+ export const DEFAULT_FLOOR = '1.00';
+ 
++/** The due terms used before a sheet is loaded: its starting floor and no late charge. */
++export const DEFAULT_DUE_TERMS: DueTerms = { floor: DEFAULT_FLOOR, terms: DEFAULT_TERMS, today: '', latePct: '0.00' };
++
+ /** What is shown in place of a due when its grade has no rate. */
+ export const NOT_AVAILABLE = 'n/a';
+ 
+@@ -46,18 +50,42 @@ export function dueCents(amountCents: number, rate: string): number {
+   return Number(roundUp ? quotient + 1n : quotient);
+ }
+ 
++/** The sheet's settings a claim's due depends on: its floor and, for the late charge, its terms,
++ *  today and late percent. */
++export type DueTerms = Pick<SheetView, 'floor' | 'terms' | 'today' | 'latePct'>;
++
++/** The late charge an OPEN claim has gained on its figure (in whole cents) by the sheet's today: the
++ *  late percent of the figure for every full 30 days past the day it is due by, rounded as a due is. */
++export function lateChargeCents(
++  c: { date: string; status: ClaimStatus },
++  figureCents: number,
++  sheet: DueTerms,
++): number {
++  if (!isOverdue(c, sheet.terms, sheet.today)) return 0;
++  const days = (Date.parse(sheet.today) - Date.parse(dueBy(c, sheet.terms))) / 86_400_000;
++  const periods = Math.floor(days / 30);
++  if (periods <= 0) return 0;
++  return dueCents(figureCents * periods, sheet.latePct);
++}
++
+ /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
+  *  last statement bound it to, else its amount at its grade's rate in force on its date raised to the
+- *  sheet's floor; null when it has none. */
++ *  sheet's floor, with any late charge added on top of it; null when it has none. */
+ export function claimDueCents(
+-  c: { amount: string; date: string; settledDue: string | null; statedDue: string | null },
++  c: { amount: string; date: string; status: ClaimStatus; settledDue: string | null; statedDue: string | null },
+   gradeRates: readonly RateView[],
+-  floor: string,
++  sheet: DueTerms,
+ ): number | null {
+   if (c.settledDue !== null) return amountCents(c.settledDue);
+-  if (c.statedDue !== null) return amountCents(c.statedDue);
+-  const rate = rateOn(gradeRates, c.date);
+-  return rate === undefined ? null : Math.max(dueCents(amountCents(c.amount), rate), amountCents(floor));
++  let figure: number;
++  if (c.statedDue !== null) {
++    figure = amountCents(c.statedDue);
++  } else {
++    const rate = rateOn(gradeRates, c.date);
++    if (rate === undefined) return null;
++    figure = Math.max(dueCents(amountCents(c.amount), rate), amountCents(sheet.floor));
++  }
++  return figure + lateChargeCents(c, figure, sheet);
+ }
+ 
+ /** An amount ("12.3", "4") in whole cents. */
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index 8cb4edfa1..51a9875d6 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -12,6 +12,9 @@ export interface SheetView {
+   floor: string;
+   /** The sheet's terms in days: a claim is due by its date plus these. */
+   terms: number;
++  /** The sheet's late percent (two decimals): an overdue claim's due gains this percent of its figure
++   *  for every full 30 days it is overdue. */
++  latePct: string;
+ }
+ 
+ /** The terms a sheet has until they are changed. */
+@@ -66,4 +69,11 @@ export class Sheets {
+       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms`, { terms })
+       .pipe(tap((s) => this.active.set(s)));
+   }
++
++  /** Change the active sheet's late percent. */
++  setLatePct(id: string, latePct: string): Observable<SheetView> {
++    return this.http
++      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/late-pct`, { latePct })
++      .pipe(tap((s) => this.active.set(s)));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index b0ec1a34e..f3a7e8592 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money } from '../../core/claims';
+ import { PeriodView, periodOn } from '../../core/periods';
+-import { DEFAULT_FLOOR, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
++import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { DEFAULT_TERMS, Sheets } from '../../core/sheet';
+ 
+@@ -103,7 +103,7 @@ export class PersonClaims {
+   }
+ 
+   protected dueOf(c: ClaimView): string {
+-    const due = claimDueCents(c, this.rates(), this.sheets.current()?.floor ?? DEFAULT_FLOOR);
++    const due = claimDueCents(c, this.rates(), this.sheets.current() ?? DEFAULT_DUE_TERMS);
+     return due === null ? NOT_AVAILABLE : money(due);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index cdb061f44..47e56ed2f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,7 +6,7 @@ import { forkJoin, of, switchMap } from 'rxjs';
+ import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, isOverdue, money } from '../../core/claims';
+ import { GRADES, Grade, People, PersonView } from '../../core/people';
+ import { Periods, periodOn } from '../../core/periods';
+-import { DEFAULT_FLOOR, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
++import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
+ import { Sheets } from '../../core/sheet';
+ import { StatementSummary, Statements } from '../../core/statements';
+ import { PersonClaims } from '../claims/claims';
+@@ -156,7 +156,7 @@ export class PeopleList {
+   private readonly dueByPerson = computed(() => {
+     const today = this.rates.byGrade();
+     const ratesByGrade = this.rates.ratesByGrade();
+-    const floor = this.sheets.current()?.floor ?? DEFAULT_FLOOR;
++    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+     const byPerson = new Map<number, number | null>();
+     for (const p of this.people()) {
+       const counting = this.claimsOf(p.id).filter(countsWhile(p.held));
+@@ -165,7 +165,7 @@ export class PeopleList {
+         continue;
+       }
+       const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
+-      byPerson.set(p.id, counting.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, floor) ?? 0), 0));
++      byPerson.set(p.id, counting.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, dueTerms) ?? 0), 0));
+     }
+     return byPerson;
+   });
+@@ -177,7 +177,7 @@ export class PeopleList {
+   private readonly overdueByPerson = computed(() => {
+     const sheet = this.sheets.current();
+     const ratesByGrade = this.rates.ratesByGrade();
+-    const floor = sheet?.floor ?? DEFAULT_FLOOR;
++    const dueTerms = sheet ?? DEFAULT_DUE_TERMS;
+     const byPerson = new Map<number, Overdue>();
+     for (const p of this.people()) {
+       const overdue = sheet
+@@ -186,7 +186,7 @@ export class PeopleList {
+       const gradeRates = ratesByGrade.get(p.grade) ?? NO_RATES;
+       byPerson.set(p.id, {
+         count: overdue.length,
+-        cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, floor) ?? 0), 0),
++        cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, gradeRates, dueTerms) ?? 0), 0),
+       });
+     }
+     return byPerson;
+@@ -203,14 +203,14 @@ export class PeopleList {
+   protected readonly dueByPeriod = computed(() => {
+     const periods = this.periods.list();
+     const ratesByGrade = this.rates.ratesByGrade();
+-    const floor = this.sheets.current()?.floor ?? DEFAULT_FLOOR;
++    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+     const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
+     const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
+     for (const c of this.claims().filter(this.countsNow())) {
+       const period = periodOn(periods, c.date);
+       const grade = gradeOf.get(c.personId);
+       if (!period || !grade) continue;
+-      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, ratesByGrade.get(grade) ?? NO_RATES, floor) ?? 0));
++      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, ratesByGrade.get(grade) ?? NO_RATES, dueTerms) ?? 0));
+     }
+     const closed = new Map(periods.filter((p) => p.closedTotal !== null).map((p) => [p.id, p.closedTotal as string]));
+     return new Map([...totals].map(([id, total]) => [id, closed.get(id) ?? money(total)]));
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 26ea779ac..05f13fe11 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -9,8 +9,10 @@ import { SheetView, Sheets } from '../../core/sheet';
+ const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
+ /** Terms the form accepts: a whole number of days, 0 or more. */
+ const TERMS_PATTERN = /^\d{1,5}$/;
++/** A late percent the form accepts: 0.00 or more, up to 999.99, with up to two decimals. */
++const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+ 
+-// The sheet's settings: its clerk limit, its floor, its terms, and the role assigned to each user name.
++// The sheet's settings: its clerk limit, its floor, its terms, its late percent, and the role assigned to each user name.
+ @Component({
+   selector: 'app-settings',
+   imports: [ReactiveFormsModule],
+@@ -20,6 +22,7 @@ const TERMS_PATTERN = /^\d{1,5}$/;
+       <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ sheets.current()?.clerkLimit ?? '' }}</span></p>
+       <p>Floor: <span data-testid="setting-floor-current">{{ sheets.current()?.floor ?? '' }}</span></p>
+       <p>Terms (days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
++      <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
+ 
+       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
+         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
+@@ -31,6 +34,9 @@ const TERMS_PATTERN = /^\d{1,5}$/;
+         <label for="setting-terms">Terms (days a claim is due by after its date)</label>
+         <input id="setting-terms" data-testid="setting-terms" formControlName="terms"
+                inputmode="numeric" autocomplete="off" />
++        <label for="setting-late-pct">Late percent (added to an overdue claim's due for every full 30 days)</label>
++        <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct"
++               inputmode="decimal" autocomplete="off" />
+         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
+         @if (settingsError(); as err) {
+           <p role="alert" data-testid="settings-error">{{ err }}</p>
+@@ -80,6 +86,7 @@ export class SettingsPanel {
+     clerkLimit: new FormControl('', { nonNullable: true }),
+     floor: new FormControl('', { nonNullable: true }),
+     terms: new FormControl('', { nonNullable: true }),
++    latePct: new FormControl('', { nonNullable: true }),
+   });
+   protected readonly roleForm = new FormGroup({
+     user: new FormControl('', { nonNullable: true }),
+@@ -110,14 +117,16 @@ export class SettingsPanel {
+     this.settingsError.set(null);
+     const sheet = this.sheets.current();
+     if (!sheet) return;
+-    const { clerkLimit, floor, terms } = this.settingsForm.controls;
++    const { clerkLimit, floor, terms, latePct } = this.settingsForm.controls;
+     const limit = clerkLimit.value.trim();
+     const floorValue = floor.value.trim();
+     const termsValue = terms.value.trim();
++    const latePctValue = latePct.value.trim();
+     // Only the settings changed in the form are saved; with none changed, the clerk limit is saved as it is.
+     const saveFloor = floor.dirty;
+     const saveTerms = terms.dirty;
+-    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms);
++    const saveLatePct = latePct.dirty;
++    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms && !saveLatePct);
+     if (saveLimit && limit !== '' && !LIMIT_PATTERN.test(limit)) {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+@@ -130,10 +139,15 @@ export class SettingsPanel {
+       this.settingsError.set('Type terms of 0 or more whole days.');
+       return;
+     }
++    if (saveLatePct && !LATE_PCT_PATTERN.test(latePctValue)) {
++      this.settingsError.set('Type a late percent of 0.00 or more, up to 999.99, with up to two decimals.');
++      return;
++    }
+     const saves: Observable<SheetView>[] = [];
+     if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit));
+     if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue));
+     if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue)));
++    if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue));
+     this.savingSettings.set(true);
+     concat(...saves).pipe(last()).subscribe({
+       next: (saved) => {
+@@ -149,7 +163,7 @@ export class SettingsPanel {
+ 
+   /** Show the sheet's settings in the form, as not yet changed. */
+   private resetSettings(sheet: SheetView | null): void {
+-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? '') }, { emitEvent: false });
++    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), latePct: sheet?.latePct ?? '' }, { emitEvent: false });
+   }
+ 
+   protected saveRole(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 27bc43cf4..f5ae835f2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+@@ -102,8 +103,9 @@ public class ClaimService {
+     /**
+      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
+      * claim gives it the sheet's next number and records who opened it; voiding it keeps its number, which is
+-     * never given again; settling it fixes its due
+-     * at its person's grade's rate in force on its date, as rates are now, so later rate changes leave it as it is. The user
++     * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
++     * at its person's grade's rate in force on its date, as rates are now, with the late charge it has gained
++     * added on top, so later rate changes leave it as it is. The user
+      * who opened a claim cannot settle it, and a clerk can settle it only when that due is at or below the sheet's
+      * clerk limit (a claim with no due is within any limit); a steward settles anything. A claim dated inside a closed period cannot move. The sheet is locked
+      * first, so moves on one sheet are made one at a time and no number is given twice.
+@@ -123,8 +125,11 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+-        BigDecimal due = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
++        BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.getGrade()), claim.getDate())
+                 .map(Rate::getRate).map(rate -> floored(dueOn(claim.getAmount(), rate), sheet.getFloor())).orElse(null);
++        // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
++        BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue() : live;
++        BigDecimal due = figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
+         if (next == ClaimStatus.SETTLED) {
+             refuseOverClerkLimit(sheet, user, due);
+         }
+@@ -194,6 +199,18 @@ public class ClaimService {
+         return amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+     }
+ 
++    /** The late charge an OPEN claim has gained on its figure by the sheet's today: the sheet's late percent of
++     *  the figure for every full 30 days past the day it is due by, rounded as a due is; 0.00 when not overdue
++     *  or it has no figure. */
++    public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
++        BigDecimal none = BigDecimal.ZERO.setScale(2);
++        if (figure == null || claim.getStatus() != ClaimStatus.OPEN) {
++            return none;
++        }
++        long periods = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday()) / 30;
++        return periods <= 0 ? none : dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)));
++    }
++
+     /** A live due raised to the sheet's floor when it is below it. */
+     public static BigDecimal floored(BigDecimal due, BigDecimal floor) {
+         return floor != null && due.compareTo(floor) < 0 ? floor : due;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 92d94bedf..7a2a5b609 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -55,7 +55,6 @@ public class Rollup {
+     public Figures of(String sheetId) {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         LocalDate today = sheet == null ? null : sheet.getToday();
+-        BigDecimal floor = sheet == null ? null : sheet.getFloor();
+         List<Rate> sheetRates = rates.findBySheetId(sheetId);
+         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+         Map<Long, PersonFigures> byPerson = new LinkedHashMap<>();
+@@ -73,7 +72,7 @@ public class Rollup {
+             boolean anyFixed = counting.stream().anyMatch(c -> c.getSettledDue() != null || c.getStatedDue() != null);
+             String due = NOT_AVAILABLE;
+             if (anyFixed || (today != null && Rate.inForceOn(gradeRates, today).isPresent())) {
+-                BigDecimal total = counting.stream().map(c -> dueOf(c, gradeRates, floor))
++                BigDecimal total = counting.stream().map(c -> dueOf(c, gradeRates, sheet))
+                         .filter(Objects::nonNull)
+                         .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+                 dueTotal = dueTotal.add(total);
+@@ -88,7 +87,7 @@ public class Rollup {
+      *  screen shows a period's: each claim's due, none counting as 0. */
+     public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+         List<Rate> sheetRates = rates.findBySheetId(sheetId);
+-        BigDecimal floor = sheets.findById(sheetId).map(Sheet::getFloor).orElse(null);
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
+         Map<Long, Person> personOf = new LinkedHashMap<>();
+         people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
+         BigDecimal total = BigDecimal.ZERO.setScale(2);
+@@ -98,7 +97,7 @@ public class Rollup {
+                 continue;
+             }
+             String grade = person.getGrade();
+-            BigDecimal due = dueOf(claim, sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList(), floor);
++            BigDecimal due = dueOf(claim, sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList(), sheet);
+             if (due != null) {
+                 total = total.add(due);
+             }
+@@ -127,15 +126,16 @@ public class Rollup {
+     }
+ 
+     /** A claim's due: its settled figure, else its stated one, else its amount at its grade's rate in force on its
+-     *  date, raised to the sheet's floor. */
+-    private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, BigDecimal floor) {
++     *  date, raised to the sheet's floor; an overdue claim's late charge is added on top of the figure. */
++    private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Sheet sheet) {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        if (claim.getStatedDue() != null) {
+-            return claim.getStatedDue();
+-        }
+-        return Rate.inForceOn(gradeRates, claim.getDate())
+-                .map(rate -> ClaimService.floored(ClaimService.dueOn(claim.getAmount(), rate.getRate()), floor)).orElse(null);
++        BigDecimal floor = sheet == null ? null : sheet.getFloor();
++        BigDecimal figure = claim.getStatedDue() != null ? claim.getStatedDue()
++                : Rate.inForceOn(gradeRates, claim.getDate())
++                        .map(rate -> ClaimService.floored(ClaimService.dueOn(claim.getAmount(), rate.getRate()), floor))
++                        .orElse(null);
++        return figure == null || sheet == null ? figure : figure.add(ClaimService.lateCharge(claim, figure, sheet));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index ff0d1dbb4..d38dba03d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -42,6 +42,11 @@ public class Sheet {
+     @Column(name = "terms", nullable = false)
+     private int terms = 14;
+ 
++    /** The sheet's late percent (two decimals): an overdue claim's due gains this percent of its figure for every
++     *  full 30 days it is overdue. */
++    @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal latePct = new BigDecimal("0.00");
++
+     protected Sheet() {
+     }
+ 
+@@ -96,6 +101,14 @@ public class Sheet {
+         this.terms = terms;
+     }
+ 
++    public BigDecimal getLatePct() {
++        return latePct;
++    }
++
++    public void setLatePct(BigDecimal latePct) {
++        this.latePct = latePct;
++    }
++
+     /** Take the next claim number on this sheet; it is never given out again. */
+     public int nextClaimNumber() {
+         return ++lastClaimNumber;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 4537c95ef..674061765 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -26,13 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets")
+ public class SheetController {
+ 
+-    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor have exactly two decimals; terms is in days. */
+-    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms) {
++    /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days. */
++    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(),
+                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+-                    sheet.getFloor().toPlainString(), sheet.getTerms());
++                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString());
+         }
+     }
+ 
+@@ -51,6 +51,10 @@ public class SheetController {
+     public record TermsChange(@NotNull @Min(0) @Max(36500) Integer terms) {
+     }
+ 
++    /** The sheet's late percent as the form submits it. */
++    public record LatePctChange(@NotNull @DecimalMin("0.00") @Digits(integer = 3, fraction = 2) BigDecimal latePct) {
++    }
++
+     private final SheetService sheets;
+ 
+     public SheetController(SheetService sheets) {
+@@ -100,4 +104,13 @@ public class SheetController {
+             @Valid @RequestBody TermsChange request) {
+         return SheetView.of(sheets.setTerms(id, user, request.terms()));
+     }
++
++    /** Change the sheet's late percent. */
++    @PutMapping("/{id}/settings/late-pct")
++    public SheetView setLatePct(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody LatePctChange request) {
++        return SheetView.of(sheets.setLatePct(id, user, request.latePct()));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index d409aac2b..329ff4ecf 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -86,4 +86,19 @@ public class SheetService {
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
+         return saved;
+     }
++
++    /** Set the sheet's late percent, starting the sheet if it has never been loaded. */
++    @Transactional
++    public Sheet setLatePct(String id, String user, BigDecimal latePct) {
++        load(id, user);
++        Sheet sheet = sheets.findLockedById(id).orElseThrow();
++        Rollup.Figures before = rollup.of(id);
++        BigDecimal scaled = latePct.setScale(2, RoundingMode.UNNECESSARY);
++        sheet.setLatePct(scaled);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
++                + " key=late-pct value=" + scaled.toPlainString());
++        rollup.recordChanges(id, user, before);
++        return saved;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index be6dc05b7..7c2b404d7 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -68,9 +68,10 @@ public class StatementService {
+     }
+ 
+     /**
+-     * Take a statement of a person: record their due-total now, bind each of their claims that counts
++     * Take a statement of a person: record their due-total now (with the late charges their overdue claims have gained), bind each of their claims that counts
+      * to the figure it has now (its settled figure, else the figure it is bound to, else its amount at
+-     * its grade's rate in force on its date) and leave the rest unbound. The sheet is locked first, so
++     * its grade's rate in force on its date) and leave the rest unbound. A late charge is never bound: it keeps
++     * following the sheet's today. The sheet is locked first, so
+      * a statement is not taken while a claim on it changes.
+      */
+     @Transactional
+@@ -88,7 +89,7 @@ public class StatementService {
+         boolean anyFixed = false;
+         int counted = 0;
+         for (Claim claim : theirs) {
+-            if (!claim.getStatus().counts()) {
++            if (!person.counts(claim.getStatus())) {
+                 claim.unbind();
+                 continue;
+             }
+@@ -99,7 +100,7 @@ public class StatementService {
+                                     sheet.getFloor()))
+                             .orElse(null);
+             anyFixed |= fixed != null;
+-            total = figure == null ? total : total.add(figure);
++            total = figure == null ? total : total.add(figure).add(ClaimService.lateCharge(claim, figure, sheet));
+             claim.bind(figure);
+             counted++;
+         }
+diff --git a/src/main/resources/db/migration/V21__sheet_late_pct.sql b/src/main/resources/db/migration/V21__sheet_late_pct.sql
+new file mode 100644
+index 000000000..43e86fa82
+--- /dev/null
++++ b/src/main/resources/db/migration/V21__sheet_late_pct.sql
+@@ -0,0 +1,2 @@
++-- The sheet's late percent: an overdue claim's due gains this percent of its figure for every full 30 days it is overdue.
++ALTER TABLE sheet ADD COLUMN late_pct NUMERIC(5, 2) DEFAULT 0.00 NOT NULL CHECK (late_pct >= 0);
