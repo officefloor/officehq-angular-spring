@@ -1,0 +1,108 @@
+diff --git a/src/main/frontend/src/app/core/crews.ts b/src/main/frontend/src/app/core/crews.ts
+index b884821af..4bf3678ec 100644
+--- a/src/main/frontend/src/app/core/crews.ts
++++ b/src/main/frontend/src/app/core/crews.ts
+@@ -16,6 +16,12 @@ export interface CrewView {
+   members: CrewPersonView[];
+ }
+ 
++/** A crew's due-total in whole cents: its lead's and members' due-totals added up, skipping those with none. */
++export function crewDueCents(crew: CrewView, dueByPerson: ReadonlyMap<number, number | null>): number {
++  const ids = [...(crew.lead ? [crew.lead.id] : []), ...crew.members.map((m) => m.id)];
++  return ids.reduce((sum, id) => sum + (dueByPerson.get(id) ?? 0), 0);
++}
++
+ // The crews on the active sheet, in the order they were added.
+ @Injectable({ providedIn: 'root' })
+ export class Crews {
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 1ce4339a6..d5603447a 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -3,7 +3,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { EMPTY, switchMap } from 'rxjs';
+ import { money } from '../../core/claims';
+-import { CrewView, Crews } from '../../core/crews';
++import { CrewView, Crews, crewDueCents } from '../../core/crews';
+ import { PersonView } from '../../core/people';
+ import { Sheets } from '../../core/sheet';
+ import { FigurePipe } from '../../core/figure';
+@@ -104,9 +104,7 @@ export class CrewsPanel {
+ 
+   /** The crew's due-total: its lead's and members' due-totals added up, skipping those with none. */
+   protected dueOf(crew: CrewView): string {
+-    const due = this.dueByPerson();
+-    const ids = [...(crew.lead ? [crew.lead.id] : []), ...crew.members.map((m) => m.id)];
+-    return money(ids.reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
++    return money(crewDueCents(crew, this.dueByPerson()));
+   }
+ 
+   /** The crew row's form to add a member, made the first time the row shows. */
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 5b8ba1e64..5dcbfeea1 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -4,7 +4,7 @@ import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's counters, always on show: its people (retired included), its claims per status and
+ // its due-total and overdue-total,
+-// and the signed-in user's own due-total and overdue-total. Each repeats a figure shown elsewhere and is fed from the same source.
++// the signed-in user's own due-total and overdue-total, and the due-totals of the crews they lead. Each repeats a figure shown elsewhere and is fed from the same source.
+ @Component({
+   selector: 'app-header',
+   imports: [FigurePipe],
+@@ -19,6 +19,7 @@ import { FigurePipe } from '../../core/figure';
+         <li>Overdue: <strong data-testid="header-overdue-total">{{ (overdueTotal()) | figure }}</strong></li>
+         <li>My due: <strong data-testid="my-due-total">{{ (myDueTotal()) | figure }}</strong></li>
+         <li>My overdue: <strong data-testid="my-overdue-total">{{ (myOverdueTotal()) | figure }}</strong></li>
++        <li>My crews' due: <strong data-testid="my-crew-due-total">{{ (myCrewDueTotal()) | figure }}</strong></li>
+       </ul>
+     </header>
+   `,
+@@ -31,4 +32,6 @@ export class SheetHeader {
+   /** The signed-in user's own person's due-total and overdue-total; blank when no person has their name. */
+   readonly myDueTotal = input.required<string>();
+   readonly myOverdueTotal = input.required<string>();
++  /** The due-totals of the crews the signed-in user's own person leads, added up; blank when they lead none. */
++  readonly myCrewDueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 253006bd2..5fcf5cde0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -22,6 +22,7 @@ import { CrewsPanel } from '../crews/crews';
+ import { PersonPlans, PlanGenerate } from '../plans/plans';
+ import { Plans } from '../../core/plans';
+ import { Pools } from '../../core/pools';
++import { Crews, crewDueCents } from '../../core/crews';
+ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
+ import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
+ import { VoidReasons } from '../../core/void-reasons';
+@@ -94,7 +95,8 @@ function csvField(value: string): string {
+   template: `
+     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
+                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
+-                [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''" />
++                [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
++                [myCrewDueTotal]="myCrewDueTotal()" />
+     <app-periods [dueTotals]="dueByPeriod()" />
+     <app-pools [people]="people()" />
+     <app-crews [people]="people()" [dueByPerson]="dueByPerson()" />
+@@ -507,6 +509,16 @@ export class PeopleList {
+       p.name.toLowerCase() === user || (p.aliases ?? []).some((a) => a.toLowerCase() === user)) ?? null;
+   });
+   private readonly pools = inject(Pools);
++  private readonly crews = inject(Crews);
++  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
++  protected readonly myCrewDueTotal = computed(() => {
++    const me = this.me();
++    if (!me) return '';
++    const led = this.crews.all().filter((c) => c.lead?.id === me.id);
++    if (led.length === 0) return '';
++    const due = this.dueByPerson();
++    return money(led.reduce((sum, crew) => sum + crewDueCents(crew, due), 0));
++  });
+ 
+   protected readonly grades = GRADES;
+   protected readonly money = money;
