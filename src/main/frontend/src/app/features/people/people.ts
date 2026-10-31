@@ -22,6 +22,7 @@ import { CrewsPanel } from '../crews/crews';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Plans } from '../../core/plans';
 import { Pools } from '../../core/pools';
+import { Crews, crewDueCents } from '../../core/crews';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
 import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
 import { VoidReasons } from '../../core/void-reasons';
@@ -94,7 +95,8 @@ function csvField(value: string): string {
   template: `
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
-                [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''" />
+                [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
+                [myCrewDueTotal]="myCrewDueTotal()" />
     <app-periods [dueTotals]="dueByPeriod()" />
     <app-pools [people]="people()" />
     <app-crews [people]="people()" [dueByPerson]="dueByPerson()" />
@@ -507,6 +509,16 @@ export class PeopleList {
       p.name.toLowerCase() === user || (p.aliases ?? []).some((a) => a.toLowerCase() === user)) ?? null;
   });
   private readonly pools = inject(Pools);
+  private readonly crews = inject(Crews);
+  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    if (!me) return '';
+    const led = this.crews.all().filter((c) => c.lead?.id === me.id);
+    if (led.length === 0) return '';
+    const due = this.dueByPerson();
+    return money(led.reduce((sum, crew) => sum + crewDueCents(crew, due), 0));
+  });
 
   protected readonly grades = GRADES;
   protected readonly money = money;

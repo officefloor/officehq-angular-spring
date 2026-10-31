@@ -3,7 +3,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, switchMap } from 'rxjs';
 import { money } from '../../core/claims';
-import { CrewView, Crews } from '../../core/crews';
+import { CrewView, Crews, crewDueCents } from '../../core/crews';
 import { PersonView } from '../../core/people';
 import { Sheets } from '../../core/sheet';
 import { FigurePipe } from '../../core/figure';
@@ -104,9 +104,7 @@ export class CrewsPanel {
 
   /** The crew's due-total: its lead's and members' due-totals added up, skipping those with none. */
   protected dueOf(crew: CrewView): string {
-    const due = this.dueByPerson();
-    const ids = [...(crew.lead ? [crew.lead.id] : []), ...crew.members.map((m) => m.id)];
-    return money(ids.reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
+    return money(crewDueCents(crew, this.dueByPerson()));
   }
 
   /** The crew row's form to add a member, made the first time the row shows. */

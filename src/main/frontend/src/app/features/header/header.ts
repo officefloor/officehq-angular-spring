@@ -4,7 +4,7 @@ import { FigurePipe } from '../../core/figure';
 
 // The sheet's counters, always on show: its people (retired included), its claims per status and
 // its due-total and overdue-total,
-// and the signed-in user's own due-total and overdue-total. Each repeats a figure shown elsewhere and is fed from the same source.
+// the signed-in user's own due-total and overdue-total, and the due-totals of the crews they lead. Each repeats a figure shown elsewhere and is fed from the same source.
 @Component({
   selector: 'app-header',
   imports: [FigurePipe],
@@ -19,6 +19,7 @@ import { FigurePipe } from '../../core/figure';
         <li>Overdue: <strong data-testid="header-overdue-total">{{ (overdueTotal()) | figure }}</strong></li>
         <li>My due: <strong data-testid="my-due-total">{{ (myDueTotal()) | figure }}</strong></li>
         <li>My overdue: <strong data-testid="my-overdue-total">{{ (myOverdueTotal()) | figure }}</strong></li>
+        <li>My crews' due: <strong data-testid="my-crew-due-total">{{ (myCrewDueTotal()) | figure }}</strong></li>
       </ul>
     </header>
   `,
@@ -31,4 +32,6 @@ export class SheetHeader {
   /** The signed-in user's own person's due-total and overdue-total; blank when no person has their name. */
   readonly myDueTotal = input.required<string>();
   readonly myOverdueTotal = input.required<string>();
+  /** The due-totals of the crews the signed-in user's own person leads, added up; blank when they lead none. */
+  readonly myCrewDueTotal = input.required<string>();
 }
