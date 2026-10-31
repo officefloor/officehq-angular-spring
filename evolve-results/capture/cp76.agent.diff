@@ -1,0 +1,24 @@
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 13963b9c4..b97c5eedc 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -80,13 +80,18 @@ public class SheetService {
+     }
+ 
+     /** Set the sheet's today, starting the sheet if it has never been loaded; then close every open period past its
+-     *  grace days. A change of today releases every claim editor's lock on the sheet. */
++     *  grace days. A change of today first records a SNAPSHOT line per person, in list order, with their due-total on
++     *  the day being left, and releases every claim editor's lock on the sheet. */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         load(id, user);
+         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+         Rollup.Figures before = rollup.of(id);
+         boolean changed = !today.equals(sheet.getToday());
++        if (changed) {
++            before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
++                    + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
++        }
+         sheet.setToday(today);
+         Sheet saved = sheets.saveAndFlush(sheet);
+         periods.closePastGrace(saved, user);
