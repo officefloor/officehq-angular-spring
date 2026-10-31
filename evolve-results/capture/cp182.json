@@ -1,0 +1,64 @@
+{
+  "checkpoint": 182,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp182_claim-hold",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN or PENDING claim can be held and released with a toggle on the claim (CLAIM_HELD and\nCLAIM_RELEASED naming the claim; any other status is refused with an error on the claim). A held\nclaim leaves every live total exactly as a held person's claims do (a figure bound by a statement\nstays in). Show held yes/no on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN or PENDING claim can be held and released with a toggle on the claim (CLAIM_HELD and\nCLAIM_RELEASED naming the claim; any other status is refused with an error on the claim). A held\nclaim leaves every live total exactly as a held person's claims do (a figure bound by a statement\nstays in). Show held yes/no on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d840f1309bc03cda8d370f16f41abcc46e08eb2d",
+  "reset_sha": "",
+  "preagent_sha": "5ebb55c0158a50ead0ff6e6dcbcacd2129babd5d",
+  "prev_sha": "5ebb55c0158a50ead0ff6e6dcbcacd2129babd5d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9468784,
+    "input_tokens": 48,
+    "output_tokens": 9367,
+    "cache_read_tokens": 1250452,
+    "cache_creation_tokens": 63657,
+    "num_turns": 24,
+    "duration_ms": 444495,
+    "duration_api_ms": 93040,
+    "model": "claude-opus-5-5",
+    "session_id": "a9864a97-5d87-4d10-9010-4516159ec1d8",
+    "stop_reason": "success",
+    "result_text": "Claims can now be held and released, and all 4 tests in `bin/e2e` pass. I had to run it with `PORT=3917` because something else was already using port 3000, so the default run couldn't start the app.\n\n**How it works**\n- Each claim shows \"held yes/no\" and has a Hold/Release button. Pressing it on an OPEN or PENDING claim flips the flag and writes `CLAIM_HELD` or `CLAIM_RELEASED` to the audit file, with the claim's person, amount, date and number.\n- On any other status it's refused: an error shows on the claim and nothing is saved or written to the audit file.\n- A held claim is treated exactly like a claim dated inside a person's hold. The existing hold check now also asks \"is the claim itself held?\", once on the server (`Person.java`) and once in the browser (`core/claims.ts`). So every live total \u2014 rollup, person, period, header, dashboard and the rest \u2014 leaves out an open held claim. A claim bound by a statement still counts.\n- A new statement also leaves out held open claims.\n- The held flag stays on after the claim is settled, but a settled claim counts normally again.\n\n**Changes**\n- **Stored data:** a new migration, `V101__claim_held.sql`, adds a `held` column to claims. Copies of a claim and the saved sheet history keep the flag, so as-of views show it too.\n- **Server:** `ClaimService.toggleHold`, served at `POST /claims/{id}/hold`, and `held` added to the claim data the screen gets.\n- **Front end:** the `claim-held` value and `claim-hold` button in `features/claims/claims.ts`, the API call, and the total check in `core/claims.ts`.\n\nAnyone who can edit the sheet can hold or release a claim. The request didn't limit it to stewards, unlike waiving a late charge, which only a steward can do.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9468784,
+        "num_turns": 24,
+        "duration_ms": 444495,
+        "duration_api_ms": 93040,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp182.agent.jsonl",
+  "agent_diff_file": "cp182.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
