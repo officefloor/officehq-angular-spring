@@ -5,6 +5,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -42,10 +43,14 @@ public class PersonService {
         return added;
     }
 
+    /** Edit a person, as loaded at {@code version}: refused when someone has saved them since. */
     @Transactional
-    public Person update(String sheetId, String user, long id, String name, String grade) {
+    public Person update(String sheetId, String user, long id, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (person.getVersion() != version) {
+            throw changedSince();
+        }
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)) {
             throw nameInUse();
@@ -68,7 +73,15 @@ public class PersonService {
         } catch (DataIntegrityViolationException raced) {
             // Another user took the same name at the same moment: theirs stands.
             throw nameInUse();
+        } catch (ObjectOptimisticLockingFailureException raced) {
+            // Another user saved the same person at the same moment: theirs stands.
+            throw changedSince();
         }
+    }
+
+    private static ResponseStatusException changedSince() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
+                "Someone else has saved this person since it was opened");
     }
 
     private static ResponseStatusException nameInUse() {

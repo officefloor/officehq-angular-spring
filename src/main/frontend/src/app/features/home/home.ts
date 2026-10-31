@@ -91,6 +91,8 @@ export class Home {
   }
 
   protected loadSheet(): void {
+    // A second submit before the first has answered is ignored.
+    if (this.loading()) return;
     this.sheetError.set(null);
     const id = this.sheetForm.controls.id.value.trim();
     if (!id) {
@@ -112,6 +114,8 @@ export class Home {
   }
 
   protected saveToday(): void {
+    // A second submit before the first has answered is ignored.
+    if (this.savingToday()) return;
     this.todayError.set(null);
     const sheet = this.sheets.current();
     const today = this.todayForm.controls.today.value.trim();

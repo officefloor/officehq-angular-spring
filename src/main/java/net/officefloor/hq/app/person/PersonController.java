@@ -22,10 +22,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade) {
+    public record PersonView(long id, String name, String grade, long version) {
 
         static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }
 
@@ -33,6 +33,13 @@ public class PersonController {
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
+    }
+
+    /** An edit of a person: their new values and the version of the person the editor loaded. */
+    public record PersonEdit(
+            @NotBlank @Size(max = 200) String name,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull Long version) {
     }
 
     private final PersonService people;
@@ -60,7 +67,7 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
-            @Valid @RequestBody PersonForm request) {
-        return PersonView.of(people.update(sheetId, user, id, request.name(), request.grade()));
+            @Valid @RequestBody PersonEdit request) {
+        return PersonView.of(people.update(sheetId, user, id, request.version(), request.name(), request.grade()));
     }
 }

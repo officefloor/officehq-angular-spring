@@ -9,6 +9,8 @@ export interface PersonView {
   id: number;
   name: string;
   grade: Grade;
+  /** Raised on every save; an edit names the version it was made from. */
+  version: number;
 }
 
 export interface PersonForm {
@@ -29,8 +31,9 @@ export class People {
     return this.http.post<PersonView>(this.base(sheetId), person);
   }
 
-  update(sheetId: string, id: number, person: PersonForm): Observable<PersonView> {
-    return this.http.put<PersonView>(`${this.base(sheetId)}/${id}`, person);
+  /** Save an edit made from `version` of the person; refused (412) when someone has saved them since. */
+  update(sheetId: string, id: number, version: number, person: PersonForm): Observable<PersonView> {
+    return this.http.put<PersonView>(`${this.base(sheetId)}/${id}`, { ...person, version });
   }
 
   private base(sheetId: string): string {

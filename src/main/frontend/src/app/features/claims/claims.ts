@@ -130,6 +130,8 @@ export class PersonClaims {
   }
 
   protected submit(): void {
+    // A second submit before the first has answered is ignored, so it stores one record.
+    if (this.saving()) return;
     this.error.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;

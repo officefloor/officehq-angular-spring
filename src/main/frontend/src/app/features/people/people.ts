@@ -98,6 +98,8 @@ export class PeopleList {
     money([...this.dueByPerson().values()].reduce<number>((sum, due) => sum + (due ?? 0), 0)),
   );
   protected readonly editingId = signal<number | null>(null);
+  /** The version of the person the editor loaded. */
+  private editingVersion = 0;
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
 
@@ -149,6 +151,7 @@ export class PeopleList {
 
   protected edit(p: PersonView): void {
     this.editingId.set(p.id);
+    this.editingVersion = p.version;
     this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });
     this.error.set(null);
   }
@@ -160,6 +163,8 @@ export class PeopleList {
   }
 
   protected submit(): void {
+    // A second submit before the first has answered is ignored, so it stores one record.
+    if (this.saving()) return;
     this.error.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
@@ -170,7 +175,7 @@ export class PeopleList {
     }
     const id = this.editingId();
     this.saving.set(true);
-    const request = id === null ? this.api.add(sheet.id, value) : this.api.update(sheet.id, id, value);
+    const request = id === null ? this.api.add(sheet.id, value) : this.api.update(sheet.id, id, this.editingVersion, value);
     request.subscribe({
       next: (saved) => {
         this.saving.set(false);
@@ -181,10 +186,27 @@ export class PeopleList {
       },
       error: (err: unknown) => {
         this.saving.set(false);
-        if (err instanceof HttpErrorResponse && err.status === 409) {
+        if (id !== null && err instanceof HttpErrorResponse && err.status === 412) {
+          this.error.set('Someone else has saved this person since you opened it; their values are shown.');
+          this.showCurrent(sheet.id, id);
+        } else if (err instanceof HttpErrorResponse && err.status === 409) {
           this.error.set('That name is already in use on this sheet.');
         } else {
           this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
+        }
+      },
+    });
+  }
+
+  /** Re-read the people after a refused edit and show the person's current values in the editor. */
+  private showCurrent(sheetId: string, id: number): void {
+    this.api.list(sheetId).subscribe({
+      next: (people) => {
+        this.people.set(people);
+        const current = people.find((p) => p.id === id);
+        if (current && this.editingId() === id) {
+          this.editingVersion = current.version;
+          this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
         }
       },
     });
