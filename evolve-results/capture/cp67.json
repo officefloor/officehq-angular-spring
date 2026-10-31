@@ -1,0 +1,64 @@
+{
+  "checkpoint": 67,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp67_active-people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person whether they are active: yes when they have an OPEN or PENDING claim that\ncounts dated within the 30 days up to and including the sheet's today. The summary shows per\ngrade the number of active people on that grade (retired people excluded).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person whether they are active: yes when they have an OPEN or PENDING claim that\ncounts dated within the 30 days up to and including the sheet's today. The summary shows per\ngrade the number of active people on that grade (retired people excluded).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b5728c7253bda5f90a535a84dbc0c7c04136a319",
+  "reset_sha": "",
+  "preagent_sha": "35ef728534bc966dcf1714f1dd4f2555a796f79e",
+  "prev_sha": "35ef728534bc966dcf1714f1dd4f2555a796f79e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.613181,
+    "input_tokens": 32,
+    "output_tokens": 4705,
+    "cache_read_tokens": 620245,
+    "cache_creation_tokens": 49363,
+    "num_turns": 17,
+    "duration_ms": 210887,
+    "duration_api_ms": 83730,
+    "model": "claude-opus-5-5",
+    "session_id": "2dbee621-0b82-4fec-9ef7-3053f6779e8f",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows whether they're active, and the summary shows how many active people each grade has. All 4 tests pass in `bin/e2e`.\n\n**How \"active\" is worked out:** a person is active when they have an OPEN or PENDING claim dated in the 30 days ending on the sheet's today, counting today (so today and the 29 days before it). The claim also has to count in the live totals, using the same rule as the rest of the screen. So a deferred claim doesn't make someone active. Nor does an open claim dated inside one of the person's holds, unless a statement covers it.\n\n**What changed:**\n- **`features/people/people.ts`:** a new `activeByPerson` calculation works out active for each person. Each row shows it as `person-active` (`yes`/`no`), and the per-grade summary now includes how many active people the grade has.\n- **`features/summary/summary.ts`:** each grade's line gains an `active` number, shown in `summary-grade-<grade>-active`. Like the existing people count, it only covers people who aren't retired and are on that grade today.\n\nEverything else on this screen is already worked out in the browser from the data the server sends, so this needed no server, database or audit-file changes. The test doesn't expect any new audit records either.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.613181,
+        "num_turns": 17,
+        "duration_ms": 210887,
+        "duration_api_ms": 83730,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp67.agent.jsonl",
+  "agent_diff_file": "cp67.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
