@@ -27,14 +27,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
-     *  the policy date is null when it is the sheet's today. */
+     *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
-            LocalDate policyDate) {
+            LocalDate policyDate, LocalDate periodNumberingFrom) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate());
+                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
+                    sheet.getPeriodNumberingFrom());
         }
     }
 
@@ -59,6 +60,10 @@ public class SheetController {
 
     /** The sheet's policy date as the form submits it; a missing one means the sheet's today. */
     public record PolicyDateChange(LocalDate policyDate) {
+    }
+
+    /** The sheet's period numbering from as the form submits it; a missing one means off. */
+    public record PeriodNumberingFromChange(LocalDate periodNumberingFrom) {
     }
 
     private final SheetService sheets;
@@ -127,5 +132,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PolicyDateChange request) {
         return SheetView.of(sheets.setPolicyDate(id, user, request.policyDate()));
+    }
+
+    /** Change the sheet's period numbering from. */
+    @PutMapping("/{id}/settings/period-numbering-from")
+    public SheetView setPeriodNumberingFrom(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PeriodNumberingFromChange request) {
+        return SheetView.of(sheets.setPeriodNumberingFrom(id, user, request.periodNumberingFrom()));
     }
 }

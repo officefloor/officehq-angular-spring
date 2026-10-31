@@ -21,7 +21,7 @@ function isDate(value: string): boolean {
   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
 }
 
-// The sheet's settings: its clerk limit, its floor, its terms, its late percent, its policy date, and the role assigned to each user name.
+// The sheet's settings: its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering from, and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -33,6 +33,7 @@ function isDate(value: string): boolean {
       <p>Terms (days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
       <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
       <p>Policy date: <span data-testid="setting-policy-date-current">{{ sheets.current()?.policyDate ?? '' }}</span></p>
+      <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ sheets.current()?.periodNumberingFrom ?? '' }}</span></p>
 
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
@@ -49,6 +50,9 @@ function isDate(value: string): boolean {
                inputmode="decimal" autocomplete="off" />
         <label for="setting-policy-date">Policy date (a claim dated before it rounds half up, on or after it half to even; blank: today)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate"
+               placeholder="yyyy-mm-dd" autocomplete="off" />
+        <label for="setting-period-numbering-from">Period numbering from (from this day, a claim opened is numbered within its period; blank: off)</label>
+        <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom"
                placeholder="yyyy-mm-dd" autocomplete="off" />
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError(); as err) {
@@ -101,6 +105,7 @@ export class SettingsPanel {
     terms: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
+    periodNumberingFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -131,18 +136,20 @@ export class SettingsPanel {
     this.settingsError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
+    const periodNumberingFromValue = periodNumberingFrom.value.trim();
     // Only the settings changed in the form are saved; with none changed, the clerk limit is saved as it is.
     const saveFloor = floor.dirty;
     const saveTerms = terms.dirty;
     const saveLatePct = latePct.dirty;
     const savePolicyDate = policyDate.dirty;
-    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms && !saveLatePct && !savePolicyDate);
+    const savePeriodNumberingFrom = periodNumberingFrom.dirty;
+    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms && !saveLatePct && !savePolicyDate && !savePeriodNumberingFrom);
     if (saveLimit && limit !== '' && !LIMIT_PATTERN.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -163,12 +170,18 @@ export class SettingsPanel {
       this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
       return;
     }
+    if (savePeriodNumberingFrom && periodNumberingFromValue !== ''
+        && !(DATE_PATTERN.test(periodNumberingFromValue) && isDate(periodNumberingFromValue))) {
+      this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
+      return;
+    }
     const saves: Observable<SheetView>[] = [];
     if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit));
     if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue));
     if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue)));
     if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue));
     if (savePolicyDate) saves.push(this.sheets.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue));
+    if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
     this.savingSettings.set(true);
     concat(...saves).pipe(last()).subscribe({
       next: (saved) => {
@@ -184,7 +197,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in the form, as not yet changed. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '' }, { emitEvent: false });
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '' }, { emitEvent: false });
   }
 
   protected saveRole(): void {

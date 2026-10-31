@@ -18,6 +18,9 @@ export interface SheetView {
   /** The sheet's policy date (yyyy-mm-dd): a claim dated before it rounds half up, one on or after it half to
    *  even; null when it is the sheet's today. */
   policyDate: string | null;
+  /** The sheet's period numbering from (yyyy-mm-dd): while its today is on or after it, a claim opened is
+   *  numbered within its period; null when off. */
+  periodNumberingFrom: string | null;
 }
 
 /** The terms a sheet has until they are changed. */
@@ -77,6 +80,13 @@ export class Sheets {
   setPolicyDate(id: string, policyDate: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/policy-date`, { policyDate })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's period numbering from; null means off. */
+  setPeriodNumberingFrom(id: string, periodNumberingFrom: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/period-numbering-from`, { periodNumberingFrom })
       .pipe(tap((s) => this.active.set(s)));
   }
 

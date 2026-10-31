@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -30,6 +31,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ClaimService {
 
+    /** The prefix of the numbers given within no period. */
+    private static final String NO_PERIOD = "X";
+
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SheetService sheets;
@@ -39,11 +43,13 @@ public class ClaimService {
     private final Rollup rollup;
     private final PeriodRepository periods;
     private final RoleService roles;
+    private final ClaimSequenceRepository sequences;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
-            RoleService roles) {
+            RoleService roles, ClaimSequenceRepository sequences) {
         this.periods = periods;
+        this.sequences = sequences;
         this.roles = roles;
         this.claims = claims;
         this.people = people;
@@ -77,7 +83,7 @@ public class ClaimService {
      *  the person. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         sheets.load(sheetId, user);
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId)
@@ -99,7 +105,7 @@ public class ClaimService {
      *  SETTLED claim of its person. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         sheets.load(sheetId, user);
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -126,7 +132,8 @@ public class ClaimService {
 
     /**
      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
-     * claim gives it the sheet's next number and records who opened it; voiding it keeps its number, which is
+     * claim gives it its next number (the sheet's next, or the next in its period while the sheet numbers per
+     * period) and records who opened it; voiding it keeps its number, which is
      * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
      * at the rate in force on its date of its person's grade in force on that date, as rates are now, with the late charge it has gained
      * added on top, so later rate changes leave it as it is. The user
@@ -161,10 +168,10 @@ public class ClaimService {
             refuseOverClerkLimit(sheet, user, due);
         }
         Rollup.Figures before = rollup.of(sheetId);
-        Integer number = claim.getNumber();
+        String number = claim.getNumber();
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
-            number = sheet.nextClaimNumber();
+            number = nextNumber(sheet, claim.getDate());
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
@@ -186,6 +193,21 @@ public class ClaimService {
         return changed;
     }
 
+    /** The next number for a claim dated on this day, opened now: within its period (<period name>-<n>, or X-<n>
+     *  in no period) while the sheet's period numbering is on by its today, else the sheet's next number. */
+    private String nextNumber(Sheet sheet, LocalDate date) {
+        if (!sheet.numbersPerPeriod()) {
+            return String.valueOf(sheet.nextClaimNumber());
+        }
+        String prefix = periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
+                .filter(p -> p.contains(date)).map(Period::getName).findFirst().orElse(NO_PERIOD);
+        ClaimSequence sequence = sequences.findBySheetIdAndPrefix(sheet.getId(), prefix)
+                .orElseGet(() -> new ClaimSequence(sheet.getId(), prefix));
+        String number = sequence.next();
+        sequences.save(sequence);
+        return number;
+    }
+
     /** Refuse a clerk settling a claim whose due is above the sheet's clerk limit; a steward settles anything,
      *  and a claim with no due is within any limit. */
     private void refuseOverClerkLimit(Sheet sheet, String user, BigDecimal due) {
@@ -201,7 +223,7 @@ public class ClaimService {
 
     /** Refuse a correction (a negative amount) that does not name, by number, a SETTLED claim of the same person,
      *  and a claim that is not a correction but names one. */
-    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -233,7 +255,7 @@ public class ClaimService {
     }
 
     /** An audit line about a claim; one with a number (a void claim keeps the one it had) ends with it. */
-    private static String entry(String event, String user, Person person, Claim claim, Integer number) {
+    private static String entry(String event, String user, Person person, Claim claim, String number) {
         return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
                 + (number == null ? "" : " number=" + number);

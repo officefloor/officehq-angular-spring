@@ -40,10 +40,11 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The claim's number on its sheet, given when it is opened; none while a draft. A void claim keeps
+    /** The claim's number on its sheet, given when it is opened: sheet-wide (1, 2, ...), or within its period
+     *  (P1-1, or X-1 in no period) while the sheet numbers per period; none while a draft. A void claim keeps
      *  the number it had, and that number is never given again. */
     @Column(name = "claim_number")
-    private Integer number;
+    private String number;
 
     /** The due fixed when the claim was settled; none while not settled, or if its grade had no rate then. */
     @Column(name = "settled_due", precision = 14, scale = 2)
@@ -63,12 +64,12 @@ public class Claim {
 
     /** The number of the SETTLED claim of the same person a correction corrects; none on any other claim. */
     @Column(name = "corrects")
-    private Integer corrects;
+    private String corrects;
 
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -97,11 +98,11 @@ public class Claim {
         this.amount = amount;
     }
 
-    public Integer getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Integer corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 
@@ -134,11 +135,11 @@ public class Claim {
         this.status = status;
     }
 
-    public Integer getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Integer number) {
+    public void setNumber(String number) {
         this.number = number;
     }
 

@@ -15,8 +15,9 @@ export interface ClaimView {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The claim's number on its sheet, given when opened; null while a draft or once void. */
-  number: number | null;
+  /** The claim's number on its sheet, given when opened: sheet-wide ("1", "2", ...) or within its period
+   *  ("P1-1", or "X-1" in no period) while the sheet numbers per period; null while a draft. */
+  number: string | null;
   /** The due fixed when the claim was settled, with exactly two decimals; null while it is not
    *  settled, or if its grade had no rate then (its due then follows the rate as an open one does). */
   settledDue: string | null;
@@ -29,7 +30,7 @@ export interface ClaimView {
   statedDue: string | null;
   /** The number of the SETTLED claim of the same person a correction (a negative amount) corrects; null on
    *  any other claim. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */
@@ -69,7 +70,7 @@ export interface ClaimForm {
   amount: string;
   date: string | null;
   note: string;
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** What a quick-add made: the person the claim is for, whether they were added by it, and the claim. */

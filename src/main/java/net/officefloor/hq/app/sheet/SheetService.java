@@ -121,4 +121,16 @@ public class SheetService {
         rollup.recordChanges(id, user, before);
         return saved;
     }
+
+    /** Set the sheet's period numbering from (null: off), starting the sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setPeriodNumberingFrom(from);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=period-numbering-from value=" + (from == null ? "" : from));
+        return saved;
+    }
 }

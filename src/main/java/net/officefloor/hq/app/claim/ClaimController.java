@@ -35,7 +35,7 @@ public class ClaimController {
      * on any other claim).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Integer number, String settledDue, String openedBy, boolean stated, String statedDue, Integer corrects) {
+            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -52,7 +52,7 @@ public class ClaimController {
             @NotNull @Digits(integer = 12, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            Integer corrects) {
+            @Size(max = 120) String corrects) {
     }
 
     /** The status a claim is to move to. */

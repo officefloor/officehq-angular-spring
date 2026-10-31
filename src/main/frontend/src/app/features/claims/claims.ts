@@ -168,7 +168,7 @@ export class PersonClaims {
       return;
     }
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects === null ? '' : String(c.corrects) },
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
       { emitEvent: false });
     this.error.set(null);
   }
@@ -194,7 +194,7 @@ export class PersonClaims {
     // A negative amount is a correction: it must name the number of a settled claim of this person.
     const correction = amount.startsWith('-');
     const corrects = value.corrects.trim();
-    if (correction && !/^\d+$/.test(corrects)) {
+    if (correction && !/^\S{1,120}$/.test(corrects)) {
       this.error.set('A negative amount is a correction: type the number of the settled claim it corrects.');
       return;
     }
@@ -207,7 +207,7 @@ export class PersonClaims {
       this.error.set('Choose a date for the claim, or leave it blank for today.');
       return;
     }
-    const claim = { amount, date: date === '' ? null : date, note: value.note, corrects: correction ? Number(corrects) : null };
+    const claim = { amount, date: date === '' ? null : date, note: value.note, corrects: correction ? corrects : null };
     const id = this.editingId();
     this.saving.set(true);
     const request = id === null ? this.api.add(sheet.id, this.personId(), claim) : this.api.update(sheet.id, id, claim);
