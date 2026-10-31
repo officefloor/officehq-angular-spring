@@ -190,7 +190,8 @@ public class PeriodService {
      * log; a person whose figure is 0.00 gets none, and none are set when the new year's first period was already on
      * the sheet (the year was rolled over before). Refused unless the user is a steward, and when the old year has
      * no periods on the sheet. Kept as the sheet's last rollover, so it can be undone (see {@link #undoRollover}).
-     * Returns the periods made, earliest first.
+     * Then every period of the old year still open (neither closed nor soft-closed) is soft-closed, in start-date
+     * order, as {@link #softClose} would. Returns the periods made, earliest first.
      */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
@@ -232,6 +233,7 @@ public class PeriodService {
         lastRollovers.saveAndFlush(new LastRollover(sheetId, user, sheets.today(sheetId), fy, first.getId(),
                 made.stream().map(Period::getId).collect(Collectors.toSet()), set));
         events.publishEvent(new RolledOver(sheetId, user, fy, made.size()));
+        old.stream().filter(p -> !p.isFixed()).forEach(p -> fix(sheetId, user, p, false, true));
         return made;
     }
 
