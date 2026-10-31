@@ -190,6 +190,13 @@ public class SheetService {
         return record(id, user, Sheet.PROOF_THRESHOLD, from, threshold == null ? null : scaled(threshold), false);
     }
 
+    /** Record the sheet's note threshold (null: none) from a date (null: the sheet's today), starting the sheet if
+     *  it has never been loaded. */
+    @Transactional
+    public Sheet setNoteThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
+        return record(id, user, Sheet.NOTE_THRESHOLD, from, threshold == null ? null : scaled(threshold), false);
+    }
+
     /** Set the roles that may take an action (a comma separated list of clerk and steward; blank: its standing
      *  rule), starting the sheet if it has never been loaded. Not dated. Refused for a role that is neither. */
     @Transactional

@@ -202,6 +202,8 @@ public class ClaimService {
         BigDecimal due = dueNow(sheet, claim, person);
         if (next == ClaimStatus.SETTLED) {
             refuseUnproven(sheet, claim, due);
+        } else if (next == ClaimStatus.OPEN) {
+            refuseUnnoted(sheet, claim, due);
         }
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, due)) {
             next = ClaimStatus.PENDING;
@@ -598,6 +600,17 @@ public class ClaimService {
         if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
                     "A claim whose due is above the proof threshold of " + threshold + " needs a proof first");
+        }
+    }
+
+    /** Refuse to open a claim with an empty note whose due is above the note threshold in force on its date (a claim
+     *  with no due, or on a sheet with no threshold then, needs none). */
+    private static void refuseUnnoted(Sheet sheet, Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheet.noteThresholdOn(claim.getDate());
+        if ((claim.getNote() == null || claim.getNote().isBlank()) && threshold != null && due != null
+                && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
+                    "A claim whose due is above the note threshold of " + threshold + " needs a note first");
         }
     }
 

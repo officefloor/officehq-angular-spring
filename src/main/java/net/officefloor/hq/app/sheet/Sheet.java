@@ -33,6 +33,7 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    public static final String NOTE_THRESHOLD = "note-threshold";
 
     /** The values a sheet starts with, in force before every from-date of their key. */
     static final BigDecimal START_FLOOR = new BigDecimal("1.00");
@@ -64,7 +65,7 @@ public class Sheet {
     private int lastClaimNumber;
 
     /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
-     *  cap, proof-threshold): each in force from its from-date until the next one's of the same key. */
+     *  cap, proof-threshold, note-threshold): each in force from its from-date until the next one's of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
@@ -282,6 +283,17 @@ public class Sheet {
     /** The proof threshold in force on the sheet's today; null means none. */
     public BigDecimal getProofThreshold() {
         return proofThresholdOn(today);
+    }
+
+    /** A claim dated on a day whose due is above the note threshold in force then (two decimals) cannot be opened
+     *  while its note is empty; null means none. */
+    public BigDecimal noteThresholdOn(LocalDate date) {
+        return amountOn(NOTE_THRESHOLD, date, null);
+    }
+
+    /** The note threshold in force on the sheet's today; null means none. */
+    public BigDecimal getNoteThreshold() {
+        return noteThresholdOn(today);
     }
 
     /** A person's due-total is at most this (two decimals), in force on the sheet's today; null means none. */

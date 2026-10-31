@@ -16,6 +16,7 @@ const NO_RATES: readonly RateView[] = [];
 /** Why a claim above the proof threshold is refused a settle or approval. */
 /** The permission matrix action a move to each status is. */
 const STATUS_ACTION: Partial<Record<ClaimStatus, string>> = { OPEN: 'open', SETTLED: 'settle', VOID: 'void' };
+const UNNOTED = 'This claim\'s due is above the note threshold, so it needs a note before it can be opened.';
 const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a proof first.';
 
 @Component({
@@ -338,7 +339,7 @@ export class PersonClaims {
           : err instanceof HttpErrorResponse && err.status === 423
             ? 'This claim is dated inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 428
-              ? UNPROVEN
+              ? status === 'OPEN' ? UNNOTED : UNPROVEN
             : status === 'VOID' && c.status === 'SETTLED'
               ? 'A settled claim can be voided only within 7 days of its settlement.'
             : status === 'SETTLED' && this.deferredOf(c)
@@ -498,6 +499,7 @@ export class PersonClaims {
     this.api.lock(sheet.id, c.id).subscribe({
       next: (locked) => {
         if (this.editingId() === c.id && !this.typedSinceEdit) this.open(locked);
+        else if (this.editingId() === c.id) this.fillUntyped(locked);
         this.saved.emit(locked);
       },
       error: (err: unknown) => {
@@ -521,6 +523,16 @@ export class PersonClaims {
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
       { emitEvent: false });
     this.error.set(null);
+  }
+
+  /** Fill the editor's fields not typed into since the edit button was pressed with the claim's values, keeping
+   *  what was typed. */
+  private fillUntyped(c: ClaimView): void {
+    const values = { amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' };
+    for (const key of Object.keys(values) as (keyof typeof values)[]) {
+      const control = this.form.controls[key];
+      if (control.pristine) control.setValue(values[key], { emitEvent: false });
+    }
   }
 
   /** Close the editor without saving, releasing the claim's lock. */
