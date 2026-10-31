@@ -1,0 +1,64 @@
+{
+  "checkpoint": 237,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp237_today-permission",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "97513a743e9f5402a72b63a7632b9c5b09e07172",
+  "reset_sha": "",
+  "preagent_sha": "e4c7e822b9e853606c46de6aacf756c4bf43d132",
+  "prev_sha": "e4c7e822b9e853606c46de6aacf756c4bf43d132",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5614902,
+    "input_tokens": 92,
+    "output_tokens": 21643,
+    "cache_read_tokens": 2522351,
+    "cache_creation_tokens": 77974,
+    "num_turns": 46,
+    "duration_ms": 1494867,
+    "duration_api_ms": 285320,
+    "model": "claude-opus-5-5",
+    "session_id": "f78a2ee0-c5c0-4519-8618-28f47f78c0a8",
+    "stop_reason": "success",
+    "result_text": "Sheets now have a `perm-today` permission, and all 4 acceptance tests pass with `bin/e2e`, with no exceptions in the app log.\n\n**The change you asked for**\n- **Server:** I added `TODAY` to the permission list (`access/Permission.java`). If the setting is blank, the standing rule applies: clerk, steward and restricted may change today, and a viewer may not. `perm-today` is saved and shown like the other permissions (`access/AccessController.java`), and changing it writes `SETTING_CHANGED key=perm-today value=<roles>` to the audit file.\n- **Refusal:** `PUT /api/sheets/{id}/today` now checks the permission first (`sheet/SheetController.java`). A role that isn't allowed gets a 403 and nothing is written, and the screen shows `sheet-error`.\n- **Front end:** the permission settings have a new \"change the sheet's today\" row with the `setting-perm-today` and `setting-perm-today-current` test ids (`features/access/access.ts`).\n\n**A bug outside the request that I had to fix**\n\"today permission scenario 3\" kept failing on `pool-cut-P2`, even though that scenario never uses `perm-today`. I switched my new check off and it still failed, so the bug was already there.\n\n- **Cause:** when you view a sheet as of a date, the app works out each pool member's cut at the end of every period. Each of those per-period calculations temporarily rewrites the sheet, and the rewrite wasn't undone afterwards. So P1's earlier, empty state was still in place when P2 was calculated, and P2's cuts came out blank.\n- **Fix:** when one of these calculations runs inside another, `asof/SheetPasts.java` now saves the outer view's rows first and puts them back afterwards. `record()` uses the same row snapshot through a small shared helper.\n- **What didn't work:** I first tried database savepoints. Hibernate doesn't support them through Spring here, so I removed that attempt.\n\nThe pool fix touches shared as-of code. It is the change worth reviewing most closely.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5614902,
+        "num_turns": 46,
+        "duration_ms": 1494867,
+        "duration_api_ms": 285320,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp237.agent.jsonl",
+  "agent_diff_file": "cp237.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,238 @@
+diff --git a/src/main/frontend/src/app/features/access/access.ts b/src/main/frontend/src/app/features/access/access.ts
+index f3d9821f4..5b32a4837 100644
+--- a/src/main/frontend/src/app/features/access/access.ts
++++ b/src/main/frontend/src/app/features/access/access.ts
+@@ -69,6 +69,7 @@ interface Settings {
+   permReassign: string | null;
+   permClose: string | null;
+   permReopen: string | null;
++  permToday: string | null;
+   /** The days past a claim's due-by before a claim of grade A, B or C is overdue; null when the grade has none. */
+   graceA: string | null;
+   graceB: string | null;
+@@ -113,16 +114,17 @@ type Dated = (typeof DATED)[number];
+ const NO_FROM: Record<Dated, string> = { clerkLimit: '', floor: '', terms: '', termsA: '', termsB: '', termsC: '', latePct: '', cap: '', proofThreshold: '', noteThreshold: '', reviewThreshold: '', graceA: '', graceB: '', graceC: '', proofThresholdA: '', proofThresholdB: '', proofThresholdC: '', rounding: '', clerkLimitA: '', clerkLimitB: '', clerkLimitC: '' };
+ /** The permission matrix: each action with its setting and the roles that take it when left blank. */
+ const PERMS = [
+-  { action: 'open', field: 'permOpen', standing: 'clerk, steward' },
+-  { action: 'settle', field: 'permSettle', standing: 'clerk, steward' },
+-  { action: 'void', field: 'permVoid', standing: 'clerk, steward' },
+-  { action: 'reassign', field: 'permReassign', standing: 'steward' },
+-  { action: 'close', field: 'permClose', standing: 'clerk, steward' },
+-  { action: 'reopen', field: 'permReopen', standing: 'steward' },
++  { action: 'open', label: 'open', field: 'permOpen', standing: 'clerk, steward' },
++  { action: 'settle', label: 'settle', field: 'permSettle', standing: 'clerk, steward' },
++  { action: 'void', label: 'void', field: 'permVoid', standing: 'clerk, steward' },
++  { action: 'reassign', label: 'reassign', field: 'permReassign', standing: 'steward' },
++  { action: 'close', label: 'close', field: 'permClose', standing: 'clerk, steward' },
++  { action: 'reopen', label: 'reopen', field: 'permReopen', standing: 'steward' },
++  { action: 'today', label: "change the sheet's today", field: 'permToday', standing: 'anyone but a viewer' },
+ ] as const;
+ type Perm = (typeof PERMS)[number]['field'];
+-const NO_PERMS: Record<Perm, string> = { permOpen: '', permSettle: '', permVoid: '', permReassign: '', permClose: '', permReopen: '' };
+-const NO_PERMS_TOUCHED: Record<Perm, boolean> = { permOpen: false, permSettle: false, permVoid: false, permReassign: false, permClose: false, permReopen: false };
++const NO_PERMS: Record<Perm, string> = { permOpen: '', permSettle: '', permVoid: '', permReassign: '', permClose: '', permReopen: '', permToday: '' };
++const NO_PERMS_TOUCHED: Record<Perm, boolean> = { permOpen: false, permSettle: false, permVoid: false, permReassign: false, permClose: false, permReopen: false, permToday: false };
+ const PERM_ROLES = /^\s*(clerk|steward)\s*(,\s*(clerk|steward)\s*)*$/;
+ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+ const DAYS = /^\d{1,5}$/;
+@@ -277,7 +279,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+       <p>Note threshold <strong data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</strong></p>
+       <p>Review threshold <strong data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</strong></p>
+       @for (p of perms; track p.field) {
+-        <p>Roles that may {{ p.action }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
++        <p>Roles that may {{ p.label }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
+       }
+       <form (submit)="saveSettings($event)" aria-label="Save settings">
+         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
+@@ -658,7 +660,7 @@ const ROUNDING = /^(half-up|half-even)$/;
+           (input)="setFrom('reviewThreshold', value($event)); reviewThresholdTouched = true; settingsError.set('')"
+         />
+         @for (p of perms; track p.field) {
+-          <label [for]="'setting-perm-' + p.action">Roles that may {{ p.action }}, comma separated (blank: {{ p.standing }})</label>
++          <label [for]="'setting-perm-' + p.action">Roles that may {{ p.label }}, comma separated (blank: {{ p.standing }})</label>
+           <input
+             [id]="'setting-perm-' + p.action"
+             [attr.data-testid]="'setting-perm-' + p.action"
+@@ -810,7 +812,7 @@ export class Access {
+       this.delegateFrom.set('');
+       this.delegateTo.set('');
+       this.delegateError.set('');
+-      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
++      this.showSettings({ clerkLimit: null, floor: '', terms: '', termsA: null, termsB: null, termsC: null, latePct: '', policyDate: null, periodNumberingFrom: null, graceDays: null, entryDate: null, pot: null, alertThreshold: null, escalateAfter: null, reviewSla: null, pendingSla: null, scoreMid: null, scoreHigh: null, scoreLog: null, maxOpen: null, proofKinds: null, defaultGrade: null, parent: null, fiscalStartMonth: '1', cap: null, proofThreshold: null, noteThreshold: null, reviewThreshold: null, permOpen: null, permSettle: null, permVoid: null, permReassign: null, permClose: null, permReopen: null, permToday: null, graceA: null, graceB: null, graceC: null, proofThresholdA: null, proofThresholdB: null, proofThresholdC: null, rounding: null, clerkLimitA: null, clerkLimitB: null, clerkLimitC: null });
+       this.settingsError.set('');
+       if (sheet) void this.reload(sheet);
+     });
+@@ -1090,7 +1092,7 @@ export class Access {
+     for (const p of PERMS) {
+       const roles = perms[p.field].trim();
+       if (this.permTouched[p.field] && roles !== '' && !PERM_ROLES.test(roles)) {
+-        this.settingsError.set(`Enter the roles that may ${p.action} (clerk, steward), separated by commas, or leave it blank for ${p.standing}.`);
++        this.settingsError.set(`Enter the roles that may ${p.label} (clerk, steward), separated by commas, or leave it blank for ${p.standing}.`);
+         return;
+       }
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/access/AccessController.java b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+index a136b40e9..03f2d9178 100644
+--- a/src/main/java/net/officefloor/hq/app/access/AccessController.java
++++ b/src/main/java/net/officefloor/hq/app/access/AccessController.java
+@@ -67,7 +67,7 @@ public class AccessController {
+     public record SettingsView(String clerkLimit, String floor, String terms, String termsA, String termsB,
+             String termsC, String latePct, String policyDate, String periodNumberingFrom, String graceDays,
+             String cap, String proofThreshold, String noteThreshold, String permOpen, String permSettle, String permVoid, String permReassign,
+-            String permClose, String permReopen, String entryDate, String graceA, String graceB, String graceC,
++            String permClose, String permReopen, String permToday, String entryDate, String graceA, String graceB, String graceC,
+             String proofThresholdA, String proofThresholdB, String proofThresholdC, String pot, String parent,
+             String fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, String escalateAfter, String reviewSla, String pendingSla, String proofKinds,
+             String defaultGrade, String clerkLimitA, String clerkLimitB, String clerkLimitC, String scoreMid,
+@@ -85,6 +85,7 @@ public class AccessController {
+                     perm(dated, Permission.OPEN, today), perm(dated, Permission.SETTLE, today),
+                     perm(dated, Permission.VOID, today), perm(dated, Permission.REASSIGN, today),
+                     perm(dated, Permission.CLOSE, today), perm(dated, Permission.REOPEN, today),
++                    perm(dated, Permission.TODAY, today),
+                     entryDate == null ? null : entryDate.toString(), text(grace(dated, "A", today)),
+                     text(grace(dated, "B", today)), text(grace(dated, "C", today)),
+                     text(dated.gradeProofThreshold("A", today)), text(dated.gradeProofThreshold("B", today)),
+@@ -187,6 +188,7 @@ public class AccessController {
+             @Pattern(regexp = Permission.ROLES) String permReassign,
+             @Pattern(regexp = Permission.ROLES) String permClose,
+             @Pattern(regexp = Permission.ROLES) String permReopen,
++            @Pattern(regexp = Permission.ROLES) String permToday,
+             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String entryDate,
+             @Pattern(regexp = "(\\d{1,5})?") String graceA,
+             @Pattern(regexp = "(\\d{1,5})?") String graceB,
+@@ -304,6 +306,7 @@ public class AccessController {
+         permissions.put(Permission.REASSIGN, form.permReassign());
+         permissions.put(Permission.CLOSE, form.permClose());
+         permissions.put(Permission.REOPEN, form.permReopen());
++        permissions.put(Permission.TODAY, form.permToday());
+         service.setSettings(sheet, user.trim(), clerkLimit, floor, terms, gradeTerms, latePct, form.policyDate(),
+                 form.periodNumberingFrom(), form.graceDays(), gradeGrace, cap, dated(form.proofThreshold(), form.proofThresholdFrom()),
+                 dated(form.noteThreshold(), form.noteThresholdFrom()), permissions, form.entryDate(), gradeProofThreshold,
+diff --git a/src/main/java/net/officefloor/hq/app/access/Permission.java b/src/main/java/net/officefloor/hq/app/access/Permission.java
+index 85f3d2c98..3d9645eaf 100644
+--- a/src/main/java/net/officefloor/hq/app/access/Permission.java
++++ b/src/main/java/net/officefloor/hq/app/access/Permission.java
+@@ -6,7 +6,7 @@ import java.util.Set;
+ /**
+  * An action the sheet's permission matrix governs, with the roles that may take it when the matrix leaves
+  * it blank (the standing rule): open, settle, void and close by clerk and steward; reassign and reopen by
+- * steward. Its setting key is perm-&lt;action&gt;, its value a comma separated list of roles.
++ * steward; change the sheet's today by anyone but a viewer. Its setting key is perm-&lt;action&gt;, its value a comma separated list of roles.
+  */
+ public enum Permission {
+     OPEN(EnumSet.of(Role.CLERK, Role.STEWARD)),
+@@ -14,7 +14,8 @@ public enum Permission {
+     VOID(EnumSet.of(Role.CLERK, Role.STEWARD)),
+     REASSIGN(EnumSet.of(Role.STEWARD)),
+     CLOSE(EnumSet.of(Role.CLERK, Role.STEWARD)),
+-    REOPEN(EnumSet.of(Role.STEWARD));
++    REOPEN(EnumSet.of(Role.STEWARD)),
++    TODAY(EnumSet.of(Role.CLERK, Role.STEWARD));
+ 
+     /** A permission value as written: blank, or roles separated by commas. */
+     public static final String ROLES = "(\\s*(clerk|steward)\\s*(,\\s*(clerk|steward)\\s*)*)?";
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+index 1f56f5c95..07ca79019 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetPasts.java
+@@ -108,15 +108,24 @@ public class SheetPasts {
+     /** Write the sheet down as it stands now, as at the end of the day given (the today it is leaving). */
+     @Transactional
+     public void record(String sheetId, LocalDate day) {
++        Rows rows = rows(sheetId);
++        if (rows == null) {
++            return;
++        }
++        pasts.saveAndFlush(new SheetPast(sheetId, day, json.writeValueAsString(rows)));
++    }
++
++    /** Every row of the sheet as it stands now; null when it was never started. */
++    private Rows rows(String sheetId) {
+         List<Map<String, String>> sheet = select("SHEET", "id = ?", sheetId);
+         if (sheet.isEmpty()) {
+-            return;
++            return null;
+         }
+         Map<String, List<Map<String, String>>> tables = new LinkedHashMap<>();
+         for (Scope scope : TABLES) {
+             tables.put(scope.table(), select(scope.table(), scope.where(), sheetId));
+         }
+-        pasts.saveAndFlush(new SheetPast(sheetId, day, json.writeValueAsString(new Rows(sheet.get(0), tables))));
++        return new Rows(sheet.get(0), tables);
+     }
+ 
+     /**
+@@ -125,12 +134,20 @@ public class SheetPasts {
+      */
+     public <T> T asOf(String sheetId, LocalDate date, Supplier<T> read) {
+         ReentrantLock lock = shown.computeIfAbsent(sheetId, k -> new ReentrantLock());
++        boolean within = lock.isHeldByCurrentThread();
+         lock.lock();
+         try {
+             return rolledBack.execute(status -> {
+                 status.setRollbackOnly();
++                // within another as-of read (a pool's cuts at each period's end, in an as-of view) the sheet that
++                // read shows is put back afterwards, as the transaction they share is rolled back only at its end
++                Rows shownBefore = within ? rows(sheetId) : null;
+                 put(sheetId, date);
+-                return read.get();
++                T result = read.get();
++                if (shownBefore != null) {
++                    restore(sheetId, shownBefore);
++                }
++                return result;
+             });
+         } finally {
+             lock.unlock();
+@@ -186,6 +203,19 @@ public class SheetPasts {
+         jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", date, sheetId);
+     }
+ 
++    /** Put every row of the sheet back as they were read ({@link #rows}), its today with them. */
++    private void restore(String sheetId, Rows rows) {
++        for (int i = TABLES.size() - 1; i >= 0; i--) {
++            Scope scope = TABLES.get(i);
++            jdbc.update("DELETE FROM " + scope.table() + " WHERE " + scope.where(), sheetId);
++        }
++        putSheet(sheetId, rows.sheet());
++        for (Scope scope : TABLES) {
++            rows.tables().getOrDefault(scope.table(), List.of()).forEach(row -> insert(scope.table(), row));
++        }
++        jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", rows.sheet().get("TODAY"), sheetId);
++    }
++
+     /** The sheet's own row as it was. */
+     private void putSheet(String sheetId, Map<String, String> row) {
+         List<String> names = columns("SHEET").stream().map(Column::name)
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 39ab9e4ed..311174178 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.access.AccessService;
++import net.officefloor.hq.app.access.Permission;
++import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /** Sheet endpoints. The signed-in user's name comes in the {@code X-User} header. */
+ @RestController
+@@ -71,6 +74,9 @@ public class SheetController {
+     @PutMapping("/{id}/today")
+     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
+             @RequestHeader("X-User") @NotBlank String user, @Valid @RequestBody TodayChange change) {
++        if (!access.allows(id.trim(), user.trim(), Permission.TODAY)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not change the sheet's today.");
++        }
+         return view(service.setToday(id.trim(), user.trim(), change.today()));
+     }
+ 
