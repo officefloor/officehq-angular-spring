@@ -1,0 +1,64 @@
+{
+  "checkpoint": 75,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp75_bulk-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "72606eabf7650e417b1368ca3b3f19f1048f13f5",
+  "reset_sha": "",
+  "preagent_sha": "42ce620373739e51283c14cc88397d5ee9c89143",
+  "prev_sha": "42ce620373739e51283c14cc88397d5ee9c89143",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0607494,
+    "input_tokens": 10,
+    "output_tokens": 920,
+    "cache_read_tokens": 338834,
+    "cache_creation_tokens": 3699,
+    "num_turns": 4,
+    "duration_ms": 11405,
+    "duration_api_ms": 93340,
+    "model": "claude-opus-5-5",
+    "session_id": "7c575370-a861-47ee-842b-20306139dd8e",
+    "stop_reason": "success",
+    "result_text": "You can now select people and give them a grade together. `bin/e2e` passes all 4 tests in the spec (the main \"bulk grade\" test and scenarios 1\u20133).\n\n**Server** (`person/PersonController.java`): a new `POST /api/sheets/{sheetId}/people/bulk-grade` takes the selected ids, a grade and an optional from-date. It goes through the sheet's people in list order and runs each selected one through the same `PersonService.update` the person form uses, keeping their name and terms. That means each person writes the same `PERSON_EDITED` line and rollup lines as an edit in the form would, and a blank from-date takes the sheet's today. It returns how many people were changed and their saved values. No database change was needed.\n\n**Front end** (`core/people.ts`, `features/people/people.ts`):\n- Each person's row has a `person-select` checkbox.\n- The grade picker (`bulk-grade`), from-date (`bulk-grade-from`) and button (`bulk-grade-apply`) sit above the list.\n- After the action, the count shows in `bulk-graded`. It is cleared while a new press runs and on every sheet reload.\n- After a successful run the selection is cleared and the changed rows update in place.\n\nThings that behave in ways you might not assume:\n- **Viewers and archived sheets:** the existing guards stay in front of the new endpoint, so the whole action is refused. The front end then shows the refusal as `person-error` on the first selected person's row. This differs from the claim bulk actions, which go through with every item refused.\n- **Someone else saved a person mid-run:** that person is skipped and not counted, and the rest still go through.\n- **No partial rollback:** each person is saved in its own transaction, as separate form edits would be. If an unexpected error stopped the run partway, people already graded would stay changed.\n\nNone of these three cases is covered by the spec.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0607494,
+        "num_turns": 4,
+        "duration_ms": 11405,
+        "duration_api_ms": 93340,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp75.agent.jsonl",
+  "agent_diff_file": "cp75.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
