@@ -2,6 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
 export interface ClaimView {
   id: number;
   personId: number;
@@ -10,6 +13,12 @@ export interface ClaimView {
   /** yyyy-mm-dd */
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+/** Only OPEN and SETTLED claims count toward what is claimed and due. */
+export function counts(c: ClaimView): boolean {
+  return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
 /** A claim as the form submits it: a blank date takes the sheet's today. */
@@ -48,6 +57,10 @@ export class Claims {
 
   update(sheetId: string, id: number, claim: ClaimForm): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}`, claim);
+  }
+
+  changeStatus(sheetId: string, id: number, status: ClaimStatus): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/status`, { status });
   }
 
   private base(sheetId: string): string {

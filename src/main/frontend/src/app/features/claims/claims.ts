@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, money } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, counts, money } from '../../core/claims';
 import { NOT_AVAILABLE, dueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 
@@ -37,11 +37,21 @@ import { Sheets } from '../../core/sheet';
           on <span data-testid="claim-date">{{ c.date }}</span>
           — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span data-testid="claim-status">{{ c.status }}</span>
+          <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
+                  [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+          <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
+                  [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+          <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'VOID')"
+                  [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
           } @else {
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
                     [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+          }
+          @if (claimError()?.id === c.id) {
+            <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
         </li>
       }
@@ -60,10 +70,12 @@ export class PersonClaims {
   readonly rate = input<string | undefined>();
   readonly saved = output<ClaimView>();
 
-  protected readonly claimed = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimed = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** The error of the last action taken on a claim's row, until the next action on that row. */
+  protected readonly claimError = signal<{ id: number; message: string } | null>(null);
 
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
@@ -81,11 +93,22 @@ export class PersonClaims {
     return rate === undefined ? NOT_AVAILABLE : money(dueCents(cents(c.amount), rate));
   }
 
+  protected changeStatus(c: ClaimView, status: ClaimStatus): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.api.changeStatus(sheet.id, c.id, status).subscribe({
+      next: (saved) => this.saved.emit(saved),
+      error: () => this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot become ${status}.` }),
+    });
+  }
+
   protected fieldId(field: string): string {
     return `claim-form-${field}-${this.personId()}`;
   }
 
   protected edit(c: ClaimView): void {
+    this.claimError.set(null);
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
     this.error.set(null);

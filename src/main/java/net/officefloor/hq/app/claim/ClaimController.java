@@ -27,11 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as the screen shows it; the amount is given with exactly two decimals. */
-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote());
+                    claim.getDate(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -40,6 +40,10 @@ public class ClaimController {
             @NotNull @DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 1000) String note) {
+    }
+
+    /** The status a claim is to move to. */
+    public record StatusChange(@NotNull ClaimStatus status) {
     }
 
     private final ClaimService claims;
@@ -70,5 +74,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm request) {
         return ClaimView.of(claims.update(sheetId, user, id, request.amount(), request.date(), request.note()));
+    }
+
+    @PutMapping("/claims/{id}/status")
+    public ClaimView changeStatus(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody StatusChange request) {
+        return ClaimView.of(claims.changeStatus(sheetId, user, id, request.status()));
     }
 }

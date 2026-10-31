@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { ClaimView, Claims, cents, money } from '../../core/claims';
+import { ClaimView, Claims, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
 import { NOT_AVAILABLE, Rates, dueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
@@ -73,14 +73,14 @@ export class PeopleList {
     for (const c of this.claims()) byPerson.set(c.personId, [...(byPerson.get(c.personId) ?? []), c]);
     return byPerson;
   });
-  protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** Each person's due-total in whole cents: their claimed times their grade's rate; null when it has none. */
   private readonly dueByPerson = computed(() => {
     const rates = this.rates.byGrade();
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
       const rate = rates.get(p.grade);
-      const claimed = this.claimsOf(p.id).reduce((sum, c) => sum + cents(c.amount), 0);
+      const claimed = this.claimsOf(p.id).filter(counts).reduce((sum, c) => sum + cents(c.amount), 0);
       byPerson.set(p.id, rate === undefined ? null : dueCents(claimed, rate));
     }
     return byPerson;
