@@ -1,0 +1,518 @@
+diff --git a/src/main/frontend/src/app/core/holidays.ts b/src/main/frontend/src/app/core/holidays.ts
+new file mode 100644
+index 000000000..9481e962a
+--- /dev/null
++++ b/src/main/frontend/src/app/core/holidays.ts
+@@ -0,0 +1,37 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { Observable, tap } from 'rxjs';
++
++/** A holiday on the sheet: a claim's due-by fixed at its creation is moved past it. */
++export interface HolidayView {
++  id: number;
++  date: string;
++}
++
++// The holidays on the active sheet, earliest first.
++@Injectable({ providedIn: 'root' })
++export class Holidays {
++  private readonly http = inject(HttpClient);
++  private readonly list = signal<HolidayView[]>([]);
++  readonly all = this.list.asReadonly();
++
++  /** Re-read a sheet's holidays from the store; null clears them. */
++  load(sheetId: string | null): Observable<HolidayView[]> | null {
++    this.list.set([]);
++    if (sheetId === null) return null;
++    return this.http.get<HolidayView[]>(this.base(sheetId)).pipe(tap((list) => this.list.set(list)));
++  }
++
++  /** Add a holiday; refused when the date is already on the list. */
++  add(sheetId: string, date: string): Observable<HolidayView> {
++    return this.http.post<HolidayView>(this.base(sheetId), { date }).pipe(
++      tap((saved) =>
++        this.list.update((list) => [...list, saved].sort((a, b) => a.date.localeCompare(b.date))),
++      ),
++    );
++  }
++
++  private base(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}/holidays`;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/holidays/holidays.ts b/src/main/frontend/src/app/features/holidays/holidays.ts
+new file mode 100644
+index 000000000..872a89c32
+--- /dev/null
++++ b/src/main/frontend/src/app/features/holidays/holidays.ts
+@@ -0,0 +1,81 @@
++import { Component, inject, signal } from '@angular/core';
++import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { EMPTY, switchMap } from 'rxjs';
++import { Holidays } from '../../core/holidays';
++import { Sheets } from '../../core/sheet';
++
++/** A date the form accepts: yyyy-mm-dd. */
++const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
++
++// The sheet's holidays: a claim whose date plus its terms falls on one is due by the next day that is not a holiday.
++@Component({
++  selector: 'app-holidays',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="holidays-heading">
++      <h3 id="holidays-heading">Holidays</h3>
++      <p>A claim made while a date is on this list is not due by it, but by the next day that is not a holiday.</p>
++      <ul aria-label="Holidays">
++        @for (h of holidays.all(); track h.id) {
++          <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date }}</li>
++        }
++      </ul>
++
++      <form [formGroup]="form" (ngSubmit)="add()" aria-label="Add a holiday">
++        <label for="holiday-date">Holiday</label>
++        <input id="holiday-date" type="date" data-testid="holiday-date" formControlName="date" />
++        <button type="submit" data-testid="holiday-add" [disabled]="saving()">Add holiday</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="holiday-error">{{ err }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class HolidaysPanel {
++  protected readonly holidays = inject(Holidays);
++  private readonly sheets = inject(Sheets);
++
++  protected readonly error = signal<string | null>(null);
++  protected readonly saving = signal(false);
++  protected readonly form = new FormGroup({
++    date: new FormControl('', { nonNullable: true }),
++  });
++
++  constructor() {
++    // Each (re)load of a sheet re-reads its holidays from the store.
++    toObservable(this.sheets.loaded)
++      .pipe(
++        switchMap((sheet) => {
++          this.error.set(null);
++          return this.holidays.load(sheet?.id ?? null) ?? EMPTY;
++        }),
++        takeUntilDestroyed(),
++      )
++      .subscribe({ error: () => this.error.set('Could not read the holidays.') });
++    // An error is removed as soon as its form is changed.
++    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
++  }
++
++  protected add(): void {
++    // A second submit before the first has answered is ignored, so it stores one holiday.
++    if (this.saving()) return;
++    this.error.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const date = this.form.controls.date.value.trim();
++    if (!DATE_PATTERN.test(date)) {
++      this.error.set('Choose the date of the holiday.');
++      return;
++    }
++    this.saving.set(true);
++    this.holidays.add(sheet.id, date).subscribe({
++      next: () => this.saving.set(false),
++      error: () => {
++        this.saving.set(false);
++        this.error.set('Could not add the holiday: that date may already be on the list.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 470e5097a..425f21db7 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
+ import { Session } from '../../core/session';
+ import { Sheets } from '../../core/sheet';
+ import { DelegationsPanel } from '../delegations/delegations';
++import { HolidaysPanel } from '../holidays/holidays';
+ import { PeopleList } from '../people/people';
+ import { RatesPanel } from '../rates/rates';
+ import { SettingsPanel } from '../settings/settings';
+@@ -10,7 +11,7 @@ import { SettingsPanel } from '../settings/settings';
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel],
++  imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -55,6 +56,7 @@ import { SettingsPanel } from '../settings/settings';
+         <app-rates />
+         <app-settings />
+         <app-delegations />
++        <app-holidays />
+         <app-people />
+       } @else {
+         <p data-testid="sheet-none">Load a sheet to begin.</p>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dca56326f..06b7bddad 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -10,6 +10,7 @@ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodRepository;
+@@ -49,10 +50,13 @@ public class ClaimService {
+     private final RoleService roles;
+     private final ClaimSequenceRepository sequences;
+     private final WatchService watches;
++    private final HolidayService holidays;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
+             SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
+-            RoleService roles, ClaimSequenceRepository sequences, WatchService watches) {
++            RoleService roles, ClaimSequenceRepository sequences, WatchService watches,
++            HolidayService holidays) {
++        this.holidays = holidays;
+         this.watches = watches;
+         this.periods = periods;
+         this.sequences = sequences;
+@@ -85,7 +89,8 @@ public class ClaimService {
+     }
+ 
+     /** Add a claim for a person; a missing date takes the sheet's entry date while set, else its today, a missing note is empty. Its period is the one its due-by
+-     *  (its date plus the terms it gets) is in: one due by inside a soft-closed period is a late entry. Refused
++     *  (its date plus the terms it gets, moved past
++     *  the sheet's holidays) is in: one due by inside a soft-closed period is a late entry. Refused
+      *  when its due-by is inside a closed period, or when it is a correction that does not name a SETTLED claim of
+      *  the person. */
+     @Transactional
+@@ -97,7 +102,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+         LocalDate claimDate = date != null ? date : sheet.defaultClaimDate();
+-        LocalDate dueBy = claimDate.plusDays(termsOf(sheet, person, claimDate));
++        LocalDate dueBy = holidays.pastHolidays(sheetId, claimDate.plusDays(termsOf(sheet, person, claimDate)));
+         refuseIfClosed(sheetId, dueBy);
+         refuseIfRetired(person, claimDate);
+         refuseUnlessCorrects(sheetId, personId, amount, corrects);
+@@ -530,7 +535,7 @@ public class ClaimService {
+         claim.unbind();
+         Claim original = claims.saveAndFlush(claim);
+         LocalDate date = original.getDate();
+-        LocalDate dueBy = date.plusDays(termsOf(sheet, person, date));
++        LocalDate dueBy = holidays.pastHolidays(sheetId, date.plusDays(termsOf(sheet, person, date)));
+         Claim added = new Claim(sheetId, person.getId(), part, date, dueBy, original.getNote(), null,
+                 claims.lastListed(sheetId) + 1);
+         added.openAsSplit(nextNumber(sheet, dueBy), user, original.getNumber());
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index 0800e992a..c882ddf01 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -20,6 +20,8 @@ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateController.RateView;
+ import net.officefloor.hq.app.rate.RateRepository;
++import net.officefloor.hq.app.holiday.HolidayController.HolidayView;
++import net.officefloor.hq.app.holiday.HolidayRepository;
+ import net.officefloor.hq.app.role.DelegationController.DelegationView;
+ import net.officefloor.hq.app.role.DelegationRepository;
+ import net.officefloor.hq.app.role.RoleController.RoleView;
+@@ -60,12 +62,13 @@ public class SheetHistory {
+     private final WatchRepository watches;
+     private final RoleRepository roles;
+     private final DelegationRepository delegations;
++    private final HolidayRepository holidays;
+     private final JsonMapper json;
+ 
+     public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateRepository rates,
+             PersonRepository people, ClaimRepository claims, PeriodRepository periods, StatementRepository statements,
+             PatronRepository patrons, WatchRepository watches, RoleRepository roles, DelegationRepository delegations,
+-            JsonMapper json) {
++            HolidayRepository holidays, JsonMapper json) {
+         this.snapshots = snapshots;
+         this.sheets = sheets;
+         this.rates = rates;
+@@ -77,6 +80,7 @@ public class SheetHistory {
+         this.watches = watches;
+         this.roles = roles;
+         this.delegations = delegations;
++        this.holidays = holidays;
+         this.json = json;
+     }
+ 
+@@ -131,7 +135,8 @@ public class SheetHistory {
+                 patrons.findBySheetIdOrderByIdAsc(sheetId).stream().map(PatronView::of).toList(),
+                 watched,
+                 roles.findBySheetIdOrderByUserName(sheetId).stream().map(RoleView::of).toList(),
+-                delegations.findBySheetIdOrderByIdAsc(sheetId).stream().map(DelegationView::of).toList());
++                delegations.findBySheetIdOrderByIdAsc(sheetId).stream().map(DelegationView::of).toList(),
++                holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(HolidayView::of).toList());
+         SheetState state = SheetState.of(sheet, sheetRates, sheetPeople, sheetClaims, views);
+         snapshots.deleteBySheetIdAndAsOf(sheetId, sheet.getToday());
+         snapshots.saveAndFlush(new SheetSnapshot(sheetId, sheet.getToday(), json.writeValueAsString(state)));
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+index 7718ce72c..cd64e7317 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetState.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -11,6 +11,7 @@ import net.officefloor.hq.app.patron.PatronController.PatronView;
+ import net.officefloor.hq.app.period.PeriodController.PeriodView;
+ import net.officefloor.hq.app.person.PersonController.PersonView;
+ import net.officefloor.hq.app.rate.RateController.RateView;
++import net.officefloor.hq.app.holiday.HolidayController.HolidayView;
+ import net.officefloor.hq.app.role.DelegationController.DelegationView;
+ import net.officefloor.hq.app.role.RoleController.RoleView;
+ import net.officefloor.hq.app.statement.StatementController.SummaryView;
+@@ -34,11 +35,12 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
+     public record Views(List<PersonView> people, List<ClaimView> claims, List<RateView> rates,
+             List<PeriodView> periods, List<SummaryView> statements, List<PatronView> patrons,
+-            Map<String, List<Long>> watches, List<RoleView> roles, List<DelegationView> delegations) {
++            Map<String, List<Long>> watches, List<RoleView> roles, List<DelegationView> delegations,
++            List<HolidayView> holidays) {
+ 
+         /** Nothing: a sheet as it stood before any change was made on it. */
+         public static final Views NONE = new Views(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+-                Map.of(), List.of(), List.of());
++                Map.of(), List.of(), List.of(), List.of());
+     }
+ 
+     public record SettingState(String key, LocalDate from, String value) {
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/Holiday.java b/src/main/java/net/officefloor/hq/app/holiday/Holiday.java
+new file mode 100644
+index 000000000..56847b8e8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/Holiday.java
+@@ -0,0 +1,46 @@
++package net.officefloor.hq.app.holiday;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A holiday on a sheet: a claim whose due-by, when fixed at its creation, falls on it is due by the next day that
++ *  is not a holiday. */
++@Entity
++@Table(name = "holiday")
++public class Holiday {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "holiday_date", nullable = false)
++    private LocalDate date;
++
++    protected Holiday() {
++    }
++
++    public Holiday(String sheetId, LocalDate date) {
++        this.sheetId = sheetId;
++        this.date = date;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java
+new file mode 100644
+index 000000000..4069ec23f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java
+@@ -0,0 +1,65 @@
++package net.officefloor.hq.app.holiday;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.history.SheetHistory;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The holidays on a sheet. The caller's signed-in name comes in the {@code X-User} header. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/holidays")
++public class HolidayController {
++
++    /** A holiday as the screen shows it. */
++    public record HolidayView(long id, LocalDate date) {
++
++        public static HolidayView of(Holiday h) {
++            return new HolidayView(h.getId(), h.getDate());
++        }
++    }
++
++    /** A holiday as the form submits it. */
++    public record HolidayForm(@NotNull LocalDate date) {
++    }
++
++    private final HolidayService holidays;
++    private final SheetHistory history;
++
++    public HolidayController(HolidayService holidays, SheetHistory history) {
++        this.holidays = holidays;
++        this.history = history;
++    }
++
++    @GetMapping
++    public List<HolidayView> list(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        if (asOf != null) {
++            List<HolidayView> then = history.viewsAsOf(sheetId, asOf).holidays();
++            return then != null ? then : List.of();
++        }
++        return holidays.list(sheetId).stream().map(HolidayView::of).toList();
++    }
++
++    @PostMapping
++    public HolidayView add(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody HolidayForm request) {
++        return HolidayView.of(holidays.add(sheetId, user, request.date()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayRepository.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayRepository.java
+new file mode 100644
+index 000000000..981ebe20e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.holiday;
++
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface HolidayRepository extends JpaRepository<Holiday, Long> {
++
++    List<Holiday> findBySheetIdOrderByDateAsc(String sheetId);
++
++    boolean existsBySheetIdAndDate(String sheetId, LocalDate date);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+new file mode 100644
+index 000000000..c3634b202
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -0,0 +1,70 @@
++package net.officefloor.hq.app.holiday;
++
++import java.time.LocalDate;
++import java.util.List;
++import java.util.Set;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The holidays on a sheet. */
++@Service
++public class HolidayService {
++
++    private final HolidayRepository holidays;
++    private final SheetService sheets;
++    private final SheetRepository sheetStore;
++    private final Audit audit;
++
++    public HolidayService(HolidayRepository holidays, SheetService sheets, SheetRepository sheetStore, Audit audit) {
++        this.holidays = holidays;
++        this.sheets = sheets;
++        this.sheetStore = sheetStore;
++        this.audit = audit;
++    }
++
++    /** The sheet's holidays, earliest first. */
++    @Transactional(readOnly = true)
++    public List<Holiday> list(String sheetId) {
++        return holidays.findBySheetIdOrderByDateAsc(sheetId);
++    }
++
++    /** Add a holiday to the sheet; refused when the date is already on its list. Claims already made keep their
++     *  due-by. */
++    @Transactional
++    public Holiday add(String sheetId, String user, LocalDate date) {
++        sheets.load(sheetId, user);
++        sheetStore.findLockedById(sheetId).orElseThrow();
++        if (holidays.existsBySheetIdAndDate(sheetId, date)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That date is already a holiday");
++        }
++        Holiday saved;
++        try {
++            saved = holidays.saveAndFlush(new Holiday(sheetId, date));
++        } catch (DataIntegrityViolationException raced) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That date is already a holiday");
++        }
++        audit.recordChangeOnCommit(sheetId, user, "HOLIDAY_ADDED sheet=" + sheetId + " by=" + user
++                + " date=" + saved.getDate());
++        return saved;
++    }
++
++    /** The day a claim is due by when its date plus its terms is {@code day}: the first day from it on that is not
++     *  one of the sheet's holidays now. */
++    @Transactional(readOnly = true)
++    public LocalDate pastHolidays(String sheetId, LocalDate day) {
++        Set<LocalDate> dates = holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(Holiday::getDate)
++                .collect(Collectors.toSet());
++        LocalDate due = day;
++        while (dates.contains(due)) {
++            due = due.plusDays(1);
++        }
++        return due;
++    }
++}
+diff --git a/src/main/resources/db/migration/V51__holiday.sql b/src/main/resources/db/migration/V51__holiday.sql
+new file mode 100644
+index 000000000..45950edbd
+--- /dev/null
++++ b/src/main/resources/db/migration/V51__holiday.sql
+@@ -0,0 +1,8 @@
++-- The holidays on a sheet: a claim's due-by fixed at its creation is moved past them. Each date is on a sheet's
++-- list at most once. Ids rise in the order holidays were added.
++CREATE TABLE holiday (
++    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id     VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    holiday_date DATE         NOT NULL
++);
++CREATE UNIQUE INDEX holiday_sheet_date ON holiday (sheet_id, holiday_date);
