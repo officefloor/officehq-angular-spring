@@ -10,7 +10,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /** People on a sheet. The caller's signed-in name comes in the {@code X-User} header. */
 @RestController
@@ -82,6 +86,17 @@ public class PersonController {
     public record Retirement(LocalDate from) {
     }
 
+    /** People selected to be given a grade together, from {@code from} (missing: the sheet's today). */
+    public record BulkGrade(
+            @NotNull @Size(max = 1000) List<@NotNull Long> ids,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {
+    }
+
+    /** What a bulk grade did: how many people it changed, and those people as saved, in list order. */
+    public record BulkGradeView(int changed, List<PersonView> people) {
+    }
+
     private final PersonService people;
     private final SheetHistory history;
 
@@ -119,6 +134,32 @@ public class PersonController {
         Person edited = people.update(sheetId, user, id, request.version(), request.name(), request.grade(),
                 request.gradeFrom(), request.terms());
         return PersonView.of(edited, people.today(sheetId));
+    }
+
+    /**
+     * Give the selected people a grade together: each, in list order, gets it from the date given as an edit of
+     * them in the person form would, keeping their name and terms; one not on the sheet, or saved by someone else
+     * meanwhile, is skipped.
+     */
+    @PostMapping("/bulk-grade")
+    public BulkGradeView bulkGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkGrade request) {
+        Set<Long> selected = new HashSet<>(request.ids());
+        List<PersonView> changed = new ArrayList<>();
+        for (Person person : people.list(sheetId)) {
+            if (selected.contains(person.getId())) {
+                try {
+                    Person edited = people.update(sheetId, user, person.getId(), person.getVersion(),
+                            person.getName(), request.grade(), request.from(), person.getTerms());
+                    changed.add(PersonView.of(edited, people.today(sheetId)));
+                } catch (ResponseStatusException refusal) {
+                    // Saved by someone else meanwhile: theirs stands, and this person is not changed.
+                }
+            }
+        }
+        return new BulkGradeView(changed.size(), changed);
     }
 
     @PostMapping("/{id}/retire")

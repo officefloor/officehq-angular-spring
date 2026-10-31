@@ -52,6 +52,12 @@ export interface PersonEdit extends PersonForm {
   gradeFrom: string | null;
 }
 
+/** What a bulk grade did: how many people it changed, and those people as saved. */
+export interface BulkGradeView {
+  changed: number;
+  people: PersonView[];
+}
+
 /** The person's grade in force on `date` (yyyy-mm-dd): the one with the latest from-date on or before it. */
 export function gradeOn(p: Pick<PersonView, 'grade' | 'grades'>, date: string): Grade {
   let inForce: GradeFrom | undefined;
@@ -89,6 +95,11 @@ export class People {
   /** Put the person on hold from `from` (null takes the sheet's today) to `to` (null: no end). */
   hold(sheetId: string, id: number, from: string | null, to: string | null): Observable<PersonView> {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/hold`, { from, to });
+  }
+
+  /** Give the selected people `grade` from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */
+  bulkGrade(sheetId: string, ids: readonly number[], grade: Grade, from: string | null): Observable<BulkGradeView> {
+    return this.http.post<BulkGradeView>(`${this.base(sheetId)}/bulk-grade`, { ids, grade, from });
   }
 
   private base(sheetId: string): string {

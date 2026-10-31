@@ -146,9 +146,26 @@ function csvField(value: string): string {
         }
       </p>
 
+      <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade the selected people">
+        <label for="bulk-grade">Grade</label>
+        <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">from</label>
+        <input id="bulk-grade-from" type="date" data-testid="bulk-grade-from" formControlName="from" />
+        <button type="submit" data-testid="bulk-grade-apply" [disabled]="bulkGrading()">Grade selected people</button>
+        @if (bulkGraded() !== null) {
+          Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span>
+        }
+      </form>
+
       <ul data-testid="person-list">
         @for (p of listed(); track p.id) {
           <li [attr.data-testid]="'person-row-' + p.id">
+            <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
+                   (change)="togglePerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
             <span data-testid="person-name">{{ p.name }}</span>
             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
             — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
@@ -259,6 +276,17 @@ export class PeopleList {
   protected readonly bulkSettleError = signal<string | null>(null);
   /** Whether a bulk settle is running, so a second press waits for the first. */
   protected readonly bulkSettling = signal(false);
+  /** The ids of the people selected for a bulk action. */
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  /** How many people the last bulk grade changed; null while one runs or before any. */
+  protected readonly bulkGraded = signal<number | null>(null);
+  /** Whether a bulk grade is running, so a second press waits for the first. */
+  protected readonly bulkGrading = signal(false);
+  /** The grade to give the selected people, and the date it is from (blank takes the sheet's today). */
+  protected readonly bulkGradeForm = new FormGroup({
+    grade: new FormControl<Grade>('A', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+  });
   /** Each person's statements, by person; one with none is missing. */
   private readonly statements = signal<Map<number, StatementSummary>>(new Map());
   /** The person whose statement is being taken, so a second press waits for the first. */
@@ -471,6 +499,9 @@ export class PeopleList {
           this.people.set([]);
           this.claims.set([]);
           this.selectedClaims.set(new Set());
+          this.selectedPeople.set(new Set());
+          this.bulkGraded.set(null);
+          this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
           this.bulkOpenResult.set(null);
           this.bulkOpenError.set(null);
           this.bulkSettleResult.set(null);
@@ -738,6 +769,42 @@ export class PeopleList {
       if (selected) next.add(id);
       else next.delete(id);
       return next;
+    });
+  }
+
+  protected togglePerson(id: number, selected: boolean): void {
+    this.selectedPeople.update((ids) => {
+      const next = new Set(ids);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Give the selected people the chosen grade together, in list order, each as an edit in the person form would. */
+  protected bulkGrade(): void {
+    if (this.bulkGrading()) return;
+    this.bulkGraded.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const ids = this.people().map((p) => p.id).filter((id) => this.selectedPeople().has(id));
+    const first = ids[0];
+    if (first !== undefined) this.clearPersonError(first);
+    const { grade, from } = this.bulkGradeForm.getRawValue();
+    this.bulkGrading.set(true);
+    this.api.bulkGrade(sheet.id, ids, grade, from === '' ? null : from).subscribe({
+      next: ({ changed, people }) => {
+        this.bulkGrading.set(false);
+        const byId = new Map(people.map((p) => [p.id, p]));
+        this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
+        this.selectedPeople.set(new Set());
+        this.bulkGraded.set(changed);
+      },
+      error: () => {
+        this.bulkGrading.set(false);
+        // The refusal shows on the first selected person's row.
+        if (first !== undefined) this.personError.set({ id: first, message: 'Could not grade the selected people.' });
+      },
     });
   }
 
