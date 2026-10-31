@@ -1,0 +1,64 @@
+{
+  "checkpoint": 54,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp54_viewer-role",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A third role, viewer, can be assigned. A viewer sees every screen and figure and can change nothing:\nevery form submission and every action, including changing the sheet's today, a statement, a hold\nand the paste box, is refused with its usual error, writes nothing and changes nothing. A bulk\nbutton (open, settle, reassign, grade, retire, hold, re-date, void) or a generate button (periods, a\nfiscal year, quarters, plans) pressed by a viewer goes through with nothing done: its counts show 0\ndone and every selected item refused, and no error shows; a paste, an import, a rollover and every\nother form or action by a viewer is refused with its error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA third role, viewer, can be assigned. A viewer sees every screen and figure and can change nothing:\nevery form submission and every action, including changing the sheet's today, a statement, a hold\nand the paste box, is refused with its usual error, writes nothing and changes nothing. A bulk\nbutton (open, settle, reassign, grade, retire, hold, re-date, void) or a generate button (periods, a\nfiscal year, quarters, plans) pressed by a viewer goes through with nothing done: its counts show 0\ndone and every selected item refused, and no error shows; a paste, an import, a rollover and every\nother form or action by a viewer is refused with its error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3c9cfb0c7badd7de8a98390c81e104969dc15c0b",
+  "reset_sha": "",
+  "preagent_sha": "95c749828a8d72394bdf3e471633107f26fa8a51",
+  "prev_sha": "95c749828a8d72394bdf3e471633107f26fa8a51",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8466366,
+    "input_tokens": 36,
+    "output_tokens": 9110,
+    "cache_read_tokens": 890623,
+    "cache_creation_tokens": 60771,
+    "num_turns": 19,
+    "duration_ms": 246607,
+    "duration_api_ms": 92595,
+    "model": "claude-opus-5-5",
+    "session_id": "fb140900-920a-431b-8667-a644a2d29ae1",
+    "stop_reason": "success",
+    "result_text": "I added the viewer role, and all 4 tests in `e2e/specs/acceptance.spec.ts` pass with `bin/e2e`. Port 3000 was already in use by something I didn't start, so I ran the tests on another port (`PORT=3417 bin/e2e`) and left it running.\n\n**What changed:**\n- **Stored data:** `V39__role_viewer.sql` rebuilds the `sheet_role` table so a role can be `viewer`. The old rule allowing only clerk and steward had no name to drop it by, so the table is copied over with the new rule.\n- **Server:**\n  - `Role.VIEWER` added, and the role form now accepts `clerk|steward|viewer`.\n  - New `RoleService.isViewer()`.\n  - A new request check, `ViewerGuard` (switched on in `ViewerGuardConfig`), refuses every change a viewer sends to a sheet before it is carried out, so nothing is written and no audit line is recorded. That covers today, settings, rates, roles, people, claims, statements, holds, retire, patrons, quick-add, paste and periods. Reading and loading a sheet are still allowed.\n  - Bulk open and bulk settle, in `ClaimController`, return 0 done with every selected claim refused for a viewer, and show no error.\n- **Front end:** `viewer` added to `ROLES` in `core/roles.ts`, so the role form accepts it. The existing error elements already show the server's refusals, so the screens needed no other changes.\n\nThe request also lists bulk buttons (reassign, grade, retire, hold, re-date, void), generate buttons and an import, but the app doesn't have them. Bulk open and bulk settle are the only bulk actions it has, so I did nothing for the rest. If any are added later, the viewer check refuses them with an error by default. A new bulk or generate button would need the same 0-done handling as bulk open and settle, plus an exception in `ViewerGuardConfig`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8466366,
+        "num_turns": 19,
+        "duration_ms": 246607,
+        "duration_api_ms": 92595,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp54.agent.jsonl",
+  "agent_diff_file": "cp54.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

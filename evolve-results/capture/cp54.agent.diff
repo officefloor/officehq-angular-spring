@@ -1,0 +1,222 @@
+diff --git a/src/main/frontend/src/app/core/roles.ts b/src/main/frontend/src/app/core/roles.ts
+index e0562d5d8..d02f25d68 100644
+--- a/src/main/frontend/src/app/core/roles.ts
++++ b/src/main/frontend/src/app/core/roles.ts
+@@ -2,8 +2,8 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject, signal } from '@angular/core';
+ import { Observable, tap } from 'rxjs';
+ 
+-/** The roles a sheet's settings can assign; a name with none assigned is a clerk. */
+-export const ROLES = ['clerk', 'steward'] as const;
++/** The roles a sheet's settings can assign (a viewer sees everything and changes nothing); a name with none assigned is a clerk. */
++export const ROLES = ['clerk', 'steward', 'viewer'] as const;
+ export type RoleName = (typeof ROLES)[number];
+ 
+ export interface RoleView {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index b50c1ccfa..341254764 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -10,6 +10,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import net.officefloor.hq.app.role.RoleService;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -103,9 +104,11 @@ public class ClaimController {
+     }
+ 
+     private final ClaimService claims;
++    private final RoleService roles;
+ 
+-    public ClaimController(ClaimService claims) {
++    public ClaimController(ClaimService claims, RoleService roles) {
+         this.claims = claims;
++        this.roles = roles;
+     }
+ 
+     @GetMapping("/claims")
+@@ -204,6 +207,10 @@ public class ClaimController {
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody BulkOpen request) {
++        if (roles.isViewer(sheetId, user)) {
++            // A viewer's bulk action goes through with nothing done: every selected claim is refused.
++            return new BulkOpenView(0, (int) request.ids().stream().distinct().count(), List.of());
++        }
+         List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+         int refused = (int) request.ids().stream().distinct().count() - ordered.size();
+         List<ClaimView> opened = new ArrayList<>();
+@@ -228,6 +235,10 @@ public class ClaimController {
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody BulkSettle request) {
++        if (roles.isViewer(sheetId, user)) {
++            // A viewer's bulk action goes through with nothing done: every selected claim is refused.
++            return new BulkSettleView(0, (int) request.ids().stream().distinct().count(), List.of());
++        }
+         List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+         int refused = (int) request.ids().stream().distinct().count() - ordered.size();
+         List<ClaimView> settled = new ArrayList<>();
+diff --git a/src/main/java/net/officefloor/hq/app/role/Role.java b/src/main/java/net/officefloor/hq/app/role/Role.java
+index d8815e600..c424eb788 100644
+--- a/src/main/java/net/officefloor/hq/app/role/Role.java
++++ b/src/main/java/net/officefloor/hq/app/role/Role.java
+@@ -7,13 +7,15 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** The role a sheet's settings assign to a user name: clerk or steward. A name with none is a clerk. */
++/** The role a sheet's settings assign to a user name: clerk, steward or viewer (sees everything, changes
++ *  nothing). A name with none is a clerk. */
+ @Entity
+ @Table(name = "sheet_role")
+ public class Role {
+ 
+     public static final String CLERK = "clerk";
+     public static final String STEWARD = "steward";
++    public static final String VIEWER = "viewer";
+ 
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index 3fca5ee19..3fb7dbc37 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -29,8 +29,8 @@ public class RoleController {
+         }
+     }
+ 
+-    /** A role as the form submits it: clerk or steward. */
+-    public record RoleForm(@NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD) String role) {
++    /** A role as the form submits it: clerk, steward or viewer. */
++    public record RoleForm(@NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
+     }
+ 
+     private final RoleService roles;
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index aa5772b82..368babecd 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -35,7 +35,13 @@ public class RoleService {
+         return roles.findBySheetIdAndUserName(sheetId, userName).map(Role::getRole).orElse(Role.CLERK);
+     }
+ 
+-    /** Assign a role (clerk or steward) to a user name, replacing the one it had. The sheet is locked
++    /** Whether a user name is a viewer on the sheet: one who sees everything and can change nothing. */
++    @Transactional(readOnly = true)
++    public boolean isViewer(String sheetId, String userName) {
++        return Role.VIEWER.equals(roleOf(sheetId, userName));
++    }
++
++    /** Assign a role (clerk, steward or viewer) to a user name, replacing the one it had. The sheet is locked
+      *  first, so two assignments to one name are made one at a time. */
+     @Transactional
+     public Role set(String sheetId, String user, String userName, String role) {
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+new file mode 100644
+index 000000000..fdee53cb0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.role;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.util.Map;
++import org.springframework.http.HttpMethod;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Component;
++import org.springframework.web.server.ResponseStatusException;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.HandlerMapping;
++
++/**
++ * Refuses every change a viewer asks for on a sheet: any request on a sheet other than a read is refused before
++ * it reaches its handler, so it writes nothing. Loading the sheet and the bulk actions (which a viewer takes with
++ * every selected item refused) are left to their handlers; see {@link ViewerGuardConfig}.
++ */
++@Component
++public class ViewerGuard implements HandlerInterceptor {
++
++    private final RoleService roles;
++
++    public ViewerGuard(RoleService roles) {
++        this.roles = roles;
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        String method = request.getMethod();
++        if (HttpMethod.GET.matches(method) || HttpMethod.HEAD.matches(method) || HttpMethod.OPTIONS.matches(method)) {
++            return true;
++        }
++        String user = request.getHeader("X-User");
++        String sheetId = sheetId(request);
++        if (user == null || sheetId == null) {
++            return true;
++        }
++        if (roles.isViewer(sheetId, user.trim())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer cannot change anything on this sheet");
++        }
++        return true;
++    }
++
++    @SuppressWarnings("unchecked")
++    private static String sheetId(HttpServletRequest request) {
++        Object vars = request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
++        if (!(vars instanceof Map<?, ?> map)) {
++            return null;
++        }
++        Map<String, String> path = (Map<String, String>) map;
++        return path.containsKey("sheetId") ? path.get("sheetId") : path.get("id");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuardConfig.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuardConfig.java
+new file mode 100644
+index 000000000..d020f96c1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuardConfig.java
+@@ -0,0 +1,23 @@
++package net.officefloor.hq.app.role;
++
++import org.springframework.context.annotation.Configuration;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/** Puts the {@link ViewerGuard} in front of a sheet's API, except loading it and its bulk actions. */
++@Configuration
++public class ViewerGuardConfig implements WebMvcConfigurer {
++
++    private final ViewerGuard guard;
++
++    public ViewerGuardConfig(ViewerGuard guard) {
++        this.guard = guard;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(guard)
++                .addPathPatterns("/api/sheets/**")
++                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*");
++    }
++}
+diff --git a/src/main/resources/db/migration/V39__role_viewer.sql b/src/main/resources/db/migration/V39__role_viewer.sql
+new file mode 100644
+index 000000000..dbd9b9b45
+--- /dev/null
++++ b/src/main/resources/db/migration/V39__role_viewer.sql
+@@ -0,0 +1,11 @@
++-- A third role, viewer: sees the sheet and can change nothing. The role column's check is rebuilt to allow it.
++CREATE TABLE sheet_role_new (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(100) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('clerk', 'steward', 'viewer')),
++    UNIQUE (sheet_id, user_name)
++);
++INSERT INTO sheet_role_new (id, sheet_id, user_name, role) SELECT id, sheet_id, user_name, role FROM sheet_role;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_new RENAME TO sheet_role;
