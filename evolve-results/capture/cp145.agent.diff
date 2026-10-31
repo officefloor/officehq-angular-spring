@@ -1,0 +1,172 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 8308a0115..dc6167152 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -229,6 +229,13 @@ export interface BulkReassignView {
+   claims: ClaimView[];
+ }
+ 
++/** What a bulk re-date did: how many it re-dated and refused, and the claims it re-dated. */
++export interface BulkRedateView {
++  redated: number;
++  refused: number;
++  claims: ClaimView[];
++}
++
+ /** An amount the form accepts: 0.00 or more, with up to two decimals. */
+ export const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
+ 
+@@ -367,6 +374,12 @@ export class Claims {
+     return this.http.post<BulkReassignView>(`${this.base(sheetId)}/claims/bulk-reassign`, { ids, personId });
+   }
+ 
++  /** Re-date each of the claims to `date` (yyyy-mm-dd), in list order, as a single re-date would; the rest are
++   *  refused and left as they are. */
++  bulkRedate(sheetId: string, ids: readonly number[], date: string): Observable<BulkRedateView> {
++    return this.http.post<BulkRedateView>(`${this.base(sheetId)}/claims/bulk-redate`, { ids, date });
++  }
++
+   private base(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index de81074dc..2b264a553 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -239,6 +239,20 @@ function csvField(value: string): string {
+         }
+       </p>
+ 
++      <p>
++        <label for="bulk-redate-date">Re-date selected claims to</label>
++        <input id="bulk-redate-date" type="date" data-testid="bulk-redate-date"
++               [value]="bulkRedateDate()" (input)="bulkRedateDateChanged($any($event.target).value)" />
++        <button type="button" data-testid="bulk-redate" (click)="bulkRedate()" [disabled]="bulkRedating()">Re-date selected claims</button>
++        @if (bulkRedateResult(); as r) {
++          Re-dated <span data-testid="bulk-redated">{{ r.redated }}</span>,
++          refused <span data-testid="bulk-redate-refused">{{ r.refused }}</span>
++        }
++        @if (bulkRedateError(); as err) {
++          <span role="alert" data-testid="bulk-redate-error">{{ err }}</span>
++        }
++      </p>
++
+       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade the selected people">
+         <label for="bulk-grade">Grade</label>
+         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+@@ -493,6 +507,13 @@ export class PeopleList {
+   protected readonly bulkReassignError = signal<string | null>(null);
+   /** Whether a bulk move is running, so a second press waits for the first. */
+   protected readonly bulkReassigning = signal(false);
++  /** The date the selected claims are to be re-dated to (blank takes the sheet's today). */
++  protected readonly bulkRedateDate = signal('');
++  /** What the last bulk re-date did, until the button is pressed again. */
++  protected readonly bulkRedateResult = signal<{ redated: number; refused: number } | null>(null);
++  protected readonly bulkRedateError = signal<string | null>(null);
++  /** Whether a bulk re-date is running, so a second press waits for the first. */
++  protected readonly bulkRedating = signal(false);
+   /** The ids of the people selected for a bulk action. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** How many people the last bulk grade changed; null while one runs or before any. */
+@@ -878,6 +899,9 @@ export class PeopleList {
+           this.bulkReassignTo.set('');
+           this.bulkReassignResult.set(null);
+           this.bulkReassignError.set(null);
++          this.bulkRedateDate.set('');
++          this.bulkRedateResult.set(null);
++          this.bulkRedateError.set(null);
+           this.statements.set(new Map());
+           this.descendants.set(NO_DESCENDANTS);
+           this.patrons.set([]);
+@@ -1466,6 +1490,38 @@ export class PeopleList {
+     });
+   }
+ 
++  protected bulkRedateDateChanged(date: string): void {
++    this.bulkRedateDate.set(date);
++    this.bulkRedateError.set(null);
++  }
++
++  /** Re-date the selected claims together, in list order, each by the rules of re-dating one; the rest are left as they are. */
++  protected bulkRedate(): void {
++    if (this.bulkRedating()) return;
++    this.bulkRedateResult.set(null);
++    this.bulkRedateError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const date = this.bulkRedateDate().trim() || sheet.today;
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.bulkRedateError.set('Choose the new date of the selected claims.');
++      return;
++    }
++    this.bulkRedating.set(true);
++    this.claimsApi.bulkRedate(sheet.id, [...this.selectedClaims()], date).subscribe({
++      next: ({ redated, refused, claims }) => {
++        this.bulkRedating.set(false);
++        claims.forEach((c) => this.claimSaved(c));
++        this.selectedClaims.set(new Set());
++        this.bulkRedateResult.set({ redated, refused });
++      },
++      error: () => {
++        this.bulkRedating.set(false);
++        this.bulkRedateError.set('Could not re-date the selected claims.');
++      },
++    });
++  }
++
+   /** A claim as saved: a new one, or one moved to another person, is listed first (its person's newest). */
+   protected claimSaved(saved: ClaimView): void {
+     this.claims.update((list) => {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index db7880a2a..6fbd73ddf 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -166,6 +166,14 @@ public class ClaimController {
+     public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
+     }
+ 
++    /** The claims selected to be re-dated together, and their new date. */
++    public record BulkRedate(@NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull LocalDate date) {
++    }
++
++    /** What a bulk re-date did: how many it re-dated and refused, and the claims it re-dated, in the order re-dated. */
++    public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
++    }
++
+     private final ClaimService claims;
+     private final RoleService roles;
+     private final SheetService sheets;
+@@ -414,4 +422,33 @@ public class ClaimController {
+         }
+         return new BulkReassignView(moved.size(), refused, moved);
+     }
++
++    /**
++     * Re-date each selected claim, one at a time in list order (people in the order listed, newest claim first
++     * within a person), by exactly the rules of re-dating one claim. Each that cannot be re-dated, or is not on the
++     * sheet, is refused and left as it is.
++     */
++    @PostMapping("/claims/bulk-redate")
++    public BulkRedateView bulkRedate(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkRedate request) {
++        int selected = (int) request.ids().stream().distinct().count();
++        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
++            // A viewer's bulk action, or one on an archived sheet, goes through with nothing done: every selected
++            // claim is refused.
++            return new BulkRedateView(0, selected, List.of());
++        }
++        List<Long> ordered = claims.inListOrder(sheetId, request.ids());
++        int refused = selected - ordered.size();
++        List<ClaimView> redated = new ArrayList<>();
++        for (long id : ordered) {
++            try {
++                redated.add(ClaimView.of(claims.redate(sheetId, user, id, request.date())));
++            } catch (ResponseStatusException refusal) {
++                refused++;
++            }
++        }
++        return new BulkRedateView(redated.size(), refused, redated);
++    }
+ }
