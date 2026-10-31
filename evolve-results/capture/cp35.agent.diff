@@ -1,0 +1,578 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index f4a013502..30d24d8fe 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -15,8 +15,9 @@ export interface ClaimView {
+   date: string;
+   note: string;
+   status: ClaimStatus;
+-  /** The claim's number on its sheet, given when opened; null while a draft or once void. */
+-  number: number | null;
++  /** The claim's number on its sheet, given when opened: sheet-wide ("1", "2", ...) or within its period
++   *  ("P1-1", or "X-1" in no period) while the sheet numbers per period; null while a draft. */
++  number: string | null;
+   /** The due fixed when the claim was settled, with exactly two decimals; null while it is not
+    *  settled, or if its grade had no rate then (its due then follows the rate as an open one does). */
+   settledDue: string | null;
+@@ -29,7 +30,7 @@ export interface ClaimView {
+   statedDue: string | null;
+   /** The number of the SETTLED claim of the same person a correction (a negative amount) corrects; null on
+    *  any other claim. */
+-  corrects: number | null;
++  corrects: string | null;
+ }
+ 
+ /** Only OPEN and SETTLED claims count toward what is claimed and due. */
+@@ -69,7 +70,7 @@ export interface ClaimForm {
+   amount: string;
+   date: string | null;
+   note: string;
+-  corrects: number | null;
++  corrects: string | null;
+ }
+ 
+ /** What a quick-add made: the person the claim is for, whether they were added by it, and the claim. */
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index a5ef090f1..66080777e 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -18,6 +18,9 @@ export interface SheetView {
+   /** The sheet's policy date (yyyy-mm-dd): a claim dated before it rounds half up, one on or after it half to
+    *  even; null when it is the sheet's today. */
+   policyDate: string | null;
++  /** The sheet's period numbering from (yyyy-mm-dd): while its today is on or after it, a claim opened is
++   *  numbered within its period; null when off. */
++  periodNumberingFrom: string | null;
+ }
+ 
+ /** The terms a sheet has until they are changed. */
+@@ -80,6 +83,13 @@ export class Sheets {
+       .pipe(tap((s) => this.active.set(s)));
+   }
+ 
++  /** Change the active sheet's period numbering from; null means off. */
++  setPeriodNumberingFrom(id: string, periodNumberingFrom: string | null): Observable<SheetView> {
++    return this.http
++      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/period-numbering-from`, { periodNumberingFrom })
++      .pipe(tap((s) => this.active.set(s)));
++  }
++
+   /** Change the active sheet's late percent. */
+   setLatePct(id: string, latePct: string): Observable<SheetView> {
+     return this.http
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index b9c00999d..c770f612a 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -168,7 +168,7 @@ export class PersonClaims {
+       return;
+     }
+     this.editingId.set(c.id);
+-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects === null ? '' : String(c.corrects) },
++    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
+       { emitEvent: false });
+     this.error.set(null);
+   }
+@@ -194,7 +194,7 @@ export class PersonClaims {
+     // A negative amount is a correction: it must name the number of a settled claim of this person.
+     const correction = amount.startsWith('-');
+     const corrects = value.corrects.trim();
+-    if (correction && !/^\d+$/.test(corrects)) {
++    if (correction && !/^\S{1,120}$/.test(corrects)) {
+       this.error.set('A negative amount is a correction: type the number of the settled claim it corrects.');
+       return;
+     }
+@@ -207,7 +207,7 @@ export class PersonClaims {
+       this.error.set('Choose a date for the claim, or leave it blank for today.');
+       return;
+     }
+-    const claim = { amount, date: date === '' ? null : date, note: value.note, corrects: correction ? Number(corrects) : null };
++    const claim = { amount, date: date === '' ? null : date, note: value.note, corrects: correction ? corrects : null };
+     const id = this.editingId();
+     this.saving.set(true);
+     const request = id === null ? this.api.add(sheet.id, this.personId(), claim) : this.api.update(sheet.id, id, claim);
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 0db235006..ac16819e8 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -21,7 +21,7 @@ function isDate(value: string): boolean {
+   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
+ }
+ 
+-// The sheet's settings: its clerk limit, its floor, its terms, its late percent, its policy date, and the role assigned to each user name.
++// The sheet's settings: its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering from, and the role assigned to each user name.
+ @Component({
+   selector: 'app-settings',
+   imports: [ReactiveFormsModule],
+@@ -33,6 +33,7 @@ function isDate(value: string): boolean {
+       <p>Terms (days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
+       <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
+       <p>Policy date: <span data-testid="setting-policy-date-current">{{ sheets.current()?.policyDate ?? '' }}</span></p>
++      <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ sheets.current()?.periodNumberingFrom ?? '' }}</span></p>
+ 
+       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
+         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
+@@ -50,6 +51,9 @@ function isDate(value: string): boolean {
+         <label for="setting-policy-date">Policy date (a claim dated before it rounds half up, on or after it half to even; blank: today)</label>
+         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate"
+                placeholder="yyyy-mm-dd" autocomplete="off" />
++        <label for="setting-period-numbering-from">Period numbering from (from this day, a claim opened is numbered within its period; blank: off)</label>
++        <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom"
++               placeholder="yyyy-mm-dd" autocomplete="off" />
+         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
+         @if (settingsError(); as err) {
+           <p role="alert" data-testid="settings-error">{{ err }}</p>
+@@ -101,6 +105,7 @@ export class SettingsPanel {
+     terms: new FormControl('', { nonNullable: true }),
+     latePct: new FormControl('', { nonNullable: true }),
+     policyDate: new FormControl('', { nonNullable: true }),
++    periodNumberingFrom: new FormControl('', { nonNullable: true }),
+   });
+   protected readonly roleForm = new FormGroup({
+     user: new FormControl('', { nonNullable: true }),
+@@ -131,18 +136,20 @@ export class SettingsPanel {
+     this.settingsError.set(null);
+     const sheet = this.sheets.current();
+     if (!sheet) return;
+-    const { clerkLimit, floor, terms, latePct, policyDate } = this.settingsForm.controls;
++    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
+     const limit = clerkLimit.value.trim();
+     const floorValue = floor.value.trim();
+     const termsValue = terms.value.trim();
+     const latePctValue = latePct.value.trim();
+     const policyDateValue = policyDate.value.trim();
++    const periodNumberingFromValue = periodNumberingFrom.value.trim();
+     // Only the settings changed in the form are saved; with none changed, the clerk limit is saved as it is.
+     const saveFloor = floor.dirty;
+     const saveTerms = terms.dirty;
+     const saveLatePct = latePct.dirty;
+     const savePolicyDate = policyDate.dirty;
+-    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms && !saveLatePct && !savePolicyDate);
++    const savePeriodNumberingFrom = periodNumberingFrom.dirty;
++    const saveLimit = clerkLimit.dirty || (!saveFloor && !saveTerms && !saveLatePct && !savePolicyDate && !savePeriodNumberingFrom);
+     if (saveLimit && limit !== '' && !LIMIT_PATTERN.test(limit)) {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+@@ -163,12 +170,18 @@ export class SettingsPanel {
+       this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+       return;
+     }
++    if (savePeriodNumberingFrom && periodNumberingFromValue !== ''
++        && !(DATE_PATTERN.test(periodNumberingFromValue) && isDate(periodNumberingFromValue))) {
++      this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
++      return;
++    }
+     const saves: Observable<SheetView>[] = [];
+     if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit));
+     if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue));
+     if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue)));
+     if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue));
+     if (savePolicyDate) saves.push(this.sheets.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue));
++    if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
+     this.savingSettings.set(true);
+     concat(...saves).pipe(last()).subscribe({
+       next: (saved) => {
+@@ -184,7 +197,7 @@ export class SettingsPanel {
+ 
+   /** Show the sheet's settings in the form, as not yet changed. */
+   private resetSettings(sheet: SheetView | null): void {
+-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '' }, { emitEvent: false });
++    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '' }, { emitEvent: false });
+   }
+ 
+   protected saveRole(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 99a547234..b48dac09e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -40,10 +40,11 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The claim's number on its sheet, given when it is opened; none while a draft. A void claim keeps
++    /** The claim's number on its sheet, given when it is opened: sheet-wide (1, 2, ...), or within its period
++     *  (P1-1, or X-1 in no period) while the sheet numbers per period; none while a draft. A void claim keeps
+      *  the number it had, and that number is never given again. */
+     @Column(name = "claim_number")
+-    private Integer number;
++    private String number;
+ 
+     /** The due fixed when the claim was settled; none while not settled, or if its grade had no rate then. */
+     @Column(name = "settled_due", precision = 14, scale = 2)
+@@ -63,12 +64,12 @@ public class Claim {
+ 
+     /** The number of the SETTLED claim of the same person a correction corrects; none on any other claim. */
+     @Column(name = "corrects")
+-    private Integer corrects;
++    private String corrects;
+ 
+     protected Claim() {
+     }
+ 
+-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
++    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
+         this.sheetId = sheetId;
+         this.personId = personId;
+         this.amount = amount;
+@@ -97,11 +98,11 @@ public class Claim {
+         this.amount = amount;
+     }
+ 
+-    public Integer getCorrects() {
++    public String getCorrects() {
+         return corrects;
+     }
+ 
+-    public void setCorrects(Integer corrects) {
++    public void setCorrects(String corrects) {
+         this.corrects = corrects;
+     }
+ 
+@@ -134,11 +135,11 @@ public class Claim {
+         this.status = status;
+     }
+ 
+-    public Integer getNumber() {
++    public String getNumber() {
+         return number;
+     }
+ 
+-    public void setNumber(Integer number) {
++    public void setNumber(String number) {
+         this.number = number;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 79ae35eb8..31602cf9c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -35,7 +35,7 @@ public class ClaimController {
+      * on any other claim).
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
+-            Integer number, String settledDue, String openedBy, boolean stated, String statedDue, Integer corrects) {
++            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -52,7 +52,7 @@ public class ClaimController {
+             @NotNull @Digits(integer = 12, fraction = 2) BigDecimal amount,
+             LocalDate date,
+             @Size(max = 1000) String note,
+-            Integer corrects) {
++            @Size(max = 120) String corrects) {
+     }
+ 
+     /** The status a claim is to move to. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimSequence.java b/src/main/java/net/officefloor/hq/app/claim/ClaimSequence.java
+new file mode 100644
+index 000000000..c1bf2613d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimSequence.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A sequence of claim numbers within a period of a sheet, keyed by its prefix: the period's name, or X for claims
++ *  in no period. It keeps the last number it gave out. */
++@Entity
++@Table(name = "claim_sequence")
++public class ClaimSequence {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "prefix", nullable = false)
++    private String prefix;
++
++    @Column(name = "last_number", nullable = false)
++    private int lastNumber;
++
++    protected ClaimSequence() {
++    }
++
++    public ClaimSequence(String sheetId, String prefix) {
++        this.sheetId = sheetId;
++        this.prefix = prefix;
++    }
++
++    /** Take the next number in this sequence, as <prefix>-<n>; it is never given out again. */
++    public String next() {
++        return prefix + "-" + (++lastNumber);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimSequenceRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimSequenceRepository.java
+new file mode 100644
+index 000000000..fb35f4cc3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimSequenceRepository.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ClaimSequenceRepository extends JpaRepository<ClaimSequence, Long> {
++
++    Optional<ClaimSequence> findBySheetIdAndPrefix(String sheetId, String prefix);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 55436374c..3d6636aa2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -11,6 +11,7 @@ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+@@ -30,6 +31,9 @@ import org.springframework.web.server.ResponseStatusException;
+ @Service
+ public class ClaimService {
+ 
++    /** The prefix of the numbers given within no period. */
++    private static final String NO_PERIOD = "X";
++
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final SheetService sheets;
+@@ -39,11 +43,13 @@ public class ClaimService {
+     private final Rollup rollup;
+     private final PeriodRepository periods;
+     private final RoleService roles;
++    private final ClaimSequenceRepository sequences;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
+             SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
+-            RoleService roles) {
++            RoleService roles, ClaimSequenceRepository sequences) {
+         this.periods = periods;
++        this.sequences = sequences;
+         this.roles = roles;
+         this.claims = claims;
+         this.people = people;
+@@ -77,7 +83,7 @@ public class ClaimService {
+      *  the person. */
+     @Transactional
+     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+-            Integer corrects) {
++            String corrects) {
+         sheets.load(sheetId, user);
+         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+@@ -99,7 +105,7 @@ public class ClaimService {
+      *  SETTLED claim of its person. */
+     @Transactional
+     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
+-            Integer corrects) {
++            String corrects) {
+         sheets.load(sheetId, user);
+         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+@@ -126,7 +132,8 @@ public class ClaimService {
+ 
+     /**
+      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
+-     * claim gives it the sheet's next number and records who opened it; voiding it keeps its number, which is
++     * claim gives it its next number (the sheet's next, or the next in its period while the sheet numbers per
++     * period) and records who opened it; voiding it keeps its number, which is
+      * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
+      * at the rate in force on its date of its person's grade in force on that date, as rates are now, with the late charge it has gained
+      * added on top, so later rate changes leave it as it is. The user
+@@ -161,10 +168,10 @@ public class ClaimService {
+             refuseOverClerkLimit(sheet, user, due);
+         }
+         Rollup.Figures before = rollup.of(sheetId);
+-        Integer number = claim.getNumber();
++        String number = claim.getNumber();
+         claim.setStatus(next);
+         if (next == ClaimStatus.OPEN) {
+-            number = sheet.nextClaimNumber();
++            number = nextNumber(sheet, claim.getDate());
+             claim.setNumber(number);
+             claim.setOpenedBy(user);
+         } else if (next == ClaimStatus.SETTLED) {
+@@ -186,6 +193,21 @@ public class ClaimService {
+         return changed;
+     }
+ 
++    /** The next number for a claim dated on this day, opened now: within its period (<period name>-<n>, or X-<n>
++     *  in no period) while the sheet's period numbering is on by its today, else the sheet's next number. */
++    private String nextNumber(Sheet sheet, LocalDate date) {
++        if (!sheet.numbersPerPeriod()) {
++            return String.valueOf(sheet.nextClaimNumber());
++        }
++        String prefix = periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
++                .filter(p -> p.contains(date)).map(Period::getName).findFirst().orElse(NO_PERIOD);
++        ClaimSequence sequence = sequences.findBySheetIdAndPrefix(sheet.getId(), prefix)
++                .orElseGet(() -> new ClaimSequence(sheet.getId(), prefix));
++        String number = sequence.next();
++        sequences.save(sequence);
++        return number;
++    }
++
+     /** Refuse a clerk settling a claim whose due is above the sheet's clerk limit; a steward settles anything,
+      *  and a claim with no due is within any limit. */
+     private void refuseOverClerkLimit(Sheet sheet, String user, BigDecimal due) {
+@@ -201,7 +223,7 @@ public class ClaimService {
+ 
+     /** Refuse a correction (a negative amount) that does not name, by number, a SETTLED claim of the same person,
+      *  and a claim that is not a correction but names one. */
+-    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, Integer corrects) {
++    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, String corrects) {
+         if (amount.signum() >= 0) {
+             if (corrects != null) {
+                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+@@ -233,7 +255,7 @@ public class ClaimService {
+     }
+ 
+     /** An audit line about a claim; one with a number (a void claim keeps the one it had) ends with it. */
+-    private static String entry(String event, String user, Person person, Claim claim, Integer number) {
++    private static String entry(String event, String user, Person person, Claim claim, String number) {
+         return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
+                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
+                 + (number == null ? "" : " number=" + number);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index a50996fe7..e8f4ae343 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -53,6 +53,11 @@ public class Sheet {
+     @Column(name = "policy_date")
+     private LocalDate policyDate;
+ 
++    /** The sheet's period numbering from: while its today is on or after this, a claim opened is numbered within
++     *  its period; null means off. */
++    @Column(name = "period_numbering_from")
++    private LocalDate periodNumberingFrom;
++
+     protected Sheet() {
+     }
+ 
+@@ -123,6 +128,20 @@ public class Sheet {
+         this.policyDate = policyDate;
+     }
+ 
++    public LocalDate getPeriodNumberingFrom() {
++        return periodNumberingFrom;
++    }
++
++    public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
++        this.periodNumberingFrom = periodNumberingFrom;
++    }
++
++    /** Whether a claim opened now is numbered within its period: the period numbering from is set and the
++     *  sheet's today is on or after it. */
++    public boolean numbersPerPeriod() {
++        return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
++    }
++
+     /** How a claim's figures round when the claim (or, for a correction, the claim it corrects) is dated on this
+      *  day: half up before the policy date (the sheet's today when it has none), half to even on or after it. */
+     public RoundingMode roundingFor(LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 3a8c32739..1062c3d75 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -27,14 +27,15 @@ import org.springframework.web.bind.annotation.RestController;
+ public class SheetController {
+ 
+     /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
+-     *  the policy date is null when it is the sheet's today. */
++     *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off. */
+     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+-            LocalDate policyDate) {
++            LocalDate policyDate, LocalDate periodNumberingFrom) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(),
+                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+-                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate());
++                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
++                    sheet.getPeriodNumberingFrom());
+         }
+     }
+ 
+@@ -61,6 +62,10 @@ public class SheetController {
+     public record PolicyDateChange(LocalDate policyDate) {
+     }
+ 
++    /** The sheet's period numbering from as the form submits it; a missing one means off. */
++    public record PeriodNumberingFromChange(LocalDate periodNumberingFrom) {
++    }
++
+     private final SheetService sheets;
+ 
+     public SheetController(SheetService sheets) {
+@@ -128,4 +133,13 @@ public class SheetController {
+             @Valid @RequestBody PolicyDateChange request) {
+         return SheetView.of(sheets.setPolicyDate(id, user, request.policyDate()));
+     }
++
++    /** Change the sheet's period numbering from. */
++    @PutMapping("/{id}/settings/period-numbering-from")
++    public SheetView setPeriodNumberingFrom(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody PeriodNumberingFromChange request) {
++        return SheetView.of(sheets.setPeriodNumberingFrom(id, user, request.periodNumberingFrom()));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index d59de691b..55e74e61e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -121,4 +121,16 @@ public class SheetService {
+         rollup.recordChanges(id, user, before);
+         return saved;
+     }
++
++    /** Set the sheet's period numbering from (null: off), starting the sheet if it has never been loaded. */
++    @Transactional
++    public Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {
++        load(id, user);
++        Sheet sheet = sheets.findLockedById(id).orElseThrow();
++        sheet.setPeriodNumberingFrom(from);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user
++                + " key=period-numbering-from value=" + (from == null ? "" : from));
++        return saved;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V26__period_numbering.sql b/src/main/resources/db/migration/V26__period_numbering.sql
+new file mode 100644
+index 000000000..1d1c15cfd
+--- /dev/null
++++ b/src/main/resources/db/migration/V26__period_numbering.sql
+@@ -0,0 +1,20 @@
++-- The sheet's period numbering from: while it is set and the sheet's today is on or after it, a claim opened
++-- is numbered within the period its date is in (<period name>-<n>), or X-<n> when in none. None means off.
++ALTER TABLE sheet ADD COLUMN period_numbering_from DATE;
++
++-- A claim's number (and the number a correction names) is now text: a sheet-wide number (1, 2, ...) or a
++-- number within a period (P1-1, X-1).
++ALTER TABLE claim DROP CONSTRAINT claim_number_unique;
++ALTER TABLE claim ALTER COLUMN claim_number SET DATA TYPE VARCHAR(120);
++ALTER TABLE claim ADD CONSTRAINT claim_number_unique UNIQUE (sheet_id, claim_number);
++ALTER TABLE claim ALTER COLUMN corrects SET DATA TYPE VARCHAR(120);
++
++-- The last number given in each period sequence of a sheet, keyed by the number's prefix (the period's name,
++-- or X for claims in no period). Numbers are never given again.
++CREATE TABLE claim_sequence (
++    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id    VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    prefix      VARCHAR(100) NOT NULL,
++    last_number INT          NOT NULL,
++    CONSTRAINT claim_sequence_sheet_prefix UNIQUE (sheet_id, prefix)
++);
