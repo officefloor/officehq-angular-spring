@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.role.RoleService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -103,9 +104,11 @@ public class ClaimController {
     }
 
     private final ClaimService claims;
+    private final RoleService roles;
 
-    public ClaimController(ClaimService claims) {
+    public ClaimController(ClaimService claims, RoleService roles) {
         this.claims = claims;
+        this.roles = roles;
     }
 
     @GetMapping("/claims")
@@ -204,6 +207,10 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody BulkOpen request) {
+        if (roles.isViewer(sheetId, user)) {
+            // A viewer's bulk action goes through with nothing done: every selected claim is refused.
+            return new BulkOpenView(0, (int) request.ids().stream().distinct().count(), List.of());
+        }
         List<Long> ordered = claims.inListOrder(sheetId, request.ids());
         int refused = (int) request.ids().stream().distinct().count() - ordered.size();
         List<ClaimView> opened = new ArrayList<>();
@@ -228,6 +235,10 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody BulkSettle request) {
+        if (roles.isViewer(sheetId, user)) {
+            // A viewer's bulk action goes through with nothing done: every selected claim is refused.
+            return new BulkSettleView(0, (int) request.ids().stream().distinct().count(), List.of());
+        }
         List<Long> ordered = claims.inListOrder(sheetId, request.ids());
         int refused = (int) request.ids().stream().distinct().count() - ordered.size();
         List<ClaimView> settled = new ArrayList<>();

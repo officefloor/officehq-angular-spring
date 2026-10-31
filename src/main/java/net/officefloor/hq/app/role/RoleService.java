@@ -35,7 +35,13 @@ public class RoleService {
         return roles.findBySheetIdAndUserName(sheetId, userName).map(Role::getRole).orElse(Role.CLERK);
     }
 
-    /** Assign a role (clerk or steward) to a user name, replacing the one it had. The sheet is locked
+    /** Whether a user name is a viewer on the sheet: one who sees everything and can change nothing. */
+    @Transactional(readOnly = true)
+    public boolean isViewer(String sheetId, String userName) {
+        return Role.VIEWER.equals(roleOf(sheetId, userName));
+    }
+
+    /** Assign a role (clerk, steward or viewer) to a user name, replacing the one it had. The sheet is locked
      *  first, so two assignments to one name are made one at a time. */
     @Transactional
     public Role set(String sheetId, String user, String userName, String role) {
