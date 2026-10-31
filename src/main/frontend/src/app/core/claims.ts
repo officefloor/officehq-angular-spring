@@ -39,6 +39,8 @@ export interface ClaimView {
   deferredUntil: string | null;
   /** The claim's status log, oldest first: a line for each status it has had, the DRAFT it was added as first. */
   log: ClaimLogLine[];
+  /** How many proofs have been given for the claim. */
+  proofs: number;
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
@@ -179,6 +181,11 @@ export class Claims {
   /** Defer an OPEN claim until `until` (yyyy-mm-dd), a day after the sheet's today. */
   defer(sheetId: string, id: number, until: string): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/defer`, { until });
+  }
+
+  /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
+  addProof(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/proofs`, {});
   }
 
   /** A steward approves a PENDING claim: it is SETTLED, its due fixed as it is now. */

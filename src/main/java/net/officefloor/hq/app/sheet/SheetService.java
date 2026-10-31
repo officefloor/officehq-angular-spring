@@ -122,6 +122,13 @@ public class SheetService {
         return record(id, user, Sheet.CAP, from, cap == null ? null : scaled(cap), true);
     }
 
+    /** Record the sheet's proof threshold (null: none) from a date (null: the sheet's today), starting the sheet if
+     *  it has never been loaded. */
+    @Transactional
+    public Sheet setProofThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
+        return record(id, user, Sheet.PROOF_THRESHOLD, from, threshold == null ? null : scaled(threshold), false);
+    }
+
     /** Record a dated setting's value (null: none) from a date (null: the sheet's today), replacing the one it had
      *  from that date; the audit line ends with the from-date when one was given. A setting a claim's due depends on
      *  records how the figures moved. */

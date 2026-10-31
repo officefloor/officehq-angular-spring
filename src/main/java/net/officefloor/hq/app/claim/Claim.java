@@ -84,6 +84,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs have been given for the claim. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /** When the claim was listed under its person, in the sheet's order: given when it is added and again when it
      *  is reassigned, so a person's claims list newest first by it. */
     @Column(name = "listed", nullable = false)
@@ -250,6 +254,15 @@ public class Claim {
      *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Count one more proof given for the claim. */
+    public void addProof() {
+        proofs++;
     }
 
     /** The claim's status log, oldest first. */

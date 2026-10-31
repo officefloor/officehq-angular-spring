@@ -13,6 +13,9 @@ const NO_RATES: readonly RateView[] = [];
 
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
 // the claims listed newest first.
+/** Why a claim above the proof threshold is refused a settle or approval. */
+const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a proof first.';
+
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -58,12 +61,15 @@ const NO_RATES: readonly RateView[] = [];
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           — deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
-          until <span data-testid="claim-deferred-until">{{ deferredOf(c) ? c.deferredUntil : '' }}</span>
+          until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date"
                  [value]="deferDates()[c.id] ?? ''" (input)="deferDateChanged(c, $any($event.target).value)" />
           <button type="button" data-testid="claim-defer" (click)="defer(c)"
                   [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
+          — proofs <span data-testid="claim-proofs">{{ c.proofs }}</span>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+                  [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
@@ -224,9 +230,26 @@ export class PersonClaims {
           ? 'You opened this claim, so someone else must settle it.'
           : err instanceof HttpErrorResponse && err.status === 423
             ? 'This claim is dated inside a closed period.'
+            : err instanceof HttpErrorResponse && err.status === 428
+              ? UNPROVEN
             : status === 'SETTLED' && this.deferredOf(c)
               ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled before then.`
               : `A ${c.status} claim cannot become ${status}.`,
+      }),
+    });
+  }
+
+  protected addProof(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.api.addProof(sheet.id, c.id).subscribe({
+      next: (saved) => this.saved.emit(saved),
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 423
+          ? 'This claim is dated inside a closed period.'
+          : `A ${c.status} claim cannot be given a proof.`,
       }),
     });
   }
@@ -331,6 +354,8 @@ export class PersonClaims {
   private refusal(err: unknown, c: ClaimView, done: string): string {
     return err instanceof HttpErrorResponse && err.status === 423
       ? 'This claim is dated inside a closed period.'
+      : err instanceof HttpErrorResponse && err.status === 428
+        ? UNPROVEN
       : err instanceof HttpErrorResponse && err.status === 400
         ? 'Type why the claim is rejected.'
         : `A ${c.status} claim cannot be ${done}; only a PENDING one can.`;

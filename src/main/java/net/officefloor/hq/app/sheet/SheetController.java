@@ -30,10 +30,10 @@ public class SheetController {
 
     /** A sheet as the screen shows it, each dated setting as it is in force on the sheet's today, with every dated value
      *  recorded; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
-     *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off; the cap (two decimals) is null when there is none. */
+     *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off; the cap (two decimals) is null when there is none, as is the proof threshold (two decimals). */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            List<DatedSettingView> settings) {
+            List<DatedSettingView> settings, String proofThreshold) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -41,7 +41,8 @@ public class SheetController {
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
                     sheet.getPeriodNumberingFrom(), sheet.getGradeTerms(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
-                    sheet.getSettings().stream().map(s -> new DatedSettingView(s.getKey(), s.getFrom(), s.getValue())).toList());
+                    sheet.getSettings().stream().map(s -> new DatedSettingView(s.getKey(), s.getFrom(), s.getValue())).toList(),
+                    sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString());
         }
     }
 
@@ -82,6 +83,10 @@ public class SheetController {
 
     /** The sheet's cap as the form submits it; a missing one means none. */
     public record CapChange(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal cap, LocalDate from) {
+    }
+
+    /** The sheet's proof threshold as the form submits it; a missing one means none. */
+    public record ProofThresholdChange(@DecimalMin("0.00") @Digits(integer = 12, fraction = 2) BigDecimal proofThreshold, LocalDate from) {
     }
 
     private final SheetService sheets;
@@ -178,5 +183,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody CapChange request) {
         return SheetView.of(sheets.setCap(id, user, request.cap(), request.from()));
+    }
+
+    /** Change the sheet's proof threshold. */
+    @PutMapping("/{id}/settings/proof-threshold")
+    public SheetView setProofThreshold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ProofThresholdChange request) {
+        return SheetView.of(sheets.setProofThreshold(id, user, request.proofThreshold(), request.from()));
     }
 }

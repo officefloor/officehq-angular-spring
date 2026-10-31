@@ -166,6 +166,9 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal due = dueNow(sheet, claim, person);
+        if (next == ClaimStatus.SETTLED) {
+            refuseUnproven(sheet, claim, due);
+        }
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, due)) {
             next = ClaimStatus.PENDING;
         }
@@ -223,6 +226,27 @@ public class ClaimService {
         return deferred;
     }
 
+    /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim and one dated inside a closed
+     *  period. */
+    @Transactional
+    public Claim addProof(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be given a proof");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        claim.addProof();
+        Claim proven = claims.saveAndFlush(claim);
+        audit.recordOnCommit(entry("CLAIM_PROOF_ADDED", user, person, proven, proven.getNumber())
+                + " proofs=" + proven.getProofs());
+        return proven;
+    }
+
     /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
      *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim, for a
      *  claim that is not PENDING and for one dated inside a closed period. */
@@ -236,6 +260,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal due = dueNow(sheet, claim, person);
+        refuseUnproven(sheet, claim, due);
         Rollup.Figures before = rollup.of(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(due);
@@ -393,6 +418,16 @@ public class ClaimService {
         String number = sequence.next();
         sequences.save(sequence);
         return number;
+    }
+
+    /** Refuse to settle or approve a claim with no proofs whose due is above the proof threshold in force on its
+     *  date (a claim with no due, or on a sheet with no threshold then, needs none). */
+    private static void refuseUnproven(Sheet sheet, Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheet.proofThresholdOn(claim.getDate());
+        if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
+                    "A claim whose due is above the proof threshold of " + threshold + " needs a proof first");
+        }
     }
 
     /** Whether a settle by this user must wait for a steward: they are a clerk and the due is above the sheet's
