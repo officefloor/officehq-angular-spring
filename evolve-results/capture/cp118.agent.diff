@@ -1,0 +1,268 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 6156a7d36..8aaf8438d 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -22,6 +22,12 @@ export interface RateView {
+   to: string | null;
+ }
+ 
++/** What a rate import did: how many rates it set, and those rates, in line order. */
++export interface RateImportView {
++  set: number;
++  rates: RateView[];
++}
++
+ /** The rate among a grade's rates (in the order they take effect) in force on a date (yyyy-mm-dd):
+  *  the one with the latest from-date on or before it, unless the date is after its to-date; undefined
+  *  when the date is before them all, or that rate has ended by then (an earlier one does not take over again). */
+@@ -222,6 +228,18 @@ export class Rates {
+       );
+   }
+ 
++  /** Set a rate per pasted line of grade,rate,from,to, in order, as the form would; when any line is refused, none
++   *  is set. */
++  importRates(sheetId: string, text: string): Observable<RateImportView> {
++    return this.http.post<RateImportView>(`${this.base(sheetId)}/import`, { text }).pipe(
++      tap(({ rates }) =>
++        this.list.update((list) =>
++          rates.reduce((acc, saved) => [...acc.filter((r) => r.grade !== saved.grade || r.from !== saved.from), saved], list),
++        ),
++      ),
++    );
++  }
++
+   /** What a candidate rate for a grade, applied on every date, would change; nothing is saved. */
+   preview(sheetId: string, grade: Grade, rate: string): Observable<RatePreview> {
+     return this.http.get<RatePreview>(`${this.base(sheetId)}/${grade}/preview`, { params: { rate } });
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 71a3a0052..368d99b2d 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -50,6 +50,18 @@ import { Sheets } from '../../core/sheet';
+         }
+       </form>
+ 
++      <form [formGroup]="importForm" (ngSubmit)="importRates()" aria-label="Import rates">
++        <label for="import-rates">Import rates, one per line as grade,rate,from,to (from and to may be left out)</label>
++        <textarea id="import-rates" data-testid="import-rates" formControlName="text" rows="4"></textarea>
++        <button type="submit" data-testid="import-rates-submit" [disabled]="importing()">Import rates</button>
++        @if (importSet() !== null) {
++          Set <span data-testid="import-rates-set">{{ importSet() }}</span>
++        }
++        @if (importError(); as err) {
++          <p role="alert" data-testid="import-rates-error">{{ err }}</p>
++        }
++      </form>
++
+       <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview a rate">
+         <label for="rate-preview-grade">Grade</label>
+         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
+@@ -89,6 +101,13 @@ export class RatesPanel {
+     to: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly importForm = new FormGroup({
++    text: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly importSet = signal<number | null>(null);
++  protected readonly importError = signal<string | null>(null);
++  protected readonly importing = signal(false);
++
+   protected readonly previewForm = new FormGroup({
+     grade: new FormControl<Grade>('A', { nonNullable: true }),
+     pct: new FormControl('', { nonNullable: true }),
+@@ -105,6 +124,8 @@ export class RatesPanel {
+           this.error.set(null);
+           this.previewed.set(null);
+           this.previewError.set(null);
++          this.importSet.set(null);
++          this.importError.set(null);
+           return this.rates.load(sheet?.id ?? null) ?? EMPTY;
+         }),
+         takeUntilDestroyed(),
+@@ -113,6 +134,33 @@ export class RatesPanel {
+     // An error is removed as soon as its form is changed.
+     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+     this.previewForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.previewError.set(null));
++    this.importForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.importError.set(null));
++  }
++
++  /** Set a rate per pasted line, as the rate form would; when any line is refused, none is set. */
++  protected importRates(): void {
++    if (this.importing()) return;
++    // A press clears the last count, so two presses with the same result can be told apart.
++    this.importSet.set(null);
++    this.importError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const text = this.importForm.getRawValue().text;
++    if (text.trim() === '') {
++      this.importError.set('Paste at least one line of grade,rate,from,to.');
++      return;
++    }
++    this.importing.set(true);
++    this.rates.importRates(sheet.id, text).subscribe({
++      next: ({ set }) => {
++        this.importing.set(false);
++        this.importSet.set(set);
++      },
++      error: () => {
++        this.importing.set(false);
++        this.importError.set('A pasted line is not a valid rate; nothing was set.');
++      },
++    });
+   }
+ 
+   protected preview(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportController.java b/src/main/java/net/officefloor/hq/app/rate/RateImportController.java
+new file mode 100644
+index 000000000..e5e769e38
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportController.java
+@@ -0,0 +1,46 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import net.officefloor.hq.app.rate.RateController.RateView;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The import box for rates. The caller's signed-in name comes in the {@code X-User} header. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/rates/import")
++public class RateImportController {
++
++    /** The pasted text: one rate per line, as grade,rate,from,to. */
++    public record ImportForm(@NotNull @Size(max = 200_000) String text) {
++    }
++
++    /** What an import did: how many rates it set, and those rates, in line order. */
++    public record ImportView(int set, List<RateView> rates) {
++    }
++
++    private final RateImportService imports;
++
++    public RateImportController(RateImportService imports) {
++        this.imports = imports;
++    }
++
++    @PostMapping
++    public ImportView importRates(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody ImportForm request) {
++        List<RateView> views = imports.importRates(sheetId, user, request.text()).stream().map(RateView::of).toList();
++        return new ImportView(views.size(), views);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+new file mode 100644
+index 000000000..70fac5d68
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+@@ -0,0 +1,94 @@
++package net.officefloor.hq.app.rate;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.regex.Pattern;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The rate import box: a rate per pasted line, set as the rate form would set it. */
++@Service
++public class RateImportService {
++
++    /** The grades the rate form takes. */
++    private static final Pattern GRADE = Pattern.compile("[ABC]");
++
++    /** A rate the rate form takes: a percent of 0.00 or more, up to 999.99, with up to two decimals. */
++    private static final Pattern RATE = Pattern.compile("\\d{1,3}(\\.\\d{1,2})?");
++
++    private final RateService rates;
++
++    public RateImportService(RateService rates) {
++        this.rates = rates;
++    }
++
++    /** A pasted line read into a rate's values. */
++    private record Line(String grade, BigDecimal rate, LocalDate from, LocalDate to) {
++    }
++
++    /**
++     * Set a rate per line of {@code text} (grade,rate,from,to; the from- and to-date may be absent or blank), in
++     * order, each as the rate form would: replacing the grade's rate from the same from-date. Every line is checked
++     * first by the rate form's rules: when any line is refused, nothing is set and nothing is recorded. Blank lines
++     * are skipped; a paste with no lines is refused.
++     */
++    @Transactional
++    public List<Rate> importRates(String sheetId, String user, String text) {
++        List<Line> lines = new ArrayList<>();
++        for (String raw : text.split("\\r?\\n")) {
++            if (!raw.isBlank()) {
++                lines.add(read(raw));
++            }
++        }
++        if (lines.isEmpty()) {
++            throw refused("Paste at least one line");
++        }
++        List<Rate> done = new ArrayList<>();
++        for (Line line : lines) {
++            done.add(rates.set(sheetId, user, line.grade(), line.from(), line.to(), line.rate()));
++        }
++        return done;
++    }
++
++    private static Line read(String raw) {
++        String[] fields = raw.split(",", -1);
++        if (fields.length < 2 || fields.length > 4) {
++            throw refused("Each line is grade,rate,from,to");
++        }
++        String grade = fields[0].trim();
++        if (!GRADE.matcher(grade).matches()) {
++            throw refused("A grade is A, B or C");
++        }
++        String rate = fields[1].trim();
++        if (!RATE.matcher(rate).matches()) {
++            throw refused("A rate is 0.00 or more, with up to two decimals");
++        }
++        LocalDate from = date(fields.length > 2 ? fields[2] : "");
++        LocalDate to = date(fields.length > 3 ? fields[3] : "");
++        if (from != null && to != null && to.isBefore(from)) {
++            throw refused("A rate cannot end before it starts");
++        }
++        return new Line(grade, new BigDecimal(rate), from, to);
++    }
++
++    private static LocalDate date(String field) {
++        String text = field.trim();
++        if (text.isEmpty()) {
++            return null;
++        }
++        try {
++            return LocalDate.parse(text);
++        } catch (DateTimeParseException e) {
++            throw refused("A date is yyyy-mm-dd");
++        }
++    }
++
++    private static ResponseStatusException refused(String reason) {
++        return new ResponseStatusException(HttpStatus.BAD_REQUEST, reason);
++    }
++}
