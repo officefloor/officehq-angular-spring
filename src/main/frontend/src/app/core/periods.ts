@@ -28,6 +28,9 @@ export interface PeriodView {
   /** Each person's opening balance for the period, by person id, added to their carried figure for it (absent from
    *  what was kept before openings were pasted). A person missing has 0.00. */
   personOpenings?: Record<string, string> | null;
+  /** Whether a steward has locked the period: while locked it cannot be reopened (absent from what was kept before
+   *  periods could be locked). */
+  locked?: boolean;
 }
 
 /** A period as the form submits it: a blank from-date takes the sheet's today. */
@@ -116,6 +119,13 @@ export class Periods {
   reopen(sheetId: string, name: string): Observable<PeriodView> {
     return this.http
       .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/reopen`, {})
+      .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
+  }
+
+  /** Lock or unlock a period; only a steward may, and it is refused when the period is already so. */
+  setLocked(sheetId: string, name: string, locked: boolean): Observable<PeriodView> {
+    return this.http
+      .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/${locked ? 'lock' : 'unlock'}`, {})
       .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
   }
 

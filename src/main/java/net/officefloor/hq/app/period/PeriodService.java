@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -181,7 +182,7 @@ public class PeriodService {
     }
 
     /** Reopen a closed or soft-closed period, making its due-total live again; only a role the permission matrix allows may (by
-     *  default a steward), and it is refused when the period is open. */
+     *  default a steward), and it is refused when the period is open or locked. */
     @Transactional
     public Period reopen(String sheetId, String user, String name) {
         sheets.load(sheetId, user);
@@ -194,10 +195,35 @@ public class PeriodService {
         if (!period.isClosed() && !period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed");
         }
+        if (period.isLocked()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is locked");
+        }
         period.reopen();
         Period reopened = periods.saveAndFlush(period);
         audit.recordChangeOnCommit(sheetId, user, "PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + reopened.getName());
         return reopened;
+    }
+
+    /** Lock or unlock a period; only a steward may, and it is refused when the period is already so. */
+    @Transactional
+    public Period setLocked(String sheetId, String user, String name, boolean locked) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward may " + (locked ? "lock" : "unlock") + " a period");
+        }
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
+        if (period.isLocked() == locked) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    locked ? "That period is already locked" : "That period is not locked");
+        }
+        period.setLocked(locked);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordChangeOnCommit(sheetId, user, (locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId
+                + " by=" + user + " period=" + saved.getName());
+        return saved;
     }
 
     private static ResponseStatusException nameInUse() {

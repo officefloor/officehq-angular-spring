@@ -30,6 +30,11 @@ import { FigurePipe } from '../../core/figure';
                     [attr.aria-label]="'Soft-close period ' + p.name">Soft close</button>
             <button type="button" data-testid="period-reopen" (click)="reopen(p)" [disabled]="closing() === p.id"
                     [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
+            — locked <span data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</span>
+            <button type="button" data-testid="period-lock" (click)="setLocked(p, true)" [disabled]="closing() === p.id"
+                    [attr.aria-label]="'Lock period ' + p.name">Lock</button>
+            <button type="button" data-testid="period-unlock" (click)="setLocked(p, false)" [disabled]="closing() === p.id"
+                    [attr.aria-label]="'Unlock period ' + p.name">Unlock</button>
             @if (periodError()?.id === p.id) {
               <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
             }
@@ -231,8 +236,31 @@ export class PeriodsPanel {
           message: status === 403
             ? 'Your role may not reopen a period.'
             : status === 409
-              ? 'That period is not closed.'
+              ? 'That period is not closed, or it is locked.'
               : 'Could not reopen that period.',
+        });
+      },
+    });
+  }
+
+  protected setLocked(p: PeriodView, locked: boolean): void {
+    if (this.closing() === p.id) return;
+    this.periodError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.closing.set(p.id);
+    this.periods.setLocked(sheet.id, p.name, locked).subscribe({
+      next: () => this.closing.set(null),
+      error: (err: unknown) => {
+        this.closing.set(null);
+        const status = err instanceof HttpErrorResponse ? err.status : 0;
+        this.periodError.set({
+          id: p.id,
+          message: status === 403
+            ? `Only a steward may ${locked ? 'lock' : 'unlock'} a period.`
+            : status === 409
+              ? locked ? 'That period is already locked.' : 'That period is not locked.'
+              : `Could not ${locked ? 'lock' : 'unlock'} that period.`,
         });
       },
     });
