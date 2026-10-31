@@ -338,10 +338,10 @@ public class ClaimController {
     }
 
     /**
-     * Settle each selected claim that can be settled, one at a time in list order (people in the order listed,
-     * newest claim first within a person), by exactly the rules of settling one claim; a claim a clerk's limit
-     * makes PENDING counts as settled. Each that cannot be settled, or is not on the sheet, is refused and left as
-     * it is. When at least one is settled, those settled are the sheet's next settle batch.
+     * Settle every selected claim, one at a time in list order (people in the order listed, newest claim first
+     * within a person), by exactly the rules of settling one claim; a claim a clerk's limit makes PENDING counts as
+     * settled. All or nothing: when any selected claim cannot be settled, or is not on the sheet, none is settled,
+     * every one is refused and nothing is written. Those settled are the sheet's next settle batch.
      */
     @PostMapping("/claims/bulk-settle")
     public BulkSettleView bulkSettle(
@@ -353,19 +353,15 @@ public class ClaimController {
             // claim is refused.
             return new BulkSettleView(0, (int) request.ids().stream().distinct().count(), List.of(), null);
         }
+        int selected = (int) request.ids().stream().distinct().count();
         List<Long> ordered = claims.inListOrder(sheetId, request.ids());
-        int refused = (int) request.ids().stream().distinct().count() - ordered.size();
-        List<Long> settled = new ArrayList<>();
-        for (long id : ordered) {
-            try {
-                settled.add(claims.changeStatus(sheetId, user, id, ClaimStatus.SETTLED).getId());
-            } catch (ResponseStatusException refusal) {
-                refused++;
-            }
+        List<Claim> settled = ordered.size() < selected ? null : claims.settleBatch(sheetId, user, ordered);
+        if (settled == null) {
+            // All or nothing: one selected claim that cannot be settled, or is not on the sheet, refuses them all.
+            return new BulkSettleView(0, selected, List.of(), null);
         }
-        List<ClaimView> batch = claims.markSettleBatch(sheetId, settled).stream().map(ClaimView::of).toList();
-        return new BulkSettleView(batch.size(), refused, batch,
-                batch.isEmpty() ? null : batch.get(0).batch());
+        List<ClaimView> batch = settled.stream().map(ClaimView::of).toList();
+        return new BulkSettleView(batch.size(), 0, batch, batch.isEmpty() ? null : batch.get(0).batch());
     }
 
     /**

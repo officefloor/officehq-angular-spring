@@ -32,6 +32,7 @@ import net.officefloor.hq.app.watch.WatchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.web.server.ResponseStatusException;
 
 /** The claims people on a sheet have made. */
@@ -296,12 +297,23 @@ public class ClaimService {
         return changed;
     }
 
-    /** Make the claims just settled by a bulk settle the sheet's next settle batch, each keeping its number; none
-     *  is made when none was settled. The claims, as saved, in the order given. */
+    /** Settle every claim given, one at a time in the order given, by exactly the rules of settling one claim (a
+     *  claim a clerk's limit makes PENDING counts as settled), as the sheet's next settle batch, each keeping its
+     *  number; after the claims' own lines BATCH_SETTLED is recorded with the batch's count and the frozen figures
+     *  of those SETTLED added up. All or nothing: when any claim cannot be settled, none is, nothing is written and
+     *  null is returned. The claims, as saved, in the order given; none when none is given. */
     @Transactional
-    public List<Claim> markSettleBatch(String sheetId, List<Long> ids) {
+    public List<Claim> settleBatch(String sheetId, String user, List<Long> ids) {
         if (ids.isEmpty()) {
             return List.of();
+        }
+        for (long id : ids) {
+            try {
+                changeStatus(sheetId, user, id, ClaimStatus.SETTLED);
+            } catch (ResponseStatusException refusal) {
+                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                return null;
+            }
         }
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         int batch = sheet.nextSettleBatch();
@@ -311,7 +323,12 @@ public class ClaimService {
             claim.setSettleBatch(batch);
             return claims.saveAndFlush(claim);
         }).toList();
-        history.keepOnCommit(sheetId);
+        BigDecimal total = marked.stream()
+                .filter(claim -> claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null)
+                .map(Claim::getSettledDue)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        audit.recordChangeOnCommit(sheetId, user, "BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + batch
+                + " count=" + marked.size() + " total=" + total.toPlainString());
         return marked;
     }
 
