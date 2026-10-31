@@ -7,6 +7,7 @@ import { DelegationsPanel } from '../delegations/delegations';
 import { HolidaysPanel } from '../holidays/holidays';
 import { PeopleList } from '../people/people';
 import { RatesPanel } from '../rates/rates';
+import { SearchPanel } from '../search/search';
 import { SettingsPanel } from '../settings/settings';
 import { TemplatesPanel } from '../templates/templates';
 import { VoidReasonsPanel } from '../void-reasons/void-reasons';
@@ -15,7 +16,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
-    VoidReasonsPanel, TemplatesPanel, AuditPanel],
+    VoidReasonsPanel, TemplatesPanel, SearchPanel, AuditPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -72,6 +73,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-void-reasons />
         <app-templates />
         <app-people />
+        <app-search />
         <app-audit />
       } @else {
         <p data-testid="sheet-none">Load a sheet to begin.</p>
