@@ -33,7 +33,17 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         List<PersonState> people, List<ClaimState> claims, Map<String, String> permissions,
         LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate,
         Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth, BigDecimal alertThreshold,
-        Integer escalateAfter, Integer reviewSla, String proofKinds) {
+        Integer escalateAfter, Integer reviewSla, String proofKinds, List<AncestorState> ancestors) {
+
+    /** An ancestor's rates as they stood when the sheet's state was kept, nearest ancestor first: what the sheet then
+     *  inherited (none recorded in a state kept before ancestors were). */
+    public record AncestorState(String sheetId, List<RateState> rates, List<RateView> views) {
+
+        /** The ancestor's rates as they stood then, unsaved. */
+        public List<Rate> rebuildRates() {
+            return SheetState.rebuildRates(sheetId, rates);
+        }
+    }
 
     /** Each list the screen reads of the sheet, as it read it then; a person's grade there is the one in force on the
      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
@@ -121,13 +131,12 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     }
 
     /** What the sheet holds now. */
-    public static SheetState of(Sheet sheet, List<Rate> rates, List<Person> people, List<Claim> claims, Views views) {
+    public static SheetState of(Sheet sheet, List<Rate> rates, List<Person> people, List<Claim> claims, Views views,
+            List<AncestorState> ancestors) {
         return new SheetState(
                 sheet.getSettings().stream().map(s -> new SettingState(s.getKey(), s.getFrom(), s.getValue())).toList(),
                 sheet.getPolicyDate(),
-                rates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getRate(),
-                        r.getClaimsAfter(), r.getEarlier().stream().map(v -> new EarlierRateState(v.getVersion(),
-                                v.getRate(), v.getToDate(), v.getClaimsAfter())).toList())).toList(),
+                statesOf(rates),
                 people.stream().map(SheetState::stateOf).toList(),
                 claims.stream().map(c -> new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(),
                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
@@ -136,7 +145,14 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),
-                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds());
+                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors);
+    }
+
+    /** The rates as they stand now. */
+    public static List<RateState> statesOf(List<Rate> rates) {
+        return rates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getRate(),
+                r.getClaimsAfter(), r.getEarlier().stream().map(v -> new EarlierRateState(v.getVersion(),
+                        v.getRate(), v.getToDate(), v.getClaimsAfter())).toList())).toList();
     }
 
     /** The people as the screen read them then, each with the grade in force on {@code today}. */
@@ -188,6 +204,10 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
 
     /** The rates as they stood then, unsaved. */
     public List<Rate> rebuildRates(String sheetId) {
+        return rebuildRates(sheetId, rates);
+    }
+
+    private static List<Rate> rebuildRates(String sheetId, List<RateState> rates) {
         return rates.stream().map(r -> {
             Rate rate = new Rate(sheetId, r.grade(), r.from(), r.rate());
             rate.setToDate(r.to());

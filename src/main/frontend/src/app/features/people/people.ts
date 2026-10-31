@@ -27,6 +27,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSum
 import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { FigurePipe } from '../../core/figure';
+import { Dashboard } from '../dashboard/dashboard';
 
 const NO_CLAIMS: ClaimView[] = [];
 const NO_SNAPSHOTS: SnapshotView[] = [];
@@ -92,12 +93,14 @@ function csvField(value: string): string {
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate],
+  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate, Dashboard],
   template: `
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
                 [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
                 [myCrewDueTotal]="myCrewDueTotal()" />
+    <app-dashboard [pending]="statusCount('PENDING')" [review]="statusCount('REVIEW')"
+                   [overdue]="overdueTotals().count" />
     <app-periods [dueTotals]="dueByPeriod()" />
     <app-pools [people]="people()" />
     <app-crews [people]="people()" [dueByPerson]="dueByPerson()" />
@@ -926,6 +929,10 @@ export class PeopleList {
     const claims = this.claims();
     return SUMMARY_STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
   });
+  /** How many of the sheet's claims are in a status. */
+  protected statusCount(status: string): number {
+    return this.summaryByStatus().find((s) => s.status === status)?.count ?? 0;
+  }
   /** How many of the sheet's claims are late for review on its today. */
   protected readonly reviewLateCount = computed(() => {
     const sheet = this.sheets.current();

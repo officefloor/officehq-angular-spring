@@ -102,9 +102,11 @@ public class RateController {
     public List<List<RateView>> inherited(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.inheritedAsOf(sheetId, asOf);
+        }
         return rates.ancestorsOf(sheetId).stream()
-                .map(ancestor -> asOf != null ? history.viewsAsOf(ancestor, asOf).rates()
-                        : rates.list(ancestor).stream().map(RateView::of).toList())
+                .map(ancestor -> rates.list(ancestor).stream().map(RateView::of).toList())
                 .toList();
     }
 

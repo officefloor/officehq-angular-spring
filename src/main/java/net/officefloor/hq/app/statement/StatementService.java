@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -22,7 +21,6 @@ import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.SheetState;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rate.RateChains;
 import net.officefloor.hq.app.role.Role;
@@ -91,12 +89,11 @@ public class StatementService {
         return byPerson.values().stream().map(StatementService::summaryOf).toList();
     }
 
-    /** The summary of a person's statements (at least one, in the order taken): their lines are by date, those of
-     *  the same date in the order taken, so the statements a merge or a transfer brings over show among their own. */
+    /** The summary of a person's statements (at least one, in the order taken): their lines are in the order taken,
+     *  so one taken as of an earlier date shows after those taken before it. */
     private static Summary summaryOf(List<Statement> theirs) {
         Statement last = theirs.get(theirs.size() - 1);
-        List<Line> lines = theirs.stream().sorted(Comparator.comparing(Statement::getTakenOn))
-                .map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
+        List<Line> lines = theirs.stream().map(s -> new Line(s.getTakenOn(), s.getDueTotal())).toList();
         return new Summary(last.getPersonId(), theirs.size(), last.getDueTotal(), last.getTakenOn(), lines);
     }
 
@@ -252,8 +249,6 @@ public class StatementService {
     /** The line of rates as it stood at the end of a date: the sheet's own then, then each of its ancestors' as
      *  they stood then (none for one with no change made on it by then). */
     private RateChain ratesAsOf(String sheetId, SheetState then, LocalDate asOf) {
-        return new RateChain(Stream.concat(Stream.of(then.rebuildRates(sheetId)),
-                rates.ancestorsOf(sheetId).stream().map(ancestor -> history.asOf(ancestor, asOf)
-                        .map(state -> state.rebuildRates(ancestor)).orElse(List.<Rate>of()))).toList());
+        return history.ratesOf(sheetId, then, asOf);
     }
 }

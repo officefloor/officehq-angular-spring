@@ -129,8 +129,7 @@ public class SheetHistory {
         SheetState.Views views = new SheetState.Views(
                 sheetPeople.stream().map(p -> PersonView.of(p, sheet.getToday())).toList(),
                 sheetClaims.stream().map(ClaimView::of).map(SheetHistory::unlocked).toList(),
-                sheetRates.stream().sorted(Comparator.comparing(Rate::getGrade).thenComparing(Rate.BY_FROM))
-                        .map(RateView::of).toList(),
+                viewsOf(sheetRates),
                 periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList(),
                 StatementService.summarize(statements.findBySheetIdOrderByIdAsc(sheetId)).stream()
                         .map(SummaryView::of).toList(),
@@ -139,7 +138,11 @@ public class SheetHistory {
                 roles.findBySheetIdOrderByUserName(sheetId).stream().map(RoleView::of).toList(),
                 delegations.findBySheetIdOrderByIdAsc(sheetId).stream().map(DelegationView::of).toList(),
                 holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(HolidayView::of).toList());
-        SheetState state = SheetState.of(sheet, sheetRates, sheetPeople, sheetClaims, views);
+        List<SheetState.AncestorState> ancestors = rates.ancestorsOf(sheetId).stream().map(ancestor -> {
+            List<Rate> ancestorRates = rates.ratesOf(ancestor);
+            return new SheetState.AncestorState(ancestor, SheetState.statesOf(ancestorRates), viewsOf(ancestorRates));
+        }).toList();
+        SheetState state = SheetState.of(sheet, sheetRates, sheetPeople, sheetClaims, views, ancestors);
         snapshots.deleteBySheetIdAndAsOf(sheetId, sheet.getToday());
         snapshots.saveAndFlush(new SheetSnapshot(sheetId, sheet.getToday(), json.writeValueAsString(state)));
     }
@@ -155,8 +158,39 @@ public class SheetHistory {
      *  they stood then (none for one with no change made on it by then). */
     @Transactional(readOnly = true)
     public RateChain ratesAsOf(String sheetId, LocalDate date) {
-        return new RateChain(Stream.concat(Stream.of(sheetId), rates.ancestorsOf(sheetId).stream())
-                .map(id -> asOf(id, date).map(state -> state.rebuildRates(id)).orElse(List.<Rate>of())).toList());
+        Optional<SheetState> then = asOf(sheetId, date);
+        return ratesOf(sheetId, then.orElse(null), date);
+    }
+
+    /** The line of rates of the sheet as it stood then (none: no change made on it by then): its own, then each of
+     *  its ancestors' as they stood when that state was kept; for a state kept before ancestors were recorded, or
+     *  none, each ancestor's as it stood at the end of the date. */
+    @Transactional(readOnly = true)
+    public RateChain ratesOf(String sheetId, SheetState then, LocalDate date) {
+        List<Rate> own = then == null ? List.of() : then.rebuildRates(sheetId);
+        if (then != null && then.ancestors() != null) {
+            return new RateChain(Stream.concat(Stream.of(own),
+                    then.ancestors().stream().map(SheetState.AncestorState::rebuildRates)).toList());
+        }
+        return new RateChain(Stream.concat(Stream.of(own), rates.ancestorsOf(sheetId).stream()
+                .map(id -> asOf(id, date).map(state -> state.rebuildRates(id)).orElse(List.<Rate>of()))).toList());
+    }
+
+    /** The rates the sheet inherited at the end of a date, nearest ancestor first, as the screen reads them: each
+     *  ancestor's as it stood when the sheet's state for that date was kept (see {@link #ratesOf}). */
+    @Transactional(readOnly = true)
+    public List<List<RateView>> inheritedAsOf(String sheetId, LocalDate date) {
+        Optional<SheetState> then = asOf(sheetId, date);
+        if (then.isPresent() && then.get().ancestors() != null) {
+            return then.get().ancestors().stream().map(SheetState.AncestorState::views).toList();
+        }
+        return rates.ancestorsOf(sheetId).stream().map(ancestor -> viewsAsOf(ancestor, date).rates()).toList();
+    }
+
+    /** The rates as the screen reads them: by grade, in the order they take effect. */
+    private static List<RateView> viewsOf(List<Rate> sheetRates) {
+        return sheetRates.stream().sorted(Comparator.comparing(Rate::getGrade).thenComparing(Rate.BY_FROM))
+                .map(RateView::of).toList();
     }
 
     /** The claim as kept: no one's editor lock is part of what the sheet held. */
