@@ -1,0 +1,103 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index ce30e6862..fe9c5d7d6 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -30,7 +30,7 @@ export interface ClaimView {
+   /** Whether its person's last statement binds the claim, to `statedDue`. */
+   stated: boolean;
+   /** The figure the claim had at its person's last statement, while bound by it, with exactly two
+-   *  decimals; null when not bound, while PENDING (it then follows the rate), or if it had no figure then (it stays n/a). */
++   *  decimals; null when not bound, or if it had no figure then (it stays n/a). */
+   statedDue: string | null;
+   /** The number of the SETTLED claim of the same person a correction (a negative amount) corrects; null on
+    *  any other claim. */
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index c995319e3..401aebcc3 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -174,7 +174,7 @@ export function claimDueCents(
+ ): number | null {
+   if (c.settledDue !== null) return cents(c.settledDue);
+   let figure: number;
+-  if (c.stated && c.status !== 'PENDING') {
++  if (c.stated) {
+     // A statement binds the claim to its figure then, or to none (n/a).
+     if (c.statedDue === null) return null;
+     figure = cents(c.statedDue);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c96c9b71e..9fddc0c43 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -376,16 +376,16 @@ public class Claim {
+         return statedDue;
+     }
+ 
+-    /** Whether a statement binds the claim now: it is stated and not PENDING (a PENDING claim follows its live
+-     *  figure). A bound claim keeps its bound figure, even when it had none (n/a). */
++    /** Whether a statement binds the claim now: it is stated, whatever its status (a PENDING claim too). A bound
++     *  claim keeps its bound figure, even when it had none (n/a). */
+     public boolean isBound() {
+-        return stated && status != ClaimStatus.PENDING;
++        return stated;
+     }
+ 
+-    /** The figure a statement binds the claim to now: its stated one, except while PENDING, when no statement
+-     *  binds it and it follows its live figure; null when not bound, or bound with no figure (n/a). */
++    /** The figure a statement binds the claim to now: its stated one; null when not bound, or bound with no
++     *  figure (n/a). */
+     public BigDecimal getBoundDue() {
+-        return status == ClaimStatus.PENDING ? null : statedDue;
++        return statedDue;
+     }
+ 
+     /** Bind the claim to the figure it has at a statement. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 9fb854c7d..a378641ed 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -36,7 +36,7 @@ public class ClaimController {
+      * A claim as the screen shows it; the amount is given with exactly two decimals, as is the due
+      * fixed when it was settled (null while it is not settled, or if its grade had no rate then); openedBy
+      * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
+-     * statedDue (null if it had no figure then, when it stays n/a, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
++     * statedDue (null if it had no figure then, when it stays n/a); corrects is the number of the claim a correction corrects (null
+      * on any other claim); deferredUntil is the day it was deferred until (null if never deferred); log is its status log, oldest first;
+      * proofs is how many proofs have been given for it; splitFrom is the number of the claim it was split off (null
+      * on any other claim); lockedBy is who has its editor open, locking it for other users (null when no one has);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5dd270efe..0182716a7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -587,8 +587,8 @@ public class ClaimService {
+         return reminded;
+     }
+ 
+-    /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its live
+-     *  figure with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
++    /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its bound figure, else its live
++     *  one, with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
+      *  claim that is not PENDING and for one due by inside a closed period. */
+     @Transactional
+     public Claim approve(String sheetId, String user, long id) {
+@@ -645,7 +645,7 @@ public class ClaimService {
+         return changed;
+     }
+ 
+-    /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by its person's last
++    /** A steward rejects a PENDING claim with a reason: it is OPEN again, still bound by its person's last
+      *  statement if that statement included it. Refused for a clerk, for a claim that is not PENDING and for one
+      *  due by inside a closed period. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 5fef34abe..694a1237e 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -279,7 +279,7 @@ public class Rollup {
+         return !NOT_AVAILABLE.equals(figures.dueTotal()) && new BigDecimal(figures.dueTotal()).compareTo(threshold) > 0;
+     }
+ 
+-    /** A claim's due: its settled figure, else its stated one (none while PENDING), else its amount at the rate in force on its date of
++    /** A claim's due: its settled figure, else its stated one, else its amount at the rate in force on its date of
+      *  its person's grade in force on that date (the sheet's own, else its nearest ancestor's), rounded as the claim rounds (by the sheet's policy date); an overdue claim's late charge is added on top of the figure, and the
+      *  sum is raised to the floor in force on its date unless it is a correction. */
+     private static BigDecimal dueOf(Claim claim, String grade, RateChain sheetRates, Sheet sheet, List<Claim> sheetClaims) {
