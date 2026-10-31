@@ -1,0 +1,50 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b8cebeaa7..6d1192a28 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -719,10 +719,15 @@ export class PeopleList {
+       };
+     });
+   });
+-  /** Per period: its due-total, as its row shows it. */
++  /** Per period: its due-total, as its row shows it, and its change from the period before it by start date (none
++   *  for the earliest). */
+   protected readonly summaryByPeriod = computed<PeriodSummary[]>(() => {
+     const due = this.dueByPeriod();
+-    return this.periods.list().map((p) => ({ name: p.name, dueTotal: due.get(p.id) ?? '0.00' }));
++    const list = this.periods.list();
++    const byStart = [...list].sort((a, b) => a.from.localeCompare(b.from) || a.id - b.id);
++    const change = new Map(byStart.map((p, i) => [p.id, i === 0 ? ''
++      : money(cents(due.get(p.id) ?? '0.00') - cents(due.get(byStart[i - 1].id) ?? '0.00'))]));
++    return list.map((p) => ({ name: p.name, dueTotal: due.get(p.id) ?? '0.00', change: change.get(p.id) ?? '' }));
+   });
+   /** Per status: how many of the sheet's claims are in it. */
+   protected readonly summaryByStatus = computed<StatusSummary[]>(() => {
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 6b4a99642..c1479c1e8 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -10,10 +10,12 @@ export interface GradeSummary {
+   active: number;
+ }
+ 
+-/** A period's line: its due-total, as the period's row shows it. */
++/** A period's line: its due-total, as the period's row shows it, and its change from the period before it by start
++ *  date (empty for the earliest). */
+ export interface PeriodSummary {
+   name: string;
+   dueTotal: string;
++  change: string;
+ }
+ 
+ /** A status's line: how many claims on the sheet are in it. */
+@@ -45,7 +47,8 @@ export interface VoidReasonSummary {
+       <ul aria-label="By period">
+         @for (p of periods(); track p.name) {
+           <li>Period {{ p.name }}: due
+-            <span [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</span></li>
++            <span [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</span>, change
++            <span [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</span></li>
+         }
+       </ul>
+       <ul aria-label="By status">
