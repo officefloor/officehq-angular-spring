@@ -22,6 +22,7 @@ import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.watch.WatchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,10 +45,12 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final RoleService roles;
     private final ClaimSequenceRepository sequences;
+    private final WatchService watches;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
-            RoleService roles, ClaimSequenceRepository sequences) {
+            RoleService roles, ClaimSequenceRepository sequences, WatchService watches) {
+        this.watches = watches;
         this.periods = periods;
         this.sequences = sequences;
         this.roles = roles;
@@ -206,6 +209,9 @@ public class ClaimService {
             line += " due=" + dueText(changed);
         }
         audit.recordOnCommit(line);
+        if (next == ClaimStatus.SETTLED) {
+            watches.notifyWatchers(sheetId, user, person, number);
+        }
         rollup.recordChanges(sheetId, user, before);
         return changed;
     }
@@ -278,6 +284,7 @@ public class ClaimService {
         Claim changed = claims.saveAndFlush(claim);
         audit.recordOnCommit(entry("CLAIM_APPROVED", user, person, changed, changed.getNumber())
                 + " due=" + dueText(changed));
+        watches.notifyWatchers(sheetId, user, person, changed.getNumber());
         rollup.recordChanges(sheetId, user, before);
         return changed;
     }
@@ -329,6 +336,7 @@ public class ClaimService {
         Claim changed = claims.saveAndFlush(claim);
         audit.recordOnCommit(entry("CLAIM_RESETTLED", user, person, changed, changed.getNumber())
                 + " old=" + old + " new=" + dueText(changed));
+        watches.notifyWatchers(sheetId, user, person, changed.getNumber());
         rollup.recordChanges(sheetId, user, before);
         return changed;
     }

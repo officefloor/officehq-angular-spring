@@ -10,6 +10,7 @@ import { Periods, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
+import { Watches } from '../../core/watches';
 import { PersonClaims } from '../claims/claims';
 import { SheetHeader } from '../header/header';
 import { PeriodsPanel } from '../periods/periods';
@@ -182,6 +183,9 @@ function csvField(value: string): string {
             </select>
             <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect.value)"
                     [disabled]="addingPatron() === p.id" [attr.aria-label]="'Add a patron of ' + p.name">Add patron</button>
+            — watched <span data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</span>
+            <button type="button" data-testid="person-watch" (click)="toggleWatch(p)" [disabled]="watching() === p.id"
+                    [attr.aria-pressed]="watched().has(p.id)" [attr.aria-label]="'Watch ' + p.name">Watch</button>
             @if (patronError()?.id === p.id) {
               <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
             }
@@ -204,6 +208,7 @@ export class PeopleList {
   private readonly claimsApi = inject(Claims);
   private readonly statementsApi = inject(Statements);
   private readonly patronsApi = inject(Patrons);
+  private readonly watchesApi = inject(Watches);
   protected readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);
 
@@ -242,6 +247,10 @@ export class PeopleList {
   protected readonly addingPatron = signal<number | null>(null);
   /** The error of the last patron added on a person's row, until the next action on that row. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
+  /** The ids of the people the signed-in user watches. */
+  protected readonly watched = signal<ReadonlySet<number>>(new Set());
+  /** The person whose watch is being changed, so a second press waits for the first. */
+  protected readonly watching = signal<number | null>(null);
   /** Each person's patrons' ids, by person. */
   private readonly patronIdsByPerson = computed(() => {
     const byPerson = new Map<number, number[]>();
@@ -430,6 +439,7 @@ export class PeopleList {
           this.bulkSettleError.set(null);
           this.statements.set(new Map());
           this.patrons.set([]);
+          this.watched.set(new Set());
           this.personError.set(null);
           this.patronError.set(null);
           this.reset();
@@ -444,14 +454,16 @@ export class PeopleList {
                 claims: this.claimsApi.list(sheet.id),
                 statements: this.statementsApi.list(sheet.id),
                 patrons: this.patronsApi.list(sheet.id),
+                watched: this.watchesApi.list(sheet.id),
               })
-            : of({ people: [], claims: [], statements: [], patrons: [] });
+            : of({ people: [], claims: [], statements: [], patrons: [], watched: [] });
         }),
         takeUntilDestroyed(),
       )
       .subscribe({
-        next: ({ people, claims, statements, patrons }) => {
+        next: ({ people, claims, statements, patrons, watched }) => {
           this.patrons.set(patrons);
+          this.watched.set(new Set(watched));
           this.people.set(people);
           this.claims.set(claims);
           this.statements.set(new Map(statements.map((s) => [s.personId, s])));
@@ -517,6 +529,31 @@ export class PeopleList {
   protected backingOf(personId: number): string {
     const due = this.dueByPerson();
     return money((this.patronIdsByPerson().get(personId) ?? []).reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
+  }
+
+  /** Start watching the person, or stop when the signed-in user already watches them. */
+  protected toggleWatch(p: PersonView): void {
+    if (this.watching() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.watching.set(p.id);
+    this.watchesApi.set(sheet.id, p.id, !this.watched().has(p.id)).subscribe({
+      next: ({ personId, watched }) => {
+        this.watching.set(null);
+        this.watched.update((set) => {
+          const next = new Set(set);
+          if (watched) next.add(personId);
+          else next.delete(personId);
+          return next;
+        });
+      },
+      error: () => {
+        this.watching.set(null);
+        this.personError.set({ id: p.id, message: 'Could not change whether you watch ' + p.name + '.' });
+      },
+    });
   }
 
   /** Name the chosen person as the person's patron; refused when it is themselves or already their patron. */
