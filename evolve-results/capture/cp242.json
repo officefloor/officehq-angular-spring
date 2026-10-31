@@ -1,0 +1,64 @@
+{
+  "checkpoint": 242,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp242_person-timeline",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their timeline: one line per dated thing about them in date order (a date's\ngrade changes, then claims, then holds, then retirements, then unretirements), as\n<date> claim <amount> <status>, <date> grade <grade>, <date> hold [to <date>], <date> retired,\n<date> unretired.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their timeline: one line per dated thing about them in date order (a date's\ngrade changes, then claims, then holds, then retirements, then unretirements), as\n<date> claim <amount> <status>, <date> grade <grade>, <date> hold [to <date>], <date> retired,\n<date> unretired.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4b72298e98c924a71c7eafc4eae8537ff3ee055a",
+  "reset_sha": "",
+  "preagent_sha": "b63ba8db1ff19fd8a7cbbf33a3057ceb4fc7d438",
+  "prev_sha": "b63ba8db1ff19fd8a7cbbf33a3057ceb4fc7d438",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.8077601999999997,
+    "input_tokens": 102,
+    "output_tokens": 23792,
+    "cache_read_tokens": 3160961,
+    "cache_creation_tokens": 87415,
+    "num_turns": 51,
+    "duration_ms": 1264788,
+    "duration_api_ms": 334442,
+    "model": "claude-opus-5-5",
+    "session_id": "7f99904f-5c12-44dd-8133-27d47272b526",
+    "stop_reason": "success",
+    "result_text": "The timeline is in, but `bin/e2e` doesn't fully pass: **3 of 4 tests pass, and \"scenario 2\" fails**. It fails at a claim-editor step (spec line 633) that runs before any timeline check, so the timeline change can't be what breaks it. Making it pass would mean breaking a rule in `AGENTS.md`, so I've left that call to you.\n\n**What I built**\n- **Server:** `PersonController.PersonView` now has a `timeline` field, built from data the app already stores: grades with a from-date, claims (deleted and void ones too), holds, the current retirement and past retirements. The first grade has no date, so it gets no line.\n- **Ordering:** by date, then grade, claim, hold, retired, unretired. Two lines of the same kind on the same date are sorted by their text. The spec requires this: \"claim 10.25 DELETED\" comes before \"claim 3.33 DRAFT\", which rules out sorting by amount, and Ben's 2026-03-05 claims rule out creation order.\n- **Front end:** `timeline` is added to the person type in `claims.ts`. `people.ts` shows one `person-timeline-line` per entry, in the format the request gives.\n\nNo schema change or audit records were needed.\n\n**Why scenario 2 fails**\n1. Vic opens the editor on a claim that has lines, then the page reloads. The app reopens the editor because Vic still holds the lock.\n2. Saving 20.00 is refused, correctly: a claim with lines must keep their total. The editor stays open, as `AGENTS.md` requires (\"A refused save of a claim's editor leaves the editor open; the test cancels it\u2026\").\n3. The spec doesn't cancel. Its next step adds a 7.77 claim, but that submit goes through the still-open editor as a second save and is refused.\n\n**What would make it pass:** I tried one change in `claims.ts` `save()`: when an editor save is refused, release the lock and close the editor, keeping the error showing. With that, scenario 2 passes, including its timeline check (line 905). I took it back out because it breaks the documented rule that a refused save leaves the editor open. Tell me if you want it in and I'll add it back.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.8077601999999997,
+        "num_turns": 51,
+        "duration_ms": 1264788,
+        "duration_api_ms": 334442,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp242.agent.jsonl",
+  "agent_diff_file": "cp242.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
