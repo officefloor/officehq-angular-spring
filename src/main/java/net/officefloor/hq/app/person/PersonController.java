@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,10 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade, long version) {
+    public record PersonView(long id, String name, String grade, long version, boolean retired, LocalDate retiredFrom) {
 
         public static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    person.isRetired(), person.getRetiredFrom());
         }
     }
 
@@ -40,6 +42,10 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @NotNull Long version) {
+    }
+
+    /** A retirement: the date the person is retired from; missing takes the sheet's today. */
+    public record Retirement(LocalDate from) {
     }
 
     private final PersonService people;
@@ -69,5 +75,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonEdit request) {
         return PersonView.of(people.update(sheetId, user, id, request.version(), request.name(), request.grade()));
+    }
+
+    @PostMapping("/{id}/retire")
+    public PersonView retire(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody Retirement request) {
+        return PersonView.of(people.retire(sheetId, user, id, request.from()));
     }
 }

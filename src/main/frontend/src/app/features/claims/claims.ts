@@ -176,6 +176,8 @@ export class PersonClaims {
         this.error.set(
           err instanceof HttpErrorResponse && err.status === 423
             ? 'That claim is dated inside a closed period.'
+            : err instanceof HttpErrorResponse && err.status === 422
+              ? 'That claim is dated after the person retired.'
             : id !== null && err instanceof HttpErrorResponse && err.status === 409
               ? 'Only a draft claim can be edited. Void it and add a new one.'
               : id === null ? 'Could not add that claim.' : 'Could not save that claim.',

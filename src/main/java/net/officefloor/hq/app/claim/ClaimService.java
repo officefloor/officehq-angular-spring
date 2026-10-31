@@ -59,6 +59,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         refuseIfClosed(sheetId, date != null ? date : today);
+        refuseIfRetired(person, date != null ? date : today);
         Rollup.Figures before = rollup.of(sheetId);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note)));
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
@@ -81,6 +82,7 @@ public class ClaimService {
         }
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, date != null ? date : today);
+        refuseIfRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(), date != null ? date : today);
         Rollup.Figures before = rollup.of(sheetId);
         claim.setAmount(scaled(amount));
         claim.setDate(date != null ? date : today);
@@ -146,6 +148,14 @@ public class ClaimService {
     private void refuseIfClosed(String sheetId, LocalDate date) {
         if (periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date, date)) {
             throw new ResponseStatusException(HttpStatus.LOCKED, "That claim's date is inside a closed period");
+        }
+    }
+
+    /** Refuse a claim dated after its person's retirement date. */
+    private static void refuseIfRetired(Person person, LocalDate date) {
+        if (person.refusesClaimOn(date)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "That claim is dated after " + person.getName() + " retired");
         }
     }
 

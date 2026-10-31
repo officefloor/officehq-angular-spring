@@ -59,8 +59,14 @@ const NO_RATES: RateView[] = [];
         }
       </form>
 
+      <p>
+        <input id="show-retired" type="checkbox" data-testid="show-retired"
+               [checked]="api.showRetired()" (change)="api.showRetired.set($any($event.target).checked)" />
+        <label for="show-retired">Show retired</label>
+      </p>
+
       <ul data-testid="person-list">
-        @for (p of people(); track p.id) {
+        @for (p of listed(); track p.id) {
           <li [attr.data-testid]="'person-row-' + p.id">
             <span data-testid="person-name">{{ p.name }}</span>
             — grade <span data-testid="person-grade">{{ p.grade }}</span>
@@ -68,10 +74,16 @@ const NO_RATES: RateView[] = [];
             — statements <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
             — last stated <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span>
             on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
+            — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+            from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
             <button type="button" data-testid="person-statement" (click)="takeStatement(p)" [disabled]="stating() === p.id"
                     [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+            <label [attr.for]="'person-retire-date-' + p.id">Retire from</label>
+            <input [id]="'person-retire-date-' + p.id" type="date" data-testid="person-retire-date" #retireDate />
+            <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)" [disabled]="retiring() === p.id"
+                    [attr.aria-label]="'Retire ' + p.name">Retire</button>
             @if (personError()?.id === p.id) {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
@@ -86,7 +98,7 @@ const NO_RATES: RateView[] = [];
 })
 export class PeopleList {
   private readonly sheets = inject(Sheets);
-  private readonly api = inject(People);
+  protected readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
   private readonly statementsApi = inject(Statements);
   protected readonly rates = inject(Rates);
@@ -95,6 +107,12 @@ export class PeopleList {
   protected readonly grades = GRADES;
   protected readonly noRates = NO_RATES;
   protected readonly people = signal<PersonView[]>([]);
+  /** The people listed: retired people only while "show retired" is on. Totals still count everyone. */
+  protected readonly listed = computed(() =>
+    this.api.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+  );
+  /** The person being retired, so a second press waits for the first. */
+  protected readonly retiring = signal<number | null>(null);
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   /** Each person's statements, by person; one with none is missing. */
@@ -233,6 +251,25 @@ export class PeopleList {
     });
   }
 
+  /** Retire the person from a date; a blank date takes the sheet's today. */
+  protected retire(p: PersonView, from: string): void {
+    if (this.retiring() === p.id) return;
+    this.personError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.retiring.set(p.id);
+    this.api.retire(sheet.id, p.id, from === '' ? null : from).subscribe({
+      next: (retired) => {
+        this.retiring.set(null);
+        this.people.update((list) => list.map((q) => (q.id === retired.id ? retired : q)));
+      },
+      error: () => {
+        this.retiring.set(null);
+        this.personError.set({ id: p.id, message: 'Could not retire ' + p.name + '.' });
+      },
+    });
+  }
+
   protected claimSaved(saved: ClaimView): void {
     this.claims.update((list) =>
       list.some((c) => c.id === saved.id)
@@ -271,6 +308,8 @@ export class PeopleList {
         this.quickError.set(
           err instanceof HttpErrorResponse && err.status === 423
             ? 'That claim is dated inside a closed period.'
+            : err instanceof HttpErrorResponse && err.status === 422
+              ? 'That claim is dated after the person retired.'
             : err instanceof HttpErrorResponse && err.status === 409
               ? 'That name is already in use on this sheet.'
               : 'Could not add that claim.',
