@@ -719,6 +719,12 @@ public class ClaimService {
         return claim.getSettledDue() == null ? "n/a" : claim.getSettledDue().toPlainString();
     }
 
+    /** The next number on a sheet, locked by the caller, for a claim due by this day arriving there now, as
+     *  {@link #nextNumber(Sheet, LocalDate)} gives it. */
+    public String nextNumberOn(Sheet sheet, LocalDate dueBy) {
+        return nextNumber(sheet, dueBy);
+    }
+
     /** The next number for a claim due by this day, opened now: within its period (<period name>-<n>, or X-<n>
      *  in no period) while the sheet's period numbering is on by its today, else the sheet's next number. */
     private String nextNumber(Sheet sheet, LocalDate date) {

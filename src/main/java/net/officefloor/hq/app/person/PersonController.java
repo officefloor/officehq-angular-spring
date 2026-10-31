@@ -96,6 +96,10 @@ public class PersonController {
     public record MergeForm(@NotNull Long intoId) {
     }
 
+    /** A transfer: the id of the sheet the person is transferred to. */
+    public record TransferForm(@NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String toSheetId) {
+    }
+
     /** A retirement: the date the person is retired from; missing takes the sheet's today. */
     public record Retirement(LocalDate from) {
     }
@@ -115,10 +119,12 @@ public class PersonController {
     private final SheetHistory history;
     private final RoleService roles;
     private final PersonMergeService merges;
+    private final PersonTransferService transfers;
 
     public PersonController(PersonService people, SheetHistory history, RoleService roles,
-            PersonMergeService merges) {
+            PersonMergeService merges, PersonTransferService transfers) {
         this.people = people;
+        this.transfers = transfers;
         this.merges = merges;
         this.history = history;
         this.roles = roles;
@@ -213,6 +219,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MergeForm request) {
         return PersonView.of(merges.merge(sheetId, user, id, request.intoId()), people.today(sheetId));
+    }
+
+    /** Transfer the person to another sheet; they leave this one. */
+    @PostMapping("/{id}/transfer")
+    public void transfer(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody TransferForm request) {
+        transfers.transfer(sheetId, user, id, request.toSheetId());
     }
 
     /** Put the person on hold over the dates given, alongside any holds they already have. */

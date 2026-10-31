@@ -19,7 +19,9 @@ export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.
 export class Consolidated {
   private readonly http = inject(HttpClient);
 
-  descendants(sheetId: string): Observable<DescendantFigures> {
-    return this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants/figures`);
+  /** With `self`, the sheet's own live figures are added in too. */
+  descendants(sheetId: string, self = false): Observable<DescendantFigures> {
+    return this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants/figures`,
+      self ? { params: { self: 'true' } } : {});
   }
 }

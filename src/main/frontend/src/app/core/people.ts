@@ -113,6 +113,11 @@ export class People {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/merge`, { intoId });
   }
 
+  /** Transfer the person to another sheet (a steward only); they leave this one. */
+  transfer(sheetId: string, id: number, toSheetId: string): Observable<void> {
+    return this.http.post<void>(`${this.base(sheetId)}/${id}/transfer`, { toSheetId });
+  }
+
   /** Give the selected people `grade` from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */
   bulkGrade(sheetId: string, ids: readonly number[], grade: Grade, from: string | null): Observable<BulkGradeView> {
     return this.http.post<BulkGradeView>(`${this.base(sheetId)}/bulk-grade`, { ids, grade, from });

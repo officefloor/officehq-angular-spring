@@ -4,12 +4,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** A sheet's descendants' figures, which the screen adds to the sheet's own to show them consolidated. */
@@ -31,14 +34,21 @@ public class ConsolidatedController {
         this.rollup = rollup;
     }
 
+    /** With {@code self}, the sheet's own figures as the store holds them now are added in too: the screen asks for
+     *  them so while it shows the sheet as of a date, as the consolidated figures are not dated. */
     @GetMapping("/figures")
     @Transactional(readOnly = true)
     public DescendantFigures figures(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestParam(defaultValue = "false") boolean self) {
         int people = 0;
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
-        for (String descendant : sheets.descendantsOf(sheetId)) {
+        List<String> counted = new ArrayList<>(sheets.descendantsOf(sheetId));
+        if (self) {
+            counted.add(0, sheetId);
+        }
+        for (String descendant : counted) {
             Rollup.Figures figures = rollup.of(descendant);
             people += figures.people().size();
             due = due.add(new BigDecimal(figures.dueTotal()));

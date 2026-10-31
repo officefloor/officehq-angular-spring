@@ -189,6 +189,30 @@ public class Claim {
         this.listed = listed;
     }
 
+    /** Move the claim to another sheet and person, listed there at {@code listed} and numbered {@code number}
+     *  (none for a claim without one): it loses its reference, its settle batch, its editor's lock and any figure
+     *  a statement bound it to; a correction or split names the number given to the claim it names there. */
+    public void transferTo(String sheetId, Long personId, long listed, String number, String corrects,
+            String splitFrom) {
+        this.sheetId = sheetId;
+        this.personId = personId;
+        this.listed = listed;
+        this.number = number;
+        this.corrects = corrects;
+        this.splitFrom = splitFrom;
+        this.ref = null;
+        this.settleBatch = null;
+        this.lockedBy = null;
+        unbind();
+    }
+
+    /** The sheet's today on which the claim was first opened (took a status past DRAFT), as its log records it;
+     *  null when it never was. */
+    public LocalDate openedOn() {
+        return log.stream().filter(line -> line.getStatus() != ClaimStatus.DRAFT).map(ClaimLogEntry::getOn)
+                .findFirst().orElse(null);
+    }
+
     public BigDecimal getAmount() {
         return amount;
     }

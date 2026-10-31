@@ -86,6 +86,12 @@ public class Person {
         return sheetId;
     }
 
+    /** Move the person to another sheet, leaving their holds behind. */
+    public void transferTo(String sheetId) {
+        this.sheetId = sheetId;
+        this.holds.clear();
+    }
+
     public String getName() {
         return name;
     }

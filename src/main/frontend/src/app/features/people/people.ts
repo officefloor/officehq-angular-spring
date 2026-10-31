@@ -306,6 +306,11 @@ function csvField(value: string): string {
             </select>
             <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
                     [disabled]="merging() === p.id" [attr.aria-label]="'Merge ' + p.name">Merge</button>
+            <label [attr.for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
+            <input [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to" #transferTo
+                   (input)="clearPersonError(p.id)" />
+            <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo.value)"
+                    [disabled]="transferring() === p.id" [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
             — watched <span data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</span>
             <button type="button" data-testid="person-watch" (click)="toggleWatch(p)" [disabled]="watching() === p.id"
                     [attr.aria-pressed]="watched().has(p.id)" [attr.aria-label]="'Watch ' + p.name">Watch</button>
@@ -403,6 +408,8 @@ export class PeopleList {
   });
   /** The person being merged into another, so a second press waits for the first. */
   protected readonly merging = signal<number | null>(null);
+  /** The person being transferred to another sheet, so a second press waits for the first. */
+  protected readonly transferring = signal<number | null>(null);
   /** The person an alias is being added to, so a second press waits for the first. */
   protected readonly aliasing = signal<number | null>(null);
   /** The error of the last action taken on a person's row, until the next action on that row. */
@@ -518,9 +525,11 @@ export class PeopleList {
   protected readonly dueTotal = computed(() =>
     money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
   );
-  /** The sheet's own people count, due-total and overdue-total, as shown here, added to its descendants'. */
+  /** The sheet's own people count, due-total and overdue-total, as shown here, added to its descendants'; while
+   *  the sheet is shown as of a date, its own live figures, as the consolidated ones are not dated. */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
+    if (this.sheets.asOf()) return d;
     return {
       peopleCount: this.people().length + d.peopleCount,
       dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
@@ -721,7 +730,7 @@ export class PeopleList {
                 statements: this.statementsApi.list(sheet.id),
                 patrons: this.patronsApi.list(sheet.id),
                 watched: this.watchesApi.list(sheet.id),
-                descendants: this.consolidatedApi.descendants(sheet.id),
+                descendants: this.consolidatedApi.descendants(sheet.id, this.sheets.asOf() !== null),
               })
             : of({ people: [], claims: [], statements: [], patrons: [], watched: [], descendants: NO_DESCENDANTS });
         }),
@@ -967,6 +976,31 @@ export class PeopleList {
       error: () => {
         this.merging.set(null);
         this.personError.set({ id: p.id, message: 'Could not merge ' + p.name + ' into that person.' });
+      },
+    });
+  }
+
+  /** Transfer the person to the sheet typed; once transferred the sheet is re-read, as their links go with them. */
+  protected transfer(p: PersonView, toSheetId: string): void {
+    if (this.transferring() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const target = toSheetId.trim();
+    if (target === '' || target === sheet.id) {
+      this.personError.set({ id: p.id, message: 'Choose another sheet to transfer ' + p.name + ' to.' });
+      return;
+    }
+    this.transferring.set(p.id);
+    this.api.transfer(sheet.id, p.id, target).subscribe({
+      next: () => {
+        this.transferring.set(null);
+        this.sheets.load(sheet.id).subscribe();
+      },
+      error: () => {
+        this.transferring.set(null);
+        this.personError.set({ id: p.id, message: 'Could not transfer ' + p.name + ' to sheet ' + target + '.' });
       },
     });
   }
