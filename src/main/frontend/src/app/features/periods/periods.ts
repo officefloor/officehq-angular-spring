@@ -95,7 +95,9 @@ export class PeriodsPanel {
         this.closing.set(null);
         this.periodError.set({
           id: p.id,
-          message: err instanceof HttpErrorResponse && err.status === 409
+          message: err instanceof HttpErrorResponse && err.status === 403
+            ? 'Your role may not close a period.'
+            : err instanceof HttpErrorResponse && err.status === 409
             ? 'That period is already closed.'
             : 'Could not close that period.',
         });
@@ -117,7 +119,7 @@ export class PeriodsPanel {
         this.periodError.set({
           id: p.id,
           message: status === 403
-            ? 'Only a steward can reopen a period.'
+            ? 'Your role may not reopen a period.'
             : status === 409
               ? 'That period is not closed.'
               : 'Could not reopen that period.',

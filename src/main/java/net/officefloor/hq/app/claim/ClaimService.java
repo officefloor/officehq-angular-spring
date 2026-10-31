@@ -143,7 +143,8 @@ public class ClaimService {
      * added on top, so later rate changes leave it as it is. The user
      * who opened a claim cannot settle it, and a clerk settling it when that due is above the sheet's clerk limit
      * makes it PENDING instead, for a steward to approve or reject (a claim with no due is within any limit); a
-     * steward settles anything. A claim dated inside a closed period cannot move. The sheet is locked
+     * steward settles anything. Opening, settling and voiding are each refused for a role the sheet's permission
+     * matrix does not allow. A claim dated inside a closed period cannot move. The sheet is locked
      * first, so moves on one sheet are made one at a time and no number is given twice.
      */
     @Transactional
@@ -156,6 +157,15 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
+        }
+        String action = switch (next) {
+            case OPEN -> "open";
+            case SETTLED -> "settle";
+            case VOID -> "void";
+            default -> null;
+        };
+        if (action != null && !sheet.allows(action, roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim");
         }
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheet.getToday())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -323,21 +333,21 @@ public class ClaimService {
         return changed;
     }
 
-    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
+    /** A user whose role may reassign moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
      *  loses any figure a statement bound it to (it is live again until its new person's next statement), and is
-     *  listed as its new person's newest claim. Refused for a clerk, for a SETTLED or VOID claim, for a move to the
+     *  listed as its new person's newest claim. Refused for a role the permission matrix does not allow (by default a clerk), for a SETTLED or VOID claim, for a move to the
      *  person it is already of, for one dated inside a closed period or after the new person retired, and for a
      *  correction the new person has no SETTLED claim of that number for. */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
         sheets.load(sheetId, user);
-        sheetStore.findLockedById(sheetId).orElseThrow();
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
         Person to = people.findByIdAndSheetId(toPersonId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reassigns a claim");
+        if (!sheet.allows("reassign", roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not reassign a claim");
         }
         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

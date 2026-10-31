@@ -4,11 +4,16 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Loads sheets by id; a sheet never loaded before is started empty. */
 @Service
@@ -127,6 +132,24 @@ public class SheetService {
     @Transactional
     public Sheet setProofThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
         return record(id, user, Sheet.PROOF_THRESHOLD, from, threshold == null ? null : scaled(threshold), false);
+    }
+
+    /** Set the roles that may take an action (a comma separated list of clerk and steward; blank: its standing
+     *  rule), starting the sheet if it has never been loaded. Not dated. Refused for a role that is neither. */
+    @Transactional
+    public Sheet setPermission(String id, String user, String action, String roles) {
+        List<String> listed = roles == null ? List.of()
+                : Arrays.stream(roles.split(",")).map(String::trim).filter(r -> !r.isEmpty()).distinct().toList();
+        if (listed.stream().anyMatch(r -> !Role.CLERK.equals(r) && !Role.STEWARD.equals(r))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A permission lists the roles clerk and steward");
+        }
+        String value = String.join(",", listed);
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setPermission(action, value);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
+        return saved;
     }
 
     /** Record a dated setting's value (null: none) from a date (null: the sheet's today), replacing the one it had

@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, Observable, concat, last, switchMap } from 'rxjs';
 import { GRADES, Grade } from '../../core/people';
 import { ROLES, RoleName, Roles } from '../../core/roles';
-import { SheetView, Sheets } from '../../core/sheet';
+import { PERM_ACTIONS, PermAction, STANDING_PERMISSIONS, SheetView, Sheets } from '../../core/sheet';
 
 /** A clerk limit the form accepts: an amount of 0.00 or more with up to two decimals. */
 const LIMIT_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
@@ -16,16 +16,22 @@ const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap' | 'proofThreshold';
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap' | 'proofThreshold' | PermField;
 
 /** A setting that carries a figure: it is saved from a from-date. */
-type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom'>;
+type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | PermField>;
 
 /** The from-date field of each dated setting. */
 type FromField = `${DatedField}From`;
 
 /** The form field of each grade's own terms. */
 const GRADE_TERMS_FIELD: Record<Grade, 'termsA' | 'termsB' | 'termsC'> = { A: 'termsA', B: 'termsB', C: 'termsC' };
+
+/** The form field of each action's permission entry. */
+type PermField = `perm_${PermAction}`;
+
+/** The form field of each action's permission entry. */
+const PERM_FIELD = Object.fromEntries(PERM_ACTIONS.map((a) => [a, `perm_${a}`])) as { [A in PermAction]: `perm_${A}` };
 
 /** Whether a yyyy-mm-dd text is a real calendar day. */
 function isDate(value: string): boolean {
@@ -34,7 +40,7 @@ function isDate(value: string): boolean {
   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
 }
 
-// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, its late percent, its policy date, its period numbering from, its cap, its proof threshold, and the role assigned to each user name.
+// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, its late percent, its policy date, its period numbering from, its cap, its proof threshold, its permission matrix (not dated), and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -53,6 +59,9 @@ function isDate(value: string): boolean {
 
       <p>Cap: <span data-testid="setting-cap-current">{{ sheets.current()?.cap ?? '' }}</span></p>
       <p>Proof threshold: <span data-testid="setting-proof-threshold-current">{{ sheets.current()?.proofThreshold ?? '' }}</span></p>
+      @for (a of permActions; track a) {
+        <p>Who may {{ a }}: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ sheets.current()?.permissions?.[a] ?? '' }}</span></p>
+      }
       <p>Each setting with a figure is saved from its from-date (blank: the sheet's today), keeping the values saved from
         other dates; a claim takes the floor, late percent and terms in force on its date.</p>
 
@@ -107,6 +116,11 @@ function isDate(value: string): boolean {
         <label for="setting-proof-threshold-from">Proof threshold from (yyyy-mm-dd; blank: today)</label>
         <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" (focus)="lastFocused = 'proofThreshold'"
                placeholder="yyyy-mm-dd" autocomplete="off" />
+        @for (a of permActions; track a) {
+          <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; blank: {{ standing[a] }})</label>
+          <input [id]="'setting-perm-' + a" [attr.data-testid]="'setting-perm-' + a" [formControlName]="permField[a]"
+                 (focus)="lastFocused = permField[a]" autocomplete="off" />
+        }
         <button type="submit" data-testid="settings-save" [disabled]="savingSettings()">Save settings</button>
         @if (settingsError(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -147,6 +161,9 @@ export class SettingsPanel {
 
   protected readonly grades = GRADES;
   protected readonly gradeField = GRADE_TERMS_FIELD;
+  protected readonly permActions = PERM_ACTIONS;
+  protected readonly standing = STANDING_PERMISSIONS;
+  protected readonly permField = PERM_FIELD;
   protected readonly roleChoices = ROLES;
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly settingsError = signal<string | null>(null);
@@ -178,6 +195,12 @@ export class SettingsPanel {
     latePctFrom: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
+    perm_open: new FormControl('', { nonNullable: true }),
+    perm_settle: new FormControl('', { nonNullable: true }),
+    perm_void: new FormControl('', { nonNullable: true }),
+    perm_reassign: new FormControl('', { nonNullable: true }),
+    perm_close: new FormControl('', { nonNullable: true }),
+    perm_reopen: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -222,7 +245,8 @@ export class SettingsPanel {
     const unchanged = !this.settingsForm.dirty;
     const controls = this.settingsForm.controls;
     const isSaved = (field: SettingField) => controls[field].dirty
-      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && controls[`${field}From`].dirty)
+      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && !field.startsWith('perm_')
+        && controls[`${field as DatedField}From`].dirty)
       || (unchanged && this.lastFocused === field);
     const fromOf = (field: DatedField): string | null => controls[`${field}From` as FromField].value.trim() || null;
     const saveFloor = isSaved('floor');
@@ -272,6 +296,12 @@ export class SettingsPanel {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    const permsSaved = PERM_ACTIONS.filter((a) => isSaved(`perm_${a}`))
+      .map((a) => ({ action: a, roles: controls[`perm_${a}`].value.split(',').map((r) => r.trim()).filter((r) => r !== '') }));
+    if (permsSaved.some((p) => p.roles.some((r) => !(ROLES as readonly string[]).includes(r)))) {
+      this.settingsError.set(`List the roles that may take an action, comma separated (${this.roleNames}), or leave it blank for the standing rule.`);
+      return;
+    }
     const datedFields: DatedField[] = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold'];
     const badFrom = datedFields.find((f) => {
       const from = fromOf(f);
@@ -291,6 +321,7 @@ export class SettingsPanel {
     if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
     if (saveCap) saves.push(this.sheets.setCap(sheet.id, capValue === '' ? null : capValue, fromOf('cap')));
     if (saveProofThreshold) saves.push(this.sheets.setProofThreshold(sheet.id, proofThresholdValue === '' ? null : proofThresholdValue, fromOf('proofThreshold')));
+    for (const p of permsSaved) saves.push(this.sheets.setPermission(sheet.id, p.action, p.roles.join(',')));
     this.savingSettings.set(true);
     concat(...saves).pipe(last()).subscribe({
       next: (saved) => {
@@ -306,7 +337,9 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '' }, { emitEvent: false });
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '',
+      perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
+      perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
   }
 
   protected saveRole(): void {

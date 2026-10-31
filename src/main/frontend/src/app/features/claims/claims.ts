@@ -14,6 +14,8 @@ const NO_RATES: readonly RateView[] = [];
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
 // the claims listed newest first.
 /** Why a claim above the proof threshold is refused a settle or approval. */
+/** The permission matrix action a move to each status is. */
+const STATUS_ACTION: Partial<Record<ClaimStatus, string>> = { OPEN: 'open', SETTLED: 'settle', VOID: 'void' };
 const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a proof first.';
 
 @Component({
@@ -227,7 +229,9 @@ export class PersonClaims {
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 403
-          ? 'You opened this claim, so someone else must settle it.'
+          ? status === 'SETTLED' && c.openedBy === this.session.user()
+            ? 'You opened this claim, so someone else must settle it.'
+            : `Your role may not ${STATUS_ACTION[status] ?? 'move'} a claim.`
           : err instanceof HttpErrorResponse && err.status === 423
             ? 'This claim is dated inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 428
@@ -338,7 +342,7 @@ export class PersonClaims {
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 403
-          ? 'Only a steward can move a claim to another person.'
+          ? 'Your role may not move a claim to another person.'
           : err instanceof HttpErrorResponse && err.status === 423
             ? 'This claim is dated inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 422

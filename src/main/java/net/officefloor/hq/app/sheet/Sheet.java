@@ -7,12 +7,14 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +41,11 @@ public class Sheet {
 
     private static final List<String> GRADES = List.of("A", "B", "C");
 
+    /** The actions the permission matrix covers, and the roles that may take each while its entry is blank. */
+    public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
+            "open", "clerk,steward", "settle", "clerk,steward", "void", "clerk,steward",
+            "reassign", "steward", "close", "clerk,steward", "reopen", "steward");
+
     @Id
     private String id;
 
@@ -61,6 +68,14 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
+
+    /** The permission matrix: for an action, the roles that may take it (comma separated); an action missing keeps
+     *  its standing rule. Not dated. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "action")
+    @Column(name = "roles", nullable = false)
+    private Map<String, String> permissions = new TreeMap<>();
 
     /** The sheet's policy date: a claim dated before it rounds half up, one on or after it half to even; null means
      *  the sheet's today. */
@@ -188,6 +203,26 @@ public class Sheet {
     /** The late percent in force on the sheet's today. */
     public BigDecimal getLatePct() {
         return latePctOn(today);
+    }
+
+    /** The permission matrix entries set, by action; an action missing is blank (its standing rule). */
+    public Map<String, String> getPermissions() {
+        return new TreeMap<>(permissions);
+    }
+
+    /** Set the roles that may take an action (comma separated); null or blank keeps its standing rule. */
+    public void setPermission(String action, String roles) {
+        if (roles == null || roles.isBlank()) {
+            permissions.remove(action);
+        } else {
+            permissions.put(action, roles);
+        }
+    }
+
+    /** Whether a role may take an action: by the matrix entry, else the standing rule. */
+    public boolean allows(String action, String role) {
+        String roles = permissions.getOrDefault(action, STANDING_PERMISSIONS.get(action));
+        return Arrays.stream(roles.split(",")).map(String::trim).anyMatch(role::equals);
     }
 
     public LocalDate getPolicyDate() {

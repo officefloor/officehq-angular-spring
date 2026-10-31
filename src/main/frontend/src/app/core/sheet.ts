@@ -40,7 +40,20 @@ export interface SheetView {
   proofThreshold: string | null;
   /** Every dated value recorded for the settings that carry a figure. */
   settings: DatedSetting[];
+  /** The permission matrix entries set: for an action, the roles that may take it (comma separated); an action
+   *  missing keeps its standing rule. Not dated. */
+  permissions: Partial<Record<PermAction, string>>;
 }
+
+/** The actions the permission matrix covers. */
+export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export type PermAction = (typeof PERM_ACTIONS)[number];
+
+/** The roles that may take each action while its matrix entry is blank. */
+export const STANDING_PERMISSIONS: Record<PermAction, string> = {
+  open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward',
+  reassign: 'steward', close: 'clerk,steward', reopen: 'steward',
+};
 
 /** A setting's value in force on a date (yyyy-mm-dd): the one recorded with the latest from-date on or before it;
  *  `start` (the sheet's starting value) before every from-date, or when it is none. */
@@ -145,6 +158,13 @@ export class Sheets {
   setCap(id: string, cap: string | null, from: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/cap`, { cap, from })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Set the roles that may take an action (comma separated); blank keeps its standing rule. Not dated. */
+  setPermission(id: string, action: PermAction, roles: string): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/perm/${action}`, { roles })
       .pipe(tap((s) => this.active.set(s)));
   }
 }
