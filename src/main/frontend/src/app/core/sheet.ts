@@ -147,6 +147,11 @@ export class Sheets {
       .pipe(tap((s) => this.active.set(s)));
   }
 
+  /** Clone the active sheet to another id, never used before (a steward only); answers with the clone. */
+  cloneTo(id: string, to: string): Observable<SheetView> {
+    return this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/clone`, { to });
+  }
+
   /** Change the active sheet's today. */
   setToday(id: string, today: string): Observable<SheetView> {
     return this.http

@@ -91,6 +91,23 @@ public class Person {
         this.grades.add(new GradeFrom(null, grade));
     }
 
+    /** A copy of the person on another sheet, unsaved: their name, place in the list, grades, terms, contact, aliases,
+     *  holds and retirements (current and past); not where they came from. */
+    public Person copyTo(String sheetId) {
+        Person copy = new Person();
+        copy.sheetId = sheetId;
+        copy.name = name;
+        copy.position = position;
+        grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
+        copy.terms = terms;
+        copy.contact = contact;
+        copy.retiredFrom = retiredFrom;
+        pastRetirements.forEach(r -> copy.pastRetirements.add(new PastRetirement(r.getFromDate(), r.getToDate())));
+        holds.forEach(h -> copy.holds.add(new Hold(h.getFromDate(), h.getToDate())));
+        copy.aliases.addAll(aliases);
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }

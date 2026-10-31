@@ -167,6 +167,36 @@ public class Claim {
         this.corrects = corrects;
     }
 
+    /** A copy of the claim on another sheet for another person, unsaved and without a number yet: its status, frozen
+     *  figure, dates, terms, note, reference, tags, proofs, comments and log, listed where it was; no editor's lock,
+     *  and no figure a statement bound it to. */
+    public Claim copyTo(String sheetId, Long personId) {
+        Claim copy = new Claim(sheetId, personId, amount, date, dueBy, note, corrects, listed);
+        copy.ref = ref;
+        copy.tags = tags;
+        copy.voidReason = voidReason;
+        copy.terms = terms;
+        copy.status = status;
+        copy.settledDue = settledDue;
+        copy.openedBy = openedBy;
+        copy.editedBy = editedBy;
+        copy.settleBatch = settleBatch;
+        copy.splitFrom = splitFrom;
+        copy.deferredUntil = deferredUntil;
+        copy.remindedOn = remindedOn;
+        copy.proofs = proofs;
+        copy.lateEntry = lateEntry;
+        log.forEach(l -> copy.log.add(new ClaimLogEntry(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
+        comments.forEach(c -> copy.comments.add(new ClaimComment(c.getBy(), c.getOn(), c.getText())));
+        return copy;
+    }
+
+    /** Name the claims this one corrects and was split off by their numbers on its own sheet. */
+    public void renameLinks(String corrects, String splitFrom) {
+        this.corrects = corrects;
+        this.splitFrom = splitFrom;
+    }
+
     public Long getId() {
         return id;
     }

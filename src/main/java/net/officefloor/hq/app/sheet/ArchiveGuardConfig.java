@@ -4,7 +4,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/** Puts the {@link ArchiveGuard} in front of a sheet's API, except loading it and its bulk actions. */
+/** Puts the {@link ArchiveGuard} in front of a sheet's API, except loading it, its bulk actions and cloning it
+ *  (which changes nothing on it). */
 @Configuration
 public class ArchiveGuardConfig implements WebMvcConfigurer {
 
@@ -18,6 +19,7 @@ public class ArchiveGuardConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(guard)
                 .addPathPatterns("/api/sheets/**")
-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*");
+                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
+                        "/api/sheets/*/clone");
     }
 }

@@ -37,6 +37,13 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
           <button type="button" data-testid="sheet-archive" [disabled]="archiving()" (click)="archive()">Archive sheet</button>
         </p>
 
+        <form [formGroup]="cloneForm" (ngSubmit)="cloneSheet()" aria-label="Clone the sheet to another id">
+          <label for="sheet-clone-to">Clone to sheet id</label>
+          <input id="sheet-clone-to" data-testid="sheet-clone-to" formControlName="to" autocomplete="off" />
+          <button type="submit" data-testid="sheet-clone" [disabled]="cloning()">Clone sheet</button>
+          <p>Cloned to: <strong data-testid="sheet-cloned-to">{{ clonedTo() }}</strong></p>
+        </form>
+
         <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()" aria-label="Show the sheet as of a date">
           <p>Parent sheet: <strong data-testid="sheet-parent">{{ sheet.parent ?? '' }}</strong></p>
           <p>As of: <strong data-testid="sheet-asof">{{ sheet.asOf ?? '' }}</strong></p>
@@ -94,6 +101,13 @@ export class Home {
   protected readonly todayForm = new FormGroup({
     today: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
+  /** The id to clone the sheet to. */
+  protected readonly cloneForm = new FormGroup({
+    to: new FormControl('', { nonNullable: true }),
+  });
+  /** The id the sheet was last cloned to from this screen; cleared while a clone runs. */
+  protected readonly clonedTo = signal('');
+  protected readonly cloning = signal(false);
   /** The date to show the sheet as of. */
   protected readonly asOfForm = new FormGroup({
     date: new FormControl('', { nonNullable: true }),
@@ -113,6 +127,33 @@ export class Home {
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.todayForm.valueChanges.subscribe(() => this.todayError.set(null));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(null));
+    this.cloneForm.valueChanges.subscribe(() => this.todayError.set(null));
+  }
+
+  /** Clone the sheet to the id typed; a refusal shows on the sheet. */
+  protected cloneSheet(): void {
+    // A second press before the first has answered is ignored.
+    if (this.cloning()) return;
+    this.todayError.set(null);
+    this.clonedTo.set('');
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const to = this.cloneForm.controls.to.value.trim();
+    if (!/^[A-Za-z0-9._-]+$/.test(to)) {
+      this.todayError.set('Type a sheet id to clone to.');
+      return;
+    }
+    this.cloning.set(true);
+    this.sheets.cloneTo(sheet.id, to).subscribe({
+      next: (clone) => {
+        this.cloning.set(false);
+        this.clonedTo.set(clone.id);
+      },
+      error: () => {
+        this.cloning.set(false);
+        this.todayError.set('Could not clone the sheet to that id.');
+      },
+    });
   }
 
   /** Show the sheet as of the date typed: everything on screen as it stood at the end of that day. */

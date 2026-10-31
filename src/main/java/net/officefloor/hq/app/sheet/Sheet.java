@@ -127,6 +127,22 @@ public class Sheet {
         this.today = today;
     }
 
+    /** A copy of the sheet under another id, unsaved: its today, every setting (dated or not), its permission
+     *  matrix, parent and last settle batch; its claim numbering starts afresh, and it is not archived. */
+    public Sheet copyTo(String id, String createdBy, Instant createdAt) {
+        Sheet copy = new Sheet(id, createdBy, createdAt, today);
+        settings.forEach(s -> copy.settings.add(new DatedSetting(s.getKey(), s.getFrom(), s.getValue())));
+        copy.permissions.putAll(permissions);
+        copy.policyDate = policyDate;
+        copy.periodNumberingFrom = periodNumberingFrom;
+        copy.entryDate = entryDate;
+        copy.graceDays = graceDays;
+        copy.pot = pot;
+        copy.parentId = parentId;
+        copy.lastSettleBatch = lastSettleBatch;
+        return copy;
+    }
+
     public String getId() {
         return id;
     }
