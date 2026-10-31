@@ -184,6 +184,7 @@ function csvField(value: string): string {
 
       <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+        <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
       </p>
 
       <p>
@@ -890,10 +891,29 @@ export class PeopleList {
       ['name', 'grade', 'retired-from', 'due-total'],
       ...this.people().map((p) => [p.name, this.gradeToday(p), p.retiredFrom ?? '', this.dueOf(p)]),
     ].map((fields) => fields.map(csvField).join(',') + '\n');
+    this.download(lines, 'people');
+  }
+
+  /** Download the claims as CSV: people in list order, retired people included, each person's claims oldest
+   *  first, with the figures as the claims list shows them. */
+  protected exportClaims(): void {
+    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+    const lines = [
+      ['person', 'number', 'date', 'amount', 'due', 'status', 'period'],
+      ...this.people().flatMap((p) => [...this.claimsOf(p.id)].reverse().map((c) => {
+        const due = this.claimDue(p, c, dueTerms);
+        return [p.name, c.number ?? '', c.date, c.amount,
+          due === null ? NOT_AVAILABLE : money(due), c.status, periodOn(this.periods.list(), c.dueBy)?.name ?? ''];
+      })),
+    ].map((fields) => fields.map(csvField).join(',') + '\n');
+    this.download(lines, 'claims');
+  }
+
+  private download(lines: string[], what: string): void {
     const url = URL.createObjectURL(new Blob(lines, { type: 'text/csv' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'people-' + (this.sheets.current()?.id ?? 'sheet') + '.csv';
+    link.download = what + '-' + (this.sheets.current()?.id ?? 'sheet') + '.csv';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url));
   }
