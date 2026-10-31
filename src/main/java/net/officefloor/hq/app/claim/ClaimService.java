@@ -569,8 +569,9 @@ public class ClaimService {
         return changed;
     }
 
-    /** A user whose role may reassign moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
-     *  loses any figure a statement bound it to (it is live again until its new person's next statement), and is
+    /** A user whose role may reassign moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date,
+     *  takes the next number in the sequence it is numbered in (the sheet's, or its period's; a DRAFT, having no
+     *  number, gets none) with its old number never used again, loses any figure a statement bound it to (it is live again until its new person's next statement), and is
      *  listed as its new person's newest claim. Refused for a role the permission matrix does not allow (by default a clerk), for a SETTLED or VOID claim, for a move to the
      *  person it is already of, for one due by inside a closed period or after the new person retired, and for a
      *  correction the new person has no SETTLED claim of that number for. */
@@ -605,6 +606,10 @@ public class ClaimService {
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         Rollup.Figures before = rollup.of(sheetId);
         claim.unbind();
+        if (claim.getStatus() != ClaimStatus.DRAFT && claim.getNumber() != null
+                && !claim.getPersonId().equals(to.getId())) {
+            claim.setNumber(nextNumber(sheet, claim.getDueBy()));
+        }
         claim.reassign(to.getId(), claims.lastListed(sheetId) + 1);
         Claim moved = claims.saveAndFlush(claim);
         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REASSIGNED", user, to, moved, moved.getNumber())
