@@ -80,6 +80,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The number of the claim this one was split off; none on any other claim. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** The day an OPEN claim is deferred until; none if it was never deferred. */
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
@@ -240,6 +244,19 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    /** Make the claim OPEN as one split off another: numbered, opened by this user and naming the claim it was
+     *  split from. */
+    public void openAsSplit(String number, String openedBy, String splitFrom) {
+        this.status = ClaimStatus.OPEN;
+        this.number = number;
+        this.openedBy = openedBy;
+        this.splitFrom = splitFrom;
     }
 
     public LocalDate getDeferredUntil() {

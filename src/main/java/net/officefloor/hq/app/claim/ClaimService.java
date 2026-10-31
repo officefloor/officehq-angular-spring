@@ -370,6 +370,54 @@ public class ClaimService {
         return moved;
     }
 
+    /** A claim split in two: the original, keeping the rest of its amount, and the new claim split off it. */
+    public record Split(Claim original, Claim split) {
+    }
+
+    /** Split an amount (more than 0.00 and less than its amount) off an OPEN claim: it keeps the rest and loses any
+     *  figure a statement bound it to; a new OPEN claim of the same person with the amount split off, the same date
+     *  and note, the next number, opened by this user, a due-by fixed now from the terms in force on the date and
+     *  naming the original as the claim it was split from, is listed as the person's newest. Refused for a claim
+     *  that is not OPEN or is deferred, one dated inside a closed period, an amount out of range, and a role the
+     *  permission matrix does not allow to open a claim. */
+    @Transactional
+    public Split split(String sheetId, String user, long id, BigDecimal amount) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.isDeferredOn(sheet.getToday())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be split; only an OPEN one not deferred can");
+        }
+        if (!sheet.allows("open", roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not open a claim");
+        }
+        BigDecimal part = scaled(amount);
+        if (part.signum() <= 0 || part.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The amount split off must be more than 0.00 and less than " + claim.getAmount().toPlainString());
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
+        claim.setAmount(claim.getAmount().subtract(part));
+        claim.unbind();
+        Claim original = claims.saveAndFlush(claim);
+        LocalDate date = original.getDate();
+        LocalDate dueBy = date.plusDays(sheet.termsFor(person.gradeOn(date), date));
+        Claim added = new Claim(sheetId, person.getId(), part, date, dueBy, original.getNote(), null,
+                claims.lastListed(sheetId) + 1);
+        added.openAsSplit(nextNumber(sheet, date), user, original.getNumber());
+        added.logStatus(user, sheet.getToday(), shownDue(sheet, added, person));
+        added = claims.saveAndFlush(added);
+        audit.recordOnCommit(entry("CLAIM_SPLIT", user, person, original, original.getNumber())
+                + " into=" + added.getNumber());
+        audit.recordOnCommit(entry("CLAIM_OPENED", user, person, added, added.getNumber()));
+        rollup.recordChanges(sheetId, user, before);
+        return new Split(original, added);
+    }
+
     /** The PENDING claim a steward approves or rejects; refused for a clerk, a claim in any other status and one
      *  dated inside a closed period. */
     private Claim pendingClaim(String sheetId, String user, long id) {

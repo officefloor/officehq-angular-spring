@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isDeferred, isOverdue, money, roundingDate } from '../../core/claims';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isDeferred, isOverdue, money, roundingDate } from '../../core/claims';
 import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
@@ -72,6 +72,13 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           — proofs <span data-testid="claim-proofs">{{ c.proofs }}</span>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
+          split from No. <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
+          <label [for]="'claim-split-amount-' + c.id">Amount to split off</label>
+          <input [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal"
+                 autocomplete="off" [value]="splitAmounts()[c.id] ?? ''"
+                 (input)="splitAmountChanged(c, $any($event.target).value)" />
+          <button type="button" data-testid="claim-split" (click)="split(c)"
+                  [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
@@ -151,6 +158,8 @@ export class PersonClaims {
   protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
   /** The date typed to defer each OPEN claim until, by id. */
   protected readonly deferDates = signal<Readonly<Record<number, string>>>({});
+  /** The amount typed to split off each OPEN claim, by id. */
+  protected readonly splitAmounts = signal<Readonly<Record<number, string>>>({});
   /** The reason typed to reject each PENDING claim, by id. */
   protected readonly rejectReasons = signal<Readonly<Record<number, string>>>({});
 
@@ -212,6 +221,41 @@ export class PersonClaims {
           : err instanceof HttpErrorResponse && err.status === 400
             ? `A claim is deferred to a day after today (${sheet.today}).`
             : `A ${c.status} claim cannot be deferred; only an OPEN one can.`,
+      }),
+    });
+  }
+
+  protected splitAmountChanged(c: ClaimView, amount: string): void {
+    this.splitAmounts.update((amounts) => ({ ...amounts, [c.id]: amount }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected split(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const amount = (this.splitAmounts()[c.id] ?? '').trim();
+    if (!AMOUNT_PATTERN.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(c.amount)) {
+      this.claimError.set({ id: c.id, message: `Type an amount more than 0.00 and less than ${c.amount} to split off.` });
+      return;
+    }
+    this.api.split(sheet.id, c.id, amount).subscribe({
+      next: (result) => {
+        this.splitAmounts.update((amounts) => ({ ...amounts, [c.id]: '' }));
+        this.saved.emit(result.original);
+        this.saved.emit(result.split);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'Your role may not open a claim, so it may not split one.'
+          : err instanceof HttpErrorResponse && err.status === 423
+            ? 'This claim is dated inside a closed period.'
+            : err instanceof HttpErrorResponse && err.status === 400
+              ? `Type an amount more than 0.00 and less than ${c.amount} to split off.`
+              : this.deferredOf(c)
+                ? `This claim is deferred until ${c.deferredUntil}, so it cannot be split.`
+                : `A ${c.status} claim cannot be split; only an OPEN one can.`,
       }),
     });
   }

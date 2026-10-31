@@ -41,6 +41,8 @@ export interface ClaimView {
   log: ClaimLogLine[];
   /** How many proofs have been given for the claim. */
   proofs: number;
+  /** The number of the claim this one was split off; null on any other claim. */
+  splitFrom: string | null;
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
@@ -139,6 +141,12 @@ export interface PasteView {
   claims: ClaimView[];
 }
 
+/** What a split did: the claim split, keeping the rest of its amount, and the new claim split off it. */
+export interface SplitView {
+  original: ClaimView;
+  split: ClaimView;
+}
+
 /** What a bulk open did: how many it opened and refused, and the claims it opened. */
 export interface BulkOpenView {
   opened: number;
@@ -235,6 +243,11 @@ export class Claims {
    *  longer bound by a statement, and is listed as that person's newest claim. */
   reassign(sheetId: string, id: number, personId: number): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/person`, { personId });
+  }
+
+  /** Split `amount` off an OPEN claim into a new OPEN claim of the same person, date and note. */
+  split(sheetId: string, id: number, amount: string): Observable<SplitView> {
+    return this.http.post<SplitView>(`${this.base(sheetId)}/claims/${id}/split`, { amount });
   }
 
   /** Open each of the claims that can be opened, numbered in list order; the rest are refused and left as they are. */

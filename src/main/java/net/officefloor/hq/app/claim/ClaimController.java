@@ -34,11 +34,12 @@ public class ClaimController {
      * is who opened it (null while a draft); stated is whether its person's last statement binds it, to
      * statedDue (null if it had no figure then, when it stays n/a, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
      * on any other claim); deferredUntil is the day it was deferred until (null if never deferred); log is its status log, oldest first;
-     * proofs is how many proofs have been given for it.
+     * proofs is how many proofs have been given for it; splitFrom is the number of the claim it was split off (null
+     * on any other claim).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs) {
+            LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -47,7 +48,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
-                    claim.getProofs());
+                    claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -84,6 +85,14 @@ public class ClaimController {
 
     /** The person a claim is to move to. */
     public record Reassignment(@NotNull Long personId) {
+    }
+
+    /** The amount to split off an OPEN claim. */
+    public record Split(@NotNull @Digits(integer = 12, fraction = 2) BigDecimal amount) {
+    }
+
+    /** What a split did: the claim split, keeping the rest of its amount, and the new claim split off it. */
+    public record SplitView(ClaimView original, ClaimView split) {
     }
 
     /** The claims selected to be opened together. */
@@ -195,6 +204,16 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody Reassignment request) {
         return ClaimView.of(claims.reassign(sheetId, user, id, request.personId()));
+    }
+
+    @PostMapping("/claims/{id}/split")
+    public SplitView split(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody Split request) {
+        ClaimService.Split split = claims.split(sheetId, user, id, request.amount());
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
     /**
