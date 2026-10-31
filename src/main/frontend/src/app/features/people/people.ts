@@ -96,7 +96,7 @@ function csvField(value: string): string {
           <label for="person-form-grade-from">Grade from</label>
           <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         }
-        <label for="person-form-terms">Terms (days; blank: none of their own)</label>
+        <label for="person-form-terms">Terms (business days; blank: none of their own)</label>
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editingId() === null ? 'Add person' : 'Save person' }}

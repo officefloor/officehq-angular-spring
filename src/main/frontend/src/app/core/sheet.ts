@@ -20,7 +20,7 @@ export interface SheetView {
   clerkLimit: string | null;
   /** A claim's live due is at least this (two decimals). */
   floor: string;
-  /** The sheet's terms in days: a claim is due by its date plus these. */
+  /** The sheet's terms in business days: a claim is due by the terms-th business day after its date. */
   terms: number;
   /** The sheet's late percent (two decimals): an overdue claim's due gains this percent of its figure
    *  for every full 30 days it is overdue. */

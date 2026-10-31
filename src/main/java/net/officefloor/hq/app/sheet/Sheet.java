@@ -180,7 +180,7 @@ public class Sheet {
         return floorOn(today);
     }
 
-    /** The sheet's terms in days in force on a day: a claim dated then is due by its date plus these. */
+    /** The sheet's terms in business days in force on a day: a claim dated then is due by the terms-th business day after its date. */
     public int termsOn(LocalDate date) {
         String value = valueOn(TERMS, date);
         return value == null ? START_TERMS : Integer.parseInt(value);

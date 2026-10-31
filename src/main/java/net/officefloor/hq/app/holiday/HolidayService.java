@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.holiday;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -55,16 +56,31 @@ public class HolidayService {
         return saved;
     }
 
-    /** The day a claim is due by when its date plus its terms is {@code day}: the first day from it on that is not
-     *  one of the sheet's holidays now. */
+    /** The day a claim dated {@code date} on {@code terms} is due by: the terms-th business day after its date,
+     *  counting forward from the day after it and skipping every Saturday, Sunday and holiday on the sheet now;
+     *  its date itself on terms of 0. */
     @Transactional(readOnly = true)
-    public LocalDate pastHolidays(String sheetId, LocalDate day) {
+    public LocalDate dueBy(String sheetId, LocalDate date, int terms) {
         Set<LocalDate> dates = holidays.findBySheetIdOrderByDateAsc(sheetId).stream().map(Holiday::getDate)
                 .collect(Collectors.toSet());
-        LocalDate due = day;
-        while (dates.contains(due)) {
+        return businessDaysAfter(date, terms, dates);
+    }
+
+    /** The {@code terms}-th business day after {@code date}: counting from the day after it, skipping every
+     *  Saturday, Sunday and one of {@code holidays}; {@code date} itself on terms of 0. */
+    public static LocalDate businessDaysAfter(LocalDate date, int terms, Set<LocalDate> holidays) {
+        LocalDate due = date;
+        for (int counted = 0; counted < terms; ) {
             due = due.plusDays(1);
+            if (isBusinessDay(due, holidays)) {
+                counted++;
+            }
         }
         return due;
+    }
+
+    private static boolean isBusinessDay(LocalDate day, Set<LocalDate> holidays) {
+        DayOfWeek weekday = day.getDayOfWeek();
+        return weekday != DayOfWeek.SATURDAY && weekday != DayOfWeek.SUNDAY && !holidays.contains(day);
     }
 }

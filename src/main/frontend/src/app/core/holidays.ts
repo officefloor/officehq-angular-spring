@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 
-/** A holiday on the sheet: a claim's due-by fixed at its creation is moved past it. */
+/** A holiday on the sheet: a claim's due-by fixed at its creation skips it when counting its terms in business days. */
 export interface HolidayView {
   id: number;
   date: string;

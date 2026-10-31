@@ -49,7 +49,7 @@ function isDate(value: string): boolean {
       <h2 id="settings-heading">Settings</h2>
       <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ sheets.current()?.clerkLimit ?? '' }}</span></p>
       <p>Floor: <span data-testid="setting-floor-current">{{ sheets.current()?.floor ?? '' }}</span></p>
-      <p>Terms (days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
+      <p>Terms (business days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
       @for (g of grades; track g) {
         <p>Terms for grade {{ g }} (days): <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ sheets.current()?.gradeTerms?.[g] ?? '' }}</span></p>
       }
@@ -81,7 +81,7 @@ function isDate(value: string): boolean {
         <label for="setting-floor-from">Floor from (yyyy-mm-dd; blank: today)</label>
         <input id="setting-floor-from" data-testid="setting-floor-from" formControlName="floorFrom" (focus)="lastFocused = 'floor'"
                placeholder="yyyy-mm-dd" autocomplete="off" />
-        <label for="setting-terms">Terms (days a claim is due by after its date)</label>
+        <label for="setting-terms">Terms (business days a claim is due by after its date)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" (focus)="lastFocused = 'terms'"
                inputmode="numeric" autocomplete="off" />
         <label for="setting-terms-from">Terms from (yyyy-mm-dd; blank: today)</label>
