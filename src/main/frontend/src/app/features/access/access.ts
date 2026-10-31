@@ -282,6 +282,8 @@ const ROUNDING = /^(half-up|half-even)$/;
         <p>Roles that may {{ p.label }} <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ perm()[p.field] ?? '' }}</strong></p>
       }
       <form (submit)="saveSettings($event)" aria-label="Save settings">
+        <fieldset [disabled]="savingSettings()" style="border: 0; margin: 0; padding: 0">
+        <legend class="visually-hidden">Settings</legend>
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
           id="setting-clerk-limit"
@@ -670,6 +672,7 @@ const ROUNDING = /^(half-up|half-even)$/;
           />
         }
         <button type="submit" data-testid="settings-save">Save settings</button>
+        </fieldset>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
         }
@@ -798,6 +801,8 @@ export class Access {
   protected readonly settingsError = signal('');
   /** A submit still waiting for its answer: another press meanwhile is ignored. */
   private busy = false;
+  /** A settings save waiting for its answer: the inputs are locked till it is shown, so no edit is lost to it. */
+  protected readonly savingSettings = signal(false);
 
   constructor() {
     effect(() => {
@@ -1151,6 +1156,7 @@ export class Access {
     }
     const headers = { 'X-User': this.session.user() ?? '' };
     this.busy = true;
+    this.savingSettings.set(true);
     try {
       const saved = await firstValueFrom(
         this.http.put<Settings>(`/api/sheets/${encodeURIComponent(sheet)}/settings`, body, { headers }),
@@ -1165,6 +1171,7 @@ export class Access {
       this.settingsError.set('Could not save the settings.');
     } finally {
       this.busy = false;
+      this.savingSettings.set(false);
     }
   }
 

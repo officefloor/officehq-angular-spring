@@ -594,7 +594,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Score</th><th scope="col">Band</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th>@if (columnShown('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Grade</th>@if (columnShown('terms')) {<th scope="col">Terms</th>}@if (columnShown('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (columnShown('claimed')) {<th scope="col">Claimed</th>}@if (columnShown('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Open claims</th><th scope="col">Settled claims</th><th scope="col">Score</th><th scope="col">Band</th>@if (columnShown('excess')) {<th scope="col">Excess</th>}
             @if (columnShown('statement-count')) {<th scope="col">Statements</th>}@if (columnShown('stated-total')) {<th scope="col">Last stated total</th>}@if (columnShown('statement-date')) {<th scope="col">Last statement</th>}
             @if (columnShown('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th>@if (columnShown('hold')) {<th scope="col">On hold</th>}
             @if (columnShown('overdue-count')) {<th scope="col">Overdue</th>}@if (columnShown('overdue-total')) {<th scope="col">Overdue total</th>}
@@ -642,6 +642,8 @@ function csvField(value: string): string {
               }
               <td data-testid="person-settled-total">{{ p.settledTotal | figure }}</td>
               <td data-testid="person-open-total">{{ p.openTotal | figure }}</td>
+              <td data-testid="person-claims-OPEN-count">{{ claimCount(p, 'OPEN') }}</td>
+              <td data-testid="person-claims-SETTLED-count">{{ claimCount(p, 'SETTLED') }}</td>
               <td data-testid="person-score">{{ p.score }}</td>
               <td data-testid="person-band">{{ p.band ?? '' }}</td>
               @if (columnShown('excess')) {
@@ -1314,6 +1316,11 @@ export class People {
 
   protected checked(e: Event): boolean {
     return (e.target as HTMLInputElement).checked;
+  }
+
+  /** How many of the person's claims have the status. */
+  protected claimCount(p: Person, status: string): number {
+    return p.claims.filter((c) => c.status === status).length;
   }
 
   protected clearError(p: Person): void {
