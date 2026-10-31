@@ -1,0 +1,168 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b0eed9981..bd3bdc193 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -563,7 +563,8 @@ public class ClaimService {
+     /**
+      * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it the claim
+      * counts in no total, is not overdue, cannot be settled and no statement binds it (see
+-     * {@link Dues#deferred}). A claim not OPEN, a date not after today, or a claim due by a date inside a closed
++     * {@link Dues#deferred}); a claim a statement binds is deferred only once the binding ends, staying in the
++     * totals and settleable until then. A claim not OPEN, a date not after today, or a claim due by a date inside a closed
+      * period is refused and nothing changes. Returns the person it belongs to.
+      */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 708a91379..6ed1eb861 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -128,10 +128,19 @@ public final class Dues {
+         return claim.getDueBy().plusDays(rates.settings().grace(grades.on(claim.getDate()), claim.getDate()));
+     }
+ 
+-    /** Whether the claim is deferred on the given today: OPEN and deferred until a date after it. */
++    /**
++     * Whether the claim is deferred on the given today: deferred until a date after it and not
++     * {@link #bound bound} by a statement, OPEN or (settled while a statement bound it) SETTLED. A deferral
++     * takes effect only once the binding ends: while bound the claim stays in the totals and can be settled.
++     */
+     public static boolean deferred(Claim claim, LocalDate today) {
+-        return claim.getStatus() == ClaimStatus.OPEN && claim.getDeferredUntil() != null
+-                && today.isBefore(claim.getDeferredUntil());
++        return deferralPending(claim, today)
++                && (claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.SETTLED);
++    }
++
++    /** Whether the claim is deferred until a date after the given today and no statement binds it, whatever its status. */
++    public static boolean deferralPending(Claim claim, LocalDate today) {
++        return !bound(claim) && claim.getDeferredUntil() != null && today.isBefore(claim.getDeferredUntil());
+     }
+ 
+     /** The overdue claims that count, see {@link #overdue} and {@link #counts}. */
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 591a56df9..a878e561f 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -193,6 +193,23 @@ public class Period {
+         }
+     }
+ 
++    /**
++     * Carry a merged person's figures for the period to the person receiving them: their fixed due-total, fixed
++     * carried figure and opening balances are added to the receiver's. The period's own due-total is unchanged.
++     */
++    public void carryPerson(Long fromId, Long intoId) {
++        carry(personTotals, fromId, intoId);
++        carry(personCarried, fromId, intoId);
++        carry(personOpenings, fromId, intoId);
++    }
++
++    private static void carry(Map<Long, BigDecimal> figures, Long fromId, Long intoId) {
++        BigDecimal theirs = figures.remove(fromId);
++        if (theirs != null) {
++            figures.merge(intoId, theirs, BigDecimal::add);
++        }
++    }
++
+     /** Close the period, fixing each person's due-total for it and its own, their sum. */
+     public void close(Map<Long, BigDecimal> personTotals) {
+         close(personTotals, Map.of(), false);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index ca36c48d7..b2db09617 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -287,7 +287,7 @@ public class PeriodService {
+         claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                 .filter(c -> byId.containsKey(c.getPersonId()))
+                 .filter(c -> within.stream().anyMatch(p -> p.contains(c.getDueBy())))
+-                .filter(c -> c.getDeferredUntil() == null || !table.today().isBefore(c.getDeferredUntil()))
++                .filter(c -> !Dues.deferralPending(c, table.today()))
+                 .filter(c -> Dues.countsAsOf(c, byId.get(c.getPersonId()).leaves(), table.today(), end))
+                 .filter(c -> {
+                     ClaimStatus then = Dues.statusAsOf(c, end);
+@@ -381,7 +381,7 @@ public class PeriodService {
+                 .filter(c -> byId.containsKey(c.getPersonId()))
+                 .filter(c -> all.stream().anyMatch(home -> home.contains(c.getDueBy())
+                         && home.getToDate().isBefore(period.getFromDate())))
+-                .filter(c -> c.getDeferredUntil() == null || !table.today().isBefore(c.getDeferredUntil()))
++                .filter(c -> !Dues.deferralPending(c, table.today()))
+                 .filter(c -> Dues.countsAsOf(c, byId.get(c.getPersonId()).leaves(), table.today(), period.getToDate()))
+                 .filter(c -> {
+                     ClaimStatus then = Dues.statusAsOf(c, period.getToDate());
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index a97f4c437..7c40a94ae 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -61,7 +61,7 @@ public class PersonController {
+      * none), who opened it (null while it was never opened), whether a statement binds it, the date it is
+      * due by (fixed when it was added: its date plus its person's own terms, else the terms then of their grade on its date, else the sheet's), whether it is overdue (see {@link Dues#overdue}) and, for a
+      * correction, the number of the claim it corrects (null otherwise), and whether it was deferred until a date after the
+-     * sheet's today, whatever its status since (its counting follows {@link Dues#deferred}), and the date it is deferred until (null when never),
++     * sheet's today and no statement binds it, whatever its status since (its counting follows {@link Dues#deferred}), and the date it is deferred until (null when never),
+      * its proofs count, and of them its receipts and its photos, and, for a claim split off another, the number of the claim it was split from (null otherwise),
+      * whether it was added while its period was soft-closed, the last sheet's today it was reminded on (null when never), its external reference (null when none), its tags, sorted, the reason it was voided with (null when none), its comments, oldest first, whether it counts in the live totals (see {@link Dues#counts}), the bulk settle batch that settled it (null when none), its lines, in the order they were added, whether it is late in review (see {@link Dues#reviewLate}), whether its late charge was waived, whether it is held, the people it is shared with, the user its review is assigned to (null when none), and whether it is late pending (see {@link Dues#pendingLate}).
+      */
+@@ -78,7 +78,7 @@ public class PersonController {
+                     money(Dues.figure(claim, grade, rates)), claim.getStatus(), claim.getShownNumber(),
+                     claim.getOpenedBy(), claim.isStated(), claim.getDueBy(), Dues.overdue(claim, grade, rates),
+                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(),
+-                    claim.getDeferredUntil() != null && rates.today().isBefore(claim.getDeferredUntil()),
++                    Dues.deferralPending(claim, rates.today()),
+                     claim.getDeferredUntil(), claim.getProofs(), claim.getProofs(Claim.RECEIPT), claim.getProofs(Claim.PHOTO), claim.getSplitFrom(),
+                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
+                     Tags.list(claim.getTags()), claim.getVoidReason(),
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index 52d4ac7dc..491b26ddf 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.access.Role;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.crew.Crews;
++import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.rollup.Rollup;
+@@ -29,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
+  * Merging a person into another on the same sheet. Only a steward may; merging a person into themselves, or
+  * when either of them is retired, is refused. The merged person's claims move to the other (numbers and dates
+  * kept, listed after the other's claims in the order they were added, each keeping any figure a statement
+- * bound); their statements are carried to the other, who keeps their own last statement (or, having none,
++ * bound); their figures fixed for closed or soft-closed periods (and their opening balances) are added to the other's; their statements are carried to the other, who keeps their own last statement (or, having none,
+  * takes the merged person's last) with the count of both; their name and aliases become the other's aliases; their patrons are added to the
+  * other's (never the other themselves, no repeats); anyone naming them as patron names the other instead
+  * (no repeats); their pool memberships move to the other, the shares added up (at most 100.00) where the
+@@ -47,6 +48,7 @@ public class PersonMergeService {
+     private final StatementService statements;
+     private final PoolMemberRepository poolMembers;
+     private final Crews crews;
++    private final PeriodRepository periods;
+     private final AccessService access;
+     private final SheetRepository sheetRows;
+     private final Rollup rollup;
+@@ -54,7 +56,7 @@ public class PersonMergeService {
+ 
+     public PersonMergeService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
+             ClaimRepository claims, StatementService statements, PoolMemberRepository poolMembers,
+-            Crews crews, AccessService access, SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
++            Crews crews, PeriodRepository periods, AccessService access, SheetRepository sheetRows, Rollup rollup, ApplicationEventPublisher events) {
+         this.people = people;
+         this.patrons = patrons;
+         this.watches = watches;
+@@ -62,6 +64,7 @@ public class PersonMergeService {
+         this.statements = statements;
+         this.poolMembers = poolMembers;
+         this.crews = crews;
++        this.periods = periods;
+         this.access = access;
+         this.sheetRows = sheetRows;
+         this.rollup = rollup;
+@@ -105,6 +108,8 @@ public class PersonMergeService {
+         crews.merge(personId, intoId);
+         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+         statements.carry(sheetId, personId, sheetId, intoId);
++        periods.findBySheetIdOrderByFromDateAsc(sheetId).forEach(p -> p.carryPerson(personId, intoId));
++        periods.flush();
+         watches.flush();
+         people.delete(from);
+         people.flush();
