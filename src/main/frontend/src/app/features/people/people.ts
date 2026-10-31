@@ -249,7 +249,7 @@ export class PeopleList {
     const byPerson = new Map<number, Overdue>();
     for (const p of this.people()) {
       const overdue = sheet
-        ? this.claimsOf(p.id).filter((c) => countsWhile(p.held)(c) && isOverdue(c, sheet.terms, sheet.today))
+        ? this.claimsOf(p.id).filter((c) => countsWhile(p.held)(c) && isOverdue(c, sheet.today))
         : NO_CLAIMS;
       byPerson.set(p.id, {
         count: overdue.length,

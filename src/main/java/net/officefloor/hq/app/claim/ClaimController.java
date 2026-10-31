@@ -35,14 +35,16 @@ public class ClaimController {
      * on any other claim).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects) {
+            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+            LocalDate dueBy) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
-                    claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects());
+                    claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
+                    claim.getDueBy());
         }
     }
 

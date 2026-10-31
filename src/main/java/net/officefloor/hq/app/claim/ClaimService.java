@@ -85,14 +85,17 @@ public class ClaimService {
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
         sheets.load(sheetId, user);
-        LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        LocalDate today = sheet.getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         refuseIfClosed(sheetId, date != null ? date : today);
         refuseIfRetired(person, date != null ? date : today);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
         Rollup.Figures before = rollup.of(sheetId);
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today,
+        LocalDate claimDate = date != null ? date : today;
+        LocalDate dueBy = claimDate.plusDays(sheet.termsFor(person.gradeOn(claimDate)));
+        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), claimDate, dueBy,
                 noteOf(note), corrects, claims.lastListed(sheetId) + 1));
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
         rollup.recordChanges(sheetId, user, before);
@@ -390,7 +393,7 @@ public class ClaimService {
         if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
             return none;
         }
-        long periods = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday()) / 30;
+        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / 30;
         return periods <= 0 ? none : dueOn(figure, sheet.getLatePct().multiply(BigDecimal.valueOf(periods)),
                 sheet.roundingFor(claim.getDate()));
     }

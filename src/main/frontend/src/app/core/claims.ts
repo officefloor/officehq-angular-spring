@@ -32,6 +32,9 @@ export interface ClaimView {
   /** The number of the SETTLED claim of the same person a correction (a negative amount) corrects; null on
    *  any other claim. */
   corrects: string | null;
+  /** The day the claim is due by (yyyy-mm-dd): fixed when it was added, from its date and the terms of its
+   *  person's grade in force then. */
+  dueBy: string;
 }
 
 /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due. */
@@ -54,15 +57,9 @@ export function roundingDate(
   return theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
 }
 
-/** The day a claim is due by (yyyy-mm-dd): its date plus the sheet's terms in days. */
-export function dueBy(c: Pick<ClaimView, 'date'>, terms: number): string {
-  const [y, m, d] = c.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
-}
-
 /** Whether a claim is overdue on the sheet's today: OPEN or PENDING and due by a day before it. */
-export function isOverdue(c: Pick<ClaimView, 'date' | 'status'>, terms: number, today: string): boolean {
-  return (c.status === 'OPEN' || c.status === 'PENDING') && dueBy(c, terms) < today;
+export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status'>, today: string): boolean {
+  return (c.status === 'OPEN' || c.status === 'PENDING') && c.dueBy < today;
 }
 
 /** A claim as the form submits it: a blank date takes the sheet's today. A negative amount is a correction,

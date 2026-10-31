@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,13 +30,13 @@ public class SheetController {
     /** A sheet as the screen shows it; the clerk limit (null: no limit) and floor and late percent have exactly two decimals; terms is in days;
      *  the policy date is null when it is the sheet's today; the period numbering from is null when it is off. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
-            LocalDate policyDate, LocalDate periodNumberingFrom) {
+            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
-                    sheet.getPeriodNumberingFrom());
+                    sheet.getPeriodNumberingFrom(), sheet.getGradeTerms());
         }
     }
 
@@ -52,6 +53,10 @@ public class SheetController {
 
     /** The sheet's terms, in days, as the form submits them. */
     public record TermsChange(@NotNull @Min(0) @Max(36500) Integer terms) {
+    }
+
+    /** A grade's own terms, in days, as the form submits them; missing ones leave the grade on the sheet's terms. */
+    public record GradeTermsChange(@Min(0) @Max(36500) Integer terms) {
     }
 
     /** The sheet's late percent as the form submits it. */
@@ -114,6 +119,16 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsChange request) {
         return SheetView.of(sheets.setTerms(id, user, request.terms()));
+    }
+
+    /** Change a grade's own terms. */
+    @PutMapping("/{id}/settings/terms/{grade}")
+    public SheetView setGradeTerms(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GradeTermsChange request) {
+        return SheetView.of(sheets.setGradeTerms(id, user, grade, request.terms()));
     }
 
     /** Change the sheet's late percent. */

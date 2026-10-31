@@ -1,9 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
-import { ClaimStatus, cents, dueBy, isOverdue } from './claims';
+import { ClaimStatus, cents, isOverdue } from './claims';
 import { Grade } from './people';
-import { DEFAULT_TERMS, SheetView, Sheets } from './sheet';
+import { SheetView, Sheets } from './sheet';
 
 export interface RateView {
   grade: Grade;
@@ -33,7 +33,7 @@ export const RATE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 export const DEFAULT_FLOOR = '1.00';
 
 /** The due terms used before a sheet is loaded: its starting floor and no late charge. */
-export const DEFAULT_DUE_TERMS: DueTerms = { floor: DEFAULT_FLOOR, terms: DEFAULT_TERMS, today: '', latePct: '0.00', policyDate: null };
+export const DEFAULT_DUE_TERMS: DueTerms = { floor: DEFAULT_FLOOR, today: '', latePct: '0.00', policyDate: null };
 
 /** What is shown in place of a due when its grade has no rate. */
 export const NOT_AVAILABLE = 'n/a';
@@ -53,8 +53,8 @@ export function dueCents(amountCents: number, rate: string, halfUp = false): num
 }
 
 /** The sheet's settings a claim's due depends on: its floor, its policy date and, for the late charge, its
- *  terms, today and late percent. */
-export type DueTerms = Pick<SheetView, 'floor' | 'terms' | 'today' | 'latePct' | 'policyDate'>;
+ *  today and late percent. */
+export type DueTerms = Pick<SheetView, 'floor' | 'today' | 'latePct' | 'policyDate'>;
 
 /** Whether a claim whose figures round by this date (yyyy-mm-dd) rounds half up: it is before the sheet's policy
  *  date (its today when it has none); on or after it, it rounds half to even. */
@@ -66,12 +66,12 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
  *  late percent of the figure for every full 30 days past the day it is due by, rounded as the claim rounds.
  *  A correction (a negative amount) gains none. */
 export function lateChargeCents(
-  c: { amount: string; date: string; status: ClaimStatus },
+  c: { amount: string; date: string; dueBy: string; status: ClaimStatus },
   figureCents: number,
   sheet: DueTerms,
 ): number {
-  if (cents(c.amount) < 0 || !isOverdue(c, sheet.terms, sheet.today)) return 0;
-  const days = (Date.parse(sheet.today) - Date.parse(dueBy(c, sheet.terms))) / 86_400_000;
+  if (cents(c.amount) < 0 || !isOverdue(c, sheet.today)) return 0;
+  const days = (Date.parse(sheet.today) - Date.parse(c.dueBy)) / 86_400_000;
   const periods = Math.floor(days / 30);
   if (periods <= 0) return 0;
   return dueCents(figureCents * periods, sheet.latePct, roundsHalfUp(c.date, sheet));
@@ -82,7 +82,7 @@ export function lateChargeCents(
  *  sheet's floor (a correction is not), with any late charge added on top of it; null when it has none. Its live
  *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. */
 export function claimDueCents(
-  c: { amount: string; date: string; status: ClaimStatus; settledDue: string | null; statedDue: string | null },
+  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; settledDue: string | null; statedDue: string | null },
   gradeRates: readonly RateView[],
   sheet: DueTerms,
   roundsOn: string,

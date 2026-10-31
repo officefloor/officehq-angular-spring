@@ -93,6 +93,18 @@ public class SheetService {
         return saved;
     }
 
+    /** Set a grade's own terms in days (null: the sheet's terms), starting the sheet if it has never been loaded. */
+    @Transactional
+    public Sheet setGradeTerms(String id, String user, String grade, Integer terms) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setGradeTerms(grade, terms);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms-" + grade
+                + " value=" + (terms == null ? "" : terms));
+        return saved;
+    }
+
     /** Set the sheet's late percent, starting the sheet if it has never been loaded. */
     @Transactional
     public Sheet setLatePct(String id, String user, BigDecimal latePct) {

@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
+import { Grade } from './people';
 
 export interface SheetView {
   id: string;
@@ -21,6 +22,8 @@ export interface SheetView {
   /** The sheet's period numbering from (yyyy-mm-dd): while its today is on or after it, a claim opened is
    *  numbered within its period; null when off. */
   periodNumberingFrom: string | null;
+  /** The terms in days set per grade; a grade without its own uses the sheet's terms. */
+  gradeTerms: Partial<Record<Grade, number>>;
 }
 
 /** The terms a sheet has until they are changed. */
@@ -73,6 +76,13 @@ export class Sheets {
   setTerms(id: string, terms: number): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms`, { terms })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change a grade's own terms (days); null leaves the grade on the sheet's terms. */
+  setGradeTerms(id: string, grade: Grade, terms: number | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms/${grade}`, { terms })
       .pipe(tap((s) => this.active.set(s)));
   }
 

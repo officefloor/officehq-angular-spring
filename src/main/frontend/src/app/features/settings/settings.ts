@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, Observable, concat, last, switchMap } from 'rxjs';
+import { GRADES, Grade } from '../../core/people';
 import { ROLES, RoleName, Roles } from '../../core/roles';
 import { SheetView, Sheets } from '../../core/sheet';
 
@@ -15,7 +16,10 @@ const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom';
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom';
+
+/** The form field of each grade's own terms. */
+const GRADE_TERMS_FIELD: Record<Grade, 'termsA' | 'termsB' | 'termsC'> = { A: 'termsA', B: 'termsB', C: 'termsC' };
 
 /** Whether a yyyy-mm-dd text is a real calendar day. */
 function isDate(value: string): boolean {
@@ -24,7 +28,7 @@ function isDate(value: string): boolean {
   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
 }
 
-// The sheet's settings: its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering from, and the role assigned to each user name.
+// The sheet's settings: its clerk limit, its floor, its terms, each grade's own terms, its late percent, its policy date, its period numbering from, and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -34,6 +38,9 @@ function isDate(value: string): boolean {
       <p>Clerk limit: <span data-testid="setting-clerk-limit-current">{{ sheets.current()?.clerkLimit ?? '' }}</span></p>
       <p>Floor: <span data-testid="setting-floor-current">{{ sheets.current()?.floor ?? '' }}</span></p>
       <p>Terms (days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
+      @for (g of grades; track g) {
+        <p>Terms for grade {{ g }} (days): <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ sheets.current()?.gradeTerms?.[g] ?? '' }}</span></p>
+      }
       <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
       <p>Policy date: <span data-testid="setting-policy-date-current">{{ sheets.current()?.policyDate ?? '' }}</span></p>
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ sheets.current()?.periodNumberingFrom ?? '' }}</span></p>
@@ -48,6 +55,11 @@ function isDate(value: string): boolean {
         <label for="setting-terms">Terms (days a claim is due by after its date)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" (focus)="lastFocused = 'terms'"
                inputmode="numeric" autocomplete="off" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (blank: the sheet's terms)</label>
+          <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControlName]="gradeField[g]"
+                 (focus)="lastFocused = gradeField[g]" inputmode="numeric" autocomplete="off" />
+        }
         <label for="setting-late-pct">Late percent (added to an overdue claim's due for every full 30 days)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" (focus)="lastFocused = 'latePct'"
                inputmode="decimal" autocomplete="off" />
@@ -95,6 +107,8 @@ export class SettingsPanel {
   protected readonly sheets = inject(Sheets);
   protected readonly roles = inject(Roles);
 
+  protected readonly grades = GRADES;
+  protected readonly gradeField = GRADE_TERMS_FIELD;
   protected readonly roleChoices = ROLES;
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly settingsError = signal<string | null>(null);
@@ -109,6 +123,9 @@ export class SettingsPanel {
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
+    termsA: new FormControl('', { nonNullable: true }),
+    termsB: new FormControl('', { nonNullable: true }),
+    termsC: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
@@ -171,6 +188,12 @@ export class SettingsPanel {
       this.settingsError.set('Type terms of 0 or more whole days.');
       return;
     }
+    const gradeTermsSaved = GRADES.filter((g) => isSaved(GRADE_TERMS_FIELD[g]))
+      .map((g) => ({ grade: g, value: this.settingsForm.controls[GRADE_TERMS_FIELD[g]].value.trim() }));
+    if (gradeTermsSaved.some((t) => t.value !== '' && !TERMS_PATTERN.test(t.value))) {
+      this.settingsError.set('Type a grade\'s terms as 0 or more whole days, or leave them blank for the sheet\'s terms.');
+      return;
+    }
     if (saveLatePct && !LATE_PCT_PATTERN.test(latePctValue)) {
       this.settingsError.set('Type a late percent of 0.00 or more, up to 999.99, with up to two decimals.');
       return;
@@ -188,6 +211,7 @@ export class SettingsPanel {
     if (saveLimit) saves.push(this.sheets.setSettings(sheet.id, limit === '' ? null : limit));
     if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue));
     if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue)));
+    for (const t of gradeTermsSaved) saves.push(this.sheets.setGradeTerms(sheet.id, t.grade, t.value === '' ? null : Number(t.value)));
     if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue));
     if (savePolicyDate) saves.push(this.sheets.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue));
     if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
@@ -206,7 +230,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in the form, as not yet changed. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '' }, { emitEvent: false });
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '' }, { emitEvent: false });
   }
 
   protected saveRole(): void {

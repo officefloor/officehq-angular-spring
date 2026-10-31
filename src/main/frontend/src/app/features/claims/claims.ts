@@ -2,12 +2,12 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, dueBy, isOverdue, money, roundingDate } from '../../core/claims';
+import { CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, isOverdue, money, roundingDate } from '../../core/claims';
 import { Grade, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
-import { DEFAULT_TERMS, Sheets } from '../../core/sheet';
+import { Sheets } from '../../core/sheet';
 
 const NO_RATES: readonly RateView[] = [];
 
@@ -148,12 +148,12 @@ export class PersonClaims {
   }
 
   protected dueByOf(c: ClaimView): string {
-    return dueBy(c, this.sheets.current()?.terms ?? DEFAULT_TERMS);
+    return c.dueBy;
   }
 
   protected overdueOf(c: ClaimView): boolean {
     const sheet = this.sheets.current();
-    return sheet !== null && isOverdue(c, sheet.terms, sheet.today);
+    return sheet !== null && isOverdue(c, sheet.today);
   }
 
   protected periodOf(c: ClaimView): string {
