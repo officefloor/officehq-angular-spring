@@ -225,6 +225,27 @@ export class Rates {
     return current;
   });
 
+  /** The months (yyyy-mm) of the active sheet's today's calendar year. */
+  readonly calendarMonths = computed(() => {
+    const year = (this.sheets.current()?.today ?? '').slice(0, 4);
+    if (year === '') return [];
+    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  });
+  /** For each grade, the rate in force on the first day of each month of the calendar (the sheet's own, else its
+   *  nearest ancestor's), by month (yyyy-mm); a month with none is missing. */
+  readonly calendarByGrade = computed(() => {
+    const calendar = new Map<Grade, Map<string, string>>();
+    for (const [grade, line] of this.lineByGrade()) {
+      const months = new Map<string, string>();
+      for (const month of this.calendarMonths()) {
+        const rate = rateOnLine(line, `${month}-01`);
+        if (rate !== undefined) months.set(month, rate);
+      }
+      calendar.set(grade, months);
+    }
+    return calendar;
+  });
+
   /** Re-read a sheet's rates, and its ancestors', from the store; null clears them. */
   load(sheetId: string | null): Observable<RateView[]> | null {
     this.list.set([]);

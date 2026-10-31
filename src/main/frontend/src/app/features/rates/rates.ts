@@ -7,7 +7,8 @@ import { NOT_AVAILABLE, RATE_PATTERN, RatePreview, Rates } from '../../core/rate
 import { Sheets } from '../../core/sheet';
 import { FigurePipe } from '../../core/figure';
 
-// The sheet's rates for each grade: the one in force today, each by from-date, and a form to set one.
+// The sheet's rates for each grade: the one in force today, each by from-date, a calendar of the one in force on the
+// first of each month of today's year, and a form to set one.
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule, FigurePipe],
@@ -32,6 +33,28 @@ import { FigurePipe } from '../../core/figure';
           </li>
         }
       </ul>
+
+      <table aria-label="Rate calendar: the rate in force on the first day of each month">
+        <caption>Rate calendar (first day of each month)</caption>
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            @for (m of rates.calendarMonths(); track m) {
+              <th scope="col">{{ m }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (g of grades; track g) {
+            <tr>
+              <th scope="row">{{ g }}</th>
+              @for (m of rates.calendarMonths(); track m) {
+                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ (rates.calendarByGrade().get(g)?.get(m) ?? notAvailable) | figure }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
 
       <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Set a rate">
         <label for="rate-form-grade">Grade</label>
