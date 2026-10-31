@@ -132,9 +132,15 @@ export function roundingDate(
   return theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
 }
 
-/** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and due by a day before it. */
-export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil'>, today: string): boolean {
-  return (c.status === 'OPEN' || c.status === 'PENDING') && !isDeferred(c, today) && c.dueBy < today;
+/** A date (yyyy-mm-dd) so many days later. */
+export function addDays(date: string, days: number): string {
+  return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and its due-by plus the grace
+ *  days of its person's grade (in force on its date) a day before it. */
+export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil'>, today: string, graceDays = 0): boolean {
+  return (c.status === 'OPEN' || c.status === 'PENDING') && !isDeferred(c, today) && addDays(c.dueBy, graceDays) < today;
 }
 
 /** A claim as the form submits it: a blank date takes the sheet's today. A negative amount is a correction,

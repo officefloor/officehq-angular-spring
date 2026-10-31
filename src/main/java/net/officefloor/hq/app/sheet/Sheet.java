@@ -31,6 +31,7 @@ public class Sheet {
     public static final String FLOOR = "floor";
     public static final String TERMS = "terms";
     public static final String LATE_PCT = "late-pct";
+    public static final String GRACE = "grace";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
@@ -65,7 +66,7 @@ public class Sheet {
     private int lastClaimNumber;
 
     /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
-     *  cap, proof-threshold, note-threshold): each in force from its from-date until the next one's of the same key. */
+     *  grace-A/B/C, cap, proof-threshold, note-threshold): each in force from its from-date until the next one's of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
@@ -207,6 +208,25 @@ public class Sheet {
     public int termsFor(String grade, LocalDate date) {
         String value = valueOn(TERMS + "-" + grade, date);
         return value == null ? termsOn(date) : Integer.parseInt(value);
+    }
+
+    /** The grace days set per grade in force on the sheet's today, by grade; a grade without any is missing. */
+    public Map<String, Integer> getGradeGrace() {
+        Map<String, Integer> byGrade = new TreeMap<>();
+        for (String grade : GRADES) {
+            String value = valueOn(GRACE + "-" + grade, today);
+            if (value != null) {
+                byGrade.put(grade, Integer.parseInt(value));
+            }
+        }
+        return byGrade;
+    }
+
+    /** The grace days of a grade in force on a day: a claim dated then whose person is of that grade then is overdue
+     *  only once its due-by plus these is before the sheet's today; 0 when none is set. */
+    public int graceFor(String grade, LocalDate date) {
+        String value = valueOn(GRACE + "-" + grade, date);
+        return value == null ? 0 : Integer.parseInt(value);
     }
 
     /** The sheet's late percent in force on a day (two decimals): an overdue claim gains this percent of its figure

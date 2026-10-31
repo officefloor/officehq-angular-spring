@@ -77,7 +77,7 @@ public class Rollup {
             // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade
             // any of their claims is at, and no claim that has a due, the person has no due-total.
             List<BigDecimal> dues = counting.stream()
-                    .map(c -> dueOf(c, ratesOf(sheetRates, person.gradeOn(c.getDate())), sheet, sheetClaims))
+                    .map(c -> dueOf(c, person.gradeOn(c.getDate()), sheetRates, sheet, sheetClaims))
                     .filter(Objects::nonNull)
                     .toList();
             boolean anyRate = today != null && Stream.concat(Stream.of(person.gradeOn(today)),
@@ -90,10 +90,11 @@ public class Rollup {
                 dueFigures.add(total);
                 due = total.toPlainString();
             }
-            // As on screen: the dues of the claims that count which are open and due by a day before the sheet's today.
+            // As on screen: the dues of the claims that count which are open and due by (plus their grade's grace
+            // days) a day before the sheet's today.
             BigDecimal overdue = counting.stream()
-                    .filter(c -> today != null && c.getStatus().isOpen() && c.getDueBy().isBefore(today))
-                    .map(c -> dueOf(c, ratesOf(sheetRates, person.gradeOn(c.getDate())), sheet, sheetClaims))
+                    .filter(c -> today != null && ClaimService.isOverdue(c, sheet, person.gradeOn(c.getDate())))
+                    .map(c -> dueOf(c, person.gradeOn(c.getDate()), sheetRates, sheet, sheetClaims))
                     .filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             overdueFigures.add(overdue);
@@ -135,7 +136,7 @@ public class Rollup {
             if (person == null || !person.countsAtEnd(claim, to, today) || claim.isDeferredOn(today) || claim.getDueBy().isBefore(from) || claim.getDueBy().isAfter(to)) {
                 continue;
             }
-            BigDecimal due = dueOf(claim, ratesOf(sheetRates, person.gradeOn(claim.getDate())), sheet, sheetClaims);
+            BigDecimal due = dueOf(claim, person.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);
             if (due != null) {
                 totals.merge(person.getId(), due, BigDecimal::add);
             }
@@ -174,7 +175,8 @@ public class Rollup {
     /** A claim's due: its settled figure, else its stated one (none while PENDING), else its amount at the rate in force on its date of
      *  its person's grade in force on that date, rounded as the claim rounds (by the sheet's policy date); an overdue claim's late charge is added on top of the figure, and the
      *  sum is raised to the floor in force on its date unless it is a correction. */
-    private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Sheet sheet, List<Claim> sheetClaims) {
+    private static BigDecimal dueOf(Claim claim, String grade, List<Rate> sheetRates, Sheet sheet, List<Claim> sheetClaims) {
+        List<Rate> gradeRates = ratesOf(sheetRates, grade);
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
@@ -185,6 +187,6 @@ public class Rollup {
                         .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), rounding))
                         .orElse(null);
         return figure == null || sheet == null ? figure
-                : ClaimService.floored(claim, figure.add(ClaimService.lateCharge(claim, figure, sheet)), sheet);
+                : ClaimService.floored(claim, figure.add(ClaimService.lateCharge(claim, figure, sheet, grade)), sheet);
     }
 }

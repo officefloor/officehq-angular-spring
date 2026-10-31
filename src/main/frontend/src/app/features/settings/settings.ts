@@ -16,7 +16,7 @@ const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
 
 /** A setting that carries a figure: it is saved from a from-date. */
 type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | PermField>;
@@ -26,6 +26,9 @@ type FromField = `${DatedField}From`;
 
 /** The form field of each grade's own terms. */
 const GRADE_TERMS_FIELD: Record<Grade, 'termsA' | 'termsB' | 'termsC'> = { A: 'termsA', B: 'termsB', C: 'termsC' };
+
+/** The form field of each grade's grace days. */
+const GRADE_GRACE_FIELD: Record<Grade, 'graceA' | 'graceB' | 'graceC'> = { A: 'graceA', B: 'graceB', C: 'graceC' };
 
 /** The form field of each action's permission entry. */
 type PermField = `perm_${PermAction}`;
@@ -40,7 +43,7 @@ function isDate(value: string): boolean {
   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
 }
 
-// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, its late percent, its policy date, its period numbering from, its grace days (not dated), its cap, its proof threshold, its note threshold, its permission matrix (not dated), and the role assigned to each user name.
+// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, each grade's grace days, its late percent, its policy date, its period numbering from, its grace days (not dated), its cap, its proof threshold, its note threshold, its permission matrix (not dated), and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -52,6 +55,9 @@ function isDate(value: string): boolean {
       <p>Terms (business days): <span data-testid="setting-terms-current">{{ sheets.current()?.terms ?? '' }}</span></p>
       @for (g of grades; track g) {
         <p>Terms for grade {{ g }} (days): <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ sheets.current()?.gradeTerms?.[g] ?? '' }}</span></p>
+      }
+      @for (g of grades; track g) {
+        <p>Grace days for grade {{ g }}: <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ sheets.current()?.gradeGrace?.[g] ?? '' }}</span></p>
       }
       <p>Late percent: <span data-testid="setting-late-pct-current">{{ sheets.current()?.latePct ?? '' }}</span></p>
       <p>Policy date: <span data-testid="setting-policy-date-current">{{ sheets.current()?.policyDate ?? '' }}</span></p>
@@ -94,6 +100,14 @@ function isDate(value: string): boolean {
           <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from (yyyy-mm-dd; blank: today)</label>
           <input [id]="'setting-terms-' + g + '-from'" [attr.data-testid]="'setting-terms-' + g + '-from'"
                  [formControlName]="gradeField[g] + 'From'" (focus)="lastFocused = gradeField[g]" placeholder="yyyy-mm-dd" autocomplete="off" />
+        }
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} (a claim of the grade on its date is overdue only once its due-by plus these has passed; blank: none)</label>
+          <input [id]="'setting-grace-' + g" [attr.data-testid]="'setting-grace-' + g" [formControlName]="graceField[g]"
+                 (focus)="lastFocused = graceField[g]" inputmode="numeric" autocomplete="off" />
+          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} from (yyyy-mm-dd; blank: today)</label>
+          <input [id]="'setting-grace-' + g + '-from'" [attr.data-testid]="'setting-grace-' + g + '-from'"
+                 [formControlName]="graceField[g] + 'From'" (focus)="lastFocused = graceField[g]" placeholder="yyyy-mm-dd" autocomplete="off" />
         }
         <label for="setting-late-pct">Late percent (added to an overdue claim's due for every full 30 days)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" (focus)="lastFocused = 'latePct'"
@@ -176,6 +190,7 @@ export class SettingsPanel {
 
   protected readonly grades = GRADES;
   protected readonly gradeField = GRADE_TERMS_FIELD;
+  protected readonly graceField = GRADE_GRACE_FIELD;
   protected readonly permActions = PERM_ACTIONS;
   protected readonly standing = STANDING_PERMISSIONS;
   protected readonly permField = PERM_FIELD;
@@ -196,6 +211,9 @@ export class SettingsPanel {
     termsA: new FormControl('', { nonNullable: true }),
     termsB: new FormControl('', { nonNullable: true }),
     termsC: new FormControl('', { nonNullable: true }),
+    graceA: new FormControl('', { nonNullable: true }),
+    graceB: new FormControl('', { nonNullable: true }),
+    graceC: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
@@ -210,6 +228,9 @@ export class SettingsPanel {
     termsAFrom: new FormControl('', { nonNullable: true }),
     termsBFrom: new FormControl('', { nonNullable: true }),
     termsCFrom: new FormControl('', { nonNullable: true }),
+    graceAFrom: new FormControl('', { nonNullable: true }),
+    graceBFrom: new FormControl('', { nonNullable: true }),
+    graceCFrom: new FormControl('', { nonNullable: true }),
     latePctFrom: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
@@ -300,6 +321,12 @@ export class SettingsPanel {
       this.settingsError.set('Type a grade\'s terms as 0 or more whole days, or leave them blank for the sheet\'s terms.');
       return;
     }
+    const gradeGraceSaved = GRADES.filter((g) => isSaved(GRADE_GRACE_FIELD[g]))
+      .map((g) => ({ grade: g, value: this.settingsForm.controls[GRADE_GRACE_FIELD[g]].value.trim() }));
+    if (gradeGraceSaved.some((t) => t.value !== '' && !TERMS_PATTERN.test(t.value))) {
+      this.settingsError.set('Type a grade\'s grace days as 0 or more whole days, or leave them blank for none.');
+      return;
+    }
     if (saveLatePct && !LATE_PCT_PATTERN.test(latePctValue)) {
       this.settingsError.set('Type a late percent of 0.00 or more, up to 999.99, with up to two decimals.');
       return;
@@ -339,7 +366,7 @@ export class SettingsPanel {
       this.settingsError.set(`List the roles that may take an action, comma separated (${this.roleNames}), or leave it blank for the standing rule.`);
       return;
     }
-    const datedFields: DatedField[] = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold'];
+    const datedFields: DatedField[] = ['clerkLimit', 'floor', 'terms', 'termsA', 'termsB', 'termsC', 'graceA', 'graceB', 'graceC', 'latePct', 'cap', 'proofThreshold', 'noteThreshold'];
     const badFrom = datedFields.find((f) => {
       const from = fromOf(f);
       return isSaved(f) && from !== null && !(DATE_PATTERN.test(from) && isDate(from));
@@ -353,6 +380,7 @@ export class SettingsPanel {
     if (saveFloor) saves.push(this.sheets.setFloor(sheet.id, floorValue, fromOf('floor')));
     if (saveTerms) saves.push(this.sheets.setTerms(sheet.id, Number(termsValue), fromOf('terms')));
     for (const t of gradeTermsSaved) saves.push(this.sheets.setGradeTerms(sheet.id, t.grade, t.value === '' ? null : Number(t.value), fromOf(GRADE_TERMS_FIELD[t.grade])));
+    for (const t of gradeGraceSaved) saves.push(this.sheets.setGradeGrace(sheet.id, t.grade, t.value === '' ? null : Number(t.value), fromOf(GRADE_GRACE_FIELD[t.grade])));
     if (saveLatePct) saves.push(this.sheets.setLatePct(sheet.id, latePctValue, fromOf('latePct')));
     if (savePolicyDate) saves.push(this.sheets.setPolicyDate(sheet.id, policyDateValue === '' ? null : policyDateValue));
     if (savePeriodNumberingFrom) saves.push(this.sheets.setPeriodNumberingFrom(sheet.id, periodNumberingFromValue === '' ? null : periodNumberingFromValue));
@@ -377,7 +405,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', noteThresholdFrom: '',
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', noteThresholdFrom: '',
       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
   }

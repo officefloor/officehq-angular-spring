@@ -131,6 +131,13 @@ public class SheetService {
         return record(id, user, Sheet.TERMS + "-" + grade, from, terms == null ? null : String.valueOf(terms), false);
     }
 
+    /** Record a grade's grace days (null: none) from a date (null: the sheet's today), starting the sheet if it has
+     *  never been loaded. */
+    @Transactional
+    public Sheet setGradeGrace(String id, String user, String grade, Integer days, LocalDate from) {
+        return record(id, user, Sheet.GRACE + "-" + grade, from, days == null ? null : String.valueOf(days), true);
+    }
+
     /** Record the sheet's late percent from a date (null: the sheet's today), starting the sheet if it has never
      *  been loaded. */
     @Transactional

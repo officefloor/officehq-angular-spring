@@ -4,7 +4,7 @@ import { Observable, tap } from 'rxjs';
 import { Grade } from './people';
 
 /** A dated setting's value from its from-date (yyyy-mm-dd; null: from the beginning of time) until the next one's
- *  of the same key; a null value means none. Keys: clerk-limit, floor, terms, terms-A/B/C, late-pct, cap, proof-threshold, note-threshold. */
+ *  of the same key; a null value means none. Keys: clerk-limit, floor, terms, terms-A/B/C, late-pct, grace-A/B/C, cap, proof-threshold, note-threshold. */
 export interface DatedSetting {
   key: string;
   from: string | null;
@@ -33,6 +33,8 @@ export interface SheetView {
   periodNumberingFrom: string | null;
   /** The terms in days set per grade; a grade without its own uses the sheet's terms. */
   gradeTerms: Partial<Record<Grade, number>>;
+  /** The grace days set per grade, in force on the sheet's today; a grade without any is missing. */
+  gradeGrace: Partial<Record<Grade, number>>;
   /** A person's due-total is at most this (two decimals); null: none. */
   cap: string | null;
   /** A claim whose due is above this (two decimals), in force on its date, cannot be settled or approved while it
@@ -78,6 +80,13 @@ export function settingOn(settings: readonly DatedSetting[], key: string, date: 
         || (s.from !== null && s.from > inForce.from))) inForce = s;
   }
   return inForce?.value ?? start;
+}
+
+/** The grace days of a grade in force on a date (yyyy-mm-dd): a claim dated then whose person is of that grade
+ *  then is overdue only once its due-by plus these is before the sheet's today; 0 when none is set. */
+export function graceOn(settings: readonly DatedSetting[], grade: Grade, date: string): number {
+  const value = settingOn(settings, `grace-${grade}`, date, '');
+  return value === '' ? 0 : Number(value);
 }
 
 /** The terms a sheet has until they are changed. */
@@ -154,6 +163,13 @@ export class Sheets {
   setGradeTerms(id: string, grade: Grade, terms: number | null, from: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/terms/${grade}`, { terms, from })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Record a grade's grace days from a date (null: the sheet's today); null means none. */
+  setGradeGrace(id: string, grade: Grade, days: number | null, from: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/grace/${grade}`, { days, from })
       .pipe(tap((s) => this.active.set(s)));
   }
 

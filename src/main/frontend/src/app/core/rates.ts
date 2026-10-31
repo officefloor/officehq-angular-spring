@@ -1,9 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
-import { ClaimStatus, cents, isOverdue } from './claims';
+import { ClaimStatus, addDays, cents, isOverdue } from './claims';
 import { Grade } from './people';
-import { SheetView, Sheets, settingOn } from './sheet';
+import { SheetView, Sheets, graceOn, settingOn } from './sheet';
 
 export interface RateView {
   grade: Grade;
@@ -79,20 +79,23 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
 }
 
 /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure (in whole cents) by the sheet's today:
- *  for each full 30 days past the day it is due by, the late percent in force on that boundary date (its due-by plus
- *  30, 60, 90 ... days) of the figure, rounded as the claim rounds, added up. A correction (a negative amount) gains none. */
+ *  for each full 30 days past its due-by plus its grade's grace days, the late percent in force on that boundary date
+ *  (that day plus 30, 60, 90 ... days) of the figure, rounded as the claim rounds, added up. A correction (a negative
+ *  amount) gains none. */
 export function lateChargeCents(
   c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null },
   figureCents: number,
   sheet: DueTerms,
+  graceDays = 0,
 ): number {
-  if (cents(c.amount) < 0 || !isOverdue(c, sheet.today)) return 0;
-  const days = (Date.parse(sheet.today) - Date.parse(c.dueBy)) / 86_400_000;
+  if (cents(c.amount) < 0 || !isOverdue(c, sheet.today, graceDays)) return 0;
+  const from = addDays(c.dueBy, graceDays);
+  const days = (Date.parse(sheet.today) - Date.parse(from)) / 86_400_000;
   const periods = Math.floor(days / 30);
   const halfUp = roundsHalfUp(c.date, sheet);
   let charge = 0;
   for (let k = 1; k <= periods; k++) {
-    const boundary = new Date(Date.parse(c.dueBy) + k * 30 * 86_400_000).toISOString().slice(0, 10);
+    const boundary = addDays(from, k * 30);
     charge += dueCents(figureCents, latePctOn(sheet, boundary), halfUp);
   }
   return charge;
@@ -101,12 +104,14 @@ export function lateChargeCents(
 /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
  *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date, with any late
  *  charge added on top of it, the sum raised to the floor in force on its date (a correction is not); null when it has none. Its live
- *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. */
+ *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. `grade` is its
+ *  person's grade in force on its date, whose grace days delay its late charge. */
 export function claimDueCents(
   c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null },
   gradeRates: readonly RateView[],
   sheet: DueTerms,
   roundsOn: string,
+  grade: Grade,
 ): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
   let figure: number;
@@ -119,7 +124,7 @@ export function claimDueCents(
     if (rate === undefined) return null;
     figure = dueCents(cents(c.amount), rate, roundsHalfUp(roundsOn, sheet));
   }
-  const due = figure + lateChargeCents(c, figure, sheet);
+  const due = figure + lateChargeCents(c, figure, sheet, graceOn(sheet.settings, grade, c.date));
   return cents(c.amount) < 0 ? due : Math.max(due, cents(floorOn(sheet, c.date)));
 }
 

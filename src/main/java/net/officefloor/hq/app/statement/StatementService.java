@@ -172,7 +172,7 @@ public class StatementService {
             grades.add(person.gradeOn(then.getDate()));
             total = figure == null ? total
                     : total.add(then.getSettledDue() != null ? figure
-                            : ClaimService.floored(then, figure.add(ClaimService.lateCharge(then, figure, sheet)), sheet));
+                            : ClaimService.floored(then, figure.add(ClaimService.lateCharge(then, figure, sheet, person.gradeOn(then.getDate()))), sheet));
             claim.bind(figure);
             counted++;
         }

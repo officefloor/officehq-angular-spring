@@ -7,7 +7,7 @@ import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
-import { Sheets } from '../../core/sheet';
+import { Sheets, graceOn } from '../../core/sheet';
 
 const NO_RATES: readonly RateView[] = [];
 
@@ -205,8 +205,9 @@ export class PersonClaims {
   }
 
   protected dueOf(c: ClaimView): string {
-    const rates = this.ratesByGrade().get(gradeOn(this.grades(), c.date)) ?? NO_RATES;
-    const due = claimDueCents(c, rates, this.sheets.current() ?? DEFAULT_DUE_TERMS, roundingDate(c, this.claims()));
+    const grade = gradeOn(this.grades(), c.date);
+    const rates = this.ratesByGrade().get(grade) ?? NO_RATES;
+    const due = claimDueCents(c, rates, this.sheets.current() ?? DEFAULT_DUE_TERMS, roundingDate(c, this.claims()), grade);
     return due === null ? NOT_AVAILABLE : money(due);
   }
 
@@ -216,7 +217,7 @@ export class PersonClaims {
 
   protected overdueOf(c: ClaimView): boolean {
     const sheet = this.sheets.current();
-    return sheet !== null && isOverdue(c, sheet.today);
+    return sheet !== null && isOverdue(c, sheet.today, graceOn(sheet.settings, gradeOn(this.grades(), c.date), c.date));
   }
 
   protected deferredOf(c: ClaimView): boolean {

@@ -449,7 +449,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal live = liveNow(sheet, claim, person);
-        BigDecimal due = live == null ? null : floored(claim, live.add(lateChargeAsOpen(claim, live, sheet)), sheet);
+        BigDecimal due = live == null ? null : floored(claim, live.add(lateChargeAsOpen(claim, live, sheet, person.gradeOn(claim.getDate()))), sheet);
         Rollup.Figures before = rollup.of(sheetId);
         String old = dueText(claim);
         claim.setSettledDue(due);
@@ -574,7 +574,7 @@ public class ClaimService {
         // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained,
         // raised to the floor.
         BigDecimal figure = claim.isBound() ? claim.getBoundDue() : live;
-        return figure == null ? null : floored(claim, figure.add(lateCharge(claim, figure, sheet)), sheet);
+        return figure == null ? null : floored(claim, figure.add(lateCharge(claim, figure, sheet, person.gradeOn(claim.getDate()))), sheet);
     }
 
     /** A claim's live figure as rates and grades are now, bound by no statement; null when its grade has
@@ -719,29 +719,42 @@ public class ClaimService {
                 .map(Claim::getDate).findFirst().orElse(claim.getDate());
     }
 
+    /** The day a claim's overdue days are counted from: its due-by plus the grace days, in force on its date, of
+     *  {@code grade} (its person's grade in force on its date). Its due-by itself is unchanged. */
+    public static LocalDate overdueFrom(Claim claim, Sheet sheet, String grade) {
+        return claim.getDueBy().plusDays(sheet.graceFor(grade, claim.getDate()));
+    }
+
+    /** Whether a claim whose person is of {@code grade} on its date is overdue on the sheet's today: OPEN or PENDING,
+     *  and its due-by plus its grade's grace days is before today. */
+    public static boolean isOverdue(Claim claim, Sheet sheet, String grade) {
+        return claim.getStatus().isOpen() && overdueFrom(claim, sheet, grade).isBefore(sheet.getToday());
+    }
+
     /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure by the sheet's today: for each
-     *  full 30 days past the day it is due by, the late percent in force on that boundary date (its due-by plus 30, 60,
-     *  90 ... days) of the figure, rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, or
-     *  it is a correction. */
-    public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
+     *  full 30 days past its due-by plus its grade's grace days ({@code grade}: its person's grade in force on its
+     *  date), the late percent in force on that boundary date (that day plus 30, 60, 90 ... days) of the figure,
+     *  rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, or it is a correction. */
+    public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet, String grade) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (!claim.getStatus().isOpen() || claim.isDeferredOn(sheet.getToday())) {
             return none;
         }
-        return lateChargeAsOpen(claim, figure, sheet);
+        return lateChargeAsOpen(claim, figure, sheet, grade);
     }
 
     /** The late charge a claim would have gained on its figure by the sheet's today were it still open. */
-    private static BigDecimal lateChargeAsOpen(Claim claim, BigDecimal figure, Sheet sheet) {
+    private static BigDecimal lateChargeAsOpen(Claim claim, BigDecimal figure, Sheet sheet, String grade) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (figure == null || claim.isCorrection()) {
             return none;
         }
-        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / 30;
+        LocalDate from = overdueFrom(claim, sheet, grade);
+        long periods = ChronoUnit.DAYS.between(from, sheet.getToday()) / 30;
         RoundingMode rounding = sheet.roundingFor(claim.getDate());
         BigDecimal charge = none;
         for (long k = 1; k <= periods; k++) {
-            charge = charge.add(dueOn(figure, sheet.latePctOn(claim.getDueBy().plusDays(30 * k)), rounding));
+            charge = charge.add(dueOn(figure, sheet.latePctOn(from.plusDays(30 * k)), rounding));
         }
         return charge;
     }

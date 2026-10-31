@@ -8,7 +8,7 @@ import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
-import { Sheets } from '../../core/sheet';
+import { Sheets, graceOn } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { Watches } from '../../core/watches';
 import { PersonClaims } from '../claims/claims';
@@ -421,7 +421,7 @@ export class PeopleList {
     const byPerson = new Map<number, Overdue>();
     for (const p of this.people()) {
       const overdue = sheet
-        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds, sheet.today, p.retiredFrom)(c) && isOverdue(c, sheet.today))
+        ? this.claimsOf(p.id).filter((c) => countsWithHolds(p.holds, sheet.today, p.retiredFrom)(c) && isOverdue(c, sheet.today, graceOn(sheet.settings, gradeOn(p, c.date), c.date)))
         : NO_CLAIMS;
       byPerson.set(p.id, {
         count: overdue.length,
@@ -624,8 +624,9 @@ export class PeopleList {
 
   /** A claim's due in whole cents, at the rates of its person's grade in force on its date; null with none. */
   private claimDue(p: PersonView, c: ClaimView, dueTerms: DueTerms): number | null {
-    return claimDueCents(c, this.rates.ratesByGrade().get(gradeOn(p, c.date)) ?? NO_RATES, dueTerms,
-      roundingDate(c, this.claimsOf(p.id)));
+    const grade = gradeOn(p, c.date);
+    return claimDueCents(c, this.rates.ratesByGrade().get(grade) ?? NO_RATES, dueTerms,
+      roundingDate(c, this.claimsOf(p.id)), grade);
   }
 
   protected dueOf(p: PersonView): string {
