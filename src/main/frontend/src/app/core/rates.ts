@@ -67,7 +67,7 @@ export function floorOn(sheet: DueTerms, date: string): string {
   return settingOn(sheet.settings, 'floor', date, DEFAULT_FLOOR);
 }
 
-/** The late percent in force on a claim's date (yyyy-mm-dd). */
+/** The late percent in force on a date (yyyy-mm-dd). */
 export function latePctOn(sheet: DueTerms, date: string): string {
   return settingOn(sheet.settings, 'late-pct', date, DEFAULT_LATE_PCT);
 }
@@ -78,9 +78,9 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
   return date < (sheet.policyDate ?? sheet.today);
 }
 
-/** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure (in whole cents) by the sheet's today: the
- *  late percent of the figure for every full 30 days past the day it is due by, rounded as the claim rounds.
- *  A correction (a negative amount) gains none. */
+/** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure (in whole cents) by the sheet's today:
+ *  for each full 30 days past the day it is due by, the late percent in force on that boundary date (its due-by plus
+ *  30, 60, 90 ... days) of the figure, rounded as the claim rounds, added up. A correction (a negative amount) gains none. */
 export function lateChargeCents(
   c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null },
   figureCents: number,
@@ -89,8 +89,13 @@ export function lateChargeCents(
   if (cents(c.amount) < 0 || !isOverdue(c, sheet.today)) return 0;
   const days = (Date.parse(sheet.today) - Date.parse(c.dueBy)) / 86_400_000;
   const periods = Math.floor(days / 30);
-  if (periods <= 0) return 0;
-  return dueCents(figureCents * periods, latePctOn(sheet, c.date), roundsHalfUp(c.date, sheet));
+  const halfUp = roundsHalfUp(c.date, sheet);
+  let charge = 0;
+  for (let k = 1; k <= periods; k++) {
+    const boundary = new Date(Date.parse(c.dueBy) + k * 30 * 86_400_000).toISOString().slice(0, 10);
+    charge += dueCents(figureCents, latePctOn(sheet, boundary), halfUp);
+  }
+  return charge;
 }
 
 /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's

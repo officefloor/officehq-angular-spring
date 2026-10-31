@@ -507,9 +507,10 @@ public class ClaimService {
                 .map(Claim::getDate).findFirst().orElse(claim.getDate());
     }
 
-    /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure by the sheet's today: the late percent in force on its date of
-     *  the figure for every full 30 days past the day it is due by, rounded as the claim rounds; 0.00 when not overdue,
-     *  it has no figure, or it is a correction. */
+    /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure by the sheet's today: for each
+     *  full 30 days past the day it is due by, the late percent in force on that boundary date (its due-by plus 30, 60,
+     *  90 ... days) of the figure, rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, or
+     *  it is a correction. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (!claim.getStatus().isOpen() || claim.isDeferredOn(sheet.getToday())) {
@@ -525,8 +526,12 @@ public class ClaimService {
             return none;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / 30;
-        return periods <= 0 ? none : dueOn(figure, sheet.latePctOn(claim.getDate()).multiply(BigDecimal.valueOf(periods)),
-                sheet.roundingFor(claim.getDate()));
+        RoundingMode rounding = sheet.roundingFor(claim.getDate());
+        BigDecimal charge = none;
+        for (long k = 1; k <= periods; k++) {
+            charge = charge.add(dueOn(figure, sheet.latePctOn(claim.getDueBy().plusDays(30 * k)), rounding));
+        }
+        return charge;
     }
 
     /** A claim's live figure at a rate: its due on its amount, rounded as the claim rounds, raised to the floor
