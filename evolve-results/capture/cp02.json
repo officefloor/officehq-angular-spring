@@ -1,0 +1,64 @@
+{
+  "checkpoint": 2,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp02_sheet-today",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each sheet has a \"today\" date, shown on the screen and changeable there. It starts as the real\ndate. Every decision in the app that depends on the date, and every default date, uses the\nsheet's today and never the real clock.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach sheet has a \"today\" date, shown on the screen and changeable there. It starts as the real\ndate. Every decision in the app that depends on the date, and every default date, uses the\nsheet's today and never the real clock.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "24071489b2c7257325c8c1783e0657a181abf6e3",
+  "reset_sha": "",
+  "preagent_sha": "a318439f99aa6985d93eacdb0719e176bf2a938a",
+  "prev_sha": "a318439f99aa6985d93eacdb0719e176bf2a938a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.37089900000000003,
+    "input_tokens": 14,
+    "output_tokens": 5141,
+    "cache_read_tokens": 177355,
+    "cache_creation_tokens": 29069,
+    "num_turns": 8,
+    "duration_ms": 130591,
+    "duration_api_ms": 43144,
+    "model": "claude-opus-5-5",
+    "session_id": "21308d84-6c44-4c08-b7d6-a21ac7b1b4b6",
+    "stop_reason": "success",
+    "result_text": "The change is done: each sheet now has its own \"today\" date, shown on the screen and changeable there. `bin/e2e` builds the app and the acceptance test passes.\n\n- **Stored data:** a new migration, `V2__sheet_today.sql`, adds a required `today` date to each sheet. A new sheet starts with the real date. Any sheet that already existed gets the date it was created.\n- **Server:** loading a sheet now returns its today along with its id. A new endpoint, `PUT /api/sheets/{id}/today`, takes an ISO date (yyyy-mm-dd) and saves it. A missing or badly formed date is refused and nothing is saved.\n- **Front end:** the screen shows the date in `sheet-today`. Below it is a date field (`sheet-today-input`) and a Set today button (`sheet-today-save`). The field is filled with the sheet's current today whenever a sheet loads. A refused change shows an error in `sheet-error`, which the test helpers use for refusals. The error clears when the field is edited, the button is pressed again, or another sheet is loaded.\n\nThe app doesn't yet make any decisions that depend on the date or fill in default dates, so nothing else had to switch from the real clock. Features added later should read the sheet's `today` (on the server, `Sheet.getToday()`) rather than calling `LocalDate.now()`. Changing the date doesn't write an audit record, because the request and the test didn't ask for one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.37089900000000003,
+        "num_turns": 8,
+        "duration_ms": 130591,
+        "duration_api_ms": 43144,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp02.agent.jsonl",
+  "agent_diff_file": "cp02.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
