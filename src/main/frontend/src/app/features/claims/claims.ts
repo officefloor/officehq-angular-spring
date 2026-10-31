@@ -1,0 +1,122 @@
+import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, money } from '../../core/claims';
+import { Sheets } from '../../core/sheet';
+
+// One person's claims: their claimed total, one form to add a claim or edit an existing one, and
+// the claims listed newest first.
+@Component({
+  selector: 'app-person-claims',
+  imports: [ReactiveFormsModule],
+  template: `
+    <p>Claimed: <span data-testid="person-claimed">{{ claimed() }}</span></p>
+
+    <form [formGroup]="form" (ngSubmit)="submit()"
+          [attr.aria-label]="(editingId() === null ? 'Add a claim for ' : 'Edit a claim of ') + personName()">
+      <label [for]="fieldId('amount')">Amount</label>
+      <input [id]="fieldId('amount')" data-testid="claim-form-amount" formControlName="amount"
+             inputmode="decimal" autocomplete="off" />
+      <label [for]="fieldId('date')">Date</label>
+      <input [id]="fieldId('date')" type="date" data-testid="claim-form-date" formControlName="date" />
+      <label [for]="fieldId('note')">Note</label>
+      <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" autocomplete="off" />
+      <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
+        {{ editingId() === null ? 'Add claim' : 'Save claim' }}
+      </button>
+      @if (error(); as err) {
+        <p role="alert" data-testid="claim-form-error">{{ err }}</p>
+      }
+    </form>
+
+    <ul [attr.aria-label]="'Claims of ' + personName()">
+      @for (c of claims(); track c.id) {
+        <li [attr.data-testid]="'claim-row-' + c.id">
+          <span data-testid="claim-amount">{{ c.amount }}</span>
+          on <span data-testid="claim-date">{{ c.date }}</span>
+          <span data-testid="claim-note">{{ c.note }}</span>
+          @if (editingId() === c.id) {
+            <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+          } @else {
+            <button type="button" data-testid="claim-edit" (click)="edit(c)"
+                    [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+          }
+        </li>
+      }
+    </ul>
+  `,
+})
+export class PersonClaims {
+  private readonly sheets = inject(Sheets);
+  private readonly api = inject(Claims);
+
+  readonly personId = input.required<number>();
+  readonly personName = input.required<string>();
+  /** This person's claims, newest first. */
+  readonly claims = input.required<ClaimView[]>();
+  readonly saved = output<ClaimView>();
+
+  protected readonly claimed = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly editingId = signal<number | null>(null);
+  protected readonly error = signal<string | null>(null);
+  protected readonly saving = signal(false);
+
+  protected readonly form = new FormGroup({
+    amount: new FormControl('', { nonNullable: true }),
+    date: new FormControl('', { nonNullable: true }),
+    note: new FormControl('', { nonNullable: true }),
+  });
+
+  constructor() {
+    // An error is removed as soon as its form is changed.
+    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+  }
+
+  protected fieldId(field: string): string {
+    return `claim-form-${field}-${this.personId()}`;
+  }
+
+  protected edit(c: ClaimView): void {
+    this.editingId.set(c.id);
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
+    this.error.set(null);
+  }
+
+  protected reset(): void {
+    this.editingId.set(null);
+    this.form.reset({ amount: '', date: '', note: '' }, { emitEvent: false });
+    this.error.set(null);
+  }
+
+  protected submit(): void {
+    this.error.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const value = this.form.getRawValue();
+    const amount = value.amount.trim();
+    if (!AMOUNT_PATTERN.test(amount)) {
+      this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    const date = value.date.trim();
+    if (date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.error.set('Choose a date for the claim, or leave it blank for today.');
+      return;
+    }
+    const claim = { amount, date: date === '' ? null : date, note: value.note };
+    const id = this.editingId();
+    this.saving.set(true);
+    const request = id === null ? this.api.add(sheet.id, this.personId(), claim) : this.api.update(sheet.id, id, claim);
+    request.subscribe({
+      next: (saved) => {
+        this.saving.set(false);
+        this.saved.emit(saved);
+        this.reset();
+      },
+      error: () => {
+        this.saving.set(false);
+        this.error.set(id === null ? 'Could not add that claim.' : 'Could not save that claim.');
+      },
+    });
+  }
+}
