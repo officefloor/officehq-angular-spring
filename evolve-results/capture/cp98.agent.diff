@@ -1,0 +1,414 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 1bd4a00cb..b540a290f 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -61,6 +61,8 @@ export interface ClaimView {
+   /** The signed-in name of the user who last edited the claim; null if no one has. Like its opener, they
+    *  cannot settle or approve it. */
+   editedBy: string | null;
++  /** The number of the settle batch that settled the claim; null when it was not settled by one. */
++  batch: number | null;
+ }
+ 
+ /** A comment on a claim: the signed-in name of who wrote it, the sheet's today (yyyy-mm-dd) then, and its text. */
+@@ -200,11 +202,14 @@ export interface BulkOpenView {
+   claims: ClaimView[];
+ }
+ 
+-/** What a bulk settle did: how many it settled (PENDING ones included) and refused, and the claims it settled. */
++/** What a bulk settle did: how many it settled (PENDING ones included) and refused, the claims it settled, and the
++ *  settle batch they make. */
+ export interface BulkSettleView {
+   settled: number;
+   refused: number;
+   claims: ClaimView[];
++  /** The number of the settle batch it made; null when it settled none. */
++  batch: number | null;
+ }
+ 
+ /** What a bulk move did: how many it moved and refused, and the claims it moved. */
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index 16cb092bd..6f94bc7ff 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -47,6 +47,8 @@ export interface SheetView {
+   /** A claim whose due is above this (two decimals), in force on its date, cannot be opened while its note is
+    *  empty; null: none. */
+   noteThreshold: string | null;
++  /** The number of the last settle batch (a bulk settle that settled at least one claim); null when there has been none. */
++  settleBatch: number | null;
+   /** Every dated value recorded for the settings that carry a figure. */
+   settings: DatedSetting[];
+   /** The permission matrix entries set: for an action, the roles that may take it (comma separated); an action
+@@ -128,6 +130,11 @@ export class Sheets {
+       );
+   }
+ 
++  /** Note a settle batch just made on the active sheet as its last. */
++  settleBatched(batch: number): void {
++    this.active.update((s) => (s ? { ...s, settleBatch: batch } : s));
++  }
++
+   /** Archive the active sheet (a steward only). */
+   archive(id: string): Observable<SheetView> {
+     return this.http
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index bebecf447..90b88cb6d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -68,6 +68,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a
+           tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span>
+           corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
+           <span data-testid="claim-status">{{ c.status }}</span>
++          batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span>
+           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+           — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
+           — deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 06800bdf7..d92b3a13a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -178,6 +178,7 @@ function csvField(value: string): string {
+         @if (bulkSettleError(); as err) {
+           <span role="alert" data-testid="bulk-settle-error">{{ err }}</span>
+         }
++        — last batch <span data-testid="bulk-settle-batch">{{ sheets.current()?.settleBatch ?? '' }}</span>
+       </p>
+ 
+       <p>
+@@ -300,7 +301,7 @@ function csvField(value: string): string {
+   `,
+ })
+ export class PeopleList {
+-  private readonly sheets = inject(Sheets);
++  protected readonly sheets = inject(Sheets);
+   protected readonly api = inject(People);
+   private readonly claimsApi = inject(Claims);
+   private readonly statementsApi = inject(Statements);
+@@ -1000,9 +1001,10 @@ export class PeopleList {
+     if (!sheet) return;
+     this.bulkSettling.set(true);
+     this.claimsApi.bulkSettle(sheet.id, [...this.selectedClaims()]).subscribe({
+-      next: ({ settled, refused, claims }) => {
++      next: ({ settled, refused, claims, batch }) => {
+         this.bulkSettling.set(false);
+         claims.forEach((c) => this.claimSaved(c));
++        if (batch !== null) this.sheets.settleBatched(batch);
+         this.selectedClaims.set(new Set());
+         this.bulkSettleResult.set({ settled, refused });
+       },
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index be9937590..cb619a81a 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -75,6 +75,15 @@ public class Audit {
+      */
+     public void recordChangeOnCommit(String sheetId, String user, String entry) {
+         history.keepOnCommit(sheetId);
++        recordActingOnCommit(sheetId, user, entry);
++    }
++
++    /**
++     * Append a record of what the user did on the sheet once the current transaction commits, ending it with
++     * {@code for=<steward>} while the user acts as a steward by that steward's delegation (on the sheet's today as it
++     * is when this is called), without keeping what the sheet holds in its history.
++     */
++    public void recordActingOnCommit(String sheetId, String user, String entry) {
+         recordOnCommit(delegations.actingFor(sheetId, user).map(steward -> entry + " for=" + steward).orElse(entry));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index fbbf6bd31..cc8ecc3f1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -92,6 +92,10 @@ public class Claim {
+     @Column(name = "edited_by", length = 100)
+     private String editedBy;
+ 
++    /** The number of the settle batch that settled the claim; none when it was not settled by one. */
++    @Column(name = "settle_batch")
++    private Integer settleBatch;
++
+     /** Whether the claim is bound by its person's last statement. */
+     @Column(name = "stated", nullable = false)
+     private boolean stated;
+@@ -279,6 +283,14 @@ public class Claim {
+         this.editedBy = editedBy;
+     }
+ 
++    public Integer getSettleBatch() {
++        return settleBatch;
++    }
++
++    public void setSettleBatch(Integer settleBatch) {
++        this.settleBatch = settleBatch;
++    }
++
+     /** Whether this user opened the claim or last edited it: either way, they cannot settle or approve it. */
+     public boolean isOpenedOrEditedBy(String user) {
+         return user.equals(openedBy) || user.equals(editedBy);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index f1122cfd3..0b84a13da 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -43,13 +43,14 @@ public class ClaimController {
+      * lateEntry is whether it was added while its period was soft-closed; remindedOn is the last day a reminder was
+      * written for it (null if never); tags are its tags, sorted (none when it has none); voidReason is the reason it
+      * was voided with (null when it was voided without one, or is not void); comments are its comments, oldest
+-     * first; editedBy is who last edited it (null if no one has).
++     * first; editedBy is who last edited it (null if no one has); batch is the number of the settle batch that
++     * settled it (null when it was not settled by one).
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
+             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
+-            String voidReason, List<CommentLine> comments, String editedBy) {
++            String voidReason, List<CommentLine> comments, String editedBy, Integer batch) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -60,7 +61,8 @@ public class ClaimController {
+                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
+                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
+                     claim.getRemindedOn(), claim.getRef(), claim.tagList(), claim.getVoidReason(),
+-                    claim.getComments().stream().map(CommentLine::of).toList(), claim.getEditedBy());
++                    claim.getComments().stream().map(CommentLine::of).toList(), claim.getEditedBy(),
++                    claim.getSettleBatch());
+         }
+     }
+ 
+@@ -138,8 +140,9 @@ public class ClaimController {
+     }
+ 
+     /** What a bulk settle did: how many it settled (a claim that went to PENDING counts) and refused, and the
+-     *  claims it settled, in the order settled. */
+-    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
++     *  claims it settled, in the order settled; batch is the number of the settle batch it made (null when it settled
++     *  none). */
++    public record BulkSettleView(int settled, int refused, List<ClaimView> claims, Integer batch) {
+     }
+ 
+     /** The claims selected to be moved together, and the person they are to move to. */
+@@ -338,7 +341,7 @@ public class ClaimController {
+      * Settle each selected claim that can be settled, one at a time in list order (people in the order listed,
+      * newest claim first within a person), by exactly the rules of settling one claim; a claim a clerk's limit
+      * makes PENDING counts as settled. Each that cannot be settled, or is not on the sheet, is refused and left as
+-     * it is.
++     * it is. When at least one is settled, those settled are the sheet's next settle batch.
+      */
+     @PostMapping("/claims/bulk-settle")
+     public BulkSettleView bulkSettle(
+@@ -348,19 +351,21 @@ public class ClaimController {
+         if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+             // A viewer's bulk action, or one on an archived sheet, goes through with nothing done: every selected
+             // claim is refused.
+-            return new BulkSettleView(0, (int) request.ids().stream().distinct().count(), List.of());
++            return new BulkSettleView(0, (int) request.ids().stream().distinct().count(), List.of(), null);
+         }
+         List<Long> ordered = claims.inListOrder(sheetId, request.ids());
+         int refused = (int) request.ids().stream().distinct().count() - ordered.size();
+-        List<ClaimView> settled = new ArrayList<>();
++        List<Long> settled = new ArrayList<>();
+         for (long id : ordered) {
+             try {
+-                settled.add(ClaimView.of(claims.changeStatus(sheetId, user, id, ClaimStatus.SETTLED)));
++                settled.add(claims.changeStatus(sheetId, user, id, ClaimStatus.SETTLED).getId());
+             } catch (ResponseStatusException refusal) {
+                 refused++;
+             }
+         }
+-        return new BulkSettleView(settled.size(), refused, settled);
++        List<ClaimView> batch = claims.markSettleBatch(sheetId, settled).stream().map(ClaimView::of).toList();
++        return new BulkSettleView(batch.size(), refused, batch,
++                batch.isEmpty() ? null : batch.get(0).batch());
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8a7b31262..0df9cb8d1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -13,6 +13,7 @@ import java.util.Locale;
+ import java.util.Set;
+ import java.util.TreeSet;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.period.Period;
+@@ -56,11 +57,13 @@ public class ClaimService {
+     private final WatchService watches;
+     private final HolidayService holidays;
+     private final VoidReasonService voidReasons;
++    private final SheetHistory history;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
+             SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
+             RoleService roles, ClaimSequenceRepository sequences, WatchService watches,
+-            HolidayService holidays, VoidReasonService voidReasons) {
++            HolidayService holidays, VoidReasonService voidReasons, SheetHistory history) {
++        this.history = history;
+         this.voidReasons = voidReasons;
+         this.holidays = holidays;
+         this.watches = watches;
+@@ -293,6 +296,25 @@ public class ClaimService {
+         return changed;
+     }
+ 
++    /** Make the claims just settled by a bulk settle the sheet's next settle batch, each keeping its number; none
++     *  is made when none was settled. The claims, as saved, in the order given. */
++    @Transactional
++    public List<Claim> markSettleBatch(String sheetId, List<Long> ids) {
++        if (ids.isEmpty()) {
++            return List.of();
++        }
++        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
++        int batch = sheet.nextSettleBatch();
++        sheetStore.saveAndFlush(sheet);
++        List<Claim> marked = ids.stream().map(id -> {
++            Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow();
++            claim.setSettleBatch(batch);
++            return claims.saveAndFlush(claim);
++        }).toList();
++        history.keepOnCommit(sheetId);
++        return marked;
++    }
++
+     /** Defer an OPEN claim until a day after the sheet's today: until the sheet's today reaches that day it counts
+      *  in no total, is not overdue, cannot be settled and is left unbound by a statement. Refused for a claim that
+      *  is not OPEN, a day not after today and a claim due by inside a closed period. */
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index cb70d29b3..352b0cd12 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -154,7 +154,7 @@ public class SheetHistory {
+         return new ClaimView(c.id(), c.personId(), c.amount(), c.date(), c.note(), c.status(), c.number(),
+                 c.settledDue(), c.openedBy(), c.stated(), c.statedDue(), c.corrects(), c.dueBy(), c.deferredUntil(),
+                 c.log(), c.proofs(), c.splitFrom(), null, c.lateEntry(), c.remindedOn(), c.ref(), c.tags(),
+-                c.voidReason(), c.comments(), c.editedBy());
++                c.voidReason(), c.comments(), c.editedBy(), c.batch());
+     }
+ 
+     /** The lists the screen reads of the sheet as it stood at the end of a date; none when no change was made on it
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+index 29b95e3d0..a1fc707a4 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetState.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -29,7 +29,8 @@ import net.officefloor.hq.app.sheet.Sheet;
+  *  as the screen reads it: its other settings, and each list the screen reads (see {@link Views}). */
+ public record SheetState(List<SettingState> settings, LocalDate policyDate, List<RateState> rates,
+         List<PersonState> people, List<ClaimState> claims, Map<String, String> permissions,
+-        LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate) {
++        LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate,
++        Integer lastSettleBatch) {
+ 
+     /** Each list the screen reads of the sheet, as it read it then; a person's grade there is the one in force on the
+      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
+@@ -101,7 +102,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
+                         c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil(), c.getRemindedOn(), c.getRef(), c.getTags())).toList(),
+                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
+-                sheet.isArchived(), views, sheet.getEntryDate());
++                sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch());
+     }
+ 
+     /** The people as the screen read them then, each with the grade in force on {@code today}. */
+@@ -130,6 +131,9 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+         sheet.setPeriodNumberingFrom(periodNumberingFrom);
+         sheet.setGraceDays(graceDays);
+         sheet.setEntryDate(entryDate);
++        if (lastSettleBatch != null) {
++            sheet.setLastSettleBatch(lastSettleBatch);
++        }
+         if (archived) {
+             sheet.archive();
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 281dd4d22..4011a85ed 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -65,6 +65,11 @@ public class Sheet {
+     @Column(name = "last_claim_number", nullable = false)
+     private int lastClaimNumber;
+ 
++    /** The number of the last settle batch on this sheet (a bulk settle that settled at least one claim); 0 before
++     *  the first. */
++    @Column(name = "last_settle_batch", nullable = false)
++    private int lastSettleBatch;
++
+     /** The dated values of the settings that carry a figure (keys: clerk-limit, floor, terms, terms-A/B/C, late-pct,
+      *  grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C, note-threshold): each in force from its from-date until the next one's of the same key. */
+     @ElementCollection(fetch = FetchType.EAGER)
+@@ -382,4 +387,18 @@ public class Sheet {
+     public int nextClaimNumber() {
+         return ++lastClaimNumber;
+     }
++
++    /** The number of the last settle batch on this sheet; 0 when there has been none. */
++    public int getLastSettleBatch() {
++        return lastSettleBatch;
++    }
++
++    public void setLastSettleBatch(int lastSettleBatch) {
++        this.lastSettleBatch = lastSettleBatch;
++    }
++
++    /** Take the next settle batch number on this sheet. */
++    public int nextSettleBatch() {
++        return ++lastSettleBatch;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 835144898..957e45714 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -40,12 +40,13 @@ public class SheetController {
+      *  matrix entries set, by action (one missing keeps its standing rule); the grace days are null when off; archived is whether the sheet is archived;
+      *  the entry date is null when it is off; gradeGrace is the grace days set per grade in force on the sheet's today;
+      *  gradeProofThreshold is the proof threshold (two decimals) set per grade in force on the sheet's today;
++     *  settleBatch is the number of the last settle batch, null when there has been none;
+      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
+     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
+             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
+-            Map<String, String> gradeProofThreshold) {
++            Map<String, String> gradeProofThreshold, Integer settleBatch) {
+ 
+         static SheetView of(Sheet sheet) {
+             return of(sheet, null);
+@@ -61,7 +62,8 @@ public class SheetController {
+                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
+                     sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived(), asOf,
+                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
+-                    sheet.getEntryDate(), sheet.getGradeGrace(), sheet.getGradeProofThresholds());
++                    sheet.getEntryDate(), sheet.getGradeGrace(), sheet.getGradeProofThresholds(),
++                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 087e9dbe1..55900ee7a 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -89,7 +89,7 @@ public class SheetService {
+         Rollup.Figures before = rollup.of(id);
+         boolean changed = !today.equals(sheet.getToday());
+         if (changed) {
+-            before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
++            before.people().values().forEach(figures -> audit.recordActingOnCommit(id, user, "SNAPSHOT sheet=" + id + " by=" + user
+                     + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
+         }
+         sheet.setToday(today);
+diff --git a/src/main/resources/db/migration/V59__settle_batch.sql b/src/main/resources/db/migration/V59__settle_batch.sql
+new file mode 100644
+index 000000000..dd8e6cd8e
+--- /dev/null
++++ b/src/main/resources/db/migration/V59__settle_batch.sql
+@@ -0,0 +1,5 @@
++-- A settle batch: a bulk settle that settles at least one claim (one that goes to PENDING counts), numbered 1, 2,
++-- ... on its sheet in the order they happen. The sheet keeps the last batch number it gave out (0 before the first);
++-- each claim settled by a batch keeps its number, none when it was settled one at a time.
++ALTER TABLE sheet ADD COLUMN last_settle_batch INT DEFAULT 0 NOT NULL;
++ALTER TABLE claim ADD COLUMN settle_batch INT;

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 98,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp98_settle-batches",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A bulk settle that settles at least one claim (a claim that goes to PENDING counts) is a batch,\nnumbered 1, 2, ... on the sheet in the order the batches happen. Each claim settled by it shows its\nbatch number; a claim settled one at a time shows nothing. The screen shows the number of the last\nbatch beside the bulk settle button, or nothing when there has been none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA bulk settle that settles at least one claim (a claim that goes to PENDING counts) is a batch,\nnumbered 1, 2, ... on the sheet in the order the batches happen. Each claim settled by it shows its\nbatch number; a claim settled one at a time shows nothing. The screen shows the number of the last\nbatch beside the bulk settle button, or nothing when there has been none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "835d087367f2cc797052be1f4114776feacee744",
+  "reset_sha": "",
+  "preagent_sha": "84242089a8f877b2eccd99a0d5480d1cb8bcaaaf",
+  "prev_sha": "84242089a8f877b2eccd99a0d5480d1cb8bcaaaf",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2958649999999996,
+    "input_tokens": 70,
+    "output_tokens": 15671,
+    "cache_read_tokens": 1924065,
+    "cache_creation_tokens": 74669,
+    "num_turns": 36,
+    "duration_ms": 513594,
+    "duration_api_ms": 160427,
+    "model": "claude-opus-5-5",
+    "session_id": "0a91e51b-63c1-4d6f-8e09-5c060e9be675",
+    "stop_reason": "success",
+    "result_text": "Bulk settle batches are in, and all 4 Playwright tests in `bin/e2e` pass.\n\n**How it works**\n- A bulk settle that settles at least one claim (one that goes to PENDING counts) takes the sheet's next batch number: 1, 2, and so on. Each claim it settled stores that number.\n- A bulk settle that settles nothing, and any bulk settle by a viewer or on an archived sheet, uses up no number. Settling a claim on its own leaves its batch empty.\n- Each claim row shows its batch number in `claim-batch`, empty when there is none. `bulk-settle-batch` beside the Settle button shows the last batch number, or nothing before the first batch. It updates right after a bulk settle, not only on reload.\n- The as-of history includes the batch numbers, so viewing the sheet as of an earlier date shows them as they were then.\n\n**Changes**\n- **Stored data:** a new migration, `V59__settle_batch.sql`, adds a last-batch counter to the sheet and a batch number to each claim.\n- **Server:**\n  - A new `ClaimService.markSettleBatch` takes the next number under the sheet lock, sets it on the settled claims and records a history snapshot. `bulkSettle` in `ClaimController` calls it after the existing loop.\n  - The claim and sheet responses gained a `batch` and a `settleBatch` field, and the bulk-settle response now also returns the batch it made.\n- **Front end:** the new fields in `core/claims.ts` and `core/sheet.ts`, the `claim-batch` display in the claims feature, and `bulk-settle-batch` beside the Settle button in the people feature.\n\n**Batches are recorded after settling.** Each claim still settles in its own transaction, and the batch number is written in a separate one just after. That kept the existing rule that a refused claim changes nothing.\n\n**A failure unrelated to batches.** Scenario 2 also failed on an existing audit bug. When a user acting for a steward under a delegation changed the sheet's today, the `SNAPSHOT` lines were missing `for=<steward>`, which other change records already carry. I fixed it:\n- **What changed:** the `SNAPSHOT` lines now go through a new `Audit.recordActingOnCommit`, which adds the `for=` suffix.\n- **Same as before:** it works out the delegation using the sheet's today before the change. It doesn't save an extra history snapshot, so the as-of view behaves exactly as it did.\n\n**Open question:** if a claim from a batch later goes back to OPEN (rejected, reopened or voided), it still shows its batch number. The request didn't say what should happen, so tell me if it should be cleared.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2958649999999996,
+        "num_turns": 36,
+        "duration_ms": 513594,
+        "duration_api_ms": 160427,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp98.agent.jsonl",
+  "agent_diff_file": "cp98.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
