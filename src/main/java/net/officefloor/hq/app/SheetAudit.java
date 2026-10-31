@@ -61,6 +61,7 @@ import net.officefloor.hq.app.rate.GradeMerged;
 import net.officefloor.hq.app.rate.GradeAdded;
 import net.officefloor.hq.app.rate.GradeRetired;
 import net.officefloor.hq.app.rate.RateChanged;
+import net.officefloor.hq.app.rate.RateWithdrawn;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.rollup.RollupChanged;
 import net.officefloor.hq.app.sheet.DayScores;
@@ -352,6 +353,12 @@ public class SheetAudit {
                 + " grade=" + e.grade() + " rate=" + e.rate().setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + (e.from() == null ? "" : " from=" + e.from())
                 + (e.to() == null ? "" : " to=" + e.to()));
+    }
+
+    @TransactionalEventListener
+    public void on(RateWithdrawn e) {
+        change(e.sheetId(), e.user(), "RATE_WITHDRAWN sheet=" + e.sheetId() + " by=" + e.user() + " grade=" + e.grade()
+                + (e.from() == null ? "" : " from=" + e.from()));
     }
 
     @TransactionalEventListener

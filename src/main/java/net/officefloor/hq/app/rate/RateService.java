@@ -5,11 +5,16 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import net.officefloor.hq.app.access.AccessService;
+import net.officefloor.hq.app.access.Role;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /** The rates for each grade on a sheet, each from its from-date, and the due a rate makes of an amount. */
 @Service
@@ -24,9 +29,13 @@ public class RateService {
     private final ParentRates parents;
     private final ApplicationEventPublisher events;
     private final AddedGradeRepository added;
+    private final AccessService access;
+    private final SheetRepository sheetRows;
 
     public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets, Rollup rollup, ParentRates parents,
-            ApplicationEventPublisher events, AddedGradeRepository added) {
+            ApplicationEventPublisher events, AddedGradeRepository added, AccessService access, SheetRepository sheetRows) {
+        this.access = access;
+        this.sheetRows = sheetRows;
         this.added = added;
         this.parents = parents;
         this.rollup = rollup;
@@ -85,6 +94,33 @@ public class RateService {
         events.publishEvent(new RateChanged(sheetId, user, grade, scaled, from, to));
         rollup.changed(sheetId, user, before);
         return rate;
+    }
+
+    /**
+     * Withdraw the newest version of a grade's rate from a from-date (null: from the beginning of time): the
+     * version before it, when there is one, applies again; with none the rate is gone. Only a steward may;
+     * anyone else, or a rate that is not set, is refused.
+     */
+    @Transactional
+    public void withdraw(String sheetId, String user, String grade, LocalDate from) {
+        sheets.load(sheetId, user);
+        sheetRows.lockById(sheetId);
+        if (access.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can withdraw a rate");
+        }
+        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such rate"));
+        Rollup.Figures before = rollup.figures(sheetId);
+        RateVersion older = versions.findByRateIdAndVersion(rate.getId(), rate.getVersion() - 1).orElse(null);
+        if (older == null) {
+            rates.delete(rate);
+        } else {
+            rate.previousVersion(older);
+            versions.delete(older);
+        }
+        rates.flush();
+        events.publishEvent(new RateWithdrawn(sheetId, user, grade, from));
+        rollup.changed(sheetId, user, before);
     }
 
     /** An amount times a percent, divided by 100, rounded as given to two decimals; null with no rate. */

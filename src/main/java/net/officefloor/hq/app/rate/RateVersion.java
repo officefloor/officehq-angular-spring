@@ -30,6 +30,10 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    /** The claim id the version applied past when it was forward-only; null when it applied to every claim. */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateVersion() {
     }
 
@@ -39,6 +43,7 @@ public class RateVersion {
         this.version = rate.getVersion();
         this.pct = rate.getPct();
         this.toDate = rate.getToDate();
+        this.forwardAfter = rate.getForwardAfter();
     }
 
     public Long getId() {
@@ -59,5 +64,9 @@ public class RateVersion {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    public Long getForwardAfter() {
+        return forwardAfter;
     }
 }

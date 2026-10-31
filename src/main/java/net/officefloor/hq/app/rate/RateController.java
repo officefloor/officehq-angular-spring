@@ -110,6 +110,14 @@ public class RateController {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, form.from(), form.to(), new BigDecimal(form.pct())));
     }
 
+    /** Withdraw the newest version of the grade's rate from the from-date (none given: from the beginning of time). */
+    @PostMapping("/{grade}/withdraw")
+    public void withdraw(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = GradeService.CODE) String grade, @RequestHeader("X-User") @NotBlank String user,
+            @RequestParam(required = false) LocalDate from) {
+        service.withdraw(sheetId.trim(), user.trim(), grade, from);
+    }
+
     /** Set a rate per pasted line, in order, as the rate form sets it; one refused line sets none. */
     @PostMapping("/import")
     public ImportView importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,

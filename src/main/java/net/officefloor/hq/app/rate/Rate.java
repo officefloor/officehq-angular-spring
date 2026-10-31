@@ -92,6 +92,14 @@ public class Rate {
         this.toDate = toDate;
     }
 
+    /** Go back to the older version given: the caller removes it from the kept versions. */
+    public void previousVersion(RateVersion older) {
+        this.version = older.getVersion();
+        this.pct = older.getPct();
+        this.toDate = older.getToDate();
+        this.forwardAfter = older.getForwardAfter();
+    }
+
     public Long getForwardAfter() {
         return forwardAfter;
     }

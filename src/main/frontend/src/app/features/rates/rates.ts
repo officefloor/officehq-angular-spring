@@ -104,6 +104,9 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
             @if (r.forwardOnly) {
               <span data-testid="rate-forward-only">forward-only</span>
             }
+            <button type="button" data-testid="rate-withdraw" (click)="withdraw(r)">
+              Withdraw<span class="visually-hidden"> grade {{ r.grade }} rate from {{ r.from ?? 'start' }}</span>
+            </button>
           </li>
         }
       </ul>
@@ -326,6 +329,34 @@ export class Rates {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.error.set('Could not set the rate.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Withdraw the rate's newest version: the version before it applies again, or with none the rate is gone.
+   * A refusal shows on the rate form's error.
+   */
+  protected async withdraw(rate: Rate): Promise<void> {
+    if (this.busy) return;
+    this.error.set('');
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const headers = { 'X-User': this.session.user() ?? '' };
+    const params: Record<string, string> = rate.from === null ? {} : { from: rate.from };
+    this.busy = true;
+    try {
+      await firstValueFrom(
+        this.http.post<void>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${rate.grade}/withdraw`, null, { headers, params }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.rates.set(await firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`)));
+      if (this.session.sheet() !== sheet) return;
+      this.changed.emit();
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.error.set('Could not withdraw the rate.');
     } finally {
       this.busy = false;
     }
