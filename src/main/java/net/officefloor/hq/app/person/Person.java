@@ -60,6 +60,11 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The retirements the person was unretired from: a claim dated within one is refused. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_past_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PastRetirement> pastRetirements = new ArrayList<>();
+
     /** The person's holds: their open claims dated within one, and not bound by a statement, count in no live
      *  total. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -184,6 +189,21 @@ public class Person {
         return retiredFrom != null;
     }
 
+    /** The retirements the person was unretired from, in the order they started. */
+    public List<PastRetirement> getPastRetirements() {
+        return pastRetirements.stream().sorted(PastRetirement.BY_FROM).toList();
+    }
+
+    public void addPastRetirement(PastRetirement retirement) {
+        pastRetirements.add(retirement);
+    }
+
+    /** End the retirement on {@code on}: it is kept as a past retirement, and the person is no longer retired. */
+    public void unretire(LocalDate on) {
+        pastRetirements.add(new PastRetirement(retiredFrom, on));
+        retiredFrom = null;
+    }
+
     /** Whether the person has any hold, whatever its dates. */
     public boolean isHeld() {
         return !holds.isEmpty();
@@ -234,8 +254,10 @@ public class Person {
         return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
     }
 
-    /** Whether a claim dated {@code date} is refused: one dated after the retirement date. */
+    /** Whether a claim dated {@code date} is refused: one dated after the retirement date, or after the from-date
+     *  and before the to-date of a past retirement. */
     public boolean refusesClaimOn(LocalDate date) {
-        return retiredFrom != null && date.isAfter(retiredFrom);
+        return (retiredFrom != null && date.isAfter(retiredFrom))
+                || pastRetirements.stream().anyMatch(r -> r.refusesClaimOn(date));
     }
 }

@@ -289,6 +289,13 @@ function csvField(value: string): string {
             on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
             — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
             from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
+            @if (p.pastRetirements?.length) {
+              <ul [attr.aria-label]="'Past retirements of ' + p.name">
+                @for (r of p.pastRetirements; track $index) {
+                  <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                }
+              </ul>
+            }
             — on hold <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
             — active <span data-testid="person-active">{{ activeByPerson().get(p.id) ? 'yes' : 'no' }}</span>
             @if (p.holds.length > 0) {
@@ -319,6 +326,8 @@ function csvField(value: string): string {
             <input [id]="'person-retire-date-' + p.id" type="date" data-testid="person-retire-date" #retireDate />
             <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)" [disabled]="retiring() === p.id"
                     [attr.aria-label]="'Retire ' + p.name">Retire</button>
+            <button type="button" data-testid="person-unretire" (click)="unretire(p)" [disabled]="retiring() === p.id"
+                    [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
             — patrons <span data-testid="person-patrons">{{ patronsOf(p.id) }}</span>
             — backing <span data-testid="person-backing">{{ backingOf(p.id) }}</span>
             <label [attr.for]="'person-patron-select-' + p.id">Patron</label>
@@ -1037,6 +1046,26 @@ export class PeopleList {
       error: () => {
         this.retiring.set(null);
         this.personError.set({ id: p.id, message: 'Could not retire ' + p.name + '.' });
+      },
+    });
+  }
+
+  /** Unretire the person on the sheet's today; anyone not retired is refused. */
+  protected unretire(p: PersonView): void {
+    if (this.retiring() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.retiring.set(p.id);
+    this.api.unretire(sheet.id, p.id).subscribe({
+      next: (unretired) => {
+        this.retiring.set(null);
+        this.people.update((list) => list.map((q) => (q.id === unretired.id ? unretired : q)));
+      },
+      error: () => {
+        this.retiring.set(null);
+        this.personError.set({ id: p.id, message: 'Only a retired person can be unretired; ' + p.name + ' is not retired.' });
       },
     });
   }

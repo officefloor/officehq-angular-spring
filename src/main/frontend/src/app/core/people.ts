@@ -47,6 +47,14 @@ export interface PersonView {
   clashing?: boolean;
   /** The sheet the person was transferred from; null or missing for anyone never transferred. */
   origin?: string | null;
+  /** The retirements the person was unretired from, in the order they started; missing in an older snapshot. */
+  pastRetirements?: RetirementView[] | null;
+}
+
+/** A past retirement: retired from `from`, unretired on `to` (yyyy-mm-dd). */
+export interface RetirementView {
+  from: string;
+  to: string;
 }
 
 export interface PersonForm {
@@ -119,6 +127,11 @@ export class People {
   /** Retire the person from `from` (yyyy-mm-dd); null takes the sheet's today. */
   retire(sheetId: string, id: number, from: string | null): Observable<PersonView> {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/retire`, { from });
+  }
+
+  /** Unretire a retired person on the sheet's today; refused (409) for anyone not retired. */
+  unretire(sheetId: string, id: number): Observable<PersonView> {
+    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/unretire`, {});
   }
 
   /** Swap the person with the one above or below them: everyone on the sheet, in list order, as moved. */

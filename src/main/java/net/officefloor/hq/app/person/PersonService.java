@@ -198,6 +198,25 @@ public class PersonService {
         return retired;
     }
 
+    /** Unretire a retired person on the sheet's today: the retirement is kept as a past one, to today. Anyone not
+     *  retired is refused. */
+    @Transactional
+    public Person unretire(String sheetId, String user, long id) {
+        LocalDate today = sheets.load(sheetId, user).getToday();
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (!person.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a retired person can be unretired");
+        }
+        Rollup.Figures before = rollup.of(sheetId);
+        person.unretire(today);
+        Person unretired = save(person);
+        audit.recordChangeOnCommit(sheetId, user, "PERSON_UNRETIRED sheet=" + sheetId + " by=" + user
+                + " name=" + unretired.getName() + " on=" + today);
+        rollup.recordChanges(sheetId, user, before);
+        return unretired;
+    }
+
     /** Put the person on hold from {@code from} (null: the sheet's today) to {@code to} (null: no end), alongside
      *  any holds they have already; the live totals move with it. A to-date before the from-date is refused. */
     @Transactional

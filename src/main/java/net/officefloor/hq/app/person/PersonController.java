@@ -37,7 +37,7 @@ public class PersonController {
      *  sheet of the sheet's tree; {@code origin} the sheet they were transferred from (null: none). */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
-            List<String> aliases, boolean clashing, String origin) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements) {
 
         public static PersonView of(Person person, LocalDate today) {
             return of(person, today, false);
@@ -48,7 +48,8 @@ public class PersonController {
                     person.getGrades().stream().map(GradeView::of).toList(), person.getTerms(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getContact(),
-                    person.getAliases(), clashing, person.getOriginSheetId());
+                    person.getAliases(), clashing, person.getOriginSheetId(),
+                    person.getPastRetirements().stream().map(RetirementView::of).toList());
         }
     }
 
@@ -95,6 +96,14 @@ public class PersonController {
 
     /** An alias as the row submits it; stored trimmed, and refused when blank. */
     public record AliasForm(@Size(max = 200) String alias) {
+    }
+
+    /** A past retirement of a person: retired from {@code from}, unretired on {@code to}. */
+    public record RetirementView(LocalDate from, LocalDate to) {
+
+        static RetirementView of(PastRetirement retirement) {
+            return new RetirementView(retirement.getFromDate(), retirement.getToDate());
+        }
     }
 
     /** A merge: the person the merged one is merged into. */
@@ -257,6 +266,15 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody Retirement request) {
         return view(sheetId, people.retire(sheetId, user, id, request.from()));
+    }
+
+    /** Unretire a retired person on the sheet's today. */
+    @PostMapping("/{id}/unretire")
+    public PersonView unretire(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, people.unretire(sheetId, user, id));
     }
 
     /** Give the person an alias. */

@@ -120,9 +120,16 @@ public class PoolService {
     /** The sheet's pools, in the order they were added, each with its members and its pot. */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId) {
+        return list(sheetId, null);
+    }
+
+    /** The sheet's pools as {@link #list(String)}, with {@code on} (null: the sheet's today) standing in for the
+     *  sheet's today, as a sheet shown as of a date reads them. */
+    @Transactional(readOnly = true)
+    public List<PoolWithMembers> list(String sheetId, LocalDate on) {
         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
         BigDecimal sheetPot = sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
-        LocalDate today = sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
+        LocalDate today = on != null ? on : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, Pool> poolsById = list.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
