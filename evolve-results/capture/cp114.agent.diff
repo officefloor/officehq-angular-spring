@@ -1,0 +1,142 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index b540a290f..1f10c42ee 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -6,7 +6,7 @@ import { HoldView, PersonView } from './people';
+ /** DRAFT when added, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID, as can a SETTLED
+  *  one by a steward within 7 days of its settlement. A clerk settling a
+  *  claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects (OPEN again). */
+-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
++export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+ 
+ export interface ClaimView {
+   id: number;
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index c17a88b3e..b9386c802 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -17,7 +17,9 @@ const NO_RATES: RateLine = [];
+ // the claims listed newest first.
+ /** Why a claim above the proof threshold is refused a settle or approval. */
+ /** The permission matrix action a move to each status is. */
+-const STATUS_ACTION: Partial<Record<ClaimStatus, string>> = { OPEN: 'open', SETTLED: 'settle', VOID: 'void' };
++const STATUS_ACTION: Partial<Record<ClaimStatus, string>> = {
++  OPEN: 'open', SETTLED: 'settle', VOID: 'void', DELETED: 'delete', DRAFT: 'restore',
++};
+ const UNNOTED = 'This claim\'s due is above the note threshold, so it needs a note before it can be opened.';
+ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a proof first.';
+ 
+@@ -136,6 +138,10 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a
+           }
+           <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'VOID')"
+                   [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
++          <button type="button" data-testid="claim-delete" (click)="changeStatus(c, 'DELETED')"
++                  [attr.aria-label]="'Delete claim of ' + c.amount + ' on ' + c.date">Delete</button>
++          <button type="button" data-testid="claim-restore" (click)="changeStatus(c, 'DRAFT')"
++                  [attr.aria-label]="'Restore claim of ' + c.amount + ' on ' + c.date">Restore</button>
+           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+           <select [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to"
+                   [value]="reassignTo()[c.id] ?? ''" (change)="reassignToChanged(c, $any($event.target).value)">
+@@ -426,6 +432,8 @@ export class PersonClaims {
+               ? status === 'OPEN' ? UNNOTED : UNPROVEN
+             : status === 'VOID' && c.status === 'SETTLED'
+               ? 'A settled claim can be voided only within 7 days of its settlement.'
++            : status === 'DRAFT' && c.status === 'DELETED'
++              ? 'A deleted claim can be restored only on the day it was deleted.'
+             : status === 'SETTLED' && this.deferredOf(c)
+               ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled before then.`
+               : `A ${c.status} claim cannot become ${status}.`,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index b4044782f..30f7634d8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -471,6 +471,17 @@ public class Claim {
+         return Collections.unmodifiableList(log);
+     }
+ 
++    /** The day its log records it last deleted; null when it never was. */
++    public LocalDate deletedOn() {
++        LocalDate on = null;
++        for (ClaimLogEntry entry : log) {
++            if (entry.getStatus() == ClaimStatus.DELETED) {
++                on = entry.getOn();
++            }
++        }
++        return on;
++    }
++
+     /** Log the status the claim has now, taken by this user on this day, at the due it has at this moment. */
+     public void logStatus(String user, LocalDate on, BigDecimal due) {
+         log.add(new ClaimLogEntry(status, user, on, due));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ef1fef66b..530b14b68 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -236,6 +236,10 @@ public class ClaimService {
+         if (action != null && !sheet.allows(action, roles.roleOf(sheetId, user))) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim");
+         }
++        if (next == ClaimStatus.DRAFT && !sheet.getToday().equals(claim.deletedOn())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A deleted claim can be restored only on the day it was deleted");
++        }
+         boolean voidsSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+         if (voidsSettled) {
+             refuseSettledVoid(sheet, user, claim);
+@@ -278,7 +282,8 @@ public class ClaimService {
+             case PENDING -> "CLAIM_PENDING";
+             case SETTLED -> "CLAIM_SETTLED";
+             case VOID -> "CLAIM_VOIDED";
+-            case DRAFT -> throw new IllegalStateException();
++            case DELETED -> "CLAIM_DELETED";
++            case DRAFT -> "CLAIM_RESTORED";
+         };
+         String line = entry(event, user, person, changed, number);
+         if (next == ClaimStatus.SETTLED) {
+@@ -437,7 +442,8 @@ public class ClaimService {
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+         refuseIfClosed(sheetId, claim.getDueBy());
+-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
++        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
++                || claim.getStatus() == ClaimStatus.DELETED) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot be given a proof");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index e4057ed47..83564c7e2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -3,9 +3,10 @@ package net.officefloor.hq.app.claim;
+ /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT, OPEN or PENDING claim can be VOID, and a
+  *  steward may void a SETTLED one within a few days of its settlement. A clerk
+  *  settling an OPEN claim above the clerk limit makes it PENDING, which a steward approves (SETTLED) or rejects
+- *  (OPEN again). */
++ *  (OPEN again). A DRAFT claim can be DELETED, counting nowhere, and restored to a DRAFT on the sheet's today it was
++ *  deleted. */
+ public enum ClaimStatus {
+-    DRAFT, OPEN, PENDING, SETTLED, VOID;
++    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
+ 
+     /** Whether a claim in this status may move to {@code next} by a status change; approving or rejecting a
+      *  PENDING claim is not a status change. */
+@@ -14,7 +15,9 @@ public enum ClaimStatus {
+             case OPEN -> this == DRAFT;
+             case SETTLED -> this == OPEN;
+             case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == SETTLED;
+-            case DRAFT, PENDING -> false;
++            case DELETED -> this == DRAFT;
++            case DRAFT -> this == DELETED;
++            case PENDING -> false;
+         };
+     }
+ 
+diff --git a/src/main/resources/db/migration/V67__claim_deleted.sql b/src/main/resources/db/migration/V67__claim_deleted.sql
+new file mode 100644
+index 000000000..c2e2febc6
+--- /dev/null
++++ b/src/main/resources/db/migration/V67__claim_deleted.sql
+@@ -0,0 +1,3 @@
++-- A DRAFT claim can be DELETED, counting nowhere, and restored to a DRAFT on the day it was deleted.
++ALTER TABLE claim DROP CONSTRAINT claim_status;
++ALTER TABLE claim ADD CONSTRAINT claim_status CHECK (status IN ('DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'DELETED'));
