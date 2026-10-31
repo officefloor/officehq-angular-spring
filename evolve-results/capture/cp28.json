@@ -1,0 +1,101 @@
+{
+  "checkpoint": 28,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp28_grade-dated",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    7,
+    8,
+    10,
+    11,
+    12,
+    13,
+    14,
+    16,
+    17,
+    20,
+    22,
+    23,
+    26,
+    27
+  ],
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+    "cp08_workflow.spec.ts::workflow scenario 3",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3",
+    "cp12_half-even.spec.ts::half even scenario 3",
+    "cp13_four-eyes.spec.ts::four eyes scenario 2",
+    "cp13_four-eyes.spec.ts::four eyes scenario 3",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 3",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 1",
+    "cp17_periods.spec.ts::periods scenario 1",
+    "cp17_periods.spec.ts::periods scenario 3",
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+    "cp22_hold.spec.ts::hold scenario 1",
+    "cp22_hold.spec.ts::hold scenario 3",
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2",
+    "cp26_late-charge.spec.ts::late charge scenario 2",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2"
+  ],
+  "request": {
+    "spec": "A person's grade is now dated. The person form gains a from-date (default the sheet's today), and\neach save records the form's grade from that date, keeping the ones already recorded, except that a\nsave leaving the grade as the row showed it, with the from-date blank, records nothing; the first\ngrade a person was given applies from the beginning of time. A claim uses the grade in force on\nthe claim's date to find its rate; the list shows the grade in force on the sheet's today, and\nPERSON_EDITED carries that same grade, the one in force on the sheet's today after the save (so a\ngrade dated from another day may leave both unchanged). An import line gives its grade from the\nsheet's today.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's grade is now dated. The person form gains a from-date (default the sheet's today), and\neach save records the form's grade from that date, keeping the ones already recorded, except that a\nsave leaving the grade as the row showed it, with the from-date blank, records nothing; the first\ngrade a person was given applies from the beginning of time. A claim uses the grade in force on\nthe claim's date to find its rate; the list shows the grade in force on the sheet's today, and\nPERSON_EDITED carries that same grade, the one in force on the sheet's today after the save (so a\ngrade dated from another day may leave both unchanged). An import line gives its grade from the\nsheet's today.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a9d437300a011d60c6d85779eff84807186815f8",
+  "reset_sha": "",
+  "preagent_sha": "4b65daa19e8416551375437111b3664dd56a1cab",
+  "prev_sha": "4b65daa19e8416551375437111b3664dd56a1cab",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5250826,
+    "input_tokens": 54,
+    "output_tokens": 20919,
+    "cache_read_tokens": 1753873,
+    "cache_creation_tokens": 94464,
+    "num_turns": 28,
+    "duration_ms": 382369,
+    "duration_api_ms": 185424,
+    "model": "claude-opus-5-5",
+    "session_id": "0fae7c76-d103-4b87-b49a-74ba5d962a4d",
+    "stop_reason": "success",
+    "result_text": "Grades are now dated, and all 4 tests in `bin/e2e` pass.\n\n**What changed for users**\n- **Person form:** when you edit a person, there is a new \"Grade from\" date field (`person-form-grade-from`). It starts blank on each edit, and blank means the sheet's today. Saving records the form's grade from that date and keeps the grades already recorded. A grade saved again for the same date replaces the earlier one. If the grade is left as the row showed it and the date is blank, nothing is recorded.\n- **Adding a person:** the form has no date field, because a person's first grade applies from the beginning of time. People added by quick-add work the same way.\n- **Dues:** each claim uses the grade in force on its own date to find its rate. This applies to claim dues, person due-totals, overdue totals, period totals, statements and settling. The list shows the grade in force on the sheet's today.\n- **Audit:** `PERSON_EDITED` now records the grade in force on the sheet's today after the save. `PERSON_ADDED` records the grade given.\n\n**How it's stored**\n- A new migration, `V23__person_grade_dated.sql`, adds a `person_grade` table (person, from-date, grade). Each existing person's grade is copied in with no from-date, and the old `person.grade` column is dropped.\n- The API's person record still has `grade` and now also lists all recorded `grades`. The page works out the grade on today itself, so changing the sheet's today updates the list without reloading people.\n\n**Things to check**\n- **No import feature exists in this app,** so the request's \"an import line gives its grade from the sheet's today\" had nothing to apply to.\n- **I changed when a person's due-total shows \"n/a\".** It used to show \"n/a\" when the person's grade had no rate in force today and no claim had a fixed figure. The first test needs 3.00 for a person whose grade today (C) has no rate, while their older claims were at grades A and B, which do. Now it shows \"n/a\" only when no rate is in force today for their grade today *or* for the grade any of their counted claims is at, and no claim has a fixed figure. For a person whose grade never changed, the result is the same as before. Statements follow the same rule.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5250826,
+        "num_turns": 28,
+        "duration_ms": 382369,
+        "duration_api_ms": 185424,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp28.agent.jsonl",
+  "agent_diff_file": "cp28.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
