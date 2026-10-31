@@ -160,6 +160,11 @@ export class Claims {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/approve`, {});
   }
 
+  /** A steward re-settles a SETTLED claim: its due fixed again as it would be today as an open, unbound claim. */
+  resettle(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/resettle`, {});
+  }
+
   /** A steward rejects a PENDING claim with a reason: it is OPEN again. */
   reject(sheetId: string, id: number, reason: string): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/reject`, { reason });

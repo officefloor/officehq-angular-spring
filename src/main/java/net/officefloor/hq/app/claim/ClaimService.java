@@ -236,6 +236,38 @@ public class ClaimService {
         return changed;
     }
 
+    /** A steward re-settles a SETTLED claim: its due is fixed again at the figure it would have today as an open
+     *  claim bound by no statement (its live figure at today's rates, grades and floor, with the late charge it
+     *  would have gained by today on top), and its status log gains a SETTLED line. Refused for a clerk, for a
+     *  claim that is not SETTLED and for one dated inside a closed period. */
+    @Transactional
+    public Claim resettle(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-settled; only a SETTLED one can");
+        }
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-settles a claim");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        BigDecimal live = liveNow(sheet, claim, person);
+        BigDecimal due = live == null ? null : live.add(lateChargeAsOpen(claim, live, sheet));
+        Rollup.Figures before = rollup.of(sheetId);
+        String old = dueText(claim);
+        claim.setSettledDue(due);
+        claim.logStatus(user, sheet.getToday(), due);
+        Claim changed = claims.saveAndFlush(claim);
+        audit.recordOnCommit(entry("CLAIM_RESETTLED", user, person, changed, changed.getNumber())
+                + " old=" + old + " new=" + dueText(changed));
+        rollup.recordChanges(sheetId, user, before);
+        return changed;
+    }
+
     /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
      *  loses any figure a statement bound it to (it is live again until its new person's next statement), and is
      *  listed as its new person's newest claim. Refused for a clerk, for a SETTLED or VOID claim, for a move to the
@@ -292,15 +324,21 @@ public class ClaimService {
     /** The due a claim would be settled at now: its bound figure, else its live one, with the late charge it has
      *  gained on top; null when it has no figure. */
     private BigDecimal dueNow(Sheet sheet, Claim claim, Person person) {
+        BigDecimal live = liveNow(sheet, claim, person);
+        // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
+        BigDecimal figure = claim.isBound() ? claim.getBoundDue() : live;
+        return figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
+    }
+
+    /** A claim's live figure as rates, grades and the floor are now, bound by no statement; null when its grade has
+     *  no rate in force on its date. */
+    private BigDecimal liveNow(Sheet sheet, Claim claim, Person person) {
         String sheetId = sheet.getId();
-        BigDecimal live = Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
+        return Rate.inForceOn(rates.findBySheetIdAndGrade(sheetId, person.gradeOn(claim.getDate())), claim.getDate())
                 .map(Rate::getRate)
                 .map(rate -> liveFigure(claim, rate, sheet.getFloor(), sheet.roundingFor(roundingDate(claim,
                         claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, claim.getPersonId())))))
                 .orElse(null);
-        // Settling freezes the claim's figure (its bound one, else its live one) with the late charge it has gained.
-        BigDecimal figure = claim.isBound() ? claim.getBoundDue() : live;
-        return figure == null ? null : figure.add(lateCharge(claim, figure, sheet));
     }
 
     /** The due a claim shows as it is now: the due fixed when it was settled, else the one it would be settled at. */
@@ -399,7 +437,16 @@ public class ClaimService {
      *  it has no figure, or it is a correction. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
+        if (!claim.getStatus().isOpen()) {
+            return none;
+        }
+        return lateChargeAsOpen(claim, figure, sheet);
+    }
+
+    /** The late charge a claim would have gained on its figure by the sheet's today were it still open. */
+    private static BigDecimal lateChargeAsOpen(Claim claim, BigDecimal figure, Sheet sheet) {
+        BigDecimal none = BigDecimal.ZERO.setScale(2);
+        if (figure == null || claim.isCorrection()) {
             return none;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / 30;

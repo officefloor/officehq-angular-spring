@@ -63,6 +63,8 @@ const NO_RATES: readonly RateView[] = [];
                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-approve" (click)="approve(c)"
                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <button type="button" data-testid="claim-resettle" (click)="resettle(c)"
+                  [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
           <label [for]="'claim-reject-reason-' + c.id">Reason to reject</label>
           <input [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" autocomplete="off"
                  [value]="rejectReasons()[c.id] ?? ''" (input)="reasonChanged(c, $any($event.target).value)" />
@@ -196,6 +198,23 @@ export class PersonClaims {
             ? 'You opened this claim, so another steward must approve it.'
             : 'Only a steward can approve a claim.'
           : this.refusal(err, c, 'approved'),
+      }),
+    });
+  }
+
+  protected resettle(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.api.resettle(sheet.id, c.id).subscribe({
+      next: (saved) => this.saved.emit(saved),
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can re-settle a claim.'
+          : err instanceof HttpErrorResponse && err.status === 423
+            ? 'This claim is dated inside a closed period.'
+            : `A ${c.status} claim cannot be re-settled; only a SETTLED one can.`,
       }),
     });
   }

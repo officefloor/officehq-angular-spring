@@ -154,6 +154,14 @@ public class ClaimController {
         return ClaimView.of(claims.reject(sheetId, user, id, request.reason()));
     }
 
+    @PutMapping("/claims/{id}/resettle")
+    public ClaimView resettle(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(claims.resettle(sheetId, user, id));
+    }
+
     @PutMapping("/claims/{id}/person")
     public ClaimView reassign(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
