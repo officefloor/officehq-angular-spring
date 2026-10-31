@@ -2,6 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, ClaimView, Claims, cents, money } from '../../core/claims';
+import { NOT_AVAILABLE, dueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 
 // One person's claims: their claimed total, one form to add a claim or edit an existing one, and
@@ -34,6 +35,7 @@ import { Sheets } from '../../core/sheet';
         <li [attr.data-testid]="'claim-row-' + c.id">
           <span data-testid="claim-amount">{{ c.amount }}</span>
           on <span data-testid="claim-date">{{ c.date }}</span>
+          — due <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
@@ -54,6 +56,8 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
+  /** The rate for this person's grade (a percent), or undefined when the grade has none. */
+  readonly rate = input<string | undefined>();
   readonly saved = output<ClaimView>();
 
   protected readonly claimed = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
@@ -70,6 +74,11 @@ export class PersonClaims {
   constructor() {
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+  }
+
+  protected dueOf(c: ClaimView): string {
+    const rate = this.rate();
+    return rate === undefined ? NOT_AVAILABLE : money(dueCents(cents(c.amount), rate));
   }
 
   protected fieldId(field: string): string {

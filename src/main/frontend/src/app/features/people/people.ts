@@ -5,13 +5,14 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { forkJoin, of, switchMap } from 'rxjs';
 import { ClaimView, Claims, cents, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
+import { NOT_AVAILABLE, Rates, dueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 import { PersonClaims } from '../claims/claims';
 
 const NO_CLAIMS: ClaimView[] = [];
 
 // The people on the active sheet: one form to add a person or edit an existing one, the list with
-// each person's claims, and the sheet's claimed-total.
+// each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims],
@@ -19,6 +20,7 @@ const NO_CLAIMS: ClaimView[] = [];
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
 
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add a person' : 'Edit a person'">
         <label for="person-form-name">Name</label>
@@ -45,9 +47,10 @@ const NO_CLAIMS: ClaimView[] = [];
           <li [attr.data-testid]="'person-row-' + p.id">
             <span data-testid="person-name">{{ p.name }}</span>
             — grade <span data-testid="person-grade">{{ p.grade }}</span>
+            — due <span data-testid="person-due-total">{{ dueOf(p) }}</span>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
-            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
+            <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rate]="rates.byGrade().get(p.grade)"
                                (saved)="claimSaved($event)" />
           </li>
         }
@@ -59,6 +62,7 @@ export class PeopleList {
   private readonly sheets = inject(Sheets);
   private readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
+  protected readonly rates = inject(Rates);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<PersonView[]>([]);
@@ -70,6 +74,21 @@ export class PeopleList {
     return byPerson;
   });
   protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
+  /** Each person's due-total in whole cents: their claimed times their grade's rate; null when it has none. */
+  private readonly dueByPerson = computed(() => {
+    const rates = this.rates.byGrade();
+    const byPerson = new Map<number, number | null>();
+    for (const p of this.people()) {
+      const rate = rates.get(p.grade);
+      const claimed = this.claimsOf(p.id).reduce((sum, c) => sum + cents(c.amount), 0);
+      byPerson.set(p.id, rate === undefined ? null : dueCents(claimed, rate));
+    }
+    return byPerson;
+  });
+  /** Everyone's due-total added up, skipping those with none. */
+  protected readonly dueTotal = computed(() =>
+    money([...this.dueByPerson().values()].reduce<number>((sum, due) => sum + (due ?? 0), 0)),
+  );
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
@@ -105,6 +124,11 @@ export class PeopleList {
 
   protected claimsOf(personId: number): ClaimView[] {
     return this.claimsByPerson().get(personId) ?? NO_CLAIMS;
+  }
+
+  protected dueOf(p: PersonView): string {
+    const due = this.dueByPerson().get(p.id);
+    return due === null || due === undefined ? NOT_AVAILABLE : money(due);
   }
 
   protected claimSaved(saved: ClaimView): void {

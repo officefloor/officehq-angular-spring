@@ -3,11 +3,12 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
 import { PeopleList } from '../people/people';
+import { RatesPanel } from '../rates/rates';
 
 // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, PeopleList],
+  imports: [ReactiveFormsModule, PeopleList, RatesPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -34,6 +35,7 @@ import { PeopleList } from '../people/people';
           }
         </form>
 
+        <app-rates />
         <app-people />
       } @else {
         <p data-testid="sheet-none">Load a sheet to begin.</p>
