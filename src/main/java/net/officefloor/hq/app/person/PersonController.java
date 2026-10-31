@@ -34,10 +34,10 @@ public class PersonController {
 
     /** A person as listed: {@code grade} is the one in force on the sheet's today; {@code grades} all those
      *  recorded, in the order they take effect; {@code clashing} whether their name or an alias is used on another
-     *  sheet of the sheet's tree. */
+     *  sheet of the sheet's tree; {@code origin} the sheet they were transferred from (null: none). */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
-            List<String> aliases, boolean clashing) {
+            List<String> aliases, boolean clashing, String origin) {
 
         public static PersonView of(Person person, LocalDate today) {
             return of(person, today, false);
@@ -48,7 +48,7 @@ public class PersonController {
                     person.getGrades().stream().map(GradeView::of).toList(), person.getTerms(), person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getContact(),
-                    person.getAliases(), clashing);
+                    person.getAliases(), clashing, person.getOriginSheetId());
         }
     }
 

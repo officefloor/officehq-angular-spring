@@ -110,7 +110,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     public List<PersonView> people(String sheetId, LocalDate today) {
         return views.people().stream().map(v -> person(v.id())
                 .map(p -> new PersonView(v.id(), v.name(), p.rebuild(sheetId).gradeOn(today), v.grades(), v.terms(),
-                        v.version(), v.retired(), v.retiredFrom(), v.held(), v.holds(), v.contact(), v.aliases(), v.clashing()))
+                        v.version(), v.retired(), v.retiredFrom(), v.held(), v.holds(), v.contact(), v.aliases(), v.clashing(), v.origin()))
                 .orElse(v)).toList();
     }
 

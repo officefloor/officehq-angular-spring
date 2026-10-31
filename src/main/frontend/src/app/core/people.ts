@@ -45,6 +45,8 @@ export interface PersonView {
   /** Whether the person's name or an alias is used on another sheet of the sheet's tree; missing in an older
    *  snapshot. */
   clashing?: boolean;
+  /** The sheet the person was transferred from; null or missing for anyone never transferred. */
+  origin?: string | null;
 }
 
 export interface PersonForm {

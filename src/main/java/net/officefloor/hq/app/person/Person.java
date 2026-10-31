@@ -39,6 +39,10 @@ public class Person {
     @Column(name = "position", nullable = false)
     private int position;
 
+    /** The sheet the person was last transferred from; null when they were never transferred. */
+    @Column(name = "origin_sheet_id")
+    private String originSheetId;
+
     /** The grades recorded for the person; the first given has no from-date (from the beginning of time). */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
@@ -90,10 +94,15 @@ public class Person {
         return sheetId;
     }
 
-    /** Move the person to another sheet, leaving their holds behind. */
+    /** Move the person to another sheet, leaving their holds behind; the sheet they leave becomes their origin. */
     public void transferTo(String sheetId) {
+        this.originSheetId = this.sheetId;
         this.sheetId = sheetId;
         this.holds.clear();
+    }
+
+    public String getOriginSheetId() {
+        return originSheetId;
     }
 
     public int getPosition() {
