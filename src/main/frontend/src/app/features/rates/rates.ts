@@ -133,7 +133,11 @@ export class RatesPanel {
       .subscribe({ error: () => this.error.set('Could not read the rates.') });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
-    this.previewForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.previewError.set(null));
+    // A preview's result is for the candidate it was asked for: changing the candidate clears it too.
+    this.previewForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.previewError.set(null);
+      this.previewed.set(null);
+    });
     this.importForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.importError.set(null));
   }
 

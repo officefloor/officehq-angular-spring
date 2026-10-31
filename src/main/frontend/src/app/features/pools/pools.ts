@@ -6,7 +6,14 @@ import { PersonView } from '../../core/people';
 import { PoolMemberView, Pools, SHARE_PATTERN } from '../../core/pools';
 import { Sheets } from '../../core/sheet';
 
-type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<string> }>;
+type MemberForm = FormGroup<{
+  personId: FormControl<string>;
+  share: FormControl<string>;
+  from: FormControl<string>;
+  to: FormControl<string>;
+}>;
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's pools: each has members chosen from the sheet's people and its other pools, with a share percent of it.
 @Component({
@@ -27,6 +34,7 @@ type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<
                   <span data-testid="pool-member-name">{{ m.name }}</span>:
                   <span data-testid="pool-share">{{ m.share }}</span>,
                   cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
+                  @if (m.from || m.to) { (from {{ m.from ?? 'any day' }} to {{ m.to ?? 'any day' }}) }
                   @if (m.retired) { (retired) }
                 </li>
               }
@@ -46,6 +54,11 @@ type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<
               <label [attr.for]="'pool-member-share-' + pool.id">Share %</label>
               <input [id]="'pool-member-share-' + pool.id" data-testid="pool-member-share" formControlName="share"
                      inputmode="decimal" autocomplete="off" />
+              <label [attr.for]="'pool-member-from-' + pool.id">From (blank: no start)</label>
+              <input [id]="'pool-member-from-' + pool.id" type="date" data-testid="pool-member-from"
+                     formControlName="from" />
+              <label [attr.for]="'pool-member-to-' + pool.id">To (blank: no end)</label>
+              <input [id]="'pool-member-to-' + pool.id" type="date" data-testid="pool-member-to" formControlName="to" />
               <button type="submit" data-testid="pool-member-add" [disabled]="busy().has(pool.id)">Add member</button>
               @if (errors().get(pool.id); as err) {
                 <p role="alert" data-testid="pool-error">{{ err }}</p>
@@ -128,6 +141,8 @@ export class PoolsPanel {
       const made: MemberForm = new FormGroup({
         personId: new FormControl('', { nonNullable: true }),
         share: new FormControl('', { nonNullable: true }),
+        from: new FormControl('', { nonNullable: true }),
+        to: new FormControl('', { nonNullable: true }),
       });
       made.valueChanges.subscribe(() => this.setError(poolId, null));
       this.memberForms.set(poolId, made);
@@ -175,6 +190,16 @@ export class PoolsPanel {
       this.setError(poolId, 'Type a share more than 0.00 and at most 100.00, with up to two decimals.');
       return;
     }
+    const from = value.from.trim();
+    const to = value.to.trim();
+    if ((from !== '' && !DATE_PATTERN.test(from)) || (to !== '' && !DATE_PATTERN.test(to))) {
+      this.setError(poolId, 'Type the dates as yyyy-mm-dd, or leave them blank.');
+      return;
+    }
+    if (from !== '' && to !== '' && to < from) {
+      this.setError(poolId, 'The to-date cannot be before the from-date.');
+      return;
+    }
     this.busy.update((s) => new Set(s).add(poolId));
     const done = () => this.busy.update((s) => {
       const next = new Set(s);
@@ -184,14 +209,14 @@ export class PoolsPanel {
     const member = value.personId.startsWith('pool:')
       ? { memberPoolId: Number(value.personId.slice('pool:'.length)) }
       : { personId: Number(value.personId) };
-    this.pools.addMember(sheet.id, poolId, member, share).subscribe({
+    this.pools.addMember(sheet.id, poolId, member, share, from || null, to || null).subscribe({
       next: () => {
         done();
-        this.memberForm(poolId).reset({ personId: '', share: '' }, { emitEvent: false });
+        this.memberForm(poolId).reset({ personId: '', share: '', from: '', to: '' }, { emitEvent: false });
       },
       error: () => {
         done();
-        this.setError(poolId, 'Could not add that member: is it already in a pool, would the pool contain itself, or would the chain of pools be over three deep?');
+        this.setError(poolId, 'Could not add that member: is it already in a pool, is the to-date before the from-date, would the pool contain itself, or would the chain of pools be over three deep?');
       },
     });
   }

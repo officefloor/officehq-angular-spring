@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.IntStream;
 import org.springframework.validation.annotation.Validated;
@@ -24,18 +25,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class PoolController {
 
     /** A member as the pool's row shows it: a person (personId) or another pool (memberPoolId, its name as the
-     *  name); cut is its cut of the pool's pot, null when the pool shows none. */
+     *  name), with the membership's from-date and to-date (null: none); cut is its cut of the pool's pot, null when
+     *  the pool shows none or the membership's dates do not include the sheet's today. */
     public record MemberView(Long personId, Long memberPoolId, String name, String share, boolean retired,
-            String cut) {
+            String cut, LocalDate from, LocalDate to) {
 
         public static MemberView of(PoolService.Member m, BigDecimal cut) {
-            String shown = cut == null ? null : cut.toPlainString();
+            String shown = cut == null || !m.inForce() ? null : cut.toPlainString();
             if (m.pool() != null) {
                 return new MemberView(null, m.pool().getId(), m.pool().getName(), m.share().toPlainString(), false,
-                        shown);
+                        shown, m.from(), m.to());
             }
             return new MemberView(m.person().getId(), null, m.person().getName(), m.share().toPlainString(),
-                    m.person().isRetired(), shown);
+                    m.person().isRetired(), shown, m.from(), m.to());
         }
     }
 
@@ -55,8 +57,10 @@ public class PoolController {
     public record PoolForm(@NotNull @Size(max = 200) String name) {
     }
 
-    /** A member as the pool's row submits it: a person or another pool of the sheet, exactly one given. */
-    public record MemberForm(Long personId, Long memberPoolId, @NotNull BigDecimal share) {
+    /** A member as the pool's row submits it: a person or another pool of the sheet, exactly one given, with the
+     *  membership's optional from-date and to-date. */
+    public record MemberForm(Long personId, Long memberPoolId, @NotNull BigDecimal share, LocalDate from,
+            LocalDate to) {
     }
 
     private final PoolService pools;
@@ -86,6 +90,6 @@ public class PoolController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MemberForm request) {
         return PoolView.of(pools.addMember(sheetId, user, poolId, request.personId(), request.memberPoolId(),
-                request.share()));
+                request.share(), request.from(), request.to()));
     }
 }

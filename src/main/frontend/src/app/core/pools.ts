@@ -16,7 +16,12 @@ export interface PoolMemberView {
   share: string;
   /** Retired as soon as a retirement date is set: their share then counts as 0.00 toward the total. */
   retired: boolean;
-  /** Their cut of the pool's pot (two decimals); null when the pool has no pot or is not balanced. A pool that is a
+  /** The first and last day the membership is in force (yyyy-mm-dd); null: no start, no end. Outside them, on the
+   *  sheet's today, the member is left out of the pool's total share and has no cut. */
+  from: string | null;
+  to: string | null;
+  /** Their cut of the pool's pot (two decimals); null when the pool has no pot or is not balanced, or the member's
+   *  dates do not include the sheet's today. A pool that is a
    *  member of another has its cut there as its pot; one that is a member of none has the sheet's. */
   cut: string | null;
 }
@@ -52,11 +57,12 @@ export class Pools {
   }
 
   /** Add a person or another pool to a pool with a share; refused when the person is already in it, the share is
-   *  out of range, or the pool member is already in a pool, would contain itself or make a chain over three deep.
+   *  out of range, the to-date is before the from-date, or the pool member is already in a pool, would contain itself
+   *  or make a chain over three deep. The from-date and to-date are optional (null).
    *  Every pool is re-read after, since a pool's pot follows its cut in the pool above. */
   addMember(sheetId: string, poolId: number, member: { personId: number } | { memberPoolId: number },
-            share: string): Observable<PoolView[]> {
-    return this.http.post<PoolView>(`${this.base(sheetId)}/${poolId}/members`, { ...member, share }).pipe(
+            share: string, from: string | null, to: string | null): Observable<PoolView[]> {
+    return this.http.post<PoolView>(`${this.base(sheetId)}/${poolId}/members`, { ...member, share, from, to }).pipe(
       switchMap(() => this.http.get<PoolView[]>(this.base(sheetId))),
       tap((list) => this.list.set(list)),
     );

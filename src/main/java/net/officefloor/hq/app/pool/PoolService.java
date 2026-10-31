@@ -31,13 +31,16 @@ public class PoolService {
     /** The most pools a chain of pools, each a member of the next, can hold. */
     public static final int MAX_DEPTH = 3;
 
-    /** A member of a pool as it stands: a person or another pool (exactly one is set), its share, and whether the
-     *  person has a hold in force on the sheet's today. */
-    public record Member(Person person, Pool pool, BigDecimal share, boolean held) {
+    /** A member of a pool as it stands: a person or another pool (exactly one is set), its share, whether the
+     *  person has a hold in force on the sheet's today, the membership's from-date and to-date (null: none), and
+     *  whether those dates include that today. */
+    public record Member(Person person, Pool pool, BigDecimal share, boolean held, LocalDate from, LocalDate to,
+            boolean inForce) {
 
-        /** What the share counts toward the pool's total: nothing once the person is retired, whatever the date. */
+        /** What the share counts toward the pool's total: nothing once the person is retired, whatever the date, or
+         *  while the membership's dates do not include the sheet's today. */
         public BigDecimal counted() {
-            return person != null && person.isRetired() ? BigDecimal.ZERO.setScale(2) : share;
+            return !inForce || (person != null && person.isRetired()) ? BigDecimal.ZERO.setScale(2) : share;
         }
 
         /** What the share counts toward the cuts: nothing while held on the sheet's today, else what it counts. */
@@ -50,7 +53,8 @@ public class PoolService {
      *  that is a member of none, else its cut in the pool above. */
     public record PoolWithMembers(Pool pool, List<Member> members, BigDecimal pot) {
 
-        /** The members' shares added up, a retired member's counting as 0.00. */
+        /** The members' shares added up, a retired member's, or one whose dates do not include the sheet's today,
+         *  counting as 0.00. */
         public BigDecimal totalShare() {
             return members.stream().map(Member::counted).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         }
@@ -62,7 +66,8 @@ public class PoolService {
 
         /** Each member's cut of the pot, in the order of the members; none (null) when there is no pot or the pool
          *  is not balanced. A cut is the pot times the share over the shares of the members with a cut added up,
-         *  rounded half to even to two decimals, 0.00 for a retired member or one held on the sheet's today; what the
+         *  rounded half to even to two decimals, 0.00 for a retired member, one held on the sheet's today or one whose
+         *  dates do not include it (shown as no cut); what the
          *  cuts fall short of (or over) the pot goes to the member with the largest share with a cut, the earliest
          *  added on a tie, so the cuts total exactly the pot. When no member has a cut, each is 0.00. */
         public List<BigDecimal> cuts() {
@@ -124,12 +129,14 @@ public class PoolService {
                 if (m.getMemberPoolId() != null) {
                     Pool child = poolsById.get(m.getMemberPoolId());
                     if (child != null) {
-                        of.add(new Member(null, child, m.getShare(), false));
+                        of.add(new Member(null, child, m.getShare(), false, m.getFrom(), m.getTo(),
+                                m.inForceOn(today)));
                         parentOf.put(child.getId(), p.getId());
                     }
                 } else if (byId.containsKey(m.getPersonId())) {
                     Person person = byId.get(m.getPersonId());
-                    of.add(new Member(person, null, m.getShare(), person.heldOn(today)));
+                    of.add(new Member(person, null, m.getShare(), person.heldOn(today), m.getFrom(),
+                            m.getTo(), m.inForceOn(today)));
                 }
             }
             membersOf.put(p.getId(), of);
@@ -139,7 +146,7 @@ public class PoolService {
     }
 
     /** The pool with its members and its pot: the sheet's pot when it is a member of none, else its cut in the pool
-     *  above (none when that pool shows no cuts). */
+     *  above (none when that pool shows no cuts or its membership there is not in force on the sheet's today). */
     private static PoolWithMembers withPot(Long poolId, Map<Long, Pool> poolsById, Map<Long, List<Member>> membersOf,
             Map<Long, Long> parentOf, BigDecimal sheetPot, Map<Long, PoolWithMembers> done, int depth) {
         PoolWithMembers known = done.get(poolId);
@@ -155,8 +162,8 @@ public class PoolService {
                 List<BigDecimal> cuts = parent.cuts();
                 if (cuts != null) {
                     for (int i = 0; i < parent.members().size(); i++) {
-                        Pool member = parent.members().get(i).pool();
-                        if (member != null && member.getId().equals(poolId)) {
+                        Member member = parent.members().get(i);
+                        if (member.pool() != null && member.pool().getId().equals(poolId) && member.inForce()) {
                             pot = cuts.get(i);
                         }
                     }
@@ -194,10 +201,11 @@ public class PoolService {
     /** Add a member to the pool with a share percent: a person of the sheet (personId) or another pool of it
      *  (memberPoolId), exactly one given. Refused when the share is not more than 0.00 and at most 100.00 with up to
      *  two decimals, when the person is already in it, or when the pool member is already a member of a pool, would
-     *  contain itself through any chain, or would make a chain of pools more than three deep. */
+     *  contain itself through any chain, or would make a chain of pools more than three deep. The membership may
+     *  carry a from-date and a to-date, each optional; refused when the to-date is before the from-date. */
     @Transactional
     public PoolWithMembers addMember(String sheetId, String user, long poolId, Long personId, Long memberPoolId,
-            BigDecimal share) {
+            BigDecimal share, LocalDate from, LocalDate to) {
         if ((personId == null) == (memberPoolId == null)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A member is a person or a pool");
         }
@@ -205,6 +213,9 @@ public class PoolService {
                 || share.stripTrailingZeros().scale() > 2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A share is more than 0.00 and at most 100.00, with up to two decimals");
+        }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A to-date is not before the from-date");
         }
         BigDecimal scaled = share.setScale(2, RoundingMode.UNNECESSARY);
         sheets.load(sheetId, user);
@@ -228,13 +239,15 @@ public class PoolService {
             name = child.getName();
             member = PoolMember.ofPool(pool.getId(), child.getId(), scaled);
         }
+        member.setDates(from, to);
         try {
             members.saveAndFlush(member);
         } catch (DataIntegrityViolationException raced) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That member is already in a pool");
         }
         audit.recordChangeOnCommit(sheetId, user, "POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user
-                + " pool=" + pool.getName() + " name=" + name + " share=" + scaled.toPlainString());
+                + " pool=" + pool.getName() + " name=" + name + " share=" + scaled.toPlainString() + (from == null ? "" : " from=" + from)
+                + (to == null ? "" : " to=" + to));
         return list(sheetId).stream().filter(p -> p.pool().getId().equals(pool.getId())).findFirst().orElseThrow();
     }
 
