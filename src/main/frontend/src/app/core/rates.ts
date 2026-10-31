@@ -80,8 +80,8 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
 
 /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure (in whole cents) by the sheet's today:
  *  for each full 30 days past its due-by plus its grade's grace days, the late percent in force on that boundary date
- *  (that day plus 30, 60, 90 ... days) of the figure, rounded as the claim rounds, added up. A correction (a negative
- *  amount) gains none. */
+ *  (that day plus 30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding),
+ *  rounded as the claim rounds, added up. A correction (a negative amount) gains none. */
 export function lateChargeCents(
   c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null },
   figureCents: number,
@@ -96,7 +96,7 @@ export function lateChargeCents(
   let charge = 0;
   for (let k = 1; k <= periods; k++) {
     const boundary = addDays(from, k * 30);
-    charge += dueCents(figureCents, latePctOn(sheet, boundary), halfUp);
+    charge += dueCents(figureCents + charge, latePctOn(sheet, boundary), halfUp);
   }
   return charge;
 }

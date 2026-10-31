@@ -229,8 +229,9 @@ public class Sheet {
         return value == null ? 0 : Integer.parseInt(value);
     }
 
-    /** The sheet's late percent in force on a day (two decimals): an overdue claim gains this percent of its figure
-     *  for each full 30 days it is overdue whose boundary (its due-by plus 30, 60, 90 ... days) falls then. */
+    /** The sheet's late percent in force on a day (two decimals): an overdue claim gains this percent of its figure,
+     *  plus the charges of the boundaries before it, for each full 30 days it is overdue whose boundary (its due-by
+     *  plus 30, 60, 90 ... days) falls then. */
     public BigDecimal latePctOn(LocalDate date) {
         return amountOn(LATE_PCT, date, START_LATE_PCT);
     }

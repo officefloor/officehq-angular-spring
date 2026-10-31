@@ -746,8 +746,8 @@ public class ClaimService {
 
     /** The late charge an OPEN or PENDING claim, not deferred, has gained on its figure by the sheet's today: for each
      *  full 30 days past its due-by plus its grade's grace days ({@code grade}: its person's grade in force on its
-     *  date), the late percent in force on that boundary date (that day plus 30, 60, 90 ... days) of the figure,
-     *  rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, or it is a correction. */
+     *  date), the late percent in force on that boundary date (that day plus 30, 60, 90 ... days) of the figure
+     *  plus the charges of the boundaries before it (compounding), rounded as the claim rounds, added up; 0.00 when not overdue, it has no figure, or it is a correction. */
     public static BigDecimal lateCharge(Claim claim, BigDecimal figure, Sheet sheet, String grade) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (!claim.getStatus().isOpen() || claim.isDeferredOn(sheet.getToday())) {
@@ -767,7 +767,7 @@ public class ClaimService {
         RoundingMode rounding = sheet.roundingFor(claim.getDate());
         BigDecimal charge = none;
         for (long k = 1; k <= periods; k++) {
-            charge = charge.add(dueOn(figure, sheet.latePctOn(from.plusDays(30 * k)), rounding));
+            charge = charge.add(dueOn(figure.add(charge), sheet.latePctOn(from.plusDays(30 * k)), rounding));
         }
         return charge;
     }
