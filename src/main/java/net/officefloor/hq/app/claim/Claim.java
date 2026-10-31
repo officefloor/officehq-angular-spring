@@ -53,6 +53,11 @@ public class Claim {
     @Column(name = "tags", length = 1000)
     private String tags;
 
+    /** The reason from the sheet's list the claim was voided with; none when it is not void or was voided
+     *  without one. */
+    @Column(name = "void_reason", length = 200)
+    private String voidReason;
+
     /** The day the claim is due by: fixed when it is added: the terms-th business day after its date (skipping
      *  Saturdays, Sundays and the sheet's holidays then), on its person's own terms, else the terms of their grade
      *  in force then, else the sheet's then; it does not change when the terms or its date
@@ -310,6 +315,14 @@ public class Claim {
 
     public void setTags(String tags) {
         this.tags = tags;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     /** The claim's tags, sorted; empty when it has none. */

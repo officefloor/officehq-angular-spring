@@ -54,6 +54,8 @@ export interface ClaimView {
   ref: string | null;
   /** The claim's tags, sorted; empty when it has none. */
   tags: string[];
+  /** The reason from the sheet's list the claim was voided with; null when not void or voided without one. */
+  voidReason: string | null;
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
@@ -253,8 +255,8 @@ export class Claims {
     return this.http.delete<ClaimView>(`${this.base(sheetId)}/claims/${id}/lock`);
   }
 
-  changeStatus(sheetId: string, id: number, status: ClaimStatus): Observable<ClaimView> {
-    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/status`, { status });
+  changeStatus(sheetId: string, id: number, status: ClaimStatus, reason?: string): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/status`, { status, reason: reason ?? null });
   }
 
   /** Defer an OPEN claim until `until` (yyyy-mm-dd), a day after the sheet's today. */

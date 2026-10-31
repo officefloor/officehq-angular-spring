@@ -41,12 +41,14 @@ public class ClaimController {
      * proofs is how many proofs have been given for it; splitFrom is the number of the claim it was split off (null
      * on any other claim); lockedBy is who has its editor open, locking it for other users (null when no one has);
      * lateEntry is whether it was added while its period was soft-closed; remindedOn is the last day a reminder was
-     * written for it (null if never); tags are its tags, sorted (none when it has none).
+     * written for it (null if never); tags are its tags, sorted (none when it has none); voidReason is the reason it
+     * was voided with (null when it was voided without one, or is not void).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
-            String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags) {
+            String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
+            String voidReason) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -56,7 +58,7 @@ public class ClaimController {
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn(), claim.getRef(), claim.tagList());
+                    claim.getRemindedOn(), claim.getRef(), claim.tagList(), claim.getVoidReason());
         }
     }
 
@@ -81,8 +83,8 @@ public class ClaimController {
             @Size(max = 1000) String tags) {
     }
 
-    /** The status a claim is to move to. */
-    public record StatusChange(@NotNull ClaimStatus status) {
+    /** The status a claim is to move to; a void gives its reason from the sheet's list (none when not given). */
+    public record StatusChange(@NotNull ClaimStatus status, @Size(max = 200) String reason) {
     }
 
     /** Why a steward rejects a PENDING claim. */
@@ -192,7 +194,7 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody StatusChange request) {
-        return ClaimView.of(claims.changeStatus(sheetId, user, id, request.status()));
+        return ClaimView.of(claims.changeStatus(sheetId, user, id, request.status(), request.reason()));
     }
 
     @PutMapping("/claims/{id}/approve")

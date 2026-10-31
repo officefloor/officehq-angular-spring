@@ -8,6 +8,7 @@ import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Sheets, graceOn } from '../../core/sheet';
+import { VoidReasons } from '../../core/void-reasons';
 
 const NO_RATES: readonly RateView[] = [];
 
@@ -108,6 +109,16 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
                  [value]="rejectReasons()[c.id] ?? ''" (input)="reasonChanged(c, $any($event.target).value)" />
           <button type="button" data-testid="claim-reject" (click)="reject(c)"
                   [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
+          @if (voidReasons.all().length > 0) {
+            <label [for]="'claim-void-reason-' + c.id">Reason to void</label>
+            <select [id]="'claim-void-reason-' + c.id" data-testid="claim-void-reason"
+                    [value]="chosenVoidReasons()[c.id] ?? ''" (change)="voidReasonChanged(c, $any($event.target).value)">
+              <option value="">Choose a reason</option>
+              @for (r of voidReasons.all(); track r.id) {
+                <option [value]="r.reason">{{ r.reason }}</option>
+              }
+            </select>
+          }
           <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'VOID')"
                   [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
@@ -191,6 +202,9 @@ export class PersonClaims {
   protected readonly splitAmounts = signal<Readonly<Record<number, string>>>({});
   /** The amount typed to change each DRAFT claim to in its row, by id. */
   protected readonly inlineAmounts = signal<Readonly<Record<number, string>>>({});
+  /** The reason chosen from the sheet's list to void each claim, by id. */
+  protected readonly chosenVoidReasons = signal<Readonly<Record<number, string>>>({});
+  protected readonly voidReasons = inject(VoidReasons);
   /** The reason typed to reject each PENDING claim, by id. */
   protected readonly rejectReasons = signal<Readonly<Record<number, string>>>({});
 
@@ -342,15 +356,27 @@ export class PersonClaims {
     return periodOn(this.periods(), c.dueBy)?.name ?? '';
   }
 
+  protected voidReasonChanged(c: ClaimView, reason: string): void {
+    this.chosenVoidReasons.update((chosen) => ({ ...chosen, [c.id]: reason }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
   protected changeStatus(c: ClaimView, status: ClaimStatus): void {
     this.claimError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    this.api.changeStatus(sheet.id, c.id, status).subscribe({
+    const reason = status === 'VOID' ? (this.chosenVoidReasons()[c.id] ?? '') : '';
+    if (status === 'VOID' && reason === '' && this.voidReasons.all().length > 0) {
+      this.claimError.set({ id: c.id, message: 'Choose a reason from the list to void this claim.' });
+      return;
+    }
+    this.api.changeStatus(sheet.id, c.id, status, reason === '' ? undefined : reason).subscribe({
       next: (saved) => this.saved.emit(saved),
       error: (err: unknown) => this.claimError.set({
         id: c.id,
-        message: err instanceof HttpErrorResponse && err.status === 403
+        message: status === 'VOID' && err instanceof HttpErrorResponse && err.status === 422
+          ? 'Choose a reason from the sheet\'s list to void this claim.'
+          : err instanceof HttpErrorResponse && err.status === 403
           ? status === 'SETTLED' && c.openedBy === this.session.user()
             ? 'You opened this claim, so someone else must settle it.'
             : status === 'VOID' && c.status === 'SETTLED'

@@ -26,6 +26,7 @@ import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import net.officefloor.hq.app.watch.WatchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -54,11 +55,13 @@ public class ClaimService {
     private final ClaimSequenceRepository sequences;
     private final WatchService watches;
     private final HolidayService holidays;
+    private final VoidReasonService voidReasons;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
             SheetRepository sheetStore, RateRepository rates, Audit audit, Rollup rollup, PeriodRepository periods,
             RoleService roles, ClaimSequenceRepository sequences, WatchService watches,
-            HolidayService holidays) {
+            HolidayService holidays, VoidReasonService voidReasons) {
+        this.voidReasons = voidReasons;
         this.holidays = holidays;
         this.watches = watches;
         this.periods = periods;
@@ -200,6 +203,14 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+        return changeStatus(sheetId, user, id, next, null);
+    }
+
+    /** Move a claim to a new status, as {@link #changeStatus(String, String, long, ClaimStatus)}; a void gives
+     *  {@code reason} (none when null or blank). While the sheet's list of void reasons is not empty, a void needs a
+     *  reason on it; the claim keeps the reason and the audit line ends with it. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason) {
         sheets.load(sheetId, user);
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -222,6 +233,7 @@ public class ClaimService {
         if (voidsSettled) {
             refuseSettledVoid(sheet, user, claim);
         }
+        String voidReason = next == ClaimStatus.VOID ? voidReasons.refuseUnlisted(sheetId, reason) : null;
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheet.getToday())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
@@ -248,6 +260,8 @@ public class ClaimService {
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(due);
+        } else if (next == ClaimStatus.VOID) {
+            claim.setVoidReason(voidReason);
         }
         claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
         Claim changed = claims.saveAndFlush(claim);
@@ -263,6 +277,9 @@ public class ClaimService {
             line += " due=" + dueText(changed);
         } else if (voidsSettled) {
             line += " reversed=" + dueText(changed);
+        }
+        if (voidReason != null) {
+            line += " reason=" + voidReason;
         }
         audit.recordChangeOnCommit(sheetId, user, line);
         if (next == ClaimStatus.SETTLED) {

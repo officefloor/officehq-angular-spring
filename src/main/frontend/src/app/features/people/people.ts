@@ -14,7 +14,8 @@ import { Watches } from '../../core/watches';
 import { PersonClaims } from '../claims/claims';
 import { SheetHeader } from '../header/header';
 import { PeriodsPanel } from '../periods/periods';
-import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary';
+import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
+import { VoidReasons } from '../../core/void-reasons';
 
 const NO_CLAIMS: ClaimView[] = [];
 const NO_RATES: RateView[] = [];
@@ -72,7 +73,8 @@ function csvField(value: string): string {
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" />
     <app-periods [dueTotals]="dueByPeriod()" />
-    <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()" />
+    <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()"
+                 [voidReasons]="summaryByVoidReason()" />
 
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -545,6 +547,15 @@ export class PeopleList {
   protected readonly summaryByStatus = computed<StatusSummary[]>(() => {
     const claims = this.claims();
     return SUMMARY_STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
+  });
+  private readonly voidReasons = inject(VoidReasons);
+  /** Per reason on the sheet's list, how many VOID claims were voided with it. */
+  protected readonly summaryByVoidReason = computed<VoidReasonSummary[]>(() => {
+    const claims = this.claims();
+    return this.voidReasons.all().map(({ reason }) => ({
+      reason,
+      count: claims.filter((c) => c.status === 'VOID' && c.voidReason === reason).length,
+    }));
   });
   /** A person's due-total for a period, with two decimals. */
   protected periodDueOf(personId: number, periodId: number): string {

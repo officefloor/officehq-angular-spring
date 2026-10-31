@@ -22,7 +22,13 @@ export interface StatusSummary {
   count: number;
 }
 
-// The sheet's figures at a glance, per grade, per period and per claim status; each agrees with the list.
+/** A void reason's line: how many VOID claims on the sheet were voided with it. */
+export interface VoidReasonSummary {
+  reason: string;
+  count: number;
+}
+
+// The sheet's figures at a glance, per grade, per period, per claim status and per void reason; each agrees with the list.
 @Component({
   selector: 'app-summary',
   template: `
@@ -48,6 +54,12 @@ export interface StatusSummary {
             <span [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</span> claims</li>
         }
       </ul>
+      <ul aria-label="By void reason">
+        @for (v of voidReasons(); track v.reason) {
+          <li>Voided as {{ v.reason }}:
+            <span [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count }}</span> claims</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -55,4 +67,5 @@ export class SummaryPanel {
   readonly grades = input.required<readonly GradeSummary[]>();
   readonly periods = input.required<readonly PeriodSummary[]>();
   readonly statuses = input.required<readonly StatusSummary[]>();
+  readonly voidReasons = input.required<readonly VoidReasonSummary[]>();
 }
