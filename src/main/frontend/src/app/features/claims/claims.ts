@@ -17,7 +17,9 @@ const NO_RATES: RateLine = [];
 // the claims listed newest first.
 /** Why a claim above the proof threshold is refused a settle or approval. */
 /** The permission matrix action a move to each status is. */
-const STATUS_ACTION: Partial<Record<ClaimStatus, string>> = { OPEN: 'open', SETTLED: 'settle', VOID: 'void' };
+const STATUS_ACTION: Partial<Record<ClaimStatus, string>> = {
+  OPEN: 'open', SETTLED: 'settle', VOID: 'void', DELETED: 'delete', DRAFT: 'restore',
+};
 const UNNOTED = 'This claim\'s due is above the note threshold, so it needs a note before it can be opened.';
 const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a proof first.';
 
@@ -136,6 +138,10 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           }
           <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'VOID')"
                   [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          <button type="button" data-testid="claim-delete" (click)="changeStatus(c, 'DELETED')"
+                  [attr.aria-label]="'Delete claim of ' + c.amount + ' on ' + c.date">Delete</button>
+          <button type="button" data-testid="claim-restore" (click)="changeStatus(c, 'DRAFT')"
+                  [attr.aria-label]="'Restore claim of ' + c.amount + ' on ' + c.date">Restore</button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to"
                   [value]="reassignTo()[c.id] ?? ''" (change)="reassignToChanged(c, $any($event.target).value)">
@@ -426,6 +432,8 @@ export class PersonClaims {
               ? status === 'OPEN' ? UNNOTED : UNPROVEN
             : status === 'VOID' && c.status === 'SETTLED'
               ? 'A settled claim can be voided only within 7 days of its settlement.'
+            : status === 'DRAFT' && c.status === 'DELETED'
+              ? 'A deleted claim can be restored only on the day it was deleted.'
             : status === 'SETTLED' && this.deferredOf(c)
               ? `This claim is deferred until ${c.deferredUntil}, so it cannot be settled before then.`
               : `A ${c.status} claim cannot become ${status}.`,

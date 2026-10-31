@@ -471,6 +471,17 @@ public class Claim {
         return Collections.unmodifiableList(log);
     }
 
+    /** The day its log records it last deleted; null when it never was. */
+    public LocalDate deletedOn() {
+        LocalDate on = null;
+        for (ClaimLogEntry entry : log) {
+            if (entry.getStatus() == ClaimStatus.DELETED) {
+                on = entry.getOn();
+            }
+        }
+        return on;
+    }
+
     /** Log the status the claim has now, taken by this user on this day, at the due it has at this moment. */
     public void logStatus(String user, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogEntry(status, user, on, due));

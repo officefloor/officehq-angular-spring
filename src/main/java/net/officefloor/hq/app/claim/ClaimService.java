@@ -236,6 +236,10 @@ public class ClaimService {
         if (action != null && !sheet.allows(action, roles.roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim");
         }
+        if (next == ClaimStatus.DRAFT && !sheet.getToday().equals(claim.deletedOn())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A deleted claim can be restored only on the day it was deleted");
+        }
         boolean voidsSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
         if (voidsSettled) {
             refuseSettledVoid(sheet, user, claim);
@@ -278,7 +282,8 @@ public class ClaimService {
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT -> throw new IllegalStateException();
+            case DELETED -> "CLAIM_DELETED";
+            case DRAFT -> "CLAIM_RESTORED";
         };
         String line = entry(event, user, person, changed, number);
         if (next == ClaimStatus.SETTLED) {
@@ -437,7 +442,8 @@ public class ClaimService {
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
         refuseIfClosed(sheetId, claim.getDueBy());
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be given a proof");
         }
