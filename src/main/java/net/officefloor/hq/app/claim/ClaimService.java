@@ -91,11 +91,12 @@ public class ClaimService {
     /** Add a claim for a person; a missing date takes the sheet's entry date while set, else its today, a missing note is empty. Its period is the one its due-by
      *  (the terms-th business day after its date, on the terms it gets, skipping weekends and
      *  the sheet's holidays) is in: one due by inside a soft-closed period is a late entry. Refused
-     *  when its due-by is inside a closed period, or when it is a correction that does not name a SETTLED claim of
-     *  the person. */
+     *  when its due-by is inside a closed period, when it is a correction that does not name a SETTLED claim of
+     *  the person, or when its external reference (trimmed; a blank one is none) is already used on the sheet,
+     *  without regard to case. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         sheets.load(sheetId, user);
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         LocalDate today = sheet.getToday();
@@ -106,6 +107,10 @@ public class ClaimService {
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, claimDate);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
+        String reference = refOf(ref);
+        if (reference != null && claims.existsBySheetIdAndRefIgnoreCase(sheetId, reference)) {
+            throw refUsed(reference);
+        }
         Rollup.Figures before = rollup.of(sheetId);
         Claim claim = new Claim(sheetId, personId, scaled(amount), claimDate, dueBy, noteOf(note), corrects,
                 claims.lastListed(sheetId) + 1);
@@ -114,9 +119,11 @@ public class ClaimService {
         if (late) {
             claim.markLateEntry();
         }
+        claim.setRef(reference);
         Claim added = claims.saveAndFlush(claim);
         added.logStatus(user, today, shownDue(sheet, added, person));
-        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_ADDED", user, person, added, added.getNumber()));
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_ADDED", user, person, added, added.getNumber())
+                + (reference == null ? "" : " ref=" + reference));
         if (late) {
             audit.recordChangeOnCommit(sheetId, user, entry("LATE_ENTRY", user, person, added, null));
         }
@@ -127,10 +134,11 @@ public class ClaimService {
     /** Change a claim's amount, date, note and the claim it corrects; a missing date takes the sheet's today. Only
      *  a draft can be changed: to change an open claim, void it and add a new one. Its due-by stays as it was fixed.
      *  Refused when its due-by is inside a closed period, or when it would be a correction that does not name a
-     *  SETTLED claim of its person, or while another user has its editor open. Saving releases its lock. */
+     *  SETTLED claim of its person, when its external reference is already used by another claim on the sheet, or
+     *  while another user has its editor open. Saving releases its lock. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         sheets.load(sheetId, user);
         LocalDate today = sheetStore.findLockedById(sheetId).orElseThrow().getToday();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -143,8 +151,13 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(), date != null ? date : today);
         refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
+        String reference = refOf(ref);
+        if (reference != null && claims.existsBySheetIdAndRefIgnoreCaseAndIdNot(sheetId, reference, claim.getId())) {
+            throw refUsed(reference);
+        }
         Rollup.Figures before = rollup.of(sheetId);
         claim.setAmount(scaled(amount));
+        claim.setRef(reference);
         claim.setCorrects(corrects);
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
@@ -784,6 +797,16 @@ public class ClaimService {
 
     private static BigDecimal scaled(BigDecimal amount) {
         return amount.setScale(2, RoundingMode.UNNECESSARY);
+    }
+
+    /** An external reference as kept: trimmed, none when blank. */
+    public static String refOf(String ref) {
+        return ref == null || ref.isBlank() ? null : ref.trim();
+    }
+
+    /** The refusal of an external reference already used on the sheet. */
+    public static ResponseStatusException refUsed(String ref) {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "The reference " + ref + " is already used on this sheet");
     }
 
     private static String noteOf(String note) {

@@ -37,6 +37,8 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
       <label [for]="fieldId('corrects')">Corrects claim No.</label>
       <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects"
              inputmode="numeric" autocomplete="off" />
+      <label [for]="fieldId('ref')">Reference</label>
+      <input [id]="fieldId('ref')" data-testid="claim-form-ref" formControlName="ref" autocomplete="off" />
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -59,6 +61,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           — overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           in period <span data-testid="claim-period">{{ periodOf(c) }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
           corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
@@ -193,6 +196,7 @@ export class PersonClaims {
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
     corrects: new FormControl('', { nonNullable: true }),
+    ref: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -523,7 +527,7 @@ export class PersonClaims {
       refuse(`${c.lockedBy} is editing this claim, so it is locked until they are done.`);
       return;
     }
-    this.api.update(sheet.id, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects }).subscribe({
+    this.api.update(sheet.id, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects, ref: c.ref }).subscribe({
       next: (saved) => {
         this.inlineAmounts.update((amounts) => ({ ...amounts, [c.id]: '' }));
         // The save released this user's lock, so an editor they had open on it is closed.
@@ -604,7 +608,7 @@ export class PersonClaims {
 
   private open(c: ClaimView): void {
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '', ref: c.ref ?? '' },
       { emitEvent: false });
     this.error.set(null);
   }
@@ -612,7 +616,7 @@ export class PersonClaims {
   /** Fill the editor's fields not typed into since the edit button was pressed with the claim's values, keeping
    *  what was typed. */
   private fillUntyped(c: ClaimView): void {
-    const values = { amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' };
+    const values = { amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '', ref: c.ref ?? '' };
     for (const key of Object.keys(values) as (keyof typeof values)[]) {
       const control = this.form.controls[key];
       if (control.pristine) control.setValue(values[key], { emitEvent: false });
@@ -634,7 +638,7 @@ export class PersonClaims {
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
     this.error.set(null);
   }
 
@@ -661,12 +665,18 @@ export class PersonClaims {
       this.error.set('Only a negative amount (a correction) names a claim it corrects.');
       return;
     }
+    const ref = value.ref.trim();
+    if (ref.length > 120) {
+      this.error.set('A reference is at most 120 characters.');
+      return;
+    }
     const date = value.date.trim();
     if (date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       this.error.set('Choose a date for the claim, or leave it blank for today.');
       return;
     }
-    const claim = { amount, date: date === '' ? null : date, note: value.note, corrects: correction ? corrects : null };
+    const claim = { amount, date: date === '' ? null : date, note: value.note, corrects: correction ? corrects : null,
+      ref: ref === '' ? null : ref };
     const id = this.editingId();
     this.saving.set(true);
     const request = id === null ? this.api.add(sheet.id, this.personId(), claim) : this.api.update(sheet.id, id, claim);
@@ -685,6 +695,10 @@ export class PersonClaims {
               ? 'That claim is dated after the person retired.'
             : correction && err instanceof HttpErrorResponse && err.status === 400
               ? `Claim No. ${corrects} is not a settled claim of ${this.personName()}, so this cannot correct it.`
+            : id === null && ref !== '' && err instanceof HttpErrorResponse && err.status === 409
+              ? `The reference ${ref} is already used on this sheet.`
+            : id !== null && ref !== '' && err instanceof HttpErrorResponse && err.status === 409
+              ? `The reference ${ref} is already used on this sheet, or this claim is no longer a draft or is being edited by another user.`
             : id !== null && err instanceof HttpErrorResponse && err.status === 409
               ? 'Only a draft claim can be edited, and not while another user is editing it.'
               : id === null ? 'Could not add that claim.' : 'Could not save that claim.',

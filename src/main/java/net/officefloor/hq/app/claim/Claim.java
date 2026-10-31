@@ -45,6 +45,10 @@ public class Claim {
     @Column(name = "note", nullable = false)
     private String note;
 
+    /** The claim's external reference, unique on its sheet without regard to case; none when not given. */
+    @Column(name = "ref", length = 120)
+    private String ref;
+
     /** The day the claim is due by: fixed when it is added: the terms-th business day after its date (skipping
      *  Saturdays, Sundays and the sheet's holidays then), on its person's own terms, else the terms of their grade
      *  in force then, else the sheet's then; it does not change when the terms or its date
@@ -286,6 +290,14 @@ public class Claim {
      *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    public void setRef(String ref) {
+        this.ref = ref;
     }
 
     public LocalDate getRemindedOn() {

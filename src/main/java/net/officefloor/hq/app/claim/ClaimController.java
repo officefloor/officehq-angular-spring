@@ -46,7 +46,7 @@ public class ClaimController {
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
-            String lockedBy, boolean lateEntry, LocalDate remindedOn) {
+            String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -56,7 +56,7 @@ public class ClaimController {
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn());
+                    claim.getRemindedOn(), claim.getRef());
         }
     }
 
@@ -76,7 +76,8 @@ public class ClaimController {
             @NotNull @Digits(integer = 12, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Size(max = 120) String corrects) {
+            @Size(max = 120) String corrects,
+            @Size(max = 120) String ref) {
     }
 
     /** The status a claim is to move to. */
@@ -153,7 +154,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm request) {
         return ClaimView.of(claims.add(sheetId, user, personId, request.amount(), request.date(), request.note(),
-                request.corrects()));
+                request.corrects(), request.ref()));
     }
 
     @PutMapping("/claims/{id}")
@@ -163,7 +164,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm request) {
         return ClaimView.of(claims.update(sheetId, user, id, request.amount(), request.date(), request.note(),
-                request.corrects()));
+                request.corrects(), request.ref()));
     }
 
     /** Open the claim's editor, locking it for other users. */

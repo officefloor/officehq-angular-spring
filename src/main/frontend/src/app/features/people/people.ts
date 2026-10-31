@@ -121,7 +121,7 @@ function csvField(value: string): string {
       </form>
 
       <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste claims">
-        <label for="paste-claims">Paste claims, one per line as name,amount,date,note</label>
+        <label for="paste-claims">Paste claims, one per line as name,amount,date,note (end the note with " #reference" to give one)</label>
         <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
         <button type="submit" data-testid="paste-submit" [disabled]="pasting()">Add pasted claims</button>
         @if (pasteAdded() !== null) {
@@ -1011,6 +1011,8 @@ export class PeopleList {
             ? 'A pasted claim is due by inside a closed period; nothing was added.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? 'A pasted claim is dated after its person retired; nothing was added.'
+            : err instanceof HttpErrorResponse && err.status === 409
+              ? 'A pasted reference is already used on this sheet or repeated in the paste; nothing was added.'
               : 'A pasted line is not a valid claim for someone on this sheet; nothing was added.',
         );
       },

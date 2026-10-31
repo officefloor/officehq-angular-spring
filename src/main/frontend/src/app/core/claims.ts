@@ -50,6 +50,8 @@ export interface ClaimView {
   lateEntry: boolean;
   /** The last day (yyyy-mm-dd) a reminder was written for the claim; null if it was never reminded. */
   remindedOn: string | null;
+  /** The claim's external reference, unique on its sheet without regard to case; null when it has none. */
+  ref: string | null;
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
@@ -150,6 +152,8 @@ export interface ClaimForm {
   date: string | null;
   note: string;
   corrects: string | null;
+  /** The external reference (trimmed by the store); null or blank for none. */
+  ref: string | null;
 }
 
 /** What a quick-add made: the person the claim is for, whether they were added by it, and the claim. */
@@ -224,8 +228,8 @@ export class Claims {
     return this.http.post<QuickAddView>(`${this.base(sheetId)}/quick-add`, { name, amount });
   }
 
-  /** Add a DRAFT claim per line of name,amount,date,note, in order, for people already on the sheet.
-   *  Refused as a whole when any line is. */
+  /** Add a DRAFT claim per line of name,amount,date,note, in order, for people already on the sheet; a note
+   *  ending in " #<reference>" gives the claim that reference. Refused as a whole when any line is. */
   paste(sheetId: string, text: string): Observable<PasteView> {
     return this.http.post<PasteView>(`${this.base(sheetId)}/claims/paste`, { text });
   }

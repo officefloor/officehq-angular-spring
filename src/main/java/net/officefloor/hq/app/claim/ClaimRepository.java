@@ -17,6 +17,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("select coalesce(max(c.listed), 0) from Claim c where c.sheetId = :sheetId")
     long lastListed(@Param("sheetId") String sheetId);
 
+    /** Whether a claim on the sheet has this external reference, without regard to case. */
+    boolean existsBySheetIdAndRefIgnoreCase(String sheetId, String ref);
+
+    /** Whether a claim on the sheet other than this one has this external reference, without regard to case. */
+    boolean existsBySheetIdAndRefIgnoreCaseAndIdNot(String sheetId, String ref, Long id);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** Release every claim editor's lock on the sheet. */

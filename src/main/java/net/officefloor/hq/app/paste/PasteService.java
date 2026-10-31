@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
@@ -24,6 +27,9 @@ public class PasteService {
     /** The longest note the claim form takes. */
     private static final int NOTE_MAX = 1000;
 
+    /** The longest external reference the claim form takes. */
+    private static final int REF_MAX = 120;
+
     private final PersonRepository people;
     private final ClaimService claims;
 
@@ -33,7 +39,7 @@ public class PasteService {
     }
 
     /** A pasted line read into a claim's values. */
-    private record Line(Person person, BigDecimal amount, LocalDate date, String note) {
+    private record Line(Person person, BigDecimal amount, LocalDate date, String note, String ref) {
     }
 
     /**
@@ -41,14 +47,20 @@ public class PasteService {
      * takes the sheet's entry date while set, else its today, the note may be absent), in order, for the person on the sheet whose name matches
      * (trimmed, ignoring case). Each line is checked by exactly the claim form's rules; one change: when any line
      * is refused, nothing is added and nothing is recorded. Blank lines are skipped; a paste with no lines is
-     * refused.
+     * refused. A note ending in {@code " #<reference>"} gives the claim that external reference, which is not part of
+     * the note; a reference used on the sheet or on an earlier line, without regard to case, refuses the paste.
      */
     @Transactional
     public List<Claim> paste(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
+        Set<String> refs = new HashSet<>();
         for (String raw : text.split("\\r?\\n")) {
             if (!raw.isBlank()) {
-                lines.add(read(sheetId, raw));
+                Line line = read(sheetId, raw);
+                if (line.ref() != null && !refs.add(line.ref().toLowerCase(Locale.ROOT))) {
+                    throw ClaimService.refUsed(line.ref());
+                }
+                lines.add(line);
             }
         }
         if (lines.isEmpty()) {
@@ -56,7 +68,8 @@ public class PasteService {
         }
         List<Claim> added = new ArrayList<>();
         for (Line line : lines) {
-            added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null));
+            added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null,
+                    line.ref()));
         }
         return added;
     }
@@ -89,7 +102,17 @@ public class PasteService {
         if (note.length() > NOTE_MAX) {
             throw refused("A note is at most " + NOTE_MAX + " characters");
         }
-        return new Line(person, new BigDecimal(amount), date, note);
+        String ref = null;
+        String trimmed = note.trim();
+        int hash = trimmed.lastIndexOf(" #");
+        if (hash >= 0 && !trimmed.substring(hash + 2).isBlank()) {
+            ref = ClaimService.refOf(trimmed.substring(hash + 2));
+            note = trimmed.substring(0, hash);
+        }
+        if (ref != null && ref.length() > REF_MAX) {
+            throw refused("A reference is at most " + REF_MAX + " characters");
+        }
+        return new Line(person, new BigDecimal(amount), date, note, ref);
     }
 
     private static ResponseStatusException refused(String reason) {
