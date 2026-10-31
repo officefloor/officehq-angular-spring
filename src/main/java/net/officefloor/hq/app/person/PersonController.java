@@ -328,6 +328,15 @@ public class PersonController {
         transfers.transfer(sheetId, user, id, request.toSheetId());
     }
 
+    /** Undo the transfer that brought the person to this sheet; they go back to the sheet they came from. */
+    @PostMapping("/{id}/transfer-undo")
+    public void undoTransfer(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        transfers.undoTransfer(sheetId, user, id);
+    }
+
     /** Put the person on hold over the dates given, alongside any holds they already have. */
     @PostMapping("/{id}/hold")
     public PersonView hold(

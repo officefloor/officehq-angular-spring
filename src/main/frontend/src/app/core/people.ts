@@ -173,6 +173,11 @@ export class People {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/merge`, { intoId });
   }
 
+  /** Undo the transfer that brought the person here, on the day they arrived (a steward only). */
+  undoTransfer(sheetId: string, id: number): Observable<void> {
+    return this.http.post<void>(`${this.base(sheetId)}/${id}/transfer-undo`, {});
+  }
+
   /** Transfer the person to another sheet (a steward only); they leave this one. */
   transfer(sheetId: string, id: number, toSheetId: string): Observable<void> {
     return this.http.post<void>(`${this.base(sheetId)}/${id}/transfer`, { toSheetId });

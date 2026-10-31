@@ -472,6 +472,8 @@ function csvField(value: string): string {
                    (input)="clearPersonError(p.id)" />
             <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo.value)"
                     [disabled]="transferring() === p.id" [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
+            <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)"
+                    [disabled]="transferring() === p.id" [attr.aria-label]="'Undo transfer of ' + p.name">Undo transfer</button>
             — watched <span data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</span>
             <button type="button" data-testid="person-watch" (click)="toggleWatch(p)" [disabled]="watching() === p.id"
                     [attr.aria-pressed]="watched().has(p.id)" [attr.aria-label]="'Watch ' + p.name">Watch</button>
@@ -1425,6 +1427,26 @@ export class PeopleList {
       error: () => {
         this.transferring.set(null);
         this.personError.set({ id: p.id, message: 'Could not transfer ' + p.name + ' to sheet ' + target + '.' });
+      },
+    });
+  }
+
+  /** Undo the transfer that brought the person here; once undone the sheet is re-read, as they leave it. */
+  protected undoTransfer(p: PersonView): void {
+    if (this.transferring() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.transferring.set(p.id);
+    this.api.undoTransfer(sheet.id, p.id).subscribe({
+      next: () => {
+        this.transferring.set(null);
+        this.sheets.load(sheet.id).subscribe();
+      },
+      error: () => {
+        this.transferring.set(null);
+        this.personError.set({ id: p.id, message: 'Could not undo the transfer of ' + p.name + '.' });
       },
     });
   }

@@ -173,7 +173,7 @@ public class PersonTransferService {
                     claim.getSplitFrom() == null ? null : renumbered.getOrDefault(claim.getSplitFrom(), claim.getSplitFrom()));
         }
         if (into == null) {
-            person.transferTo(target);
+            person.transferTo(target, to.getToday());
             person.setPosition(people.findMaxPositionBySheetId(target) + 1);
             people.saveAndFlush(person);
         } else {
@@ -195,6 +195,36 @@ public class PersonTransferService {
                     + " from=" + name + " into=" + into.getName());
         }
         rollup.recordChanges(target, user, beforeThere);
+    }
+
+    /**
+     * A steward undoes the transfer that brought a person to this sheet, on the same sheet's today they arrived: they
+     * are transferred back to the sheet they came from, exactly as a transfer does, and the undo is recorded. Refused
+     * for anyone but a steward, a person who did not arrive by transfer, on any later day, and whenever the transfer
+     * back is refused.
+     */
+    @Transactional
+    public void undoTransfer(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can undo a transfer");
+        }
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (person.getOriginSheetId() == null || person.getArrivedOn() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This person did not arrive by transfer");
+        }
+        if (!person.getArrivedOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A transfer can only be undone on the day the person arrived");
+        }
+        String name = person.getName();
+        String origin = person.getOriginSheetId();
+        Rollup.Figures before = rollup.of(sheetId);
+        transfer(sheetId, user, id, origin);
+        audit.recordChangeOnCommit(sheetId, user, "PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user
+                + " name=" + name + " to=" + origin);
+        rollup.recordChanges(sheetId, user, before);
     }
 
     private static <T> Predicate<T> distinctBy(Function<T, Object> key) {

@@ -44,6 +44,10 @@ public class Person {
     @Column(name = "origin_sheet_id")
     private String originSheetId;
 
+    /** The sheet's today on the sheet the person was last transferred to, when they arrived; null when never. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     /** The grades recorded for the person; the first given has no from-date (from the beginning of time). */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
@@ -136,10 +140,15 @@ public class Person {
     }
 
     /** Move the person to another sheet, leaving their holds behind; the sheet they leave becomes their origin. */
-    public void transferTo(String sheetId) {
+    public void transferTo(String sheetId, LocalDate arrivedOn) {
         this.originSheetId = this.sheetId;
         this.sheetId = sheetId;
+        this.arrivedOn = arrivedOn;
         this.holds.clear();
+    }
+
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
     }
 
     public String getOriginSheetId() {
