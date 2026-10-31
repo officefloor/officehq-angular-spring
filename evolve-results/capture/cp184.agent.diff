@@ -1,0 +1,184 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 240ebb8ea..70c7513d2 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -62,7 +62,7 @@ export interface ClaimView {
+   remindedOn: string | null;
+   /** Whether a steward waived the claim's late charge; a waived claim bears none from then on. */
+   waived: boolean;
+-  /** Whether the claim is held: while held, an OPEN or PENDING claim no statement binds counts in no live total,
++  /** Whether the claim is held: while held, an OPEN or PENDING claim no statement binds counts in no live due figure (it still counts in what is claimed),
+    *  as a held person's claims do. */
+   held: boolean;
+   /** The late charge its person's last statement binds with `statedDue`, with exactly two decimals; null when not
+@@ -122,9 +122,9 @@ export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today
+ 
+ /** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: dated within one
+  *  of these holds or held itself, or its person's retirement date (null: not retired) reached by today. */
+-function heldOn(c: ClaimView, holds: readonly HoldView[], today: string, retiredFrom: string | null): boolean {
++function heldOn(c: ClaimView, holds: readonly HoldView[], today: string, retiredFrom: string | null, ownHold = true): boolean {
+   return (
+-    c.held ||
++    (ownHold && c.held) ||
+     (retiredFrom !== null && today !== '' && retiredFrom <= today) ||
+     holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to))
+   );
+@@ -137,11 +137,18 @@ export function countsWithHolds(
+   holds: readonly HoldView[],
+   today: string,
+   retiredFrom: string | null = null,
++  ownHold = true,
+ ): (c: ClaimView) => boolean {
+   return (c) =>
+     counts(c) &&
+     !isDeferred(c, today) &&
+-    (c.stated || (c.status !== 'OPEN' && c.status !== 'PENDING') || !heldOn(c, holds, today, retiredFrom));
++    (c.stated || (c.status !== 'OPEN' && c.status !== 'PENDING') || !heldOn(c, holds, today, retiredFrom, ownHold));
++}
++
++/** Whether the claim counts in what its person has claimed on the sheet's today: as in the live totals, except
++ *  that a hold (the person's or the claim's own) does not take it out. */
++export function countsClaimed(today: string, retiredFrom: string | null = null): (c: ClaimView) => boolean {
++  return countsWithHolds([], today, retiredFrom, false);
+ }
+ 
+ /** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it: the last line dated on
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 386a2a332..6aae97431 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, PROOF_KINDS, ProofKind, cents, countsWithHolds, isDeferred, isOverdue, isReviewLate, money, roundingDate } from '../../core/claims';
++import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, PROOF_KINDS, ProofKind, cents, countsClaimed, countsWithHolds, isDeferred, isOverdue, isReviewLate, money, roundingDate } from '../../core/claims';
+ import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
+ import { PeriodView, periodOn } from '../../core/periods';
+ import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateLine, claimDueCents } from '../../core/rates';
+@@ -260,7 +260,7 @@ export class PersonClaims {
+   readonly selectToggled = output<{ id: number; selected: boolean }>();
+ 
+   protected readonly notAvailable = NOT_AVAILABLE;
+-  protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '', this.retiredFrom())).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)));
++  protected readonly claimed = computed(() => money(this.claims().filter(countsClaimed(this.sheets.current()?.today ?? '', this.retiredFrom())).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)));
+   protected readonly editingId = signal<number | null>(null);
+   /** Whether the form was typed into since the edit button was pressed. */
+   private typedSinceEdit = false;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 44b914358..b8c9ee517 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
+ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { forkJoin, of, switchMap } from 'rxjs';
+-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, statusAt } from '../../core/claims';
++import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, statusAt } from '../../core/claims';
+ import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
+ import { PatronView, Patrons } from '../../core/patrons';
+ import { Periods, periodOn } from '../../core/periods';
+@@ -685,8 +685,14 @@ export class PeopleList {
+     const byPerson = new Map(this.people().map((p) => [p.id, countsWithHolds(p.holds, today, p.retiredFrom)]));
+     return (c: ClaimView) => (byPerson.get(c.personId) ?? countsWithHolds([], today))(c);
+   });
++  /** Whether each claim counts in what is claimed: as in the live totals, except that a hold does not take it out. */
++  private readonly countsClaimedNow = computed(() => {
++    const today = this.todayNow();
++    const byPerson = new Map(this.people().map((p) => [p.id, countsClaimed(today, p.retiredFrom)]));
++    return (c: ClaimView) => (byPerson.get(c.personId) ?? countsClaimed(today))(c);
++  });
+   protected readonly claimedTotal = computed(() =>
+-    money(this.claims().filter(this.countsNow()).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)),
++    money(this.claims().filter(this.countsClaimedNow()).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)),
+   );
+   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none),
+    *  at most the sheet's cap; null when neither their grade in force today nor the grade any of those claims is at has a rate in
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 84acbe4bc..817a1d4d7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -138,7 +138,7 @@ public class Claim {
+     @Column(name = "waived", nullable = false)
+     private boolean waived;
+ 
+-    /** Whether the claim is held: while held, an OPEN or PENDING claim no statement binds counts in no live total,
++    /** Whether the claim is held: while held, an OPEN or PENDING claim no statement binds counts in no live due figure (it still counts in what is claimed),
+      *  as a held person's claims do. */
+     @Column(name = "held", nullable = false)
+     private boolean held;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 7eac4ce24..b47ad125e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -588,8 +588,8 @@ public class ClaimService {
+         return reminded;
+     }
+ 
+-    /** Hold an OPEN or PENDING claim, or release it when held: while held it counts in no live total unless a
+-     *  statement binds it, as a held person's claims do. Refused for a claim in any other status. */
++    /** Hold an OPEN or PENDING claim, or release it when held: while held it counts in no live due figure
++     *  unless a statement binds it, as a held person's claims do, though it still counts in what is claimed. Refused for a claim in any other status. */
+     @Transactional
+     public Claim toggleHold(String sheetId, String user, long id) {
+         sheets.load(sheetId, user);
+@@ -601,10 +601,12 @@ public class ClaimService {
+                     "A " + claim.getStatus() + " claim cannot be held or released; only an OPEN or PENDING one can");
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
++        Rollup.Figures before = rollup.of(sheetId);
+         claim.setHeld(!claim.isHeld());
+         Claim saved = claims.saveAndFlush(claim);
+         audit.recordChangeOnCommit(sheetId, user,
+                 entry(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", user, person, saved, saved.getNumber()));
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index d5cb5541c..d29cba520 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -80,8 +80,8 @@ public class Person {
+     @CollectionTable(name = "person_past_retirement", joinColumns = @JoinColumn(name = "person_id"))
+     private List<PastRetirement> pastRetirements = new ArrayList<>();
+ 
+-    /** The person's holds: their open claims dated within one, and not bound by a statement, count in no live
+-     *  total. */
++    /** The person's holds: their open claims dated within one, and not bound by a statement, count in no live due
++     *  figure (they still count in what is claimed). */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+     private List<Hold> holds = new ArrayList<>();
+@@ -329,6 +329,13 @@ public class Person {
+         return claim.getStatus().counts() && (claim.isStated() || !heldOn(claim, today));
+     }
+ 
++    /** Whether a claim of this person counts in what they have claimed on the sheet's {@code today}: as in the live
++     *  totals, except that a hold (theirs or the claim's own) does not take it out. */
++    public boolean countsClaimed(Claim claim, LocalDate today) {
++        return claim.getStatus().counts()
++                && (claim.isStated() || !(claim.getStatus().isOpen() && retiredOn(today)));
++    }
++
+     /** Whether a claim of this person counts in the figures of a period ending {@code end}: by the status it had at
+      *  the end of that day, left out when held or retired as the live totals on the sheet's {@code today} say. */
+     public boolean countsAtEnd(Claim claim, LocalDate end, LocalDate today) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 29ec8d1ea..2ae1b40e8 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -81,8 +81,11 @@ public class Rollup {
+                     .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
+                             && !c.isDeferredOn(today))
+                     .toList();
+-            // Claimed leaves out corrections: claims that correct another.
+-            BigDecimal claimed = counting.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
++            // Claimed leaves out corrections: claims that correct another; a held claim still counts in it.
++            BigDecimal claimed = sheetClaims.stream()
++                    .filter(c -> c.getPersonId().equals(person.getId()) && person.countsClaimed(c, today)
++                            && !c.isDeferredOn(today) && c.getCorrects() == null)
++                    .map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+             claimedTotal = claimedTotal.add(claimed);
+             // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade
