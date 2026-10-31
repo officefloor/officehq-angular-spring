@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.role.Delegations;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -26,10 +27,13 @@ public class Audit {
 
     private final Path file;
     private final Delegations delegations;
+    private final SheetHistory history;
 
-    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, Delegations delegations) {
+    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, Delegations delegations,
+            SheetHistory history) {
         this.file = Path.of(path);
         this.delegations = delegations;
+        this.history = history;
     }
 
     /** Append one audit record. Tests assert the exact line(s) in the file. */
@@ -66,9 +70,11 @@ public class Audit {
     /**
      * Append the record of a change the user made on the sheet once the current transaction commits, ending it with
      * {@code for=<steward>} while the user acts as a steward by that steward's delegation. A record that only reports
-     * figures (a rollup, the totals, a notice) is appended with {@link #recordOnCommit} instead.
+     * figures (a rollup, the totals, a notice) is appended with {@link #recordOnCommit} instead. What the sheet holds
+     * once the change is made is kept in its history, under its today.
      */
     public void recordChangeOnCommit(String sheetId, String user, String entry) {
+        history.keepOnCommit(sheetId);
         recordOnCommit(delegations.actingFor(sheetId, user).map(steward -> entry + " for=" + steward).orElse(entry));
     }
 

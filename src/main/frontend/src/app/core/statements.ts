@@ -28,8 +28,10 @@ export class Statements {
     return this.http.get<StatementSummary[]>(`${this.base(sheetId)}/statements`);
   }
 
-  take(sheetId: string, personId: number): Observable<StatementTaken> {
-    return this.http.post<StatementTaken>(`${this.base(sheetId)}/people/${personId}/statements`, null);
+  /** Take a statement of the person now, or as of a date (yyyy-mm-dd) on or before the sheet's today. */
+  take(sheetId: string, personId: number, asOf: string | null = null): Observable<StatementTaken> {
+    return this.http.post<StatementTaken>(`${this.base(sheetId)}/people/${personId}/statements`, null,
+      asOf ? { params: { asOf } } : {});
   }
 
   /** Cancel the person's last statement: its claims are live again; the summary is of the statement before it. */

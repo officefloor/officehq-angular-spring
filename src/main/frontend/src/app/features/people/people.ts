@@ -183,7 +183,10 @@ function csvField(value: string): string {
                     [disabled]="holding() === p.id" [attr.aria-label]="'Hold ' + p.name">Hold</button>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
-            <button type="button" data-testid="person-statement" (click)="takeStatement(p)" [disabled]="stating() === p.id"
+            <label [attr.for]="'person-statement-asof-' + p.id">Statement as of</label>
+            <input [id]="'person-statement-asof-' + p.id" type="date" data-testid="person-statement-asof" #statementAsOf
+                   (input)="clearPersonError(p.id)" />
+            <button type="button" data-testid="person-statement" (click)="takeStatement(p, statementAsOf)" [disabled]="stating() === p.id"
                     [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
             <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)" [disabled]="stating() === p.id"
                     [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
@@ -632,17 +635,19 @@ export class PeopleList {
     return this.statements().get(personId);
   }
 
-  /** Take a statement of the person, then show their summary and their claims as it left them. */
-  protected takeStatement(p: PersonView): void {
+  /** Take a statement of the person, as of the date in its entry (blank: now), then show their summary and their
+   *  claims as it left them; the entry is cleared once it is taken. */
+  protected takeStatement(p: PersonView, asOf: HTMLInputElement): void {
     if (this.stating() === p.id) return;
     this.personError.set(null);
     this.patronError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
     this.stating.set(p.id);
-    this.statementsApi.take(sheet.id, p.id).subscribe({
+    this.statementsApi.take(sheet.id, p.id, asOf.value || null).subscribe({
       next: ({ summary, claims }) => {
         this.stating.set(null);
+        asOf.value = '';
         this.statements.update((map) => new Map(map).set(summary.personId, summary));
         const byId = new Map(claims.map((c) => [c.id, c]));
         this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
