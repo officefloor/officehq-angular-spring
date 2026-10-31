@@ -193,7 +193,7 @@ export interface QuickAddView {
   claim: ClaimView;
 }
 
-/** What a paste did: how many claims it added and the claims, in the order added. */
+/** What a paste did: how many lines went through and the claims they opened, in paste order. */
 export interface PasteView {
   added: number;
   claims: ClaimView[];
@@ -275,8 +275,9 @@ export class Claims {
     return this.http.post<QuickAddView>(`${this.base(sheetId)}/quick-add`, { name, amount });
   }
 
-  /** Add a DRAFT claim per line of name,amount,date,note, in order, for people already on the sheet; a note
-   *  ending in " #<reference>" gives the claim that reference. Refused as a whole when any line is. */
+  /** Open a claim per line of name,amount,date,note, in order, for people already on the sheet, updating the
+   *  newest matching draft instead of adding one; a note ending in " #<reference>" gives the claim that reference.
+   *  Refused as a whole when any line is. */
   paste(sheetId: string, text: string): Observable<PasteView> {
     return this.http.post<PasteView>(`${this.base(sheetId)}/claims/paste`, { text });
   }

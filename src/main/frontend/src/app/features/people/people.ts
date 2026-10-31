@@ -169,9 +169,9 @@ function csvField(value: string): string {
       <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste claims">
         <label for="paste-claims">Paste claims, one per line as name,amount,date,note (end the note with " #reference" to give one)</label>
         <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
-        <button type="submit" data-testid="paste-submit" [disabled]="pasting()">Add pasted claims</button>
+        <button type="submit" data-testid="paste-submit" [disabled]="pasting() || !sheetLoaded()">Open pasted claims</button>
         @if (pasteAdded() !== null) {
-          Added <span data-testid="paste-added">{{ pasteAdded() }}</span>
+          Lines through <span data-testid="paste-added">{{ pasteAdded() }}</span>
         }
         @if (pasteError(); as err) {
           <p role="alert" data-testid="paste-error">{{ err }}</p>
@@ -880,7 +880,10 @@ export class PeopleList {
 
   protected readonly pasteError = signal<string | null>(null);
   protected readonly pasting = signal(false);
-  /** How many claims the last paste added; null while one runs or before any. */
+  /** Whether the sheet's people and claims are on screen; false while a sheet loads. */
+  protected readonly sheetLoaded = signal(false);
+
+  /** How many lines the last paste put through; null while one runs or before any. */
   protected readonly pasteAdded = signal<number | null>(null);
 
   protected readonly pasteForm = new FormGroup({
@@ -939,6 +942,7 @@ export class PeopleList {
           this.importError.set(null);
           this.importAdded.set(null);
           this.importUpdated.set(null);
+          this.sheetLoaded.set(false);
           return sheet
             ? forkJoin({
                 people: this.api.list(sheet.id),
@@ -963,6 +967,7 @@ export class PeopleList {
           this.claims.set(claims);
           this.statements.set(new Map(statements.map((s) => [s.personId, s])));
           this.snapshots.set(byPerson(snapshots));
+          this.sheetLoaded.set(true);
         },
       });
     // An error is removed as soon as its form is changed.
@@ -1608,7 +1613,8 @@ export class PeopleList {
     });
   }
 
-  /** Add a DRAFT claim per pasted line for people on the sheet; when any line is refused, none is added. */
+  /** Open a claim per pasted line for people on the sheet, updating a matching draft instead of adding one; when
+   *  any line is refused, nothing changes. */
   protected paste(): void {
     if (this.pasting()) return;
     this.pasteError.set(null);
@@ -1634,9 +1640,13 @@ export class PeopleList {
             ? 'A pasted claim is due by inside a closed period; nothing was added.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? 'A pasted claim is dated after its person retired; nothing was added.'
+            : err instanceof HttpErrorResponse && err.status === 428
+              ? 'A pasted claim needs a note before it can be opened; nothing was pasted.'
+            : err instanceof HttpErrorResponse && err.status === 403
+              ? 'Your role may not open a claim; nothing was pasted.'
             : err instanceof HttpErrorResponse && err.status === 409
-              ? 'A pasted reference is already used on this sheet or repeated in the paste; nothing was added.'
-              : 'A pasted line is not a valid claim for someone on this sheet; nothing was added.',
+              ? 'A pasted claim cannot be opened, or its reference is already used, or it matches a claim that is no longer a draft; nothing was pasted.'
+              : 'A pasted line is not a valid claim for someone on this sheet, or cannot be opened; nothing was pasted.',
         );
       },
     });
