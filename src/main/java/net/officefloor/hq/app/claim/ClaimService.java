@@ -7,6 +7,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,12 +22,15 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final SheetRepository sheetStore;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets,
+            SheetRepository sheetStore, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
+        this.sheetStore = sheetStore;
         this.audit = audit;
     }
 
@@ -42,7 +47,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), date != null ? date : today, noteOf(note)));
-        audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added));
+        audit.recordOnCommit(entry("CLAIM_ADDED", user, person, added, added.getNumber()));
         return added;
     }
 
@@ -57,21 +62,33 @@ public class ClaimService {
         claim.setNote(noteOf(note));
         Claim edited = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(edited.getPersonId(), sheetId).orElseThrow();
-        audit.recordOnCommit(entry("CLAIM_EDITED", user, person, edited));
+        audit.recordOnCommit(entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
         return edited;
     }
 
-    /** Move a claim to a new status; a move its current status does not allow is refused. */
+    /**
+     * Move a claim to a new status; a move its current status does not allow is refused. Opening a
+     * claim gives it the sheet's next number; voiding it clears its number. The sheet is locked
+     * first, so moves on one sheet are made one at a time and no number is given twice.
+     */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
         sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        Integer number = claim.getNumber();
         claim.setStatus(next);
+        if (next == ClaimStatus.OPEN) {
+            number = sheet.nextClaimNumber();
+            claim.setNumber(number);
+        } else if (next == ClaimStatus.VOID) {
+            claim.setNumber(null);
+        }
         Claim changed = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(changed.getPersonId(), sheetId).orElseThrow();
         String event = switch (next) {
@@ -80,13 +97,15 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(entry(event, user, person, changed));
+        audit.recordOnCommit(entry(event, user, person, changed, number));
         return changed;
     }
 
-    private static String entry(String event, String user, Person person, Claim claim) {
+    /** An audit line about a claim; one with a number (or, once void, that had one) ends with it. */
+    private static String entry(String event, String user, Person person, Claim claim, Integer number) {
         return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
-                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate();
+                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
+                + (number == null ? "" : " number=" + number);
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

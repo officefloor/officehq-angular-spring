@@ -33,6 +33,7 @@ import { Sheets } from '../../core/sheet';
     <ul [attr.aria-label]="'Claims of ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          No. <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           on <span data-testid="claim-date">{{ c.date }}</span>
           — due <span data-testid="claim-due">{{ dueOf(c) }}</span>

@@ -25,6 +25,10 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
+    /** The last number given to a claim opened on this sheet; 0 before the first. */
+    @Column(name = "last_claim_number", nullable = false)
+    private int lastClaimNumber;
+
     protected Sheet() {
     }
 
@@ -53,5 +57,10 @@ public class Sheet {
 
     public void setToday(LocalDate today) {
         this.today = today;
+    }
+
+    /** Take the next claim number on this sheet; it is never given out again. */
+    public int nextClaimNumber() {
+        return ++lastClaimNumber;
     }
 }

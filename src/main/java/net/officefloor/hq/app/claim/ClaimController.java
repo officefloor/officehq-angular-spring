@@ -27,11 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as the screen shows it; the amount is given with exactly two decimals. */
-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status) {
+    public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
+            Integer number) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
         }
     }
 
