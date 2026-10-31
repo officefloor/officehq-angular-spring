@@ -19,10 +19,10 @@ const SHEET_ID_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A field of the settings form. */
-type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
+type SettingField = 'clerkLimit' | 'floor' | 'terms' | 'termsA' | 'termsB' | 'termsC' | 'graceA' | 'graceB' | 'graceC' | 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | PermField;
 
 /** A setting that carries a figure: it is saved from a from-date. */
-type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'parent' | PermField>;
+type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | PermField>;
 
 /** The from-date field of each dated setting. */
 type FromField = `${DatedField}From`;
@@ -49,7 +49,7 @@ function isDate(value: string): boolean {
   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d;
 }
 
-// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, each grade's grace days, its late percent, its policy date, its period numbering from, its grace days (not dated), its pot (not dated), its parent sheet (not dated), its cap, its proof threshold, its note threshold, its permission matrix (not dated), and the role assigned to each user name.
+// The sheet's settings (those with a figure dated, each shown as in force on the sheet's today): its clerk limit, its floor, its terms, each grade's own terms, each grade's grace days, its late percent, its policy date, its period numbering from, its grace days (not dated), its pot (not dated), its alert threshold (not dated), its parent sheet (not dated), its cap, its proof threshold, its note threshold, its permission matrix (not dated), and the role assigned to each user name.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -72,6 +72,7 @@ function isDate(value: string): boolean {
       <p>Grace days: <span data-testid="setting-grace-days-current">{{ sheets.current()?.graceDays ?? '' }}</span></p>
       <p>Fiscal year start month: <span data-testid="setting-fiscal-start-month-current">{{ sheets.current()?.fiscalStartMonth ?? '' }}</span></p>
       <p>Pot: <span data-testid="setting-pot-current">{{ sheets.current()?.pot ?? '' }}</span></p>
+      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ sheets.current()?.alertThreshold ?? '' }}</span></p>
       <p>Parent sheet: <span data-testid="setting-parent-current">{{ sheets.current()?.parent ?? '' }}</span></p>
 
       <p>Cap: <span data-testid="setting-cap-current">{{ sheets.current()?.cap ?? '' }}</span></p>
@@ -144,6 +145,9 @@ function isDate(value: string): boolean {
                inputmode="numeric" autocomplete="off" />
         <label for="setting-pot">Pot (cut among the members of each balanced pool that is a member of none, by their shares; blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" (focus)="lastFocused = 'pot'"
+               inputmode="decimal" autocomplete="off" />
+        <label for="setting-alert-threshold">Alert threshold (a person whose due-total rises above this is alerted; blank: off)</label>
+        <input id="setting-alert-threshold" data-testid="setting-alert-threshold" formControlName="alertThreshold" (focus)="lastFocused = 'alertThreshold'"
                inputmode="decimal" autocomplete="off" />
         <label for="setting-parent">Parent sheet (a sheet id: a grade with no rate in force on a date here takes the parent's, up to three levels up; blank: none)</label>
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" (focus)="lastFocused = 'parent'"
@@ -252,6 +256,7 @@ export class SettingsPanel {
     graceDays: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
+    alertThreshold: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
@@ -311,7 +316,7 @@ export class SettingsPanel {
     this.settingsError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, fiscalStartMonth, pot, parent, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, entryDate, graceDays, fiscalStartMonth, pot, alertThreshold, parent, cap, proofThreshold, noteThreshold } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -322,6 +327,7 @@ export class SettingsPanel {
     const graceDaysValue = graceDays.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const potValue = pot.value.trim();
+    const alertThresholdValue = alertThreshold.value.trim();
     const parentValue = parent.value.trim();
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
@@ -331,7 +337,7 @@ export class SettingsPanel {
     const unchanged = !this.settingsForm.dirty;
     const controls = this.settingsForm.controls;
     const isSaved = (field: SettingField) => controls[field].dirty
-      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && field !== 'fiscalStartMonth' && field !== 'pot' && field !== 'parent' && !field.startsWith('perm_')
+      || (field !== 'policyDate' && field !== 'periodNumberingFrom' && field !== 'entryDate' && field !== 'graceDays' && field !== 'fiscalStartMonth' && field !== 'pot' && field !== 'alertThreshold' && field !== 'parent' && !field.startsWith('perm_')
         && controls[`${field as DatedField}From`].dirty)
       || (unchanged && this.lastFocused === field);
     const fromOf = (field: DatedField): string | null => controls[`${field}From` as FromField].value.trim() || null;
@@ -344,6 +350,7 @@ export class SettingsPanel {
     const saveGraceDays = isSaved('graceDays');
     const saveFiscalStartMonth = isSaved('fiscalStartMonth');
     const savePot = isSaved('pot');
+    const saveAlertThreshold = isSaved('alertThreshold');
     const saveParent = isSaved('parent');
     const saveLimit = isSaved('clerkLimit');
     const saveCap = isSaved('cap');
@@ -402,6 +409,10 @@ export class SettingsPanel {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    if (saveAlertThreshold && alertThresholdValue !== '' && !LIMIT_PATTERN.test(alertThresholdValue)) {
+      this.settingsError.set('Type an alert threshold of 0.00 or more, with up to two decimals, or leave it blank for off.');
+      return;
+    }
     if (saveParent && parentValue !== '' && !SHEET_ID_PATTERN.test(parentValue)) {
       this.settingsError.set('Type the id of a sheet that has been loaded, or leave it blank for no parent.');
       return;
@@ -452,6 +463,7 @@ export class SettingsPanel {
     if (saveGraceDays) saves.push(this.sheets.setGraceDays(sheet.id, graceDaysValue === '' ? null : Number(graceDaysValue)));
     if (saveFiscalStartMonth) saves.push(this.sheets.setFiscalStartMonth(sheet.id, Number(fiscalStartMonthValue)));
     if (savePot) saves.push(this.sheets.setPot(sheet.id, potValue === '' ? null : potValue));
+    if (saveAlertThreshold) saves.push(this.sheets.setAlertThreshold(sheet.id, alertThresholdValue === '' ? null : alertThresholdValue));
     if (saveParent) saves.push(this.sheets.setParent(sheet.id, parentValue === '' ? null : parentValue));
     if (saveCap) saves.push(this.sheets.setCap(sheet.id, capValue === '' ? null : capValue, fromOf('cap')));
     if (saveProofThreshold) saves.push(this.sheets.setProofThreshold(sheet.id, proofThresholdValue === '' ? null : proofThresholdValue, fromOf('proofThreshold')));
@@ -475,7 +487,7 @@ export class SettingsPanel {
 
   /** Show the sheet's settings in force on its today in the form, as not yet changed, with blank from-dates. */
   private resetSettings(sheet: SheetView | null): void {
-    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '',
+    this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', clerkLimitFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '',
       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
       perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
   }

@@ -203,6 +203,7 @@ public class SheetCloneService {
                 + " overdue-total=" + f.overdueTotal()));
         audit.recordOnCommit("TOTALS sheet=" + target + " by=" + user + " claimed-total=" + figures.claimedTotal()
                 + " due-total=" + figures.dueTotal() + " overdue-total=" + figures.overdueTotal());
+        rollup.recordAlerts(target, user, null, figures);
         return saved;
     }
 }

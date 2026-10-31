@@ -113,6 +113,11 @@ public class Sheet {
     @Column(name = "pot", precision = 14, scale = 2)
     private BigDecimal pot;
 
+    /** The sheet's alert threshold (two decimals): a person whose due-total rises from at or below it to above it is
+     *  alerted; null means off. Not dated. */
+    @Column(name = "alert_threshold", precision = 14, scale = 2)
+    private BigDecimal alertThreshold;
+
     /** The id of the sheet's parent sheet, whose rates (then its parent's, up to three levels up) stand in for a
      *  grade with no rate in force on a date on this sheet; null means none. Not dated. */
     @Column(name = "parent_id")
@@ -144,6 +149,7 @@ public class Sheet {
         copy.graceDays = graceDays;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
+        copy.alertThreshold = alertThreshold;
         copy.parentId = parentId;
         copy.lastSettleBatch = lastSettleBatch;
         return copy;
@@ -353,6 +359,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     public String getParentId() {

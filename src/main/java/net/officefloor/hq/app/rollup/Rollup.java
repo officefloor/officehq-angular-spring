@@ -186,7 +186,8 @@ public class Rollup {
     /**
      * Record, once the change commits, how the sheet's figures moved since {@code before}: a ROLLUP line
      * for each person whose figures changed (one who did not exist before counting as changed), then a
-     * TOTALS line if the sheet's totals changed. Nothing is recorded when no figure moved.
+     * TOTALS line if the sheet's totals changed, then the ALERT lines of the people who crossed the sheet's alert
+     * threshold (see {@link #recordAlerts}). Nothing is recorded when no figure moved.
      */
     public void recordChanges(String sheetId, String user, Figures before) {
         Figures after = of(sheetId);
@@ -204,6 +205,30 @@ public class Rollup {
             audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total=" + after.claimedTotal()
                     + " due-total=" + after.dueTotal() + " overdue-total=" + after.overdueTotal());
         }
+        recordAlerts(sheetId, user, before, after);
+    }
+
+    /**
+     * Record, once the change commits, an ALERT line, in list order, for each person whose due-total went from at or
+     * below the sheet's alert threshold (or none, or not being on the sheet) to above it between {@code before} (null:
+     * nobody was) and {@code after}. Nothing is recorded while the threshold is off.
+     */
+    public void recordAlerts(String sheetId, String user, Figures before, Figures after) {
+        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+        if (threshold == null) {
+            return;
+        }
+        after.people().forEach((id, figures) -> {
+            PersonFigures was = before == null ? null : before.people().get(id);
+            if (above(figures, threshold) && (was == null || !above(was, threshold))) {
+                audit.recordOnCommit("ALERT sheet=" + sheetId + " by=" + user + " name=" + figures.name()
+                        + " due-total=" + figures.dueTotal());
+            }
+        });
+    }
+
+    private static boolean above(PersonFigures figures, BigDecimal threshold) {
+        return !NOT_AVAILABLE.equals(figures.dueTotal()) && new BigDecimal(figures.dueTotal()).compareTo(threshold) > 0;
     }
 
     /** A claim's due: its settled figure, else its stated one (none while PENDING), else its amount at the rate in force on its date of

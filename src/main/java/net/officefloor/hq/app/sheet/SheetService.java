@@ -220,6 +220,19 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's alert threshold (null: off), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setAlertThreshold(String id, String user, BigDecimal threshold) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        BigDecimal scaled = threshold == null ? null : threshold.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setAlertThreshold(scaled);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=alert-threshold value=" + (scaled == null ? "" : scaled.toPlainString()));
+        return saved;
+    }
+
     /** Set the sheet's parent sheet (null: none), starting the sheet if it has never been loaded. Not dated. Refused
      *  for the sheet itself, for a sheet never loaded, and for a sheet that has this one as an ancestor. */
     @Transactional

@@ -62,6 +62,9 @@ export interface SheetView {
   fiscalStartMonth: number;
   /** The pot (two decimals), cut among the members of each balanced pool that is a member of none; null when there is none. Not dated. */
   pot: string | null;
+  /** The alert threshold (two decimals): a person whose due-total rises from at or below it to above it is alerted;
+   *  null when it is off. Not dated. */
+  alertThreshold: string | null;
   /** The id of the sheet's parent sheet: a grade with no rate in force on a date on this sheet takes its parent's
    *  (then its parent's parent's, up to three levels up); null when it has none. Not dated. */
   parent: string | null;
@@ -236,6 +239,13 @@ export class Sheets {
   setPot(id: string, pot: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/pot`, { pot })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's alert threshold; null means off. Not dated. */
+  setAlertThreshold(id: string, alertThreshold: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/alert-threshold`, { alertThreshold })
       .pipe(tap((s) => this.active.set(s)));
   }
 

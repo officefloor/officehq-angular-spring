@@ -31,7 +31,7 @@ import net.officefloor.hq.app.sheet.Sheet;
 public record SheetState(List<SettingState> settings, LocalDate policyDate, List<RateState> rates,
         List<PersonState> people, List<ClaimState> claims, Map<String, String> permissions,
         LocalDate periodNumberingFrom, Integer graceDays, boolean archived, Views views, LocalDate entryDate,
-        Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth) {
+        Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth, BigDecimal alertThreshold) {
 
     /** Each list the screen reads of the sheet, as it read it then; a person's grade there is the one in force on the
      *  sheet's today then (see {@link #people(LocalDate)} for it on another day). */
@@ -110,7 +110,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                         c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil(), c.getRemindedOn(), c.getRef(), c.getTags())).toList(),
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
-                sheet.getPot(), sheet.getFiscalStartMonth());
+                sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold());
     }
 
     /** The people as the screen read them then, each with the grade in force on {@code today}. */
@@ -142,6 +142,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         sheet.setGraceDays(graceDays);
         sheet.setEntryDate(entryDate);
         sheet.setPot(pot);
+        sheet.setAlertThreshold(alertThreshold);
         sheet.setFiscalStartMonth(fiscalStartMonth == null ? 1 : fiscalStartMonth);
         // The parent is not dated: it is the one the sheet names now.
         sheet.setParentId(live.getParentId());
