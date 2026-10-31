@@ -133,6 +133,12 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
                  (input)="splitAmountChanged(c, $any($event.target).value)" />
           <button type="button" data-testid="claim-split" (click)="split(c)"
                   [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
+          <label [for]="'claim-settle-part-amount-' + c.id">Amount to settle</label>
+          <input [id]="'claim-settle-part-amount-' + c.id" data-testid="claim-settle-part-amount" inputmode="decimal"
+                 autocomplete="off" [value]="settlePartAmounts()[c.id] ?? ''"
+                 (input)="settlePartAmountChanged(c, $any($event.target).value)" />
+          <button type="button" data-testid="claim-settle-part" (click)="settlePart(c)"
+                  [attr.aria-label]="'Part-settle claim of ' + c.amount + ' on ' + c.date">Part-settle</button>
           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
@@ -285,6 +291,9 @@ export class PersonClaims {
   protected readonly newDates = signal<Readonly<Record<number, string>>>({});
   /** The amount typed to split off each OPEN claim, by id. */
   protected readonly splitAmounts = signal<Readonly<Record<number, string>>>({});
+
+  /** The amount typed to part-settle each OPEN claim, by id. */
+  protected readonly settlePartAmounts = signal<Readonly<Record<number, string>>>({});
   /** The amount typed to change each DRAFT claim to in its row, by id. */
   protected readonly inlineAmounts = signal<Readonly<Record<number, string>>>({});
   /** The reason chosen from the sheet's list to void each claim, by id. */
@@ -448,6 +457,43 @@ export class PersonClaims {
               : this.deferredOf(c)
                 ? `This claim is deferred until ${c.deferredUntil}, so it cannot be split.`
                 : `A ${c.status} claim cannot be split; only an OPEN one can.`,
+      }),
+    });
+  }
+
+  protected settlePartAmountChanged(c: ClaimView, amount: string): void {
+    this.settlePartAmounts.update((amounts) => ({ ...amounts, [c.id]: amount }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected settlePart(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const amount = (this.settlePartAmounts()[c.id] ?? '').trim();
+    if (!AMOUNT_PATTERN.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(c.amount)) {
+      this.claimError.set({ id: c.id, message: `Type an amount more than 0.00 and less than ${c.amount} to settle.` });
+      return;
+    }
+    this.api.settlePart(sheet.id, c.id, amount).subscribe({
+      next: (result) => {
+        this.settlePartAmounts.update((amounts) => ({ ...amounts, [c.id]: '' }));
+        this.saved.emit(result.original);
+        this.saved.emit(result.split);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'You may not part-settle this claim: your role may not, or you opened or last edited it.'
+          : err instanceof HttpErrorResponse && err.status === 428
+            ? 'This claim needs a proof before it can be settled.'
+            : err instanceof HttpErrorResponse && err.status === 423
+              ? 'This claim is due by inside a closed period.'
+              : err instanceof HttpErrorResponse && err.status === 400
+                ? `Type an amount more than 0.00 and less than ${c.amount} to settle.`
+                : this.deferredOf(c)
+                  ? `This claim is deferred until ${c.deferredUntil}, so it cannot be part-settled.`
+                  : `This claim cannot be part-settled; only an OPEN one can.`,
       }),
     });
   }

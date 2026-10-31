@@ -383,6 +383,17 @@ public class ClaimController {
         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
+    /** Part-settle an OPEN claim: split the amount off it and settle the new claim at once. */
+    @PostMapping("/claims/{id}/settle-part")
+    public SplitView settlePart(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody Split request) {
+        ClaimService.Split split = claims.settlePart(sheetId, user, id, request.amount());
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+    }
+
     /**
      * Open each selected claim that can be opened, one at a time in list order (people in the order listed,
      * newest claim first within a person), so they are numbered in that order; each that cannot be opened, or is

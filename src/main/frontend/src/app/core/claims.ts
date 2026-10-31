@@ -413,6 +413,12 @@ export class Claims {
     return this.http.post<SplitView>(`${this.base(sheetId)}/claims/${id}/split`, { amount });
   }
 
+  /** Part-settle an OPEN claim: split `amount` off it and settle the new claim at once (PENDING when the clerk
+   *  limit says so). */
+  settlePart(sheetId: string, id: number, amount: string): Observable<SplitView> {
+    return this.http.post<SplitView>(`${this.base(sheetId)}/claims/${id}/settle-part`, { amount });
+  }
+
   /** Open each of the claims that can be opened, numbered in list order; the rest are refused and left as they are. */
   bulkOpen(sheetId: string, ids: readonly number[]): Observable<BulkOpenView> {
     return this.http.post<BulkOpenView>(`${this.base(sheetId)}/claims/bulk-open`, { ids });

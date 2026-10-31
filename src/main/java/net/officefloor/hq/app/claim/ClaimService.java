@@ -255,6 +255,13 @@ public class ClaimService {
      *  reason on it; the claim keeps the reason and the audit line ends with it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason) {
+        return changeStatus(sheetId, user, id, next, reason, true);
+    }
+
+    /** Move a claim to a new status, as {@link #changeStatus(String, String, long, ClaimStatus, String)}; while
+     *  {@code judged} is false the four-eyes rules and the proof rule are left to the caller, who has judged them on
+     *  another claim. */
+    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason, boolean judged) {
         sheets.load(sheetId, user);
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -286,14 +293,16 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
         }
-        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
+        if (judged && next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened or last edited a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
         BigDecimal due = dueNow(sheet, claim, person);
         if (next == ClaimStatus.SETTLED) {
-            refuseUnproven(sheet, claim, person, due);
+            if (judged) {
+                refuseUnproven(sheet, claim, person, due);
+            }
         } else if (next == ClaimStatus.OPEN) {
             refuseUnnoted(sheet, claim, due);
             refuseOverCap(sheetId, claim);
@@ -850,6 +859,32 @@ public class ClaimService {
         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_OPENED", user, person, added, added.getNumber()));
         rollup.recordChanges(sheetId, user, before);
         return new Split(original, added);
+    }
+
+    /** Part-settle an OPEN claim: split the amount off it exactly as {@link #split} does, then settle the new claim
+     *  exactly as {@link #changeStatus(String, String, long, ClaimStatus)} does (PENDING when the clerk limit says
+     *  so), save that the four-eyes rules and the proof rule are judged on the original claim as it was before the
+     *  split. A split or settle that would be refused refuses the whole action and nothing is written. The original,
+     *  keeping the rest of its amount, and the new claim, as saved. */
+    @Transactional
+    public Split settlePart(String sheetId, String user, long id, BigDecimal amount) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be part-settled; only an OPEN one can");
+        }
+        if (claim.isOpenedOrEditedBy(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened or last edited a claim cannot settle it");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        refuseUnproven(sheet, claim, person, dueNow(sheet, claim, person));
+        Split split = split(sheetId, user, id, amount);
+        return new Split(split.original(),
+                changeStatus(sheetId, user, split.split().getId(), ClaimStatus.SETTLED, null, false));
     }
 
     /** The PENDING claim a steward approves or rejects; refused for a clerk, a claim in any other status and one
