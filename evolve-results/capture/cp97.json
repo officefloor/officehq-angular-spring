@@ -1,0 +1,64 @@
+{
+  "checkpoint": 97,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp97_monthly-totals",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1885cfaf1bf75377d9611d3b925bb8f8c8e6fbc8",
+  "reset_sha": "",
+  "preagent_sha": "d14353fdc373d46bddfb491fadab9131f8382044",
+  "prev_sha": "d14353fdc373d46bddfb491fadab9131f8382044",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3938842,
+    "input_tokens": 24,
+    "output_tokens": 3189,
+    "cache_read_tokens": 340961,
+    "cache_creation_tokens": 32727,
+    "num_turns": 12,
+    "duration_ms": 185959,
+    "duration_api_ms": 33922,
+    "model": "claude-opus-5-5",
+    "session_id": "8034c516-17a5-446e-8a56-af598861f31c",
+    "stop_reason": "success",
+    "result_text": "The People section now shows a due-total for every month that any claim on the sheet is dated in. All 4 acceptance tests pass in `bin/e2e`.\n\nThe change is all in the front end, in `src/main/frontend/src/app/features/people/people.ts`:\n\n- **Calculation:** a new `monthTotals` value takes every claim on the sheet and groups it by its month (`yyyy-mm`). For each month it adds up the dues of the claims that count, using the same rule as the existing per-tag totals. That rule leaves out draft and void claims, open claims dated inside a person's hold, and claims after a person's retirement date.\n- **Months with nothing counting:** such a month still appears, showing `0.00`. In the test, April holds only a draft claim, so it shows `0.00`.\n- **Display:** a \"Due by month\" list, sorted by month, sits under the existing due-by-tag list. Each total carries `data-testid=\"month-<yyyy-mm>-due-total\"`, as the test expects.\n\nThese are plain sums: unlike the sheet's overall due-total, they don't apply the sheet's cap and don't drop the highest and lowest person's figures.\n\nThere were no changes to the server, the database or the audit file, since the test expects no new audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3938842,
+        "num_turns": 12,
+        "duration_ms": 185959,
+        "duration_api_ms": 33922,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp97.agent.jsonl",
+  "agent_diff_file": "cp97.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
