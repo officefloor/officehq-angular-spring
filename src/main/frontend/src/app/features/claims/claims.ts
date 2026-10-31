@@ -148,6 +148,16 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? notAvailable }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+            @for (m of c.comments ?? []; track $index) {
+              <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
+            }
+          </ol>
+          <label [for]="'claim-comment-text-' + c.id">Comment</label>
+          <input [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text" autocomplete="off"
+                 [value]="commentTexts()[c.id] ?? ''" (input)="commentTextChanged(c, $any($event.target).value)" />
+          <button type="button" data-testid="claim-comment-add" (click)="addComment(c)"
+                  [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
           @if (claimError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
@@ -192,6 +202,8 @@ export class PersonClaims {
   protected readonly saving = signal(false);
   /** The error of the last action taken on a claim's row, until the next action on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  /** The comment typed for each claim, by id. */
+  protected readonly commentTexts = signal<Readonly<Record<number, string>>>({});
   /** The person chosen to move each claim to, by claim id. */
   protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
   /** The date typed to defer each OPEN claim until, by id. */
@@ -406,6 +418,34 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 423
           ? 'This claim is due by inside a closed period.'
           : `A ${c.status} claim cannot be given a proof.`,
+      }),
+    });
+  }
+
+  protected commentTextChanged(c: ClaimView, text: string): void {
+    this.commentTexts.update((texts) => ({ ...texts, [c.id]: text }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected addComment(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const text = (this.commentTexts()[c.id] ?? '').trim();
+    if (text === '') {
+      this.claimError.set({ id: c.id, message: 'Type a comment to add.' });
+      return;
+    }
+    this.api.comment(sheet.id, c.id, text).subscribe({
+      next: (saved) => {
+        this.commentTexts.update((texts) => ({ ...texts, [c.id]: '' }));
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'You may not comment on this claim.'
+          : 'This claim cannot be commented on now.',
       }),
     });
   }

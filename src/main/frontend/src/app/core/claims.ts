@@ -56,6 +56,15 @@ export interface ClaimView {
   tags: string[];
   /** The reason from the sheet's list the claim was voided with; null when not void or voided without one. */
   voidReason: string | null;
+  /** The claim's comments, oldest first. */
+  comments: ClaimComment[];
+}
+
+/** A comment on a claim: the signed-in name of who wrote it, the sheet's today (yyyy-mm-dd) then, and its text. */
+export interface ClaimComment {
+  by: string;
+  on: string;
+  text: string;
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
@@ -272,6 +281,11 @@ export class Claims {
   /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
   addProof(sheetId: string, id: number): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/proofs`, {});
+  }
+
+  /** Comment on a claim as the signed-in user on the sheet's today; an empty comment is refused. */
+  comment(sheetId: string, id: number, text: string): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/comments`, { text });
   }
 
   /** Write a reminder for an OPEN or PENDING claim, dated the sheet's today; refused once it was reminded today. */

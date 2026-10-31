@@ -132,6 +132,13 @@ public class Claim {
     @BatchSize(size = 100)
     private List<ClaimLogEntry> log = new ArrayList<>();
 
+    /** The claim's comments, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_comment", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    @BatchSize(size = 100)
+    private List<ClaimComment> comments = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -396,5 +403,15 @@ public class Claim {
     /** Log the status the claim has now, taken by this user on this day, at the due it has at this moment. */
     public void logStatus(String user, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogEntry(status, user, on, due));
+    }
+
+    /** The claim's comments, oldest first. */
+    public List<ClaimComment> getComments() {
+        return Collections.unmodifiableList(comments);
+    }
+
+    /** Add a comment written by this user on this day. */
+    public void comment(String user, LocalDate on, String text) {
+        comments.add(new ClaimComment(user, on, text));
     }
 }

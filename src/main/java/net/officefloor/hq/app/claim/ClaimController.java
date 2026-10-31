@@ -42,13 +42,14 @@ public class ClaimController {
      * on any other claim); lockedBy is who has its editor open, locking it for other users (null when no one has);
      * lateEntry is whether it was added while its period was soft-closed; remindedOn is the last day a reminder was
      * written for it (null if never); tags are its tags, sorted (none when it has none); voidReason is the reason it
-     * was voided with (null when it was voided without one, or is not void).
+     * was voided with (null when it was voided without one, or is not void); comments are its comments, oldest
+     * first.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
-            String voidReason) {
+            String voidReason, List<CommentLine> comments) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -58,7 +59,8 @@ public class ClaimController {
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn(), claim.getRef(), claim.tagList(), claim.getVoidReason());
+                    claim.getRemindedOn(), claim.getRef(), claim.tagList(), claim.getVoidReason(),
+                    claim.getComments().stream().map(CommentLine::of).toList());
         }
     }
 
@@ -70,6 +72,18 @@ public class ClaimController {
             return new LogLine(entry.getStatus(), entry.getBy(), entry.getOn(),
                     entry.getDue() == null ? null : entry.getDue().toPlainString());
         }
+    }
+
+    /** A comment on a claim: who wrote it, on the sheet's today then, and its text. */
+    public record CommentLine(String by, LocalDate on, String text) {
+
+        public static CommentLine of(ClaimComment comment) {
+            return new CommentLine(comment.getBy(), comment.getOn(), comment.getText());
+        }
+    }
+
+    /** A comment to add to a claim; an empty one is refused. */
+    public record CommentForm(@Size(max = 1000) String text) {
     }
 
     /** A claim's values as the form submits them; a missing date takes the sheet's today. A negative amount is a
@@ -246,6 +260,15 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(claims.addProof(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/comments")
+    public ClaimView comment(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody CommentForm request) {
+        return ClaimView.of(claims.comment(sheetId, user, id, request.text()));
     }
 
     @PostMapping("/claims/{id}/reminders")

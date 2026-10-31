@@ -406,6 +406,25 @@ public class ClaimService {
         return proven;
     }
 
+    /** Comment on a claim, as this user on the sheet's today. Refused for an empty comment. */
+    @Transactional
+    public Claim comment(String sheetId, String user, long id, String text) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A comment cannot be empty");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        claim.comment(user, sheet.getToday(), trimmed);
+        Claim commented = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("COMMENT_ADDED", user, person, commented,
+                commented.getNumber()) + " text=" + trimmed);
+        return commented;
+    }
+
     /** Write a reminder for an OPEN or PENDING claim, dated the sheet's today. Refused for a claim in any other
      *  status and one already reminded on the sheet's today. */
     @Transactional
