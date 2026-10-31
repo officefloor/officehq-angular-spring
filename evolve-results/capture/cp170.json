@@ -1,0 +1,64 @@
+{
+  "checkpoint": 170,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp170_rate-calendar",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b800a7af64a4d8f377e1e5fd2748681995ec56d0",
+  "reset_sha": "",
+  "preagent_sha": "2f8776e77425c24b12c4916ab66da2d295c0ce7d",
+  "prev_sha": "2f8776e77425c24b12c4916ab66da2d295c0ce7d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.49534800000000007,
+    "input_tokens": 6,
+    "output_tokens": 596,
+    "cache_read_tokens": 104939,
+    "cache_creation_tokens": 2757,
+    "num_turns": 2,
+    "duration_ms": 7281,
+    "duration_api_ms": 37001,
+    "model": "claude-opus-5-5",
+    "session_id": "46b19ead-24f2-4fd4-b225-fe1a3bda376a",
+    "stop_reason": "success",
+    "result_text": "The Rates panel now has a rate calendar: a table with one row per grade and one column per month of the sheet's today's calendar year. Each cell shows the rate in force on the first of that month, or `n/a` when there is none. `bin/e2e` passes all 4 tests in the spec.\n\n- **Where the change is:** only the front end, in two files. The server and stored data didn't need changing, because the calendar works from the rates the screen already loads.\n  - `core/rates.ts` has two new computed values: `calendarMonths` (the 12 months of today's year) and `calendarByGrade`.\n  - `features/rates/rates.ts` has the new table, with a cell for each grade and month: `rate-month-<grade>-<yyyy-mm>`.\n- **How each rate is worked out:** it uses the same rule as the existing \"today\" rate, just checked on the 1st of each month instead of today. So from- and to-dates are honoured, a rate that has ended isn't replaced by an earlier one, and a grade with no rate of its own on the sheet falls back to the parent sheet's rate.\n- **Changing today:** the calendar follows the sheet's today, so moving today into another year shows that year's twelve months.\n- **Number format:** values use the existing figure formatting, so a user with the German locale sees `12,50` rather than `12.50`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.49534800000000007,
+        "num_turns": 2,
+        "duration_ms": 7281,
+        "duration_api_ms": 37001,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp170.agent.jsonl",
+  "agent_diff_file": "cp170.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

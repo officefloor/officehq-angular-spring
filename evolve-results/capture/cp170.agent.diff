@@ -1,0 +1,75 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 960dfc285..c995319e3 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -225,6 +225,27 @@ export class Rates {
+     return current;
+   });
+ 
++  /** The months (yyyy-mm) of the active sheet's today's calendar year. */
++  readonly calendarMonths = computed(() => {
++    const year = (this.sheets.current()?.today ?? '').slice(0, 4);
++    if (year === '') return [];
++    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
++  });
++  /** For each grade, the rate in force on the first day of each month of the calendar (the sheet's own, else its
++   *  nearest ancestor's), by month (yyyy-mm); a month with none is missing. */
++  readonly calendarByGrade = computed(() => {
++    const calendar = new Map<Grade, Map<string, string>>();
++    for (const [grade, line] of this.lineByGrade()) {
++      const months = new Map<string, string>();
++      for (const month of this.calendarMonths()) {
++        const rate = rateOnLine(line, `${month}-01`);
++        if (rate !== undefined) months.set(month, rate);
++      }
++      calendar.set(grade, months);
++    }
++    return calendar;
++  });
++
+   /** Re-read a sheet's rates, and its ancestors', from the store; null clears them. */
+   load(sheetId: string | null): Observable<RateView[]> | null {
+     this.list.set([]);
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index d5ccaacc7..b9e5d20f8 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -7,7 +7,8 @@ import { NOT_AVAILABLE, RATE_PATTERN, RatePreview, Rates } from '../../core/rate
+ import { Sheets } from '../../core/sheet';
+ import { FigurePipe } from '../../core/figure';
+ 
+-// The sheet's rates for each grade: the one in force today, each by from-date, and a form to set one.
++// The sheet's rates for each grade: the one in force today, each by from-date, a calendar of the one in force on the
++// first of each month of today's year, and a form to set one.
+ @Component({
+   selector: 'app-rates',
+   imports: [ReactiveFormsModule, FigurePipe],
+@@ -33,6 +34,28 @@ import { FigurePipe } from '../../core/figure';
+         }
+       </ul>
+ 
++      <table aria-label="Rate calendar: the rate in force on the first day of each month">
++        <caption>Rate calendar (first day of each month)</caption>
++        <thead>
++          <tr>
++            <th scope="col">Grade</th>
++            @for (m of rates.calendarMonths(); track m) {
++              <th scope="col">{{ m }}</th>
++            }
++          </tr>
++        </thead>
++        <tbody>
++          @for (g of grades; track g) {
++            <tr>
++              <th scope="row">{{ g }}</th>
++              @for (m of rates.calendarMonths(); track m) {
++                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ (rates.calendarByGrade().get(g)?.get(m) ?? notAvailable) | figure }}</td>
++              }
++            </tr>
++          }
++        </tbody>
++      </table>
++
+       <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Set a rate">
+         <label for="rate-form-grade">Grade</label>
+         <select id="rate-form-grade" data-testid="rate-form-grade" formControlName="grade">
