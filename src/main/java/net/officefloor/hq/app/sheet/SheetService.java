@@ -195,6 +195,19 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's pot (null: none), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setPot(String id, String user, BigDecimal pot) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        BigDecimal scaled = pot == null ? null : pot.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setPot(scaled);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=pot value=" + (scaled == null ? "" : scaled.toPlainString()));
+        return saved;
+    }
+
     /** Record the sheet's cap (null: none) from a date (null: the sheet's today), starting the sheet if it has never
      *  been loaded. */
     @Transactional

@@ -12,6 +12,8 @@ export interface PoolMemberView {
   share: string;
   /** Retired as soon as a retirement date is set: their share then counts as 0.00 toward the total. */
   retired: boolean;
+  /** Their cut of the sheet's pot (two decimals); null when there is no pot or the pool is not balanced. */
+  cut: string | null;
 }
 
 /** A pool on the sheet: its members, their total share, and balanced when that is exactly 100.00. */

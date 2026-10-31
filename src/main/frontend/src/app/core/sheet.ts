@@ -57,6 +57,8 @@ export interface SheetView {
   /** The sheet's grace days: when its today changes, every open period whose to-date plus these is before the new
    *  today is closed; null: off. Not dated. */
   graceDays: number | null;
+  /** The pot (two decimals), cut among the members of each balanced pool; null when there is none. Not dated. */
+  pot: string | null;
   /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
   archived: boolean;
   /** The date (yyyy-mm-dd) the sheet is shown as of: it is as it stood at the end of that day, which stands in for
@@ -209,6 +211,13 @@ export class Sheets {
   setGraceDays(id: string, graceDays: number | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/grace-days`, { graceDays })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's pot; null means none. Not dated. */
+  setPot(id: string, pot: string | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/pot`, { pot })
       .pipe(tap((s) => this.active.set(s)));
   }
 

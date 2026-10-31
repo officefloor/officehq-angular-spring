@@ -2,6 +2,7 @@ package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -9,6 +10,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -33,8 +35,8 @@ public class PoolService {
         }
     }
 
-    /** A pool with its members, in the order they were added. */
-    public record PoolWithMembers(Pool pool, List<Member> members) {
+    /** A pool with its members, in the order they were added, and the sheet's pot (null: none). */
+    public record PoolWithMembers(Pool pool, List<Member> members, BigDecimal pot) {
 
         /** The members' shares added up, a retired member's counting as 0.00. */
         public BigDecimal totalShare() {
@@ -44,6 +46,27 @@ public class PoolService {
         /** Balanced when the shares total exactly 100.00. */
         public boolean balanced() {
             return totalShare().compareTo(FULL) == 0;
+        }
+
+        /** Each member's cut of the pot, in the order of the members; none (null) when there is no pot or the pool
+         *  is not balanced. A cut is the pot times the share over 100, rounded half to even to two decimals, 0.00 for
+         *  a retired member; what the cuts fall short of (or over) the pot goes to the member with the largest share
+         *  counted, the earliest added on a tie, so the cuts total exactly the pot. */
+        public List<BigDecimal> cuts() {
+            if (pot == null || !balanced()) {
+                return null;
+            }
+            List<BigDecimal> cuts = new ArrayList<>(members.stream()
+                    .map(m -> pot.multiply(m.counted()).divide(FULL, 2, RoundingMode.HALF_EVEN)).toList());
+            BigDecimal remainder = pot.subtract(cuts.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add));
+            int largest = 0;
+            for (int i = 1; i < members.size(); i++) {
+                if (members.get(i).counted().compareTo(members.get(largest).counted()) > 0) {
+                    largest = i;
+                }
+            }
+            cuts.set(largest, cuts.get(largest).add(remainder));
+            return cuts;
         }
     }
 
@@ -68,13 +91,14 @@ public class PoolService {
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId) {
         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
+        BigDecimal pot = sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())
                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
         return list.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()).stream()
                 .filter(m -> byId.containsKey(m.getPersonId()))
-                .map(m -> new Member(byId.get(m.getPersonId()), m.getShare())).toList())).toList();
+                .map(m -> new Member(byId.get(m.getPersonId()), m.getShare())).toList(), pot)).toList();
     }
 
     /** Add a pool by its name, trimmed; refused when blank or already a pool on the sheet. */

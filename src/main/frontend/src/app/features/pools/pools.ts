@@ -1,7 +1,7 @@
-import { Component, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { EMPTY, switchMap } from 'rxjs';
+import { EMPTY, distinctUntilChanged, skip, switchMap } from 'rxjs';
 import { PersonView } from '../../core/people';
 import { Pools, SHARE_PATTERN } from '../../core/pools';
 import { Sheets } from '../../core/sheet';
@@ -25,7 +25,8 @@ type MemberForm = FormGroup<{ personId: FormControl<string>; share: FormControl<
               @for (m of pool.members; track m.personId) {
                 <li [attr.data-testid]="'pool-member-' + pool.name + '-' + m.personId">
                   <span data-testid="pool-member-name">{{ m.name }}</span>:
-                  <span data-testid="pool-share">{{ m.share }}</span>
+                  <span data-testid="pool-share">{{ m.share }}</span>,
+                  cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
                   @if (m.retired) { (retired) }
                 </li>
               }
@@ -89,6 +90,21 @@ export class PoolsPanel {
           this.errors.set(new Map());
           this.memberForms.clear();
           return this.pools.load(sheet?.id ?? null) ?? EMPTY;
+        }),
+        takeUntilDestroyed(),
+      )
+      .subscribe({ error: () => this.error.set('Could not read the pools.') });
+    // A change of the sheet's pot re-reads the pools, with their cuts of it.
+    toObservable(computed(() => {
+      const sheet = this.sheets.current();
+      return sheet ? `${sheet.id}\n${sheet.pot ?? ''}` : null;
+    }))
+      .pipe(
+        distinctUntilChanged(),
+        skip(1),
+        switchMap(() => {
+          const sheet = this.sheets.current();
+          return sheet && sheet.id === this.sheets.loaded()?.id ? this.pools.load(sheet.id) ?? EMPTY : EMPTY;
         }),
         takeUntilDestroyed(),
       )

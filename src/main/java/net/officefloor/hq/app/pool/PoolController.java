@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,12 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/pools")
 public class PoolController {
 
-    /** A member as the pool's row shows it. */
-    public record MemberView(long personId, String name, String share, boolean retired) {
+    /** A member as the pool's row shows it; cut is their cut of the sheet's pot, null when the pool shows none. */
+    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
 
-        public static MemberView of(PoolService.Member m) {
+        public static MemberView of(PoolService.Member m, BigDecimal cut) {
             return new MemberView(m.person().getId(), m.person().getName(), m.share().toPlainString(),
-                    m.person().isRetired());
+                    m.person().isRetired(), cut == null ? null : cut.toPlainString());
         }
     }
 
@@ -35,7 +36,10 @@ public class PoolController {
     public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
 
         public static PoolView of(PoolService.PoolWithMembers p) {
-            return new PoolView(p.pool().getId(), p.pool().getName(), p.members().stream().map(MemberView::of).toList(),
+            List<BigDecimal> cuts = p.cuts();
+            return new PoolView(p.pool().getId(), p.pool().getName(),
+                    IntStream.range(0, p.members().size())
+                            .mapToObj(i -> MemberView.of(p.members().get(i), cuts == null ? null : cuts.get(i))).toList(),
                     p.totalShare().toPlainString(), p.balanced());
         }
     }
@@ -65,7 +69,7 @@ public class PoolController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PoolForm request) {
-        return PoolView.of(new PoolService.PoolWithMembers(pools.add(sheetId, user, request.name()), List.of()));
+        return PoolView.of(new PoolService.PoolWithMembers(pools.add(sheetId, user, request.name()), List.of(), null));
     }
 
     @PostMapping("/{poolId}/members")

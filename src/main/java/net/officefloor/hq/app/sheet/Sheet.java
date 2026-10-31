@@ -104,6 +104,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The sheet's pot (two decimals), cut among the members of each balanced pool; null means none. Not dated. */
+    @Column(name = "pot", precision = 14, scale = 2)
+    private BigDecimal pot;
+
     /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -301,6 +305,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public BigDecimal getPot() {
+        return pot;
+    }
+
+    public void setPot(BigDecimal pot) {
+        this.pot = pot;
     }
 
     public boolean isArchived() {
