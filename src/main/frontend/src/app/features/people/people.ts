@@ -12,9 +12,13 @@ import { Sheets } from '../../core/sheet';
 import { StatementSummary, Statements } from '../../core/statements';
 import { PersonClaims } from '../claims/claims';
 import { PeriodsPanel } from '../periods/periods';
+import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary';
 
 const NO_CLAIMS: ClaimView[] = [];
 const NO_RATES: RateView[] = [];
+
+/** The statuses the summary counts claims in, in the order it lists them. */
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
 /** A count of overdue claims and their dues in whole cents. */
 interface Overdue {
@@ -27,9 +31,10 @@ const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, PeriodsPanel],
+  imports: [ReactiveFormsModule, PersonClaims, PeriodsPanel, SummaryPanel],
   template: `
     <app-periods [dueTotals]="dueByPeriod()" />
+    <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()" />
 
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -242,6 +247,29 @@ export class PeopleList {
     }
     const closed = new Map(periods.filter((p) => p.closedTotal !== null).map((p) => [p.id, p.closedTotal as string]));
     return new Map([...totals].map(([id, total]) => [id, closed.get(id) ?? money(total)]));
+  });
+  /** Per grade: the people not retired on it today and their due-totals added up, skipping those with none. */
+  protected readonly summaryByGrade = computed<GradeSummary[]>(() => {
+    const due = this.dueByPerson();
+    const current = this.people().filter((p) => !p.retired);
+    return GRADES.map((grade) => {
+      const onGrade = current.filter((p) => this.gradeToday(p) === grade);
+      return {
+        grade,
+        count: onGrade.length,
+        dueTotal: money(onGrade.reduce((sum, p) => sum + (due.get(p.id) ?? 0), 0)),
+      };
+    });
+  });
+  /** Per period: its due-total, as its row shows it. */
+  protected readonly summaryByPeriod = computed<PeriodSummary[]>(() => {
+    const due = this.dueByPeriod();
+    return this.periods.list().map((p) => ({ name: p.name, dueTotal: due.get(p.id) ?? '0.00' }));
+  });
+  /** Per status: how many of the sheet's claims are in it. */
+  protected readonly summaryByStatus = computed<StatusSummary[]>(() => {
+    const claims = this.claims();
+    return SUMMARY_STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
   });
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
