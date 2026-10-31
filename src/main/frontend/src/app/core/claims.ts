@@ -34,6 +34,11 @@ export function counts(c: ClaimView): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
+/** Whether the claim counts in the live totals for a person held or not: while held, only SETTLED ones do. */
+export function countsWhile(held: boolean): (c: ClaimView) => boolean {
+  return held ? (c) => c.status === 'SETTLED' : counts;
+}
+
 /** A claim as the form submits it: a blank date takes the sheet's today. */
 export interface ClaimForm {
   amount: string;

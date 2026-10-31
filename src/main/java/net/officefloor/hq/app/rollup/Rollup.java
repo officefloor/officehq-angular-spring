@@ -62,7 +62,7 @@ public class Rollup {
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Rate> gradeRates = sheetRates.stream().filter(r -> r.getGrade().equals(person.getGrade())).toList();
             List<Claim> counting = sheetClaims.stream()
-                    .filter(c -> c.getPersonId().equals(person.getId()) && c.getStatus().counts())
+                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c.getStatus()))
                     .toList();
             BigDecimal claimed = counting.stream().map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -82,18 +82,19 @@ public class Rollup {
         return new Figures(byPerson, claimedTotal.toPlainString(), dueTotal.toPlainString());
     }
 
-    /** The due-total of the claims that count dated from {@code from} to {@code to} inclusive, as the
+    /** The due-total of the claims that count (a held person's OPEN ones do not) dated from {@code from} to {@code to} inclusive, as the
      *  screen shows a period's: each claim's due, none counting as 0. */
     public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
         List<Rate> sheetRates = rates.findBySheetId(sheetId);
-        Map<Long, String> gradeOf = new LinkedHashMap<>();
-        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> gradeOf.put(p.getId(), p.getGrade()));
+        Map<Long, Person> personOf = new LinkedHashMap<>();
+        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> personOf.put(p.getId(), p));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            String grade = gradeOf.get(claim.getPersonId());
-            if (grade == null || !claim.getStatus().counts() || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            Person person = personOf.get(claim.getPersonId());
+            if (person == null || !person.counts(claim.getStatus()) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
+            String grade = person.getGrade();
             BigDecimal due = dueOf(claim, sheetRates.stream().filter(r -> r.getGrade().equals(grade)).toList());
             if (due != null) {
                 total = total.add(due);

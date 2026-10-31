@@ -15,6 +15,8 @@ export interface PersonView {
   retired: boolean;
   /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
   retiredFrom: string | null;
+  /** On hold: their OPEN claims count in no live total; their SETTLED ones still do. */
+  held: boolean;
 }
 
 export interface PersonForm {
@@ -45,6 +47,11 @@ export class People {
   /** Retire the person from `from` (yyyy-mm-dd); null takes the sheet's today. */
   retire(sheetId: string, id: number, from: string | null): Observable<PersonView> {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/retire`, { from });
+  }
+
+  /** Put the person on hold, or take them off hold when held. */
+  toggleHold(sheetId: string, id: number): Observable<PersonView> {
+    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/hold`, {});
   }
 
   private base(sheetId: string): string {

@@ -23,11 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade, long version, boolean retired, LocalDate retiredFrom) {
+    public record PersonView(long id, String name, String grade, long version, boolean retired, LocalDate retiredFrom,
+            boolean held) {
 
         public static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    person.isRetired(), person.getRetiredFrom());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -84,5 +85,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody Retirement request) {
         return PersonView.of(people.retire(sheetId, user, id, request.from()));
+    }
+
+    /** Put the person on hold, or take them off hold when they are held. */
+    @PostMapping("/{id}/hold")
+    public PersonView hold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PersonView.of(people.toggleHold(sheetId, user, id));
     }
 }

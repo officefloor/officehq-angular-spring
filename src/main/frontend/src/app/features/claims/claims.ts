@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, counts, money } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWhile, money } from '../../core/claims';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NOT_AVAILABLE, RateView, claimDueCents } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
@@ -76,9 +76,11 @@ export class PersonClaims {
   readonly rates = input.required<readonly RateView[]>();
   /** The sheet's periods, by from-date. */
   readonly periods = input.required<readonly PeriodView[]>();
+  /** Whether the person is on hold: their OPEN claims then count in no total. */
+  readonly held = input(false);
   readonly saved = output<ClaimView>();
 
-  protected readonly claimed = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimed = computed(() => money(this.claims().filter(countsWhile(this.held())).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);

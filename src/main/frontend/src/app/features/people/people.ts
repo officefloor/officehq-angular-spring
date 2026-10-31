@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, counts, money } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsWhile, money } from '../../core/claims';
 import { GRADES, Grade, People, PersonView } from '../../core/people';
 import { Periods, periodOn } from '../../core/periods';
 import { NOT_AVAILABLE, RateView, Rates, claimDueCents } from '../../core/rates';
@@ -76,6 +76,9 @@ const NO_RATES: RateView[] = [];
             on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span>
             — retired <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
             from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span>
+            — on hold <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+            <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)" [disabled]="holding() === p.id"
+                    [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
             <button type="button" data-testid="person-statement" (click)="takeStatement(p)" [disabled]="stating() === p.id"
@@ -88,7 +91,7 @@ const NO_RATES: RateView[] = [];
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates.ratesByGrade().get(p.grade) ?? noRates"
-                               [periods]="periods.list()"
+                               [periods]="periods.list()" [held]="p.held"
                                (saved)="claimSaved($event)" />
           </li>
         }
@@ -113,6 +116,8 @@ export class PeopleList {
   );
   /** The person being retired, so a second press waits for the first. */
   protected readonly retiring = signal<number | null>(null);
+  /** The person being held or released, so a second press waits for the first. */
+  protected readonly holding = signal<number | null>(null);
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   /** Each person's statements, by person; one with none is missing. */
@@ -126,7 +131,14 @@ export class PeopleList {
     for (const c of this.claims()) byPerson.set(c.personId, [...(byPerson.get(c.personId) ?? []), c]);
     return byPerson;
   });
-  protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+  /** Whether each claim counts in the live totals: a held person's OPEN claims do not. */
+  private readonly countsNow = computed(() => {
+    const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
+    return (c: ClaimView) => countsWhile(held.has(c.personId))(c);
+  });
+  protected readonly claimedTotal = computed(() =>
+    money(this.claims().filter(this.countsNow()).reduce((sum, c) => sum + cents(c.amount), 0)),
+  );
   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none);
    *  null when their grade has no rate in force today and none of those claims keeps a settled figure. */
   private readonly dueByPerson = computed(() => {
@@ -134,7 +146,7 @@ export class PeopleList {
     const ratesByGrade = this.rates.ratesByGrade();
     const byPerson = new Map<number, number | null>();
     for (const p of this.people()) {
-      const counting = this.claimsOf(p.id).filter(counts);
+      const counting = this.claimsOf(p.id).filter(countsWhile(p.held));
       if (!today.has(p.grade) && !counting.some((c) => c.settledDue !== null || c.statedDue !== null)) {
         byPerson.set(p.id, null);
         continue;
@@ -155,7 +167,7 @@ export class PeopleList {
     const ratesByGrade = this.rates.ratesByGrade();
     const gradeOf = new Map(this.people().map((p) => [p.id, p.grade]));
     const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
-    for (const c of this.claims().filter(counts)) {
+    for (const c of this.claims().filter(this.countsNow())) {
       const period = periodOn(periods, c.date);
       const grade = gradeOf.get(c.personId);
       if (!period || !grade) continue;
@@ -266,6 +278,25 @@ export class PeopleList {
       error: () => {
         this.retiring.set(null);
         this.personError.set({ id: p.id, message: 'Could not retire ' + p.name + '.' });
+      },
+    });
+  }
+
+  /** Put the person on hold, or take them off hold when held. */
+  protected toggleHold(p: PersonView): void {
+    if (this.holding() === p.id) return;
+    this.personError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.holding.set(p.id);
+    this.api.toggleHold(sheet.id, p.id).subscribe({
+      next: (saved) => {
+        this.holding.set(null);
+        this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      },
+      error: () => {
+        this.holding.set(null);
+        this.personError.set({ id: p.id, message: 'Could not ' + (p.held ? 'release ' : 'hold ') + p.name + '.' });
       },
     });
   }
