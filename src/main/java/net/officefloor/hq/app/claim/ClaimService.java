@@ -112,7 +112,7 @@ public class ClaimService {
     /** Change a claim's amount, date, note and the claim it corrects; a missing date takes the sheet's today. Only
      *  a draft can be changed: to change an open claim, void it and add a new one. Refused when its date, as it is
      *  or as it would become, is inside a closed period, or when it would be a correction that does not name a
-     *  SETTLED claim of its person. */
+     *  SETTLED claim of its person, or while another user has its editor open. Saving releases its lock. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
             String corrects) {
@@ -124,6 +124,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
         }
+        refuseIfLockedByOther(claim, user);
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, date != null ? date : today);
         refuseIfRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(), date != null ? date : today);
@@ -133,6 +134,7 @@ public class ClaimService {
         claim.setCorrects(corrects);
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
+        claim.setLockedBy(null);
         Claim edited = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(edited.getPersonId(), sheetId).orElseThrow();
         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_EDITED", user, person, edited, edited.getNumber()));
@@ -286,6 +288,47 @@ public class ClaimService {
                 + " old=" + old + " new=" + date);
         rollup.recordChanges(sheetId, user, before);
         return redated;
+    }
+
+    /** Open a claim's editor for this user, locking the claim for other users until they save or cancel it or the
+     *  sheet's today changes. Refused for a claim that is not a draft, one dated inside a closed period and one
+     *  another user has locked; a refused claim takes no lock. Opening it again for the same user keeps the lock. */
+    @Transactional
+    public Claim lock(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited; void it and add a new one");
+        }
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfLockedByOther(claim, user);
+        claim.setLockedBy(user);
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Cancel this user's claim editor, releasing their lock on the claim; another user's lock is left as it is. */
+    @Transactional
+    public Claim unlock(String sheetId, String user, long id) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (user.equals(claim.getLockedBy())) {
+            claim.setLockedBy(null);
+            claim = claims.saveAndFlush(claim);
+        }
+        return claim;
+    }
+
+    /** Refuse a change to a claim while another user has its editor open. */
+    private static void refuseIfLockedByOther(Claim claim, String user) {
+        if (claim.getLockedBy() != null && !claim.getLockedBy().equals(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "That claim is being edited by " + claim.getLockedBy());
+        }
     }
 
     /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim and one dated inside a closed

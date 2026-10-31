@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -26,10 +27,13 @@ public class SheetService {
     private final Audit audit;
 
     private final PeriodService periods;
+    private final ClaimRepository claims;
 
     // The period service loads sheets through this one, so it is taken lazily.
-    public SheetService(SheetRepository sheets, Rollup rollup, Audit audit, @Lazy PeriodService periods) {
+    public SheetService(SheetRepository sheets, Rollup rollup, Audit audit, @Lazy PeriodService periods,
+            ClaimRepository claims) {
         this.sheets = sheets;
+        this.claims = claims;
         this.rollup = rollup;
         this.audit = audit;
         this.periods = periods;
@@ -76,16 +80,21 @@ public class SheetService {
     }
 
     /** Set the sheet's today, starting the sheet if it has never been loaded; then close every open period past its
-     *  grace days. */
+     *  grace days. A change of today releases every claim editor's lock on the sheet. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
         Rollup.Figures before = rollup.of(id);
+        boolean changed = !today.equals(sheet.getToday());
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         periods.closePastGrace(saved, user);
         rollup.recordChanges(id, user, before);
+        if (changed) {
+            // Last, so no claim read before writes its lock back.
+            claims.releaseLocks(id);
+        }
         return saved;
     }
 

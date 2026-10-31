@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, cents, countsWithHolds, isDeferred, isOverdue, money, roundingDate } from '../../core/claims';
@@ -110,7 +110,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           <button type="button" data-testid="claim-reassign" (click)="reassign(c)"
                   [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date + ' to another person'">Move</button>
           @if (editingId() === c.id) {
-            <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+            <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
                     [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
@@ -155,6 +155,8 @@ export class PersonClaims {
   protected readonly notAvailable = NOT_AVAILABLE;
   protected readonly claimed = computed(() => money(this.claims().filter(countsWithHolds(this.holds(), this.sheets.current()?.today ?? '')).reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly editingId = signal<number | null>(null);
+  /** Whether the form was typed into since the edit button was pressed. */
+  private typedSinceEdit = false;
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   /** The error of the last action taken on a claim's row, until the next action on that row. */
@@ -179,7 +181,19 @@ export class PersonClaims {
 
   constructor() {
     // An error is removed as soon as its form is changed.
-    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.error.set(null);
+      this.typedSinceEdit = true;
+    });
+    // A claim whose editor this user has open (it holds their lock) shows its editor again when the sheet is
+    // re-loaded.
+    effect(() => {
+      const user = this.session.user();
+      const mine = this.claims().find((c) => c.status === 'DRAFT' && c.lockedBy !== null && c.lockedBy === user);
+      untracked(() => {
+        if (mine && this.editingId() === null) this.open(mine);
+      });
+    });
   }
 
   protected dueOf(c: ClaimView): string {
@@ -463,10 +477,59 @@ export class PersonClaims {
       this.claimError.set({ id: c.id, message: `A ${c.status} claim cannot be edited. Void it and add a new one.` });
       return;
     }
+    // Another user has its editor open: it is locked until they save or cancel it.
+    if (c.lockedBy !== null && c.lockedBy !== this.session.user()) {
+      this.claimError.set({ id: c.id, message: `${c.lockedBy} is editing this claim, so it is locked until they are done.` });
+      return;
+    }
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    // Opening the editor locks the claim for other users until it is saved or cancelled. The editor is the
+    // claim's at once, so a save goes to it, but shows its values only once the lock is granted (unless typed
+    // into first); a refused lock closes it again, unless typed into, when its save is refused in turn. An editor
+    // open on another claim is cancelled first.
+    this.cancel();
+    this.editingId.set(c.id);
+    this.typedSinceEdit = false;
+    this.api.lock(sheet.id, c.id).subscribe({
+      next: (locked) => {
+        if (this.editingId() === c.id && !this.typedSinceEdit) this.open(locked);
+        this.saved.emit(locked);
+      },
+      error: (err: unknown) => {
+        if (this.editingId() === c.id && !this.typedSinceEdit) this.reset();
+        this.claimError.set({
+          id: c.id,
+          message: err instanceof HttpErrorResponse && err.status === 403
+            ? 'Your role may not edit a claim.'
+            : err instanceof HttpErrorResponse && err.status === 423
+              ? 'This claim is dated inside a closed period.'
+            : err instanceof HttpErrorResponse && err.status === 409
+              ? 'Another user is editing this claim, or it is no longer a draft.'
+              : 'Could not open this claim for editing.',
+        });
+      },
+    });
+  }
+
+  private open(c: ClaimView): void {
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
       { emitEvent: false });
     this.error.set(null);
+  }
+
+  /** Close the editor without saving, releasing the claim's lock. */
+  protected cancel(): void {
+    const id = this.editingId();
+    const sheet = this.sheets.current();
+    if (id !== null && sheet) {
+      // Shown unlocked at once, so the editor does not open again for it before the store answers.
+      const held = this.claims().find((c) => c.id === id && c.lockedBy !== null);
+      if (held) this.saved.emit({ ...held, lockedBy: null });
+      this.api.unlock(sheet.id, id).subscribe({ next: (unlocked) => this.saved.emit(unlocked), error: () => undefined });
+    }
+    this.reset();
   }
 
   protected reset(): void {
@@ -523,7 +586,7 @@ export class PersonClaims {
             : correction && err instanceof HttpErrorResponse && err.status === 400
               ? `Claim No. ${corrects} is not a settled claim of ${this.personName()}, so this cannot correct it.`
             : id !== null && err instanceof HttpErrorResponse && err.status === 409
-              ? 'Only a draft claim can be edited. Void it and add a new one.'
+              ? 'Only a draft claim can be edited, and not while another user is editing it.'
               : id === null ? 'Could not add that claim.' : 'Could not save that claim.',
         );
       },

@@ -93,6 +93,11 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The signed-in name of the user who has the claim's editor open, locking it for other users until they save
+     *  or cancel or the sheet's today changes; none when no one has. */
+    @Column(name = "locked_by", length = 100)
+    private String lockedBy;
+
     /** When the claim was listed under its person, in the sheet's order: given when it is added and again when it
      *  is reassigned, so a person's claims list newest first by it. */
     @Column(name = "listed", nullable = false)
@@ -276,6 +281,14 @@ public class Claim {
 
     public int getProofs() {
         return proofs;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
     }
 
     /** Count one more proof given for the claim. */

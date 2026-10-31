@@ -44,6 +44,8 @@ export interface ClaimView {
   proofs: number;
   /** The number of the claim this one was split off; null on any other claim. */
   splitFrom: string | null;
+  /** The signed-in name of the user who has the claim's editor open, locking it for others; null when no one has. */
+  lockedBy: string | null;
 }
 
 /** A line of a claim's status log: the status it took, the signed-in name of who moved it there, the sheet's
@@ -209,6 +211,17 @@ export class Claims {
 
   update(sheetId: string, id: number, claim: ClaimForm): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}`, claim);
+  }
+
+  /** Open a draft's editor, locking it for other users until it is saved or cancelled or the sheet's today
+   *  changes. Refused while another user has it open. */
+  lock(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/lock`, null);
+  }
+
+  /** Cancel a claim's editor, releasing the lock it took. */
+  unlock(sheetId: string, id: number): Observable<ClaimView> {
+    return this.http.delete<ClaimView>(`${this.base(sheetId)}/claims/${id}/lock`);
   }
 
   changeStatus(sheetId: string, id: number, status: ClaimStatus): Observable<ClaimView> {

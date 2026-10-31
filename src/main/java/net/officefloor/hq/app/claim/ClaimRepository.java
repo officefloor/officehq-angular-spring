@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,4 +18,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     long lastListed(@Param("sheetId") String sheetId);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+
+    /** Release every claim editor's lock on the sheet. */
+    @Modifying
+    @Query("update Claim c set c.lockedBy = null where c.sheetId = :sheetId and c.lockedBy is not null")
+    int releaseLocks(@Param("sheetId") String sheetId);
 }

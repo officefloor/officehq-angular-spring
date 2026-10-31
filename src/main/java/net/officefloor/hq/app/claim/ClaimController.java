@@ -13,6 +13,7 @@ import java.util.List;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,11 +37,12 @@ public class ClaimController {
      * statedDue (null if it had no figure then, when it stays n/a, or while PENDING, when no statement binds it); corrects is the number of the claim a correction corrects (null
      * on any other claim); deferredUntil is the day it was deferred until (null if never deferred); log is its status log, oldest first;
      * proofs is how many proofs have been given for it; splitFrom is the number of the claim it was split off (null
-     * on any other claim).
+     * on any other claim); lockedBy is who has its editor open, locking it for other users (null when no one has).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom) {
+            LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
+            String lockedBy) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -49,7 +51,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getBoundDue() == null ? null : claim.getBoundDue().toPlainString(), claim.getCorrects(),
                     claim.getDueBy(), claim.getDeferredUntil(), claim.getLog().stream().map(LogLine::of).toList(),
-                    claim.getProofs(), claim.getSplitFrom());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
         }
     }
 
@@ -151,6 +153,24 @@ public class ClaimController {
             @Valid @RequestBody ClaimForm request) {
         return ClaimView.of(claims.update(sheetId, user, id, request.amount(), request.date(), request.note(),
                 request.corrects()));
+    }
+
+    /** Open the claim's editor, locking it for other users. */
+    @PostMapping("/claims/{id}/lock")
+    public ClaimView lock(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(claims.lock(sheetId, user, id));
+    }
+
+    /** Cancel the claim's editor, releasing the caller's lock. */
+    @DeleteMapping("/claims/{id}/lock")
+    public ClaimView unlock(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(claims.unlock(sheetId, user, id));
     }
 
     @PutMapping("/claims/{id}/status")
