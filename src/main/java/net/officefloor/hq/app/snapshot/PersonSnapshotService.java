@@ -17,19 +17,20 @@ public class PersonSnapshotService {
         this.snapshots = snapshots;
     }
 
-    /** The sheet's snapshots, oldest first; with an as-of date, only those of days before it (a day's
-     *  line is written as the sheet's today leaves it, so it had not been written as the day stood). */
+    /** The sheet's snapshots, oldest first; with an as-of date, only those written by then: a day's line is
+     *  written as the sheet's today leaves it for another, so it had not been written while the sheet stood on that
+     *  day, nor before it reached the today it moved to. */
     @Transactional(readOnly = true)
     public List<PersonSnapshot> list(String sheetId, LocalDate asOf) {
         return snapshots.findBySheetIdOrderByDayAscIdAsc(sheetId).stream()
-                .filter(s -> asOf == null || s.getDay().isBefore(asOf))
+                .filter(s -> asOf == null || s.writtenBy(asOf))
                 .toList();
     }
 
-    /** Record the person's due-total on the day being left. */
+    /** Record the person's due-total on the day being left for the sheet's new today. */
     @Transactional
-    public void record(String sheetId, Long personId, LocalDate day, String dueTotal) {
-        snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal));
+    public void record(String sheetId, Long personId, LocalDate day, String dueTotal, LocalDate today) {
+        snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal, today));
     }
 
     /** Move the person's snapshots to another person, on another sheet (a merge or transfer); a day the other

@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,11 @@ public class RateService {
     private final Rollup rollup;
     private final RateChains chains;
     private final RateVersionRepository versions;
+    private final ClaimRepository claims;
 
     public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup, RateChains chains,
-            RateVersionRepository versions) {
+            RateVersionRepository versions, ClaimRepository claims) {
+        this.claims = claims;
         this.versions = versions;
         this.chains = chains;
         this.rates = rates;
@@ -38,7 +41,7 @@ public class RateService {
     /** The rates set on the sheet, by grade, each grade's in the order they take effect. */
     @Transactional(readOnly = true)
     public List<Rate> list(String sheetId) {
-        return rates.findBySheetId(sheetId).stream()
+        return chains.ratesOf(sheetId).stream()
                 .sorted(Comparator.comparing(Rate::getGrade).thenComparing(Rate.BY_FROM))
                 .toList();
     }
@@ -58,13 +61,16 @@ public class RateService {
     /** Set a grade's rate from a date (null: from the beginning of time) through a to-date (null: it
      *  does not end). When the grade already has a rate from that same date, the value it replaces is
      *  kept as an older version and the new one becomes the newest version, the one in force. A to-date
-     *  before the from-date is refused. */
+     *  before the from-date is refused. A rate from a date on or after the sheet's today is forward-only: it applies
+     *  only to claims added after it is saved, and a claim already there keeps the rate that applied to it (the
+     *  version it replaces included); any other applies to every claim. */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal rate) {
         if (from != null && to != null && to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rate cannot end before it starts");
         }
-        sheets.load(sheetId, user);
+        LocalDate today = sheets.load(sheetId, user).getToday();
+        Long claimsAfter = from != null && !from.isBefore(today) ? claims.lastId() : null;
         BigDecimal scaled = rate.setScale(2, RoundingMode.UNNECESSARY);
         Rollup.Figures before = rollup.of(sheetId);
         Rate row = rates.findBySheetIdAndGrade(sheetId, grade).stream()
@@ -74,12 +80,14 @@ public class RateService {
         if (row == null) {
             row = new Rate(sheetId, grade, from, scaled);
         } else {
-            versions.save(new RateVersion(row.getId(), row.getVersion(), row.getRate(), row.getToDate()));
+            versions.save(new RateVersion(row.getId(), row.getVersion(), row.getRate(), row.getToDate(),
+                    row.getClaimsAfter()));
             row.setVersion(row.getVersion() + 1);
         }
         row.setRate(scaled);
         row.setToDate(to);
-        Rate saved = rates.saveAndFlush(row);
+        row.setClaimsAfter(claimsAfter);
+        Rate saved = chains.withEarlier(List.of(rates.saveAndFlush(row))).get(0);
         audit.recordChangeOnCommit(sheetId, user, "RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + saved.getGrade() + " rate=" + saved.getRate().toPlainString()
                 + (from == null ? "" : " from=" + from)

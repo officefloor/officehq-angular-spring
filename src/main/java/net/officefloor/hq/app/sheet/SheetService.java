@@ -94,7 +94,7 @@ public class SheetService {
         if (changed) {
             LocalDate left = sheet.getToday();
             before.people().forEach((personId, figures) -> {
-                snapshots.record(id, personId, left, figures.dueTotal());
+                snapshots.record(id, personId, left, figures.dueTotal(), today);
                 audit.recordActingOnCommit(id, user, "SNAPSHOT sheet=" + id + " by=" + user
                         + " name=" + figures.name() + " due-total=" + figures.dueTotal());
             });

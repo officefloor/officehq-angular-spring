@@ -30,14 +30,19 @@ public class PersonSnapshot {
     @Column(name = "due_total", nullable = false)
     private String dueTotal;
 
+    /** The today the sheet moved to as it was written; null for one kept before this was recorded. */
+    @Column(name = "written_on")
+    private LocalDate writtenOn;
+
     protected PersonSnapshot() {
     }
 
-    public PersonSnapshot(String sheetId, Long personId, LocalDate day, String dueTotal) {
+    public PersonSnapshot(String sheetId, Long personId, LocalDate day, String dueTotal, LocalDate writtenOn) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.day = day;
         this.dueTotal = dueTotal;
+        this.writtenOn = writtenOn;
     }
 
     public Long getId() {
@@ -58,6 +63,12 @@ public class PersonSnapshot {
 
     public String getDueTotal() {
         return dueTotal;
+    }
+
+    /** Whether the line had been written as the sheet stood at the end of a date: the sheet had moved on from its day
+     *  to a today on or before that date (one kept without that today: its day is before the date). */
+    public boolean writtenBy(LocalDate date) {
+        return day.isBefore(date) && (writtenOn == null || !writtenOn.isAfter(date));
     }
 
     /** Move this snapshot to another person, on another sheet (a merge or transfer). */

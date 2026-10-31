@@ -19,7 +19,7 @@ import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateController.RateView;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChains;
 import net.officefloor.hq.app.holiday.HolidayController.HolidayView;
 import net.officefloor.hq.app.holiday.HolidayRepository;
 import net.officefloor.hq.app.role.DelegationController.DelegationView;
@@ -53,7 +53,7 @@ public class SheetHistory {
 
     private final SheetSnapshotRepository snapshots;
     private final SheetRepository sheets;
-    private final RateRepository rates;
+    private final RateChains rates;
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final PeriodRepository periods;
@@ -65,7 +65,7 @@ public class SheetHistory {
     private final HolidayRepository holidays;
     private final JsonMapper json;
 
-    public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateRepository rates,
+    public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateChains rates,
             PersonRepository people, ClaimRepository claims, PeriodRepository periods, StatementRepository statements,
             PatronRepository patrons, WatchRepository watches, RoleRepository roles, DelegationRepository delegations,
             HolidayRepository holidays, JsonMapper json) {
@@ -118,7 +118,7 @@ public class SheetHistory {
         if (sheet == null) {
             return;
         }
-        List<Rate> sheetRates = rates.findBySheetId(sheetId);
+        List<Rate> sheetRates = rates.ratesOf(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         Map<String, List<Long>> watched = new TreeMap<>();

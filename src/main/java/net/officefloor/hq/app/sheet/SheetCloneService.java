@@ -6,6 +6,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.LinkedHashMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -120,13 +122,12 @@ public class SheetCloneService {
 
         roles.saveAll(roles.findBySheetIdOrderByUserName(sheetId).stream()
                 .map(r -> new Role(target, r.getUserName(), r.getRole())).toList());
+        Map<Rate, Rate> rateCopyOf = new LinkedHashMap<>();
         rates.findBySheetId(sheetId).stream().sorted(Comparator.comparing(Rate::getId)).forEach(r -> {
             Rate copy = new Rate(target, r.getGrade(), r.getFromDate(), r.getRate());
             copy.setToDate(r.getToDate());
             copy.setVersion(r.getVersion());
-            Long copyId = rates.save(copy).getId();
-            rateVersions.saveAll(rateVersions.findByRateIdOrderByVersionAsc(r.getId()).stream()
-                    .map(v -> new RateVersion(copyId, v.getVersion(), v.getRate(), v.getToDate())).toList());
+            rateCopyOf.put(rates.save(copy), r);
         });
         holidays.saveAll(holidays.findBySheetIdOrderByDateAsc(sheetId).stream()
                 .map(h -> new Holiday(target, h.getDate())).toList());
@@ -200,6 +201,18 @@ public class SheetCloneService {
                     copy.getSplitFrom() == null ? null : renumbered.getOrDefault(copy.getSplitFrom(), copy.getSplitFrom()));
         }
         claims.saveAllAndFlush(copies);
+        // A forward-only rate applies on the clone to the copies of the claims it applied to: those after the copy
+        // of the last claim there was when it was saved (none copied: every copy).
+        long beforeCopies = copies.stream().mapToLong(Claim::getId).min().orElse(claims.lastId() + 1) - 1;
+        Function<Long, Long> cutOnClone = cut -> cut == null ? null : copies.stream()
+                .filter(c -> copyOf.get(c).getId() <= cut).mapToLong(Claim::getId).max().orElse(beforeCopies);
+        rateCopyOf.forEach((copy, r) -> {
+            copy.setClaimsAfter(cutOnClone.apply(r.getClaimsAfter()));
+            rateVersions.saveAll(rateVersions.findByRateIdOrderByVersionAsc(r.getId()).stream()
+                    .map(v -> new RateVersion(copy.getId(), v.getVersion(), v.getRate(), v.getToDate(),
+                            cutOnClone.apply(v.getClaimsAfter()))).toList());
+        });
+        rates.saveAllAndFlush(rateCopyOf.keySet());
         Sheet saved = sheetStore.saveAndFlush(clone);
 
         audit.recordActingOnCommit(sheetId, user, "SHEET_CLONE_MADE sheet=" + sheetId + " by=" + user + " to=" + target);

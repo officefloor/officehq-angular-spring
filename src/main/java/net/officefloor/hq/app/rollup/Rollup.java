@@ -242,7 +242,7 @@ public class Rollup {
         RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN
                 : sheet.roundingFor(ClaimService.roundingDate(claim, sheetClaims));
         BigDecimal figure = claim.isBound() ? claim.getBoundDue()
-                : sheetRates.inForceOn(grade, claim.getDate())
+                : sheetRates.inForceOn(grade, claim.getDate(), claim.getId())
                         .map(rate -> ClaimService.liveFigure(claim, rate.getRate(), rounding))
                         .orElse(null);
         return figure == null || sheet == null ? figure

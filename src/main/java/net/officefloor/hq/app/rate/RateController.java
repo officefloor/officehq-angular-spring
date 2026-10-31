@@ -31,17 +31,34 @@ public class RateController {
 
     /** A grade's rate as the screen shows it: a percent with exactly two decimals, and the day it
      *  takes effect (null when it applies from the beginning of time) and the last day it applies
-     *  (null when it does not end), and how many versions it has had (the one shown is the newest). */
-    public record RateView(String grade, String rate, LocalDate from, LocalDate to, int version) {
+     *  (null when it does not end), and how many versions it has had (the one shown is the newest). A forward-only
+     *  rate has claimsAfter, the highest claim id there was when it was saved: it applies only to claims with a
+     *  higher id, a claim up to it taking the newest of the older versions (earlier, newest first) that applies to
+     *  it, if any; null when it applies to every claim. */
+    public record RateView(String grade, String rate, LocalDate from, LocalDate to, int version, Long claimsAfter,
+            List<EarlierRateView> earlier) {
 
-        /** A view kept before rates had versions has none recorded: it was the first. */
+        /** A view kept before rates had versions has none recorded: it was the first; one kept before rates could be
+         *  forward-only has no older versions to show. */
         public RateView {
             version = Math.max(version, 1);
+            earlier = earlier == null ? List.of() : earlier;
         }
 
         public static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFromDate(),
-                    rate.getToDate(), rate.getVersion());
+                    rate.getToDate(), rate.getVersion(), rate.getClaimsAfter(),
+                    rate.getEarlier().stream().map(EarlierRateView::of).toList());
+        }
+    }
+
+    /** An older version of a forward-only rate a claim it does not apply to may take: its percent (two decimals), its
+     *  to-date (null when it does not end) and, when it was forward-only too, the highest claim id when it was saved. */
+    public record EarlierRateView(String rate, LocalDate to, Long claimsAfter) {
+
+        static EarlierRateView of(RateVersion version) {
+            return new EarlierRateView(version.getRate().toPlainString(), version.getToDate(),
+                    version.getClaimsAfter());
         }
     }
 

@@ -22,6 +22,7 @@ import net.officefloor.hq.app.person.Hold;
 import net.officefloor.hq.app.person.PastRetirement;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateVersion;
 import net.officefloor.hq.app.sheet.Sheet;
 
 /** What a sheet held at a moment. As far as a person's figures depend on it (its dated settings and policy date, its
@@ -48,7 +49,17 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     public record SettingState(String key, LocalDate from, String value) {
     }
 
-    public record RateState(String grade, LocalDate from, LocalDate to, BigDecimal rate) {
+    /** A rate as it stood; claimsAfter is set for a forward-only one (null in a state kept before rates could be),
+     *  with the older versions a claim it does not apply to may take, newest first. */
+    public record RateState(String grade, LocalDate from, LocalDate to, BigDecimal rate, Long claimsAfter,
+            List<EarlierRateState> earlier) {
+
+        public RateState {
+            earlier = earlier == null ? List.of() : earlier;
+        }
+    }
+
+    public record EarlierRateState(int version, BigDecimal rate, LocalDate to, Long claimsAfter) {
     }
 
     public record GradeState(LocalDate from, String grade) {
@@ -103,7 +114,9 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         return new SheetState(
                 sheet.getSettings().stream().map(s -> new SettingState(s.getKey(), s.getFrom(), s.getValue())).toList(),
                 sheet.getPolicyDate(),
-                rates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getRate())).toList(),
+                rates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getRate(),
+                        r.getClaimsAfter(), r.getEarlier().stream().map(v -> new EarlierRateState(v.getVersion(),
+                                v.getRate(), v.getToDate(), v.getClaimsAfter())).toList())).toList(),
                 people.stream().map(SheetState::stateOf).toList(),
                 claims.stream().map(c -> new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(),
                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
@@ -160,6 +173,9 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         return rates.stream().map(r -> {
             Rate rate = new Rate(sheetId, r.grade(), r.from(), r.rate());
             rate.setToDate(r.to());
+            rate.setClaimsAfter(r.claimsAfter());
+            rate.setEarlier(r.earlier().stream()
+                    .map(v -> new RateVersion(null, v.version(), v.rate(), v.to(), v.claimsAfter())).toList());
             return rate;
         }).toList();
     }

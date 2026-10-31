@@ -16,8 +16,16 @@ public record RateChain(List<List<Rate>> levels) {
     /** The rate in force for a grade on a date: the sheet's own, else the nearest ancestor's; none when no sheet in
      *  the line has one. */
     public Optional<Rate> inForceOn(String grade, LocalDate date) {
+        return inForceOn(grade, date, null);
+    }
+
+    /** The rate in force for a grade on a date as a claim (null: one not saved yet) takes it, a forward-only rate
+     *  applying only to claims added after it was saved: the sheet's own, else the nearest ancestor's; none when no
+     *  sheet in the line has one. */
+    public Optional<Rate> inForceOn(String grade, LocalDate date, Long claimId) {
         for (List<Rate> level : levels) {
-            Optional<Rate> rate = Rate.inForceOn(level.stream().filter(r -> r.getGrade().equals(grade)).toList(), date);
+            Optional<Rate> rate = Rate.inForceOn(level.stream().filter(r -> r.getGrade().equals(grade)).toList(), date,
+                    claimId);
             if (rate.isPresent()) {
                 return rate;
             }

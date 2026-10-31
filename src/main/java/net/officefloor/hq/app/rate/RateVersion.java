@@ -30,14 +30,18 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    @Column(name = "claims_after")
+    private Long claimsAfter;
+
     protected RateVersion() {
     }
 
-    public RateVersion(Long rateId, int version, BigDecimal rate, LocalDate toDate) {
+    public RateVersion(Long rateId, int version, BigDecimal rate, LocalDate toDate, Long claimsAfter) {
         this.rateId = rateId;
         this.version = version;
         this.rate = rate;
         this.toDate = toDate;
+        this.claimsAfter = claimsAfter;
     }
 
     public Long getId() {
@@ -58,5 +62,11 @@ public class RateVersion {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    /** For a forward-only version, the highest claim id there was when it was saved: it applies only to claims
+     *  after it. Null when it applies to every claim. */
+    public Long getClaimsAfter() {
+        return claimsAfter;
     }
 }

@@ -22,6 +22,27 @@ export interface RateView {
   to: string | null;
   /** How many versions the rate has had; the one shown is the newest. */
   version: number;
+  /** For a forward-only rate (saved with a from-date on or after the sheet's today), the highest claim id there was
+   *  when it was saved: it applies only to claims with a higher id; null when it applies to every claim. */
+  claimsAfter: number | null;
+  /** The older versions a claim the rate does not apply to may take, newest first. */
+  earlier: EarlierRateView[];
+}
+
+/** An older version of a forward-only rate: its percent, its to-date and, when it was forward-only too, the highest
+ *  claim id there was when it was saved. */
+export interface EarlierRateView {
+  rate: string;
+  to: string | null;
+  claimsAfter: number | null;
+}
+
+/** The value and to-date of a rate a claim (by id; none: every rate applies) takes: the newest version that applies
+ *  to it (a forward-only one applies only to claims added after it was saved); undefined when none does. */
+function forClaim(r: RateView, claimId: number | undefined): { rate: string; to: string | null } | undefined {
+  const applies = (claimsAfter: number | null) => claimId === undefined || claimsAfter === null || claimId > claimsAfter;
+  if (applies(r.claimsAfter)) return r;
+  return (r.earlier ?? []).find((v) => applies(v.claimsAfter));
 }
 
 /** What a rate import did: how many rates it set, and those rates, in line order. */
@@ -32,10 +53,16 @@ export interface RateImportView {
 
 /** The rate among a grade's rates (in the order they take effect) in force on a date (yyyy-mm-dd):
  *  the one with the latest from-date on or before it, unless the date is after its to-date; undefined
- *  when the date is before them all, or that rate has ended by then (an earlier one does not take over again). */
-export function rateOn(gradeRates: readonly RateView[], date: string): string | undefined {
-  let inForce: RateView | undefined;
-  for (const r of gradeRates) if (r.from === null || r.from <= date) inForce = r;
+ *  when the date is before them all, or that rate has ended by then (an earlier one does not take over again). For a
+ *  claim (by id), each rate as the claim takes it: a forward-only one only when it was added after it was saved, else
+ *  the older version that applied to it, if any. */
+export function rateOn(gradeRates: readonly RateView[], date: string, claimId?: number): string | undefined {
+  let inForce: { rate: string; to: string | null } | undefined;
+  for (const r of gradeRates) {
+    if (r.from !== null && r.from > date) continue;
+    const taken = forClaim(r, claimId);
+    if (taken !== undefined) inForce = taken;
+  }
   return inForce === undefined || (inForce.to !== null && inForce.to < date) ? undefined : inForce.rate;
 }
 
@@ -45,9 +72,9 @@ export type RateLine = readonly (readonly RateView[])[];
 
 /** The rate of a grade in force on a date (yyyy-mm-dd) along its line: the sheet's own, else the nearest ancestor's;
  *  undefined when no sheet in the line has one. */
-export function rateOnLine(line: RateLine, date: string): string | undefined {
+export function rateOnLine(line: RateLine, date: string, claimId?: number): string | undefined {
   for (const gradeRates of line) {
-    const rate = rateOn(gradeRates, date);
+    const rate = rateOn(gradeRates, date, claimId);
     if (rate !== undefined) return rate;
   }
   return undefined;
@@ -134,12 +161,12 @@ export function lateChargeCents(
 }
 
 /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
- *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date (the sheet's own, else its nearest ancestor's), with any late
+ *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date as the claim takes it (the sheet's own, else its nearest ancestor's), with any late
  *  charge added on top of it, the sum raised to the floor in force on its date (a correction is not); null when it has none. Its live
  *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. `grade` is its
  *  person's grade in force on its date, whose grace days delay its late charge. */
 export function claimDueCents(
-  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null },
+  c: { id?: number; amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; settledDue: string | null; stated: boolean; statedDue: string | null },
   gradeRates: RateLine,
   sheet: DueTerms,
   roundsOn: string,
@@ -152,7 +179,7 @@ export function claimDueCents(
     if (c.statedDue === null) return null;
     figure = cents(c.statedDue);
   } else {
-    const rate = rateOnLine(gradeRates, c.date);
+    const rate = rateOnLine(gradeRates, c.date, c.id);
     if (rate === undefined) return null;
     figure = dueCents(cents(c.amount), rate, roundsHalfUp(roundsOn, sheet));
   }

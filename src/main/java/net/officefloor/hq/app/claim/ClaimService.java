@@ -815,7 +815,7 @@ public class ClaimService {
      *  no rate in force on its date. */
     private BigDecimal liveNow(Sheet sheet, Claim claim, Person person) {
         String sheetId = sheet.getId();
-        return rates.of(sheetId).inForceOn(person.gradeOn(claim.getDate()), claim.getDate())
+        return rates.of(sheetId).inForceOn(person.gradeOn(claim.getDate()), claim.getDate(), claim.getId())
                 .map(Rate::getRate)
                 .map(rate -> liveFigure(claim, rate, sheet.roundingFor(roundingDate(claim,
                         claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, claim.getPersonId())))))
