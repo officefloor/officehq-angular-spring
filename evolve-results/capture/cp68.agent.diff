@@ -1,0 +1,23 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d677d903c..ddb53a35c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -557,10 +557,15 @@ export class PeopleList {
+       .join(', ');
+   }
+ 
+-  /** The person's backing: their patrons' due-totals added up, skipping those with none; 0.00 with no patrons. */
++  /** The person's backing: their patrons' settled figures over their SETTLED claims dated within the 90 days up to and
++   *  including the sheet's today, added up; 0.00 with none. */
+   protected backingOf(personId: number): string {
+-    const due = this.dueByPerson();
+-    return money((this.patronIdsByPerson().get(personId) ?? []).reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
++    const today = this.todayNow();
++    if (today === '') return money(0);
++    const from = new Date(Date.parse(today) - 89 * 86_400_000).toISOString().slice(0, 10);
++    return money((this.patronIdsByPerson().get(personId) ?? []).reduce((sum, id) => sum + this.claimsOf(id)
++      .filter((c) => c.status === 'SETTLED' && c.settledDue !== null && from <= c.date && c.date <= today)
++      .reduce((s, c) => s + cents(c.settledDue ?? '0'), 0), 0));
+   }
+ 
+   /** Start watching the person, or stop when the signed-in user already watches them. */
