@@ -72,6 +72,20 @@ import { FigurePipe } from '../../core/figure';
           <p role="alert" data-testid="period-generate-error">{{ err }}</p>
         }
       </form>
+
+      <form [formGroup]="openingForm" (ngSubmit)="importOpenings()" aria-label="Paste opening balances">
+        <label for="opening-import">Opening balances, one per line as name,period,amount</label>
+        <textarea id="opening-import" data-testid="opening-import" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="opening-import-submit" [disabled]="importingOpenings()">
+          Add opening balances
+        </button>
+        @if (openingsAdded() !== null) {
+          <p role="status">Added <span data-testid="opening-import-done">{{ openingsAdded() }}</span> lines.</p>
+        }
+        @if (openingError(); as err) {
+          <p role="alert" data-testid="opening-error">{{ err }}</p>
+        }
+      </form>
     </section>
   `,
 })
@@ -93,6 +107,15 @@ export class PeriodsPanel {
   protected readonly generating = signal(false);
   /** How many periods the last generate made; null while one runs or before any. */
   protected readonly generated = signal<number | null>(null);
+
+  protected readonly openingError = signal<string | null>(null);
+  protected readonly importingOpenings = signal(false);
+  /** How many lines the last opening balance paste added; null while one runs or before any. */
+  protected readonly openingsAdded = signal<number | null>(null);
+
+  protected readonly openingForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
 
   protected readonly generateForm = new FormGroup({
     from: new FormControl('', { nonNullable: true }),
@@ -116,6 +139,8 @@ export class PeriodsPanel {
           this.periodError.set(null);
           this.generateError.set(null);
           this.generated.set(null);
+          this.openingError.set(null);
+          this.openingsAdded.set(null);
           return this.periods.load(sheet?.id ?? null) ?? EMPTY;
         }),
         takeUntilDestroyed(),
@@ -124,6 +149,33 @@ export class PeriodsPanel {
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
     this.generateForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.generateError.set(null));
+    this.openingForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.openingError.set(null));
+  }
+
+  /** Add an opening balance per pasted line; when any line is refused, none is added. */
+  protected importOpenings(): void {
+    if (this.importingOpenings()) return;
+    // A press clears the last count, so two presses with the same result can be told apart.
+    this.openingsAdded.set(null);
+    this.openingError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const text = this.openingForm.getRawValue().text;
+    if (text.trim() === '') {
+      this.openingError.set('Paste at least one line of name,period,amount.');
+      return;
+    }
+    this.importingOpenings.set(true);
+    this.periods.importOpenings(sheet.id, text).subscribe({
+      next: ({ added }) => {
+        this.importingOpenings.set(false);
+        this.openingsAdded.set(added);
+      },
+      error: () => {
+        this.importingOpenings.set(false);
+        this.openingError.set('A pasted line is not a valid opening balance; nothing was added.');
+      },
+    });
   }
 
   /** The fiscal year a date falls in, named FY<yyyy> by the calendar year its first day falls in. */

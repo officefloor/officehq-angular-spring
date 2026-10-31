@@ -941,7 +941,7 @@ export class PeopleList {
   });
   /** Each person's carried figure for each period, by person id then period id: the due of their claims that
    *  count which belong to a period ending before this one starts and were still OPEN or PENDING at the end of
-   *  this period's last day, by the status log; a closed or soft-closed period keeps the figure fixed when it was
+   *  this period's last day, by the status log, plus their opening balance for it; a closed or soft-closed period keeps the figure fixed when it was
    *  closed. */
   private readonly carriedByPersonPeriod = computed(() => {
     const periods = this.periods.list();
@@ -956,7 +956,7 @@ export class PeopleList {
           continue;
         }
         const counts = countsAtEndWithHolds(p.holds, today, pd.to, p.retiredFrom);
-        let sum = 0;
+        let sum = cents(pd.personOpenings?.[String(p.id)] ?? '0.00');
         for (const c of this.claimsOf(p.id)) {
           const own = periodOn(periods, c.dueBy);
           const status = statusAt(c, pd.to);

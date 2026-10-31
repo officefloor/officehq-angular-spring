@@ -25,6 +25,9 @@ export interface PeriodView {
   /** Each person's carried figure for the period, by person id, fixed when it was closed or soft-closed; empty
    *  while open (absent from what was kept before figures were fixed). A person missing has 0.00. */
   closedPersonCarried?: Record<string, string> | null;
+  /** Each person's opening balance for the period, by person id, added to their carried figure for it (absent from
+   *  what was kept before openings were pasted). A person missing has 0.00. */
+  personOpenings?: Record<string, string> | null;
 }
 
 /** A period as the form submits it: a blank from-date takes the sheet's today. */
@@ -39,6 +42,12 @@ export interface PeriodForm {
 /** What a generate made: how many periods, and the periods themselves. */
 export interface GenerateView {
   made: number;
+  periods: PeriodView[];
+}
+
+/** What an opening balance paste did: how many lines went through, and the periods they changed. */
+export interface OpeningImportView {
+  added: number;
   periods: PeriodView[];
 }
 
@@ -108,6 +117,18 @@ export class Periods {
     return this.http
       .post<PeriodView>(`${this.base(sheetId)}/${encodeURIComponent(name)}/reopen`, {})
       .pipe(tap((saved) => this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)))));
+  }
+
+  /** Add an opening balance per pasted line of name,period,amount to the person's carried figure for the period;
+   *  when any line is refused, none is added. */
+  importOpenings(sheetId: string, text: string): Observable<OpeningImportView> {
+    return this.http
+      .post<OpeningImportView>(`/api/sheets/${encodeURIComponent(sheetId)}/openings/import`, { text })
+      .pipe(
+        tap(({ periods }) =>
+          this.periods.update((list) => list.map((p) => periods.find((saved) => saved.id === p.id) ?? p)),
+        ),
+      );
   }
 
   private base(sheetId: string): string {

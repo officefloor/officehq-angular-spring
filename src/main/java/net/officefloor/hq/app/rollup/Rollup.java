@@ -157,8 +157,8 @@ public class Rollup {
 
     /** Each person's carried figure for a period, by person id, as the screen shows it: the dues as shown now of
      *  their claims that count (as for the period's figures) which are due by in a period of the sheet ending before
-     *  this one starts and were still OPEN or PENDING at the end of this period's last day, none counting as 0; every
-     *  person on the sheet has one. */
+     *  this one starts and were still OPEN or PENDING at the end of this period's last day, none counting as 0, plus
+     *  their opening balance for it; every person on the sheet has one. */
     public Map<Long, BigDecimal> carriedByPerson(String sheetId, Period period) {
         RateChain sheetRates = rates.of(sheetId);
         Sheet sheet = sheets.findById(sheetId).orElse(null);
@@ -169,7 +169,7 @@ public class Rollup {
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> {
             personOf.put(p.getId(), p);
-            totals.put(p.getId(), BigDecimal.ZERO.setScale(2));
+            totals.put(p.getId(), period.openingOf(p.getId()));
         });
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
