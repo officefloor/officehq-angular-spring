@@ -1,0 +1,122 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e75585c74..6fae9ce67 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,10 +12,14 @@ import { Sheets } from '../../core/sheet';
+ import { StatementSummary, Statements } from '../../core/statements';
+ import { PersonClaims } from '../claims/claims';
+ import { PeriodsPanel } from '../periods/periods';
++import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary';
+ 
+ const NO_CLAIMS: ClaimView[] = [];
+ const NO_RATES: RateView[] = [];
+ 
++/** The statuses the summary counts claims in, in the order it lists them. */
++const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
++
+ /** A count of overdue claims and their dues in whole cents. */
+ interface Overdue {
+   count: number;
+@@ -27,9 +31,10 @@ const NO_OVERDUE: Overdue = { count: 0, cents: 0 };
+ // each person's claims and due-total, and the sheet's claimed-total and due-total.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims, PeriodsPanel],
++  imports: [ReactiveFormsModule, PersonClaims, PeriodsPanel, SummaryPanel],
+   template: `
+     <app-periods [dueTotals]="dueByPeriod()" />
++    <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()" />
+ 
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -243,6 +248,29 @@ export class PeopleList {
+     const closed = new Map(periods.filter((p) => p.closedTotal !== null).map((p) => [p.id, p.closedTotal as string]));
+     return new Map([...totals].map(([id, total]) => [id, closed.get(id) ?? money(total)]));
+   });
++  /** Per grade: the people not retired on it today and their due-totals added up, skipping those with none. */
++  protected readonly summaryByGrade = computed<GradeSummary[]>(() => {
++    const due = this.dueByPerson();
++    const current = this.people().filter((p) => !p.retired);
++    return GRADES.map((grade) => {
++      const onGrade = current.filter((p) => this.gradeToday(p) === grade);
++      return {
++        grade,
++        count: onGrade.length,
++        dueTotal: money(onGrade.reduce((sum, p) => sum + (due.get(p.id) ?? 0), 0)),
++      };
++    });
++  });
++  /** Per period: its due-total, as its row shows it. */
++  protected readonly summaryByPeriod = computed<PeriodSummary[]>(() => {
++    const due = this.dueByPeriod();
++    return this.periods.list().map((p) => ({ name: p.name, dueTotal: due.get(p.id) ?? '0.00' }));
++  });
++  /** Per status: how many of the sheet's claims are in it. */
++  protected readonly summaryByStatus = computed<StatusSummary[]>(() => {
++    const claims = this.claims();
++    return SUMMARY_STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
++  });
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private editingVersion = 0;
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+new file mode 100644
+index 000000000..a78cfe97c
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -0,0 +1,55 @@
++import { Component, input } from '@angular/core';
++import { Grade } from '../../core/people';
++
++/** A grade's line: how many people not retired are on it today, and their due-totals added up. */
++export interface GradeSummary {
++  grade: Grade;
++  count: number;
++  dueTotal: string;
++}
++
++/** A period's line: its due-total, as the period's row shows it. */
++export interface PeriodSummary {
++  name: string;
++  dueTotal: string;
++}
++
++/** A status's line: how many claims on the sheet are in it. */
++export interface StatusSummary {
++  status: string;
++  count: number;
++}
++
++// The sheet's figures at a glance, per grade, per period and per claim status; each agrees with the list.
++@Component({
++  selector: 'app-summary',
++  template: `
++    <section aria-labelledby="summary-heading">
++      <h2 id="summary-heading">Summary</h2>
++      <ul aria-label="By grade">
++        @for (g of grades(); track g.grade) {
++          <li>Grade {{ g.grade }}:
++            <span [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</span> people, due
++            <span [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</span></li>
++        }
++      </ul>
++      <ul aria-label="By period">
++        @for (p of periods(); track p.name) {
++          <li>Period {{ p.name }}: due
++            <span [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</span></li>
++        }
++      </ul>
++      <ul aria-label="By status">
++        @for (s of statuses(); track s.status) {
++          <li>{{ s.status }}:
++            <span [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</span> claims</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class SummaryPanel {
++  readonly grades = input.required<readonly GradeSummary[]>();
++  readonly periods = input.required<readonly PeriodSummary[]>();
++  readonly statuses = input.required<readonly StatusSummary[]>();
++}
