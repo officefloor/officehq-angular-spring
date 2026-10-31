@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -62,6 +63,14 @@ public class PersonService {
      *  on another sheet of its tree. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, null);
+    }
+
+    /** Add a person as {@link #add(String, String, String, String, Integer, String)} does, with their tags (comma
+     *  separated; each trimmed and lower-cased, blanks and repeats dropped; blank or null: none). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            String tags) {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)
@@ -77,6 +86,7 @@ public class PersonService {
         Person person = new Person(sheetId, trimmed, grade);
         person.setTerms(terms);
         person.setContact(reach);
+        person.setTags(ClaimService.tagsOf(tags));
         person.setPosition(people.findMaxPositionBySheetId(sheetId) + 1);
         Person added = save(person);
         audit.recordChangeOnCommit(sheetId, user, entry("PERSON_ADDED", user, added, grade)
@@ -127,23 +137,39 @@ public class PersonService {
             LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, person.getContact(), false);
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, person.getContact(), person.getTags(),
+                false);
     }
 
     /**
      * Edit a person as {@link #update(String, String, long, long, String, String, LocalDate, Integer)} does, their
      * contact becoming {@code contact} (stored trimmed and lower-cased; blank or null: none): refused when another
      * person on the sheet has it. As an edit through the person form, it is also refused while the new name or any
-     * of the person's aliases is used on another sheet of the sheet's tree.
+     * of the person's aliases is used on another sheet of the sheet's tree. Their tags are kept.
      */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
-        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, true);
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, person.getTags(), true);
+    }
+
+    /**
+     * Edit a person through the person form as
+     * {@link #update(String, String, long, long, String, String, LocalDate, Integer, String)} does, their tags
+     * becoming {@code tags} (comma separated; each trimmed and lower-cased, blanks and repeats dropped; blank or
+     * null: none).
+     */
+    @Transactional
+    public Person update(String sheetId, String user, long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tags) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, ClaimService.tagsOf(tags),
+                true);
     }
 
     private Person update(String sheetId, String user, long id, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, boolean throughForm) {
+            LocalDate gradeFrom, Integer terms, String contact, String tags, boolean throughForm) {
         LocalDate today = sheets.load(sheetId, user).getToday();
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
@@ -174,6 +200,7 @@ public class PersonService {
         person.setTerms(terms);
         boolean contactChanged = !Objects.equals(person.getContact(), reach);
         person.setContact(reach);
+        person.setTags(tags);
         Person edited = save(person);
         audit.recordChangeOnCommit(sheetId, user, entry("PERSON_EDITED", user, edited, edited.gradeOn(today))
                 + (termsChanged ? " terms=" + (terms != null ? terms : "") : "")

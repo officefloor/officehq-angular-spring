@@ -49,6 +49,8 @@ export interface PersonView {
   origin?: string | null;
   /** The retirements the person was unretired from, in the order they started; missing in an older snapshot. */
   pastRetirements?: RetirementView[] | null;
+  /** The person's tags, sorted; empty when they have none. */
+  tags: string[];
 }
 
 /** A past retirement: retired from `from`, unretired on `to` (yyyy-mm-dd). */
@@ -64,6 +66,8 @@ export interface PersonForm {
   terms: number | null;
   /** The person's contact; blank: none. */
   contact: string;
+  /** The tags, comma separated (each trimmed and lower-cased by the store, repeats dropped); blank for none. */
+  tags: string;
 }
 
 /** An edit of a person: the grade is recorded from `gradeFrom` (yyyy-mm-dd; null takes the sheet's today). */

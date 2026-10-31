@@ -57,6 +57,11 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; none when they have
+     *  none. */
+    @Column(name = "tags", length = 1000)
+    private String tags;
+
     /** The date the person is retired from; null while they are not retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -92,8 +97,8 @@ public class Person {
         this.grades.add(new GradeFrom(null, grade));
     }
 
-    /** A copy of the person on another sheet, unsaved: their name, place in the list, grades, terms, contact, aliases,
-     *  holds and retirements (current and past); not where they came from. */
+    /** A copy of the person on another sheet, unsaved: their name, place in the list, grades, terms, contact, tags,
+     *  aliases, holds and retirements (current and past); not where they came from. */
     public Person copyTo(String sheetId) {
         Person copy = new Person();
         copy.sheetId = sheetId;
@@ -102,6 +107,7 @@ public class Person {
         grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         copy.retiredFrom = retiredFrom;
         pastRetirements.forEach(r -> copy.pastRetirements.add(new PastRetirement(r.getFromDate(), r.getToDate())));
         holds.forEach(h -> copy.holds.add(new Hold(h.getFromDate(), h.getToDate())));
@@ -179,6 +185,19 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
+    }
+
+    /** The person's tags, sorted; empty when they have none. */
+    public List<String> tagList() {
+        return tags == null ? List.of() : List.of(tags.split(","));
     }
 
     /** The person's aliases, sorted as names are compared: without regard to case (those differing only in case

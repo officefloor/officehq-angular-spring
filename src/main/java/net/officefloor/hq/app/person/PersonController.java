@@ -37,7 +37,13 @@ public class PersonController {
      *  sheet of the sheet's tree; {@code origin} the sheet they were transferred from (null: none). */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
-            List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements,
+            List<String> tags) {
+
+        /** A view read back without tags (taken before people had them) has none. */
+        public PersonView {
+            tags = tags == null ? List.of() : tags;
+        }
 
         public static PersonView of(Person person, LocalDate today) {
             return of(person, today, false);
@@ -49,7 +55,7 @@ public class PersonController {
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(HoldView::of).toList(), person.getContact(),
                     person.getAliases(), clashing, person.getOriginSheetId(),
-                    person.getPastRetirements().stream().map(RetirementView::of).toList());
+                    person.getPastRetirements().stream().map(RetirementView::of).toList(), person.tagList());
         }
     }
 
@@ -74,16 +80,19 @@ public class PersonController {
     }
 
     /** A person's values as the form submits them; the name is stored with surrounding spaces removed; missing
-     *  terms: none of their own; the contact is stored trimmed and lower-cased (blank or missing: none). */
+     *  terms: none of their own; the contact is stored trimmed and lower-cased (blank or missing: none); the tags are
+     *  comma separated, each trimmed and lower-cased, repeats dropped (blank or missing: none). */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @Min(0) @Max(36500) Integer terms,
-            @Size(max = 200) String contact) {
+            @Size(max = 200) String contact,
+            @Size(max = 1000) String tags) {
     }
 
     /** An edit of a person: their new values, the date the grade is from (missing: the sheet's today), their own
-     *  terms (missing: none), their contact (blank or missing: none) and the version of the person the editor
+     *  terms (missing: none), their contact (blank or missing: none), their tags (comma separated; blank or missing:
+     *  none) and the version of the person the editor
      *  loaded. */
     public record PersonEdit(
             @NotBlank @Size(max = 200) String name,
@@ -91,7 +100,8 @@ public class PersonController {
             LocalDate gradeFrom,
             @Min(0) @Max(36500) Integer terms,
             @NotNull Long version,
-            @Size(max = 200) String contact) {
+            @Size(max = 200) String contact,
+            @Size(max = 1000) String tags) {
     }
 
     /** An alias as the row submits it; stored trimmed, and refused when blank. */
@@ -174,7 +184,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm request) {
         Person added = people.add(sheetId, user, request.name(), request.grade(), request.terms(),
-                request.contact());
+                request.contact(), request.tags());
         return view(sheetId, added);
     }
 
@@ -185,7 +195,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonEdit request) {
         Person edited = people.update(sheetId, user, id, request.version(), request.name(), request.grade(),
-                request.gradeFrom(), request.terms(), request.contact());
+                request.gradeFrom(), request.terms(), request.contact(), request.tags());
         return view(sheetId, edited);
     }
 

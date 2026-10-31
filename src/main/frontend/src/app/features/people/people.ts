@@ -129,6 +129,8 @@ function csvField(value: string): string {
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
         <label for="person-form-contact">Contact (blank: none)</label>
         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" autocomplete="off" />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input id="person-form-tags" data-testid="person-form-tags" formControlName="tags" autocomplete="off" />
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -270,6 +272,7 @@ function csvField(value: string): string {
             — grade <span data-testid="person-grade">{{ gradeToday(p) }}</span>
             — terms <span data-testid="person-terms">{{ p.terms ?? '' }}</span>
             — contact <span data-testid="person-contact">{{ p.contact ?? '' }}</span>
+            — tags <span data-testid="person-tags">{{ p.tags.join(', ') }}</span>
             — aliases <span data-testid="person-aliases">{{ (p.aliases ?? []).join(', ') }}</span>
             — clashing <span data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</span>
             — from <span data-testid="person-origin">{{ p.origin ?? '' }}</span>
@@ -581,17 +584,19 @@ export class PeopleList {
     }
     return total;
   });
-  /** For every tag used on the sheet's claims, in tag order, the dues in whole cents of the claims that count which
-   *  carry it (none counting as 0); a claim with two tags counts in both. */
+  /** For every tag used on the sheet's claims or people, in tag order, the dues in whole cents of the claims that
+   *  count which carry it, or whose person does, once (none counting as 0); a claim with two tags counts in both. */
   protected readonly tagTotals = computed(() => {
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const totals = new Map<string, number>();
     for (const c of this.claims()) for (const tag of c.tags) totals.set(tag, 0);
+    for (const p of this.people()) for (const tag of p.tags) totals.set(tag, 0);
     for (const p of this.people()) {
       for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
-        if (c.tags.length === 0) continue;
+        const tags = new Set([...c.tags, ...p.tags]);
+        if (tags.size === 0) continue;
         const due = this.claimDue(p, c, dueTerms) ?? 0;
-        for (const tag of c.tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
+        for (const tag of tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
       }
     }
     return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
@@ -768,6 +773,8 @@ export class PeopleList {
     terms: new FormControl('', { nonNullable: true }),
     /** The person's contact; blank for none. */
     contact: new FormControl('', { nonNullable: true }),
+    /** The person's tags, comma separated; blank for none. */
+    tags: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly quickError = signal<string | null>(null);
@@ -1514,13 +1521,13 @@ export class PeopleList {
     this.patronError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '' }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeToday(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
     this.error.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
     this.error.set(null);
   }
 
@@ -1546,10 +1553,10 @@ export class PeopleList {
     const id = this.editingId();
     this.saving.set(true);
     const request = id === null
-      ? this.api.add(sheet.id, { name: value.name, grade: value.grade, terms, contact: value.contact })
+      ? this.api.add(sheet.id, { name: value.name, grade: value.grade, terms, contact: value.contact, tags: value.tags })
       : this.api.update(sheet.id, id, this.editingVersion,
           { name: value.name, grade: value.grade, gradeFrom: value.gradeFrom === '' ? null : value.gradeFrom, terms,
-            contact: value.contact });
+            contact: value.contact, tags: value.tags });
     request.subscribe({
       next: (saved) => {
         this.saving.set(false);
@@ -1580,7 +1587,7 @@ export class PeopleList {
         const current = people.find((p) => p.id === id);
         if (current && this.editingId() === id) {
           this.editingVersion = current.version;
-          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current), contact: current.contact ?? '' },
+          this.form.setValue({ name: current.name, grade: this.gradeToday(current), gradeFrom: '', terms: termsText(current), contact: current.contact ?? '', tags: current.tags.join(', ') },
             { emitEvent: false });
         }
       },
