@@ -1,0 +1,72 @@
+{
+  "checkpoint": 140,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp140_remainder-to-smallest",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "The remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "10a4671cd56bb3c7b8082288515a7c06e6740874",
+  "reset_sha": "",
+  "preagent_sha": "b9cc9f05d7bcd1a097c08f3e8e66a602870f48ff",
+  "prev_sha": "b9cc9f05d7bcd1a097c08f3e8e66a602870f48ff",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4656358,
+    "input_tokens": 28,
+    "output_tokens": 4797,
+    "cache_read_tokens": 460119,
+    "cache_creation_tokens": 34695,
+    "num_turns": 14,
+    "duration_ms": 438151,
+    "duration_api_ms": 78139,
+    "model": "claude-opus-5-5",
+    "session_id": "1cd00770-d0ac-43b1-861a-ae3c51356749",
+    "stop_reason": "success",
+    "result_text": "The remainder change is in, and all 4 tests in `bin/e2e` now pass. Getting there took a second fix, to how claims are renumbered, that you should know about.\n\n**The remainder rule** (`src/main/java/net/officefloor/hq/app/pool/PoolService.java`): what's left over after rounding the cuts now goes to the member with the smallest non-zero cut. On a tie, the member added latest gets it. Members with no cut (retired, held, or whose dates don't cover today) never get it. If no cut in the pool is non-zero, it goes to the last member who has a share. I updated the javadoc to match. Only the server calculates cuts, so nothing changed in the front end, and there were no data or schema changes.\n\n**The renumbering fix** (`src/main/java/net/officefloor/hq/app/claim/ClaimService.java`, `reassign`): on the first run, scenario 2 failed on something unrelated to pools. When a bulk reassign moves a claim to the person it already belongs to, the test expects it to take the next number (X-1 becomes X-2, and the audit line carries `number=X-2`). The code skipped renumbering in that case. That didn't match the test or the method's own javadoc, which says a moved claim \"takes the next number\". I removed the same-person check, so a numbered claim is always renumbered when reassigned. Normal single reassigns to the same person are still refused, so in practice this only affects bulk moves.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4656358,
+        "num_turns": 14,
+        "duration_ms": 438151,
+        "duration_api_ms": 78139,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp140.agent.jsonl",
+  "agent_diff_file": "cp140.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
