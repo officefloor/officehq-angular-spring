@@ -1,0 +1,52 @@
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 31e00fa62..cacf0c72d 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -30,8 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * pot for a pool that is a member of none, else its cut in the pool above: the pot
+  * times their share over the shares of the members with a cut, rounded half to even to two decimals, a
+  * retired member, or a person with a hold in force on the sheet's today, 0.00 (no cut); the remainder, the
+- * pot less the cuts, goes to the member with the largest share (one with no cut counting 0.00), the earliest
+- * added on a tie, so the cuts total exactly the pot (all 0.00 when no member has a cut). A retired member's
++ * pot less the cuts, goes to the member with the smallest non-zero cut, the latest added on a tie (a member
++ * with no cut gets none; with no non-zero cut, to the last member with a share), so the cuts total exactly the pot (all 0.00 when no member has a cut). A retired member's
+  * share is so spread over the others in proportion to their shares, as a held member's is; a pool whose
+  * every member (whose dates include the sheet's today) is retired has no cuts. A hold leaves the
+  * total share and balance as they are. A membership may carry a from-date and a to-date (both included);
+@@ -138,8 +138,8 @@ public class PoolService {
+     /**
+      * The members with their cuts of the pot: each the pot times their share over the shares of the members
+      * with a cut, rounded half to even, a retired or held member 0.00, a member whose dates leave out the
+-     * sheet's today none; the remainder goes to the largest
+-     * share, the earliest added on a tie; all 0.00 when no member has a cut, none when every member whose
++     * sheet's today none; the remainder goes to the smallest
++     * non-zero cut, the latest added on a tie (with none, to the last member with a share); all 0.00 when no member has a cut, none when every member whose
+      * dates include the sheet's today is retired.
+      */
+     private static List<Member> cut(List<Member> shown, BigDecimal pot) {
+@@ -153,19 +153,18 @@ public class PoolService {
+             cutShares = cutShares.add(shares[i]);
+         }
+         BigDecimal sum = BigDecimal.ZERO.setScale(2);
+-        int largest = -1;
+-        BigDecimal largestShare = null;
++        int smallest = -1;
++        int lastShared = -1;
+         for (int i = 0; i < shown.size(); i++) {
+             BigDecimal share = shares[i];
+             cuts[i] = cutShares.signum() == 0 ? BigDecimal.ZERO.setScale(2)
+                     : pot.multiply(share).divide(cutShares, 2, RoundingMode.HALF_EVEN);
+             sum = sum.add(cuts[i]);
+-            if (largestShare == null || share.compareTo(largestShare) > 0) {
+-                largest = i;
+-                largestShare = share;
+-            }
++            if (share.signum() != 0) lastShared = i;
++            if (cuts[i].signum() != 0 && (smallest < 0 || cuts[i].compareTo(cuts[smallest]) <= 0)) smallest = i;
+         }
+-        if (largest >= 0 && cutShares.signum() != 0) cuts[largest] = cuts[largest].add(pot.subtract(sum));
++        int gets = smallest >= 0 ? smallest : lastShared;
++        if (gets >= 0 && cutShares.signum() != 0) cuts[gets] = cuts[gets].add(pot.subtract(sum));
+         List<Member> out = new ArrayList<>();
+         for (int i = 0; i < shown.size(); i++) {
+             Member m = shown.get(i);
