@@ -1,0 +1,64 @@
+{
+  "checkpoint": 151,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp151_rounding-mode",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a rounding mode (settings, dated like the floor; SETTING_CHANGED key=rounding\nvalue=<half-up or half-even>; anything else is refused with an error on the settings; blank means\nnone). A claim whose date has a rounding mode in force rounds every live figure by that mode; a\nclaim with none in force on its date rounds by the policy date as before.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a rounding mode (settings, dated like the floor; SETTING_CHANGED key=rounding\nvalue=<half-up or half-even>; anything else is refused with an error on the settings; blank means\nnone). A claim whose date has a rounding mode in force rounds every live figure by that mode; a\nclaim with none in force on its date rounds by the policy date as before.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2abfc46219ecee91967227a951294e8981830b74",
+  "reset_sha": "",
+  "preagent_sha": "25f3262ebe3af82986f90b9bc7830d7dbeff0b1f",
+  "prev_sha": "25f3262ebe3af82986f90b9bc7830d7dbeff0b1f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.8329226,
+    "input_tokens": 84,
+    "output_tokens": 18401,
+    "cache_read_tokens": 3297433,
+    "cache_creation_tokens": 100635,
+    "num_turns": 43,
+    "duration_ms": 574836,
+    "duration_api_ms": 180656,
+    "model": "claude-opus-5-5",
+    "session_id": "a4baf604-5099-4b47-92c4-43c39f66e6f4",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a dated rounding mode, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- **Settings:** there's a new rounding mode field with its own from-date (`setting-rounding`, `setting-rounding-from`). It shows the mode in force on the sheet's today in `setting-rounding-current`.\n- **Allowed values:** only `half-up`, `half-even` or blank (meaning none) are accepted. Anything else shows an error on the settings and saves nothing. The server checks this too, not just the screen.\n- **Rounding:** if a claim's date has a mode in force, every live figure on that claim rounds by it \u2014 the rate step and the late charge. If no mode is in force, it rounds by the policy date as before.\n- **Corrections:** a correction looks up the mode on the date of the claim it corrects, because that's the date it already rounds by. The request says \"the claim's date\" and the test has no corrections, so this was my call \u2014 easy to switch to the correction's own date if you'd rather.\n- **Audit:** saving writes `SETTING_CHANGED \u2026 key=rounding value=<mode> from=<date>`, then a line for each due it changes, the same way the floor does.\n\n**What changed**\n- **Stored data:** no schema change. The existing dated-settings table already holds values by key, so `rounding` is just a new key, and cloning a sheet copies it.\n- **Server:** I added the save endpoint and service method, `Sheet.roundingOn` (including an as-of version), and a mode argument to `Rounding.of`. I updated all three places that compute dues to use it: the rollup, statements and claims.\n- **Front end:** `Late` (in the session) now includes `roundingOn`, which the screen's own due calculation (`halfUp` in `claims.ts`) uses. The settings form has the new field and its check.\n\n**Bug fixed during testing:** my first run failed every claim add with a 404. My new lookup went through `Optional.map`, so \"no mode set\" came back as \"sheet not found\". I fixed it the way the clerk-limit lookup already avoids this.\n\nWhile debugging I added a few throwaway sheets (ids starting `dbg`) to the audit file. That file is never cleared and tests only read their own sheet's lines, so they're harmless.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.8329226,
+        "num_turns": 43,
+        "duration_ms": 574836,
+        "duration_api_ms": 180656,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp151.agent.jsonl",
+  "agent_diff_file": "cp151.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
