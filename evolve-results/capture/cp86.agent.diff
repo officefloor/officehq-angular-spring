@@ -1,0 +1,72 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 4a64018ce..77d04fbe2 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -334,6 +334,11 @@ function notEditable(status: ClaimStatus | undefined): string {
+             <button type="button" data-testid="claim-edit" (click)="edit(c)"
+                     [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+           }
++          <label [for]="fieldId('inline-' + c.id)">New amount</label>
++          <input [id]="fieldId('inline-' + c.id)" data-testid="claim-inline-amount" inputmode="decimal" #inlineAmount
++                 (input)="clearClaimError(c.id)" />
++          <button type="button" data-testid="claim-inline-save" (click)="saveAmount(c, inlineAmount)"
++                  [attr.aria-label]="'Save amount of claim of ' + c.amount + ' on ' + c.date">Save amount</button>
+           @if (claimError()?.id === c.id) {
+             <p role="alert" class="error" data-testid="claim-error">{{ claimError()?.message }}</p>
+           }
+@@ -727,6 +732,55 @@ export class Claims {
+     }
+   }
+ 
++  /**
++   * Change a DRAFT claim's amount in its row, keeping its date, note and correction: the claim form's
++   * rules apply, so a claim that cannot be edited, one another user's editor locks, one due inside a
++   * closed period, a malformed amount, or a user whose role may change nothing is refused.
++   */
++  protected async saveAmount(c: Claim, entry: HTMLInputElement): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const amount = entry.value.trim();
++    if (!/^-?\d{1,12}(\.\d{1,2})?$/.test(amount)) {
++      this.claimError.set({ id: c.id, message: 'Enter an amount with at most two decimals, negative only for a correction.' });
++      return;
++    }
++    const correction = amount.startsWith('-') && cents(amount) < 0;
++    if (correction ? c.corrects === null : c.corrects !== null) {
++      this.claimError.set({ id: c.id, message: correction
++        ? CORRECTION
++        : 'A correction keeps a negative amount; enter one below 0.00.' });
++      return;
++    }
++    const body = { amount, date: c.date, note: c.note, corrects: c.corrects };
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}`;
++    try {
++      const claim = await firstValueFrom(this.http.put<Claim>(url, body, { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.saved.emit(claim);
++      entry.value = '';
++      // The save released this user's lock, so an editor left open on the claim closes.
++      if (this.editingId() === c.id) this.reset();
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      const message = e instanceof HttpErrorResponse && e.status === 423
++        ? CLOSED
++        : e instanceof HttpErrorResponse && e.status === 409
++        ? notEditable(c.status === 'DRAFT' ? undefined : c.status)
++        : e instanceof HttpErrorResponse && e.status === 412
++        ? 'Another user is editing this claim; it can be edited once they save or cancel.'
++        : e instanceof HttpErrorResponse && e.status === 403
++        ? 'Your role may not edit a claim on this sheet.'
++        : e instanceof HttpErrorResponse && e.status === 422
++        ? RETIRED
++        : e instanceof HttpErrorResponse && e.status === 400 && correction
++        ? CORRECTION
++        : 'Could not save that amount.';
++      this.claimError.set({ id: c.id, message });
++    }
++  }
++
+   protected async save(): Promise<void> {
+     if (this.saving) return;
+     this.error.set('');
