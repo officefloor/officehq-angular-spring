@@ -414,8 +414,10 @@ public class ClaimService {
     }
 
     /**
-     * A user whose role may reassign (a steward, unless the permission matrix says otherwise) moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number
-     * and date, loses any figure a statement bound it to (live again until its new person's next
+     * A user whose role may reassign (a steward, unless the permission matrix says otherwise) moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date
+     * and takes the next number in the sequence it would be numbered in (the sheet's, or while the sheet
+     * numbers by period, its due-by's period's), its old number never given again (a DRAFT, having none,
+     * gets none), loses any figure a statement bound it to (live again until its new person's next
      * statement), and is listed as its new person's newest claim. A SETTLED or VOID claim cannot move,
      * nor one due inside a closed period, nor one dated after its new person's retirement date.
      */
@@ -430,7 +432,8 @@ public class ClaimService {
      */
     @Transactional
     public Claim reassign(String sheetId, String user, Long id, Long toPersonId, boolean bulk) {
-        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        // Numbering locks the sheet first, so the claim is read once no other change is under way.
+        Sheet numbering = sheets.lockForNumbering(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         ClaimStatus status = claim.getStatus();
@@ -443,6 +446,12 @@ public class ClaimService {
         if (!to.mayClaimOn(claim.getDate())) throw new PersonRetiredException();
         claim.unstate(sheets.today(sheetId));
         claim.moveTo(to.getId(), claims.nextListed());
+        if (claim.getNumber() != null) {
+            if (claim.getNumberPeriod() != null) {
+                claims.retireNumberWithin(sheetId, claim.getNumberPeriod(), claim.getNumberSeq());
+            }
+            number(numbering, claim);
+        }
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber(),
                 " from=" + from.getName() + " to=" + to.getName());
