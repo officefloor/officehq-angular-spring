@@ -110,8 +110,8 @@ function csvField(value: string): string {
                 [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
                 [myCrewDueTotal]="myCrewDueTotal()" [myReviewsCount]="myReviewsCount()"
                 [watchedDueTotal]="watchedDueTotal()" />
-    <app-dashboard [pending]="statusCount('PENDING')" [review]="statusCount('REVIEW')"
-                   [overdue]="overdueTotals().count" />
+    <app-dashboard [pending]="treeStatusCount('PENDING')" [review]="treeStatusCount('REVIEW')"
+                   [overdue]="overdueTotals().count + descendants().overdueCount" />
     <app-periods [dueTotals]="dueByPeriod()" />
     <app-pools [people]="people()" />
     <app-crews [people]="people()" [dueByPerson]="dueByPerson()" />
@@ -607,7 +607,7 @@ export class PeopleList {
   protected readonly money = money;
   protected readonly people = signal<PersonView[]>([]);
   /** The figures of the sheet's descendants, as each of them shows its own, re-read on each (re)load. */
-  private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
+  protected readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
   private readonly roles = inject(Roles);
   private readonly delegations = inject(Delegations);
   /** The ids of the people this screen added since the sheet was last (re)loaded: a restricted user still sees a
@@ -1106,6 +1106,10 @@ export class PeopleList {
   /** How many of the sheet's claims are in a status. */
   protected statusCount(status: string): number {
     return this.summaryByStatus().find((s) => s.status === status)?.count ?? 0;
+  }
+  /** How many claims are in a status over the sheet and its descendants. */
+  protected treeStatusCount(status: string): number {
+    return this.statusCount(status) + (this.descendants().countByStatus[status] ?? 0);
   }
   /** How many of the sheet's REVIEW claims are assigned to the signed-in user to review. */
   protected readonly myReviewsCount = computed(() => {

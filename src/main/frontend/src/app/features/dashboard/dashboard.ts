@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
 
 // The steward's dashboard: how many claims are PENDING, how many are in REVIEW and how many that count are
-// overdue, over the sheet. The cells stay empty for a user who is not a steward; under an as-of date the roles and
+// overdue, over the sheet and all its descendants. The cells stay empty for a user who is not a steward; under an as-of date the roles and
 // delegations are those the sheet held then, so the role is the one the user had then.
 @Component({
   selector: 'app-dashboard',

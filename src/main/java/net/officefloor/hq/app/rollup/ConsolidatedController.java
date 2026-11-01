@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.SheetState;
 import net.officefloor.hq.app.person.Person;
@@ -42,9 +43,11 @@ public class ConsolidatedController {
      *  match as names are compared being one); the due-totals and overdue-totals of all their people, trimmed once of
      *  the single highest and lowest person's figure when three or more have one, with two decimals; each person's
      *  names and figures, so the screen can count and trim its own people with them; per grade, the due-totals of the people not retired on it on their sheet's today (none counting as 0), with
-     *  two decimals; and per claim status, how many claims are in it. */
+     *  two decimals; per claim status, how many claims are in it; and how many claims that count are overdue on
+     *  their sheet's today. */
     public record DescendantFigures(int peopleCount, String dueTotal, String overdueTotal,
-            Map<String, String> dueByGrade, Map<String, Integer> countByStatus, List<PersonFigure> people) {
+            Map<String, String> dueByGrade, Map<String, Integer> countByStatus, List<PersonFigure> people,
+            int overdueCount) {
     }
 
     /** A person of the tree: their name and aliases, their due-total (null when they have none) and overdue-total as
@@ -85,6 +88,7 @@ public class ConsolidatedController {
         List<PersonFigure> treePeople = new ArrayList<>();
         Map<String, BigDecimal> dueByGrade = new LinkedHashMap<>();
         Map<String, Integer> countByStatus = new LinkedHashMap<>();
+        int overdueCount = 0;
         List<String> counted = new ArrayList<>(sheets.descendantsOf(sheetId));
         if (self) {
             counted.add(0, sheetId);
@@ -97,6 +101,13 @@ public class ConsolidatedController {
             Rollup.Figures figures = one.figures();
             LocalDate today = one.sheet() == null ? null : one.sheet().getToday();
             for (Person person : one.people()) {
+                if (today != null) {
+                    overdueCount += (int) one.claims().stream()
+                            .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
+                                    && !c.isDeferredOn(today)
+                                    && ClaimService.isOverdue(c, one.sheet(), person.gradeOn(c.getDate())))
+                            .count();
+                }
                 Rollup.PersonFigures own = figures.people().get(person.getId());
                 if (own != null) {
                     List<String> names = new ArrayList<>();
@@ -120,7 +131,7 @@ public class ConsolidatedController {
                 .map(BigDecimal::new).toList());
         BigDecimal overdue = Rollup.trimmedSum(treePeople.stream().map(p -> new BigDecimal(p.overdueTotal())).toList());
         return new DescendantFigures(distinctPeople(treePeople), due.toPlainString(), overdue.toPlainString(),
-                dueByGradeShown, countByStatus, treePeople);
+                dueByGradeShown, countByStatus, treePeople, overdueCount);
     }
 
     /** How many distinct people these are: those sharing a name or alias, as names are compared (trimmed, case

@@ -6,7 +6,7 @@ import { Observable } from 'rxjs';
  *  names or aliases match as names are compared being one), and the due-total and overdue-total of all their people
  *  trimmed once of the highest and lowest (two decimals); each of those people's names and figures; per grade, the due-totals of the people not
  *  retired on it (two decimals; a grade no one counts on is missing); and per claim status, how many claims are in
- *  it (a status no claim is in is missing). */
+ *  it (a status no claim is in is missing); and how many claims that count are overdue on their sheet's today. */
 export interface DescendantFigures {
   peopleCount: number;
   dueTotal: string;
@@ -14,6 +14,7 @@ export interface DescendantFigures {
   dueByGrade: Record<string, string>;
   countByStatus: Record<string, number>;
   people: TreePerson[];
+  overdueCount: number;
 }
 
 /** A person of the tree: their name and aliases, their due-total (null with none) and overdue-total as their sheet
@@ -51,7 +52,7 @@ export function distinctPeople(people: { names: string[] }[]): number {
 
 /** No descendants: nothing to add to a sheet's own figures. */
 export const NO_DESCENDANTS: DescendantFigures = {
-  peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', dueByGrade: {}, countByStatus: {}, people: [],
+  peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', dueByGrade: {}, countByStatus: {}, people: [], overdueCount: 0,
 };
 
 // A sheet's descendants (its children, the sheets naming it as their parent, and theirs and so on), whose figures
