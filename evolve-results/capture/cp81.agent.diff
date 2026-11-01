@@ -1,0 +1,180 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index c426e304b..aa012d737 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -51,6 +51,8 @@ export interface Claim {
+   lockedBy: string | null;
+   /** Whether it was added while the period its due-by falls in was soft-closed. */
+   lateEntry: boolean;
++  /** The last sheet's today (yyyy-mm-dd) a reminder was written for it; null until reminded. */
++  remindedOn: string | null;
+ }
+ 
+ /** A status a claim was given, by whom, on the sheet's today then, with its due then (null: none). */
+@@ -266,6 +268,7 @@ function notEditable(status: ClaimStatus | undefined): string {
+           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
++          <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+             @for (line of c.log; track $index) {
+               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
+@@ -287,6 +290,8 @@ function notEditable(status: ClaimStatus | undefined): string {
+                   [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
+           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
++          <button type="button" data-testid="claim-remind" (click)="remind(c)"
++                  [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
+           <label [for]="fieldId('defer-' + c.id)">Defer until</label>
+           <input [id]="fieldId('defer-' + c.id)" type="date" data-testid="claim-defer-date" #deferDate
+                  (input)="clearClaimError(c.id)" />
+@@ -551,6 +556,27 @@ export class Claims {
+     }
+   }
+ 
++  /** Remind an OPEN or PENDING claim, once per sheet's today; any other claim, or a second reminder that day, is refused. */
++  protected async remind(c: Claim): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/remind`;
++    try {
++      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.saved.emit(claim);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      const message = e instanceof HttpErrorResponse && e.status === 409
++        ? (c.status === 'OPEN' || c.status === 'PENDING'
++          ? 'This claim was already reminded today.'
++          : `A ${c.status} claim cannot be reminded; only an OPEN or PENDING one can.`)
++        : 'Could not remind that claim.';
++      this.claimError.set({ id: c.id, message });
++    }
++  }
++
+   /**
+    * Defer an OPEN claim until a date after the sheet's today; a claim that is not OPEN, a date not after
+    * today, or a claim due inside a closed period is refused.
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 3d2e75816..02000b3bd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -121,6 +121,11 @@ public class Claim {
+     /** The user whose open editor locks it for everyone else; none while no editor holds it. */
+     @Column(name = "locked_by", length = 100)
+     private String lockedBy;
++
++    /** The last sheet's today a reminder was written for it; none until reminded. */
++    @Column(name = "reminded_on")
++    private LocalDate remindedOn;
++
+     /** Its status log, oldest first: a line for each status it has had, DRAFT when added. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
+@@ -234,6 +239,9 @@ public class Claim {
+     public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }
+     /** Locked by an open editor of a user other than this one. */
+     public boolean isLockedAgainst(String user) { return lockedBy != null && !lockedBy.equals(user.strip()); }
++    public LocalDate getRemindedOn() { return remindedOn; }
++    /** Record a reminder written on the sheet's today. */
++    public void remind(LocalDate on) { this.remindedOn = on; }
+     public String getNumber() { return number; }
+ 
+     /** Number the claim sheet-wide. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c0e4244d2..0459aae81 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -31,12 +31,12 @@ public class ClaimController {
+      * when bound by its person's last statement, to the due it had then (null when it had none). A
+      * correction has the number of the claim it corrects (null for any other claim). Its status log
+      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
+-     * when added while its period was soft-closed.
++     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none).
+      */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
+-            int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
++            int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn) {
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+@@ -45,7 +45,7 @@ public class ClaimController {
+                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
+                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
+                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
+-                    claim.getLockedBy(), claim.isLateEntry());
++                    claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn());
+         }
+     }
+ 
+@@ -275,6 +275,14 @@ public class ClaimController {
+         return ClaimView.of(service.addProof(sheetId, user, id));
+     }
+ 
++    @PostMapping("/claims/{id}/remind")
++    public ClaimView remind(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(service.remind(sheetId, user, id));
++    }
++
+     @PostMapping("/claims/{id}/reassign")
+     public ClaimView reassign(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRemindedException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRemindedException.java
+new file mode 100644
+index 000000000..0fa9d6e29
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRemindedException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The claim was already reminded on the sheet's today; it can be reminded once per day. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimRemindedException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 775c1beda..bf574a0f6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -454,6 +454,26 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Remind an OPEN or PENDING claim: a REMIND line is written and the claim is reminded on the sheet's
++     * today. Refused for a claim in any other status, or one already reminded on the sheet's today.
++     */
++    @Transactional
++    public Claim remind(String sheetId, String user, Long id) {
++        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (!claim.getStatus().isOpen()) throw new ClaimStatusRefusedException();
++        LocalDate today = sheets.today(sheetId);
++        if (today.equals(claim.getRemindedOn())) throw new ClaimRemindedException();
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
++        claim.remind(today);
++        Claim saved = claims.saveAndFlush(claim);
++        record("REMIND", sheetId, user, person, saved);
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
+     /**
+      * Refuse settling or approving a claim with no proofs whose due is above the proof threshold in force on
+      * its date; a due of n/a is within any, and no threshold means none is needed.
+diff --git a/src/main/resources/db/migration/V52__claim_reminded.sql b/src/main/resources/db/migration/V52__claim_reminded.sql
+new file mode 100644
+index 000000000..b1728c471
+--- /dev/null
++++ b/src/main/resources/db/migration/V52__claim_reminded.sql
+@@ -0,0 +1,2 @@
++-- The last sheet-today a reminder was written for the claim; none until reminded.
++ALTER TABLE claim ADD COLUMN reminded_on DATE;
