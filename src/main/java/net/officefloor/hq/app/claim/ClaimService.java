@@ -10,6 +10,7 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,14 +30,16 @@ public class ClaimService {
     private final PersonRepository people;
     private final RateService rates;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Audit audit) {
+            RollupService rollup, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -48,20 +51,24 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), note));
         record("CLAIM_ADDED", sheetId, user, person, claim);
+        rollup.recordChanges(sheetId, user, before);
         return claim;
     }
 
     @Transactional
     public Claim edit(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(dateOrToday(sheetId, date));
         claim.setNote(note);
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         record("CLAIM_EDITED", sheetId, user, person, saved);
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -78,6 +85,7 @@ public class ClaimService {
             throw new ClaimSettledByOpenerException();
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Long number = claim.getNumber();
         switch (next) {
             case OPEN -> {
@@ -101,6 +109,7 @@ public class ClaimService {
                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
                 : "";
         record(event, sheetId, user, person, saved, number, due);
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 

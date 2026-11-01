@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -39,16 +40,18 @@ public class StatementService {
     private final ClaimService claimService;
     private final RateService rates;
     private final SheetRepository sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateService rates, SheetRepository sheets, Audit audit) {
+            ClaimService claimService, RateService rates, SheetRepository sheets, RollupService rollup, Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -67,6 +70,7 @@ public class StatementService {
         // Lock the sheet so the claims and rates read are not changed while the statement is taken.
         LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         boolean fixed = false;
         BigDecimal total = BigDecimal.ZERO.setScale(2);
@@ -88,6 +92,7 @@ public class StatementService {
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today, user.strip()));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user.strip() + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted);
+        rollup.recordChanges(sheetId, user, before);
         return new Taken(summaryOf(personId, statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)),
                 theirs);
     }

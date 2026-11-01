@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -21,11 +22,13 @@ public class RateService {
 
     private final RateRepository rates;
     private final SheetRepository sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetRepository sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetRepository sheets, RollupService rollup, Audit audit) {
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -46,6 +49,7 @@ public class RateService {
     public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
         // Lock the sheet so two users setting the same grade and from-date at once replace one rate.
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Optional<Rate> existing = from == null
                 ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)
                 : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from);
@@ -55,6 +59,7 @@ public class RateService {
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user.strip()
                 + " grade=" + saved.getGrade() + " rate=" + saved.getPct().setScale(2).toPlainString()
                 + (saved.getFromDate() != null ? " from=" + saved.getFromDate() : ""));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 }

@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -19,11 +20,13 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetRepository sheets, RollupService rollup, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -36,8 +39,10 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade) {
         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
         requireUnused(sheetId, name, null);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = saveUnique(new Person(sheetId, name, grade));
         record("PERSON_ADDED", sheetId, user, person);
+        rollup.recordChanges(sheetId, user, before);
         return person;
     }
 
@@ -46,10 +51,12 @@ public class PersonService {
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) throw new PersonVersionConflictException();
         requireUnused(sheetId, name, id);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         person.setName(name);
         person.setGrade(grade);
         Person saved = saveUnique(person);
         record("PERSON_EDITED", sheetId, user, saved);
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 

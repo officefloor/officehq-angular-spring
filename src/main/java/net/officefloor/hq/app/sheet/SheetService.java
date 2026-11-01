@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,9 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final RollupService rollup;
 
-    public SheetService(SheetRepository sheets) {
+    public SheetService(SheetRepository sheets, RollupService rollup) {
         this.sheets = sheets;
+        this.rollup = rollup;
     }
 
     @Transactional
@@ -47,11 +50,14 @@ public class SheetService {
         return sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new).nextClaimNumber();
     }
 
-    /** Change the sheet's today. */
+    /** Change the sheet's today; it has no audit line of its own, only the figures it moves. */
     @Transactional
-    public Sheet setToday(String id, LocalDate today) {
-        Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
+    public Sheet setToday(String id, String user, LocalDate today) {
+        Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
+        sheets.flush();
+        rollup.recordChanges(id, user, before);
         return sheet;
     }
 }

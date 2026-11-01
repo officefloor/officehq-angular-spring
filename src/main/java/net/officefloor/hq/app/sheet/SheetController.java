@@ -48,6 +48,6 @@ public class SheetController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TodayRequest request) {
-        return SheetView.of(service.setToday(id, request.today()));
+        return SheetView.of(service.setToday(id, user, request.today()));
     }
 }
