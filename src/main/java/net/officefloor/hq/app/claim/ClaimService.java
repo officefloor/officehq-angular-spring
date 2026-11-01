@@ -718,7 +718,7 @@ public class ClaimService {
         int count = 0;
         BigDecimal diff = BigDecimal.ZERO.setScale(2);
         Map<Long, Person> byId = new HashMap<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) byId.put(p.getId(), p);
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) byId.put(p.getId(), p);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (!claim.getStatus().isOpen() || claim.isBound()) continue;
             Person person = byId.get(claim.getPersonId());

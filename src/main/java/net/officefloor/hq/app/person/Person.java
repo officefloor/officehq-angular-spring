@@ -100,6 +100,10 @@ public class Person {
     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
     private List<PersonAlias> aliases = new ArrayList<>();
 
+    /** Their position in the sheet's list, smallest first. */
+    @Column(name = "list_position", nullable = false)
+    private long position;
+
     /** The person they were merged into; null while not merged. */
     @Column(name = "merged_into")
     private Long mergedInto;
@@ -309,4 +313,8 @@ public class Person {
 
     /** Moved on by each save; an edit is refused unless made from the current version. */
     public long getVersion() { return version; }
+
+    public long getPosition() { return position; }
+
+    public void setPosition(long position) { this.position = position; }
 }

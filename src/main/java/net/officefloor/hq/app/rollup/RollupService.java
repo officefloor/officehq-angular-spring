@@ -41,7 +41,7 @@ public class RollupService {
         }
     }
 
-    /** The sheet's figures at a moment: each person's, by id in the order they were added, and the totals. */
+    /** The sheet's figures at a moment: each person's, in list order (by position), and the totals. */
     public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
             BigDecimal overdueTotal) {}
 
@@ -91,7 +91,7 @@ public class RollupService {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
@@ -141,7 +141,7 @@ public class RollupService {
         return sum.subtract(max).subtract(min);
     }
 
-    /** Audit, once the transaction commits, a SNAPSHOT line of each person's due-total in {@code snapshot}, in the order they were added. */
+    /** Audit, once the transaction commits, a SNAPSHOT line of each person's due-total in {@code snapshot}, in list order. */
     public void recordSnapshot(String sheetId, String user, Snapshot snapshot) {
         String by = " sheet=" + sheetId + " by=" + user.strip();
         for (Figures figures : snapshot.people().values()) {

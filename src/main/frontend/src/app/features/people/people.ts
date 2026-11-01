@@ -133,7 +133,7 @@ interface StatementTaken {
   claims: Claim[];
 }
 
-// The people on the active sheet, in the order they were added, with one form to add or edit,
+// The people on the active sheet, in their list positions (moved up or down a place at a time), with one form to add or edit,
 // each with their claims, what they have claimed and their due-total (OPEN, PENDING and SETTLED claims only); the sheet's claimed-total and
 // due-total under the table. Above it, the sheet's rate for each grade. Each person can be given a
 // statement, which binds their counting claims' dues; the row shows how many statements they have
@@ -322,7 +322,13 @@ function trimmedSum(figures: number[]): number {
                        (change)="personToggled(p.id, $any($event.target).checked)"
                        [attr.aria-label]="'Select ' + p.name" />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
+              <td>
+                <span data-testid="person-name">{{ p.name }}</span>
+                <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
+                        [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
+                <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
+                        [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
+              </td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -1335,6 +1341,26 @@ export class People {
           ? 'Only a steward can transfer, not a retired person, to another sheet without their name, aliases or contact.'
           : 'Could not transfer ' + p.name + '.',
       });
+    }
+  }
+
+  /** Swap the person with the one above or below them in the list; the top cannot move up nor the bottom down. */
+  protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      await firstValueFrom(
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/move`, { direction }, { headers: this.headers() }),
+      );
+      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.set(list);
+    } catch {
+      if (this.session.sheetId() === sheet) {
+        this.personError.set({ id: p.id, message: 'Could not move ' + p.name + ' ' + direction + '.' });
+      }
     }
   }
 

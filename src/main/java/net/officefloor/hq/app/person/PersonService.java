@@ -34,7 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The people on a sheet: listed in the order they were added, added and edited one at a time. A
+ * The people on a sheet: listed by their positions (new people at the end), moved up or down one place at a time, added and edited one at a time. A
  * name already used by another person on the sheet (ignoring case and surrounding spaces) is
  * refused, and so is an edit made from a version of the person someone else has saved since. A
  * person can be retired from a date (blank: the sheet's today), and put on hold from a from-date (blank: the sheet's today) to an optional to-date, any number of
@@ -95,7 +95,7 @@ public class PersonService {
 
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** The ids of the sheet's people who are active on its today ({@link Person#activeOn}). */
@@ -104,7 +104,7 @@ public class PersonService {
         LocalDate today = today(sheetId);
         List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
         Set<Long> ids = new HashSet<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (person.activeOn(all, today)) ids.add(person.getId());
         }
         return ids;
@@ -140,6 +140,7 @@ public class PersonService {
         Person draft = new Person(sheetId, name, grade, today(sheetId));
         draft.setTerms(terms);
         draft.setContact(key);
+        draft.setPosition(people.maxPosition(sheetId) + 1);
         Person person = saveUnique(draft);
         record("PERSON_ADDED", sheetId, user, person, person.getGrade(),
                 (terms != null ? " terms=" + terms : "") + (key != null ? " contact=" + key : ""));
@@ -188,7 +189,7 @@ public class PersonService {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (sheet.isArchived() || settings.roleOf(sheetId, user) == Role.VIEWER) return 0;
         LocalDate today = sheet.getToday();
-        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> ids.contains(p.getId())).toList();
         if (chosen.size() != ids.size()) throw new PersonNotFoundException();
         LocalDate on = from != null ? from : today;
@@ -200,6 +201,37 @@ public class PersonService {
             rollup.recordChanges(sheetId, user, before);
         }
         return chosen.size();
+    }
+
+    /**
+     * Swap the person with the one above (up) or below (down) them in the list; the top one cannot move
+     * up nor the bottom one down. Returns them in their new place.
+     */
+    @Transactional
+    public Person move(String sheetId, String user, Long id, boolean up) {
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        List<Person> list = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        int at = -1;
+        for (int i = 0; i < list.size(); i++) if (list.get(i).getId().equals(id)) at = i;
+        if (at < 0) throw new PersonNotFoundException();
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= list.size()) throw new PersonMoveRefusedException();
+        Person person = list.get(at);
+        Person other = list.get(to);
+        long mine = person.getPosition();
+        long theirs = other.getPosition();
+        if (mine == theirs) {
+            // positions tied (ordered by id): give the list distinct positions first
+            for (int i = 0; i < list.size(); i++) list.get(i).setPosition(i + 1);
+            mine = person.getPosition();
+            theirs = other.getPosition();
+        }
+        person.setPosition(theirs);
+        other.setPosition(mine);
+        people.saveAllAndFlush(list);
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + person.getName() + " position=" + (to + 1));
+        return person;
     }
 
     @Transactional
@@ -441,6 +473,7 @@ public class PersonService {
         // they and their claims arrive on the other sheet
         List<Claim> moving = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, id);
         person.transferTo(toSheetId);
+        person.setPosition(people.maxPosition(toSheetId) + 1);
         Person saved = saveUnique(person);
         claimService.receive(there, moving);
 
@@ -530,7 +563,7 @@ public class PersonService {
     public Set<Long> clashingIds(String sheetId) {
         Set<String> used = keysUsedIn(treeOf(sheetId));
         Set<Long> ids = new HashSet<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (clashes(person, used)) ids.add(person.getId());
         }
         return ids;
@@ -549,7 +582,7 @@ public class PersonService {
     private Set<String> keysUsedIn(List<String> sheetIds) {
         Set<String> keys = new HashSet<>();
         for (String other : sheetIds) {
-            for (Person person : people.findBySheetIdOrderByIdAsc(other)) {
+            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(other)) {
                 for (String name : person.namesAndAliases()) keys.add(Person.keyOf(name));
             }
         }

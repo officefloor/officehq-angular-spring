@@ -3,12 +3,16 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodClosedException;
+import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
+import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
@@ -19,7 +23,7 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 /**
  * Changes to many selected claims at once. Each claim is changed in its own transaction, in list
- * order (people in the order they were added, each person's claims newest first), exactly as if
+ * order (people in their list positions, each person's claims newest first), exactly as if
  * its own button were pressed; one that is refused is left as it is and counted as refused (a bulk
  * settle is instead all or nothing). A
  * viewer's bulk change, or one on an archived sheet, goes through with nothing done: every selected
@@ -35,10 +39,12 @@ public class ClaimBulkService {
     private final ClaimRepository repository;
     private final SettingService settings;
     private final SheetService sheets;
+    private final PersonRepository people;
     private final Audit audit;
 
     public ClaimBulkService(ClaimService claims, ClaimRepository repository, SettingService settings, SheetService sheets,
-            Audit audit) {
+            PersonRepository people, Audit audit) {
+        this.people = people;
         this.audit = audit;
         this.claims = claims;
         this.repository = repository;
@@ -118,11 +124,16 @@ public class ClaimBulkService {
         return settings.roleOf(sheetId, user) == Role.VIEWER || sheets.isArchived(sheetId);
     }
 
-    /** The selected claims in list order: people in the order they were added, each person's newest first. */
+    /** The selected claims in list order: people in their list positions, each person's newest first. */
     private List<Claim> selected(String sheetId, Set<Long> ids) {
+        Map<Long, Integer> place = new HashMap<>();
+        List<Person> list = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        for (int i = 0; i < list.size(); i++) place.put(list.get(i).getId(), i);
         return repository.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> ids.contains(c.getId()))
-                .sorted(Comparator.comparing(Claim::getPersonId).thenComparing(Claim::getListed, Comparator.reverseOrder()))
+                .sorted(Comparator.comparing((Claim c) -> place.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
+                        .thenComparing(Claim::getPersonId)
+                        .thenComparing(Claim::getListed, Comparator.reverseOrder()))
                 .toList();
     }
 

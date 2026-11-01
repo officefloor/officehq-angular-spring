@@ -137,7 +137,7 @@ public class PeriodService {
 
     /** Close or soft-close the period, fixing each person's due-total for it and its own, and audit it. */
     private Period fix(String sheetId, String user, Period period, LocalDate today, boolean auto, boolean soft) {
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         // Every person on the sheet gets a figure, 0.00 when none of their claims falls in it.
         Map<Long, BigDecimal> personDues = new LinkedHashMap<>();

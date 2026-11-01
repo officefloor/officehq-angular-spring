@@ -113,6 +113,9 @@ public class PersonController {
         return terms == null || terms.isEmpty() ? null : Integer.valueOf(terms);
     }
 
+    /** Which way to move a person in the list: up or down. */
+    public record MoveRequest(@NotNull @Pattern(regexp = "up|down") String direction) {}
+
     /** The date a person is retired from (blank: the sheet's today). */
     public record RetireRequest(LocalDate from) {}
 
@@ -181,6 +184,16 @@ public class PersonController {
             @RequestBody @Valid BulkGradeRequest request) {
         return new BulkGradeResult(service.bulkGrade(sheetId, user, Set.copyOf(request.ids()), request.grade(),
                 request.from()));
+    }
+
+    /** Swap the person with the one above or below them in the list. */
+    @PostMapping("/{id}/move")
+    public PersonView move(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid MoveRequest request) {
+        return view(service.move(sheetId, user, id, request.direction().equals("up")), user);
     }
 
     @PostMapping("/{id}/retire")

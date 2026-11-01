@@ -64,7 +64,7 @@ public class PoolService {
     @Transactional(readOnly = true)
     public List<PoolLine> pools(String sheetId) {
         BigDecimal pot = sheets.findById(sheetId).map(Sheet::getPot).orElse(null);
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, String> poolNames = all.stream().collect(Collectors.toMap(Pool::getId, Pool::getName));
