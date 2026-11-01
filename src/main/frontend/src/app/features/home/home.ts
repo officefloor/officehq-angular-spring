@@ -1,13 +1,14 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
+import { Holidays } from '../holidays/holidays';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, People, Settings],
+  imports: [ReactiveFormsModule, Holidays, People, Settings],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -37,6 +38,7 @@ import { Settings } from '../settings/settings';
         <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         <app-settings />
+        <app-holidays />
         <app-people />
       }
     } @else {

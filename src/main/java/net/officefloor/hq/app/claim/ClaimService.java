@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -61,12 +62,14 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final SettingService settings;
     private final PersonWatchRepository watches;
+    private final HolidayService holidays;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             RollupService rollup, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
-            Audit audit) {
+            HolidayService holidays, Audit audit) {
         this.watches = watches;
+        this.holidays = holidays;
         this.settings = settings;
         this.periods = periods;
         this.claims = claims;
@@ -515,10 +518,13 @@ public class ClaimService {
         claim.setNumberWithin(period, claims.lastNumberWithin(sheet.getId(), period) + 1);
     }
 
-    /** The due-by a claim of the person dated on the date is fixed with: its date plus their own terms, else their grade's then. */
+    /**
+     * The due-by a claim of the person dated on the date is fixed with: its date plus their own terms, else
+     * their grade's then, moved past the sheet's holidays now to the next day that is not one.
+     */
     private LocalDate dueByOf(String sheetId, Person person, LocalDate on) {
-        return on.plusDays(person.getTerms() != null ? person.getTerms()
-                : settings.termsFor(sheetId, person.gradeOn(on), on));
+        return holidays.pastHolidays(sheetId, on.plusDays(person.getTerms() != null ? person.getTerms()
+                : settings.termsFor(sheetId, person.gradeOn(on), on)));
     }
 
     /** The name of the sheet's period the date falls in; empty when in none. */
