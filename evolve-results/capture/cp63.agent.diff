@@ -1,0 +1,363 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 78f0f8323..d0cff472a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -50,6 +50,8 @@ interface Person {
+   patronIds: number[];
+   /** Whether the signed-in user watches them. */
+   watched: boolean;
++  /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
++  terms: number | null;
+ }
+ 
+ /** The person's grade in force on the date: the one with the latest from-date on or before it. */
+@@ -104,7 +106,8 @@ interface StatementTaken {
+ // A person's grade is dated: the first one given is in force from the start; each save records the
+ // form's grade from its from-date (blank: the sheet's today), unless it leaves the grade as the row
+ // showed it with the from-date blank. A claim takes the rate of the grade in force on its date; the
+-// row shows the grade in force on the sheet's today.
++// row shows the grade in force on the sheet's today. A person may have their own terms in days (blank:
++// none); a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
+ // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
+ // the same person twice); the row shows their patrons' names, sorted, and their backing: their
+ // patrons' due-totals added up, skipping n/a.
+@@ -149,6 +152,8 @@ function trimmedSum(figures: number[]): number {
+         </select>
+         <label for="person-form-grade-from">Grade from</label>
+         <input type="date" id="person-form-grade-from" data-testid="person-form-grade-from" formControlName="gradeFrom" />
++        <label for="person-form-terms">Terms (days, blank: none)</label>
++        <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" />
+         <button type="submit" data-testid="person-form-submit">{{ editingId() === null ? 'Add' : 'Save' }}</button>
+         @if (editingId() !== null) {
+           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
+@@ -202,13 +207,14 @@ function trimmedSum(figures: number[]): number {
+       }
+       <table>
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of listed(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
++              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+               <td data-testid="person-excess">{{ excessOf(p) }}</td>
+@@ -486,6 +492,8 @@ export class People {
+     grade: new FormControl('A', { nonNullable: true }),
+     /** The date the grade is in force from; blank: the sheet's today. */
+     gradeFrom: new FormControl('', { nonNullable: true }),
++    /** Their own terms in days; blank: none. */
++    terms: new FormControl('', { nonNullable: true }),
+   });
+ 
+   /** A quick-add is under way; another one waits for its answer rather than storing twice. */
+@@ -904,7 +912,7 @@ export class People {
+ 
+   private reset(): void {
+     this.editingId.set(null);
+-    this.form.reset({ name: '', grade: 'A', gradeFrom: '' }, { emitEvent: false });
++    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '' }, { emitEvent: false });
+     this.error.set('');
+   }
+ 
+@@ -912,7 +920,7 @@ export class People {
+     this.personError.set(null);
+     this.editingId.set(p.id);
+     this.editingVersion = p.version;
+-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '' }, { emitEvent: false });
++    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '' }, { emitEvent: false });
+     this.error.set('');
+   }
+ 
+@@ -929,6 +937,7 @@ export class People {
+     const name = raw.name.trim();
+     const grade = raw.grade;
+     const gradeFrom = raw.gradeFrom.trim() || null;
++    const terms = raw.terms.trim();
+     if (!name) {
+       this.error.set('Enter a name.');
+       return;
+@@ -937,18 +946,24 @@ export class People {
+       this.error.set('Choose a grade.');
+       return;
+     }
++    if (!/^\d{0,4}$/.test(terms)) {
++      // refused terms close an editor, so the form is back to adding; the error stays until it is changed
++      if (this.editingId() !== null) this.reset();
++      this.error.set('Enter terms as a whole number of days, 0 or more, or leave them blank.');
++      return;
++    }
+     const id = this.editingId();
+     this.saving = true;
+     try {
+       if (id === null) {
+         const added = await firstValueFrom(
+-          this.http.post<Person>(this.url(sheet), { name, grade }, { headers: this.headers() }),
++          this.http.post<Person>(this.url(sheet), { name, grade, terms }, { headers: this.headers() }),
+         );
+         if (this.session.sheetId() !== sheet) return;
+         this.people.update((list) => [...list, added]);
+       } else {
+         const saved = await firstValueFrom(
+-          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, version: this.editingVersion }, { headers: this.headers() }),
++          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, terms, version: this.editingVersion }, { headers: this.headers() }),
+         );
+         if (this.session.sheetId() !== sheet) return;
+         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+@@ -1061,7 +1076,7 @@ export class People {
+       const current = list.find((p) => p.id === id);
+       if (current && this.editingId() === id) {
+         this.editingVersion = current.version;
+-        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '' }, { emitEvent: false });
++        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.terms?.toString() ?? '' }, { emitEvent: false });
+       }
+     } catch {
+       // the error already shown stands
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 97dc74d22..5e83fce0c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -54,7 +54,7 @@ public class Claim {
+     @Column(name = "note", nullable = false)
+     private String note;
+ 
+-    /** The date it is due by, fixed when added: its date plus the terms of its person's grade then. */
++    /** The date it is due by, fixed when added: its date plus its person's own terms, else those of their grade then. */
+     @Column(name = "due_by", nullable = false, updatable = false)
+     private LocalDate dueBy;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 193ed9eb2..5269ed664 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -26,8 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
+- * given no date takes the sheet's today. Its due-by is fixed when it is added: its date plus the terms
+- * in force on that date of its person's grade then (else the sheet's terms in force on it); it does not
++ * given no date takes the sheet's today. Its due-by is fixed when it is added: its date plus its
++ * person's own terms, else the terms in force on that date of its person's grade then (else the
++ * sheet's terms in force on it); it does not
+  * move when its date or the terms change later. A claim is added as DRAFT and moves through its statuses
+  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
+  * the sheet's next number (or, while the sheet numbers by period, the next within its period), which it
+@@ -85,7 +86,8 @@ public class ClaimService {
+         refuseIfClosed(sheetId, on);
+         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
+         refuseUnlessCorrects(sheetId, personId, amount, corrects);
+-        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, person.gradeOn(on), on));
++        LocalDate dueBy = on.plusDays(person.getTerms() != null ? person.getTerms()
++                : settings.termsFor(sheetId, person.gradeOn(on), on));
+         Claim draft = new Claim(sheetId, personId, amount, on, note, dueBy);
+         draft.setCorrects(corrects);
+         Claim claim = claims.saveAndFlush(draft);
+@@ -309,7 +311,8 @@ public class ClaimService {
+         claim.setAmount(claim.getAmount().subtract(amount));
+         claim.unstate();
+         Claim original = claims.saveAndFlush(claim);
+-        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, person.gradeOn(on), on));
++        LocalDate dueBy = on.plusDays(person.getTerms() != null ? person.getTerms()
++                : settings.termsFor(sheetId, person.gradeOn(on), on));
+         Claim split = new Claim(sheetId, person.getId(), amount, on, original.getNote(), dueBy);
+         split.setSplitFrom(original.getNumber());
+         number(numbering, split);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 69b1e2757..63d2bc9cc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -27,7 +27,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
+  * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
+  * given a retirement date is retired at once, whatever the date; none of their claims may be dated
+  * after it. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
+- * given is in force from the beginning of time, and each later one from its from-date.
++ * given is in force from the beginning of time, and each later one from its from-date. A person may have
++ * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's.
+  */
+ @Entity
+ @Table(name = "person")
+@@ -56,6 +57,10 @@ public class Person {
+     @Column(name = "grade", nullable = false)
+     private Map<LocalDate, String> datedGrades = new TreeMap<>();
+ 
++    /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
++    @Column(name = "terms")
++    private Integer terms;
++
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+ 
+@@ -108,6 +113,11 @@ public class Person {
+     /** The grades recorded after the first, by the date each is in force from, earliest first. */
+     public Map<LocalDate, String> getDatedGrades() { return new TreeMap<>(datedGrades); }
+ 
++    /** Their own terms in days, or null when they have none. */
++    public Integer getTerms() { return terms; }
++
++    public void setTerms(Integer terms) { this.terms = terms; }
++
+     /** The date they are retired from, or null while not retired. */
+     public LocalDate getRetiredFrom() { return retiredFrom; }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 4b23ce909..037a9b288 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -29,11 +29,11 @@ public class PersonController {
+      * A person as the screen shows them: grade is the one in force on the sheet's today, grades every
+      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
+      * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
+-     * in the order named; watched whether the signed-in user watches them.
++     * in the order named; watched whether the signed-in user watches them; terms their own, null for none.
+      */
+     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
+-            boolean watched) {
++            boolean watched, Integer terms) {
+         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched) {
+             List<GradeView> grades = new ArrayList<>();
+             grades.add(new GradeView(null, person.getGrade()));
+@@ -42,7 +42,7 @@ public class PersonController {
+                     today == null ? person.getGrade() : person.gradeOn(today), grades, person.getVersion(),
+                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+-                    patronIds, watched);
++                    patronIds, watched, person.getTerms());
+         }
+     }
+ 
+@@ -63,15 +63,22 @@ public class PersonController {
+ 
+     public record PersonRequest(
+             @NotBlank @Size(max = 200) String name,
+-            @NotNull @Pattern(regexp = "[ABC]") String grade) {}
++            @NotNull @Pattern(regexp = "[ABC]") String grade,
++            @Pattern(regexp = "\\d{0,4}") String terms) {}
+ 
+     /** An edit, made from the version of the person the form loaded. */
+     public record PersonEditRequest(
+             @NotBlank @Size(max = 200) String name,
+             @NotNull @Pattern(regexp = "[ABC]") String grade,
+             LocalDate gradeFrom,
++            @Pattern(regexp = "\\d{0,4}") String terms,
+             @NotNull Long version) {}
+ 
++    /** Terms in days as the form gave them; blank or null: none. */
++    private static Integer termsOf(String terms) {
++        return terms == null || terms.isEmpty() ? null : Integer.valueOf(terms);
++    }
++
+     /** The date a person is retired from (blank: the sheet's today). */
+     public record RetireRequest(LocalDate from) {}
+ 
+@@ -99,7 +106,7 @@ public class PersonController {
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid PersonRequest request) {
+-        return view(service.add(sheetId, user, request.name(), request.grade()), user);
++        return view(service.add(sheetId, user, request.name(), request.grade(), termsOf(request.terms())), user);
+     }
+ 
+     @PutMapping("/{id}")
+@@ -109,7 +116,7 @@ public class PersonController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid PersonEditRequest request) {
+         return view(service.edit(sheetId, user, id, request.version(), request.name(), request.grade(),
+-                request.gradeFrom()), user);
++                request.gradeFrom(), termsOf(request.terms())), user);
+     }
+ 
+     @PostMapping("/{id}/retire")
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 706416057..41b8a79c4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -5,6 +5,7 @@ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Objects;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+@@ -26,7 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * person can name other people on the sheet as their patrons, one at a time; not themselves, and
+  * not the same person twice. A person's grade is dated: the first one given is in force from the
+  * beginning of time, and each edit records the grade from its from-date (blank: the sheet's today),
+- * unless it leaves the grade as in force on the sheet's today with the from-date blank.
++ * unless it leaves the grade as in force on the sheet's today with the from-date blank. A person may
++ * have their own terms in days (null: none), given on the add and on each edit.
+  */
+ @Service
+ public class PersonService {
+@@ -61,29 +63,41 @@ public class PersonService {
+ 
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade) {
++        return add(sheetId, user, name, grade, null);
++    }
++
++    /** Add a person with their own terms in days (null: none). */
++    @Transactional
++    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
+         requireUnused(sheetId, name, null);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+-        Person person = saveUnique(new Person(sheetId, name, grade));
+-        record("PERSON_ADDED", sheetId, user, person, person.getGrade());
++        Person draft = new Person(sheetId, name, grade);
++        draft.setTerms(terms);
++        Person person = saveUnique(draft);
++        record("PERSON_ADDED", sheetId, user, person, person.getGrade(),
++                terms != null ? " terms=" + terms : "");
+         rollup.recordChanges(sheetId, user, before);
+         return person;
+     }
+ 
+     @Transactional
+     public Person edit(String sheetId, String user, Long id, long version, String name, String grade,
+-            LocalDate gradeFrom) {
++            LocalDate gradeFrom, Integer terms) {
+         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+         if (person.getVersion() != version) throw new PersonVersionConflictException();
+         requireUnused(sheetId, name, id);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         LocalDate today = today(sheetId);
+         person.setName(name);
++        boolean termsChanged = !Objects.equals(terms, person.getTerms());
++        person.setTerms(terms);
+         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
+         }
+         Person saved = saveUnique(person);
+-        record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today));
++        record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today),
++                termsChanged ? " terms=" + (terms != null ? terms : "") : "");
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+@@ -196,9 +210,9 @@ public class PersonService {
+         return person;
+     }
+ 
+-    private void record(String event, String sheetId, String user, Person person, String grade) {
++    private void record(String event, String sheetId, String user, Person person, String grade, String tail) {
+         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip()
+-                + " name=" + person.getName() + " grade=" + grade);
++                + " name=" + person.getName() + " grade=" + grade + tail);
+     }
+ 
+     private void requireUnused(String sheetId, String name, Long self) {
+diff --git a/src/main/resources/db/migration/V45__person_terms.sql b/src/main/resources/db/migration/V45__person_terms.sql
+new file mode 100644
+index 000000000..f321905ca
+--- /dev/null
++++ b/src/main/resources/db/migration/V45__person_terms.sql
+@@ -0,0 +1,3 @@
++-- A person may have their own terms in days, used for their claims' due-by ahead of their grade's
++-- and the sheet's; null: none.
++ALTER TABLE person ADD COLUMN terms INT;
