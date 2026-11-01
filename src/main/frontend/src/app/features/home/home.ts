@@ -4,6 +4,7 @@ import { Session } from '../../core/session';
 import { AuditView } from '../audit-view/audit-view';
 import { Holidays } from '../holidays/holidays';
 import { People } from '../people/people';
+import { Pools } from '../pools/pools';
 import { Settings } from '../settings/settings';
 import { Templates } from '../templates/templates';
 import { VoidReasons } from '../void-reasons/void-reasons';
@@ -11,7 +12,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, AuditView, Holidays, People, Settings, Templates, VoidReasons],
+  imports: [ReactiveFormsModule, AuditView, Holidays, People, Pools, Settings, Templates, VoidReasons],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -45,6 +46,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
         <app-void-reasons />
         <app-templates />
         <app-people />
+        <app-pools />
         <app-audit-view />
       }
     } @else {

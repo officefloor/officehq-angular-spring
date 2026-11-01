@@ -791,6 +791,7 @@ export class People {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(''));
     this.bulkGradeForm.valueChanges.subscribe(() => this.personError.set(null));
+    effect(() => this.session.people.set(this.people().map((p) => ({ id: p.id, name: p.name, retired: p.retired }))));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();

@@ -46,6 +46,13 @@ export interface ClaimTemplate {
   note: string;
 }
 
+/** A person on the sheet as other sections need them: who they are and whether they are retired. */
+export interface PersonRef {
+  id: number;
+  name: string;
+  retired: boolean;
+}
+
 // The signed-in user and the active sheet. Every other feature reads these to scope its calls.
 @Injectable({ providedIn: 'root' })
 export class Session {
@@ -109,6 +116,9 @@ export class Session {
 
   /** The sheet's claim templates, by name. Kept by the templates section as it reads and saves them. */
   readonly templates = signal<ClaimTemplate[]>([]);
+
+  /** The people on the sheet, in the order they were added. Kept by the people section as it reads and changes them. */
+  readonly people = signal<PersonRef[]>([]);
 
   /** Whether a steward has archived the sheet: it stays visible and every change to it is refused. */
   readonly archived = signal(false);

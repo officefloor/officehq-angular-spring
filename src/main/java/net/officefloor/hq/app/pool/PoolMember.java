@@ -1,0 +1,50 @@
+package net.officefloor.hq.app.pool;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.math.BigDecimal;
+
+/** A person in a pool, at most once, with their share percent (two decimals). */
+@Entity
+@Table(name = "pool_member")
+public class PoolMember {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "pool_id", nullable = false)
+    private Long poolId;
+
+    @Column(name = "sheet_id", nullable = false)
+    private String sheetId;
+
+    @Column(name = "person_id", nullable = false)
+    private Long personId;
+
+    @Column(name = "share", nullable = false, precision = 5, scale = 2)
+    private BigDecimal share;
+
+    protected PoolMember() {}
+
+    public PoolMember(Long poolId, String sheetId, Long personId, BigDecimal share) {
+        this.poolId = poolId;
+        this.sheetId = sheetId;
+        this.personId = personId;
+        this.share = share;
+    }
+
+    public Long getId() { return id; }
+
+    public Long getPoolId() { return poolId; }
+
+    public String getSheetId() { return sheetId; }
+
+    public Long getPersonId() { return personId; }
+
+    public BigDecimal getShare() { return share; }
+}
