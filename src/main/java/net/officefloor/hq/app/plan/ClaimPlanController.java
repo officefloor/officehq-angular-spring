@@ -25,23 +25,28 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class ClaimPlanController {
 
-    /** A plan on the sheet; its amount has two decimals, and generated is how many claims it has made so far. */
-    public record PlanView(Long id, Long personId, String amount, LocalDate start, int every, LocalDate end,
-            int generated) {
+    /**
+     * A plan on the sheet; its amount has two decimals, every or day is set (the other null), and generated is how
+     * many claims it has made so far.
+     */
+    public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, int generated) {
         static PlanView of(ClaimPlan plan, int generated) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().setScale(2).toPlainString(),
-                    plan.getStart(), plan.getEvery(), plan.getEnd(), generated);
+                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), generated);
         }
     }
 
     /**
      * A plan's amount (as the claim form takes one that corrects none: 0.00 or more, at most two
-     * decimals), start date, every how many days (a whole number, at least 1) and end date (on or after the start).
+     * decimals), start date, either every how many days (a whole number, at least 1) or the day of the month it runs
+     * on monthly (1 to 31), and end date (on or after the start).
      */
     public record PlanRequest(
             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
             @NotNull LocalDate start,
-            @NotNull @Min(1) @Max(36600) Integer every,
+            @Min(1) @Max(36600) Integer every,
+            @Min(1) @Max(31) Integer day,
             @NotNull LocalDate end) {
 
         BigDecimal amountValue() {
@@ -73,7 +78,7 @@ public class ClaimPlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PlanRequest request) {
         return PlanView.of(service.add(sheetId, user, personId, request.amountValue(), request.start(),
-                request.every(), request.end()), 0);
+                request.every(), request.day(), request.end()), 0);
     }
 
     @PostMapping("/plans/generate")

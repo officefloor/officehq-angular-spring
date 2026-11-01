@@ -22,8 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * The people's plans: an amount from a start date every so many days (at least 1) up to an end date
- * on or after it. Generating makes, for every plan on the sheet in the order they were added, a DRAFT
+ * The people's plans: an amount from a start date every so many days (at least 1), or monthly on a
+ * day of the month (1 to 31), one or the other, up to an end date on or after it. Generating makes, for every plan on the sheet in the order they were added, a DRAFT
  * claim with the plan's amount and an empty note for each plan date up to its end and the sheet's
  * today that it has made none for yet, dated that day and added by every rule of the claim form. A
  * date the form refuses is skipped, and tried again by the next generate. Each claim is made in its
@@ -69,14 +69,17 @@ public class ClaimPlanService {
     }
 
     @Transactional
-    public ClaimPlan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
+    public ClaimPlan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start,
+            Integer every, Integer day, LocalDate end) {
         sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
-        if (every < 1 || end.isBefore(start)) throw new PlanRefusedException();
-        ClaimPlan plan = plans.saveAndFlush(new ClaimPlan(sheetId, personId, amount, start, every, end));
+        if ((every == null) == (day == null) || end.isBefore(start)) throw new PlanRefusedException();
+        if (every != null && every < 1) throw new PlanRefusedException();
+        if (day != null && (day < 1 || day > 31)) throw new PlanRefusedException();
+        ClaimPlan plan = plans.saveAndFlush(new ClaimPlan(sheetId, personId, amount, start, every, day, end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user.strip() + " name=" + person.getName()
-                + " amount=" + amount.toPlainString() + " start=" + start + " every=" + every + " end=" + end);
+                + " amount=" + amount.toPlainString() + " start=" + start
+                + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
         return plan;
     }
 
