@@ -290,6 +290,15 @@ function notEditable(status: ClaimStatus | undefined): string {
         <p role="alert" class="error" data-testid="claim-form-error">{{ error() }}</p>
       }
     </form>
+    <label [for]="fieldId('template')">Template</label>
+    <select [id]="fieldId('template')" data-testid="claim-template-select" #template (change)="error.set('')">
+      <option value="">Choose a template</option>
+      @for (t of session.templates(); track t.name) {
+        <option [value]="t.name">{{ t.name }}</option>
+      }
+    </select>
+    <button type="button" data-testid="claim-template-add" (click)="addFromTemplate(template.value)"
+            [attr.aria-label]="'Add a draft claim from the template for ' + personName()">Add from template</button>
     <ul [attr.aria-label]="'Claims for ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
@@ -890,6 +899,44 @@ export class Claims {
         ? CORRECTION
         : 'Could not save that amount.';
       this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /**
+   * Add a DRAFT claim with the chosen template's amount and note as they are now, dated as a claim with no
+   * date, by every rule of the claim form; a refusal shows on the claim form.
+   */
+  protected async addFromTemplate(name: string): Promise<void> {
+    if (this.saving) return;
+    this.error.set('');
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (name === '') {
+      this.error.set('Choose a template.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/from-template`;
+    this.saving = true;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, { name }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? CLOSED
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? RETIRED
+          : e instanceof HttpErrorResponse && e.status === 404
+          ? 'That template is no longer on the sheet.'
+          : e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role may not add a claim on this sheet.'
+          : 'Could not add a claim from that template.',
+      );
+    } finally {
+      this.saving = false;
     }
   }
 

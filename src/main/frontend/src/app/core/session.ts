@@ -38,6 +38,14 @@ export interface Late {
   policy: string | null;
 }
 
+/** A claim template on the sheet: a claim made from it takes its amount (two decimals) and note then. */
+export interface ClaimTemplate {
+  id: number;
+  name: string;
+  amount: string;
+  note: string;
+}
+
 // The signed-in user and the active sheet. Every other feature reads these to scope its calls.
 @Injectable({ providedIn: 'root' })
 export class Session {
@@ -98,6 +106,9 @@ export class Session {
    * only with one of them. Kept by the void reasons section as it reads and adds them.
    */
   readonly voidReasons = signal<string[]>([]);
+
+  /** The sheet's claim templates, by name. Kept by the templates section as it reads and saves them. */
+  readonly templates = signal<ClaimTemplate[]>([]);
 
   /** Whether a steward has archived the sheet: it stays visible and every change to it is refused. */
   readonly archived = signal(false);
