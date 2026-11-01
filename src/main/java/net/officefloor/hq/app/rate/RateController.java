@@ -22,15 +22,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/rates")
 public class RateController {
 
-    /** A grade's rate as the screen shows it; the percent always has two decimals; from is null from the start. */
-    public record RateView(String grade, LocalDate from, String pct) {
+    /** A grade's rate as the screen shows it; the percent always has two decimals; from is null from the start, to null with no end. */
+    public record RateView(String grade, LocalDate from, LocalDate to, String pct) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getFromDate(), rate.getPct().setScale(2).toPlainString());
+            return new RateView(rate.getGrade(), rate.getFromDate(), rate.getToDate(), rate.getPct().setScale(2).toPlainString());
         }
     }
 
-    /** A percent of 0.00 or more, with at most two decimals, from a date (none: from the beginning of time). */
-    public record RateRequest(@NotNull @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct, LocalDate from) {
+    /** A percent of 0.00 or more, with at most two decimals, from a date (none: from the beginning of time) through a date (none: no end). */
+    public record RateRequest(@NotNull @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct, LocalDate from, LocalDate to) {
 
         BigDecimal pctValue() {
             return new BigDecimal(pct).setScale(2);
@@ -56,6 +56,6 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
-        return RateView.of(service.set(sheetId, user, grade, request.from(), request.pctValue()));
+        return RateView.of(service.set(sheetId, user, grade, request.from(), request.to(), request.pctValue()));
     }
 }

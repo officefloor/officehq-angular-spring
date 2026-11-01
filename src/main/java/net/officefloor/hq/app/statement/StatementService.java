@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -86,12 +87,16 @@ public class StatementService {
             if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
             // a due under a grade they had on its date but not today counts like a fixed one
             if (due != null && !person.gradeOn(claim.getDate()).equals(person.gradeOn(today))) fixed = true;
+            // and so does a due under a rate that is not the one in force today
+            String grade = person.gradeOn(claim.getDate());
+            if (due != null && !rates.on(sheetId, grade, claim.getDate()).map(Rate::getId)
+                    .equals(rates.on(sheetId, grade, today).map(Rate::getId))) fixed = true;
             claim.state(figure);
             if (due != null) total = total.add(due);
             counted++;
         }
         // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
-        // due, nor a due under another grade they had on its date.
+        // due, nor a due under another grade they had on its date or under a rate not in force today.
         BigDecimal dueTotal = fixed || rates.on(sheetId, person.gradeOn(today), today).isPresent() ? total : null;
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today, user.strip()));

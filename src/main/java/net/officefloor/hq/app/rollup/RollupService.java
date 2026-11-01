@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,10 +96,13 @@ public class RollupService {
                         latePct, rounding);
                 // a due under a grade they had on its date but not today counts like a fixed one
                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
+                // and so does a due under a rate that is not the one in force today
+                if (figure != null && today != null && !Rate.inForce(ratesByGrade.getOrDefault(grade, List.of()),
+                        claim.getDate()).equals(Rate.inForce(ratesByGrade.getOrDefault(grade, List.of()), today))) fixed = true;
                 if (figure != null) due = due.add(figure);
             }
             // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
-            // due, nor a due under another grade they had on its date.
+            // due, nor a due under another grade they had on its date or under a rate not in force today.
             boolean rated = today != null
                     && pctOn(ratesByGrade.getOrDefault(person.gradeOn(today), List.of()), today) != null;
             BigDecimal personDue = fixed || rated ? due : null;
@@ -143,9 +145,7 @@ public class RollupService {
 
     /** Of one grade's rates, the percent in force on the date, or null. */
     private static BigDecimal pctOn(List<Rate> rates, LocalDate date) {
-        return rates.stream()
-                .filter(rate -> rate.appliesOn(date))
-                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+        return Rate.inForce(rates, date)
                 .map(Rate::getPct)
                 .orElse(null);
     }

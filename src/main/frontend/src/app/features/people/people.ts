@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsFor, isBound, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
+import { GRADES, NA, Rate, Rates, pctOn, rateOn } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
 const NO_RATES: Rate[] = [];
@@ -522,7 +522,7 @@ export class People {
   /**
    * The sum of the dues of their claims that count, each already rounded to cents; null (n/a) when
    * their grade has no rate in force today and none of those claims has a due fixed when settled or bound by a statement,
-   * nor a due under another grade they had on its date.
+   * nor a due under another grade they had on its date or under a rate not in force today.
    */
   private dueTotalCents(p: Person): number | null {
     const theirs = this.claimsOf(p.id);
@@ -531,8 +531,13 @@ export class People {
     const floor = cents(this.session.floor());
     const late = this.session.late();
     const gradeToday = this.gradeOf(p);
+    const today = this.session.today();
+    const otherRate = (c: Claim) => {
+      const rates = this.ratesOf(gradeOn(p, c.date));
+      return today !== null && rateOn(rates, c.date) !== rateOn(rates, today);
+    };
     const fixed = (c: Claim) => c.settledDue !== null || (isBound(c) && c.statedDue !== null)
-      || (gradeOn(p, c.date) !== gradeToday && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) !== null);
+      || ((gradeOn(p, c.date) !== gradeToday || otherRate(c)) && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) !== null);
     if (this.pctOf(gradeToday) === null && !counted.some(fixed)) return null;
     return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0), 0);
   }

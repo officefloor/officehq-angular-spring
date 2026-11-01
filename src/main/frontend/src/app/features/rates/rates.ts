@@ -8,6 +8,8 @@ export interface Rate {
   grade: string;
   /** The first date (yyyy-mm-dd) it applies on; null when it applies from the beginning of time. */
   from: string | null;
+  /** The last date (yyyy-mm-dd) it applies on; null when it has no end. */
+  to: string | null;
   /** A percent, always two decimals, e.g. "12.50". */
   pct: string;
 }
@@ -30,19 +32,26 @@ export function dueCents(amountCents: number, pct: string, halfUp = false): numb
   return sign * Number(up ? quotient + 1n : quotient);
 }
 
-/** Of one grade's rates, the percent in force on a date (the latest from-date on or before it), or null. */
+/** Of one grade's rates, the percent in force on a date (the latest from-date on or before it, unless the
+ *  date is after that rate's to-date), or null. */
 export function pctOn(rates: Rate[], date: string): string | null {
+  return rateOn(rates, date)?.pct ?? null;
+}
+
+/** Of one grade's rates, the one in force on a date (as `pctOn` has it), or null. */
+export function rateOn(rates: Rate[], date: string): Rate | null {
   // No from-date sorts as '', before every date.
   let best: Rate | null = null;
   for (const r of rates) {
     const from = r.from ?? '';
     if (from <= date && (best === null || from > (best.from ?? ''))) best = r;
   }
-  return best?.pct ?? null;
+  if (best === null || (best.to !== null && date > best.to)) return null;
+  return best;
 }
 
 // The sheet's rates, each for a grade from a from-date (or from the start), with one form to set
-// a grade's rate from a date; and per grade, the rate in force on the sheet's today.
+// a grade's rate from a date (and through a date, if it ends); and per grade, the rate in force on the sheet's today.
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -60,6 +69,8 @@ export function pctOn(rates: Rate[], date: string): string | null {
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" />
         <label for="rate-form-from">From (blank: from the start)</label>
         <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
+        <label for="rate-form-to">To (blank: no end)</label>
+        <input id="rate-form-to" type="date" data-testid="rate-form-to" formControlName="to" />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="rate-form-error">{{ error() }}</p>
@@ -82,13 +93,14 @@ export function pctOn(rates: Rate[], date: string): string | null {
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <td>{{ r.grade }}</td>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
@@ -116,6 +128,7 @@ export class Rates {
     grade: new FormControl('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
   });
   /** By grade, then from-date, the one from the start first. */
   protected readonly sorted = computed(() =>
@@ -141,6 +154,7 @@ export class Rates {
     const raw = this.form.getRawValue();
     const pct = raw.pct.trim();
     const from = raw.from.trim();
+    const to = raw.to.trim();
     if (!GRADES.includes(raw.grade)) {
       this.error.set('Choose a grade.');
       return;
@@ -153,10 +167,18 @@ export class Rates {
       this.error.set('Enter a from-date, or leave it blank for from the start.');
       return;
     }
+    if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.error.set('Enter a to-date, or leave it blank for no end.');
+      return;
+    }
+    if (to && from && to < from) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     this.saving = true;
     try {
       const rate = await firstValueFrom(
-        this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${raw.grade}`, { pct, from: from || null }, {
+        this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${raw.grade}`, { pct, from: from || null, to: to || null }, {
           headers: { 'X-User': this.session.user() ?? '' },
         }),
       );
