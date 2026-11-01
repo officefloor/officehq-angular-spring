@@ -1,0 +1,145 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 93cc50ff6..bd133ff86 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -171,6 +171,14 @@ interface StatementTaken {
+       @if (bulkError()) {
+         <p role="alert" class="error" data-testid="bulk-open-error">{{ bulkError() }}</p>
+       }
++      <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
++      @if (bulkSettled(); as result) {
++        <p role="status">Settled <span data-testid="bulk-settled">{{ result.settled }}</span>,
++          refused <span data-testid="bulk-settle-refused">{{ result.refused }}</span></p>
++      }
++      @if (bulkSettleError()) {
++        <p role="alert" class="error" data-testid="bulk-settle-error">{{ bulkSettleError() }}</p>
++      }
+       <table>
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -322,6 +330,9 @@ export class People {
+   /** How many the last bulk open opened and refused; cleared while the next one runs. */
+   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
+   protected readonly bulkError = signal('');
++  /** How many the last bulk settle settled (or sent to PENDING) and refused; cleared while the next one runs. */
++  protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
++  protected readonly bulkSettleError = signal('');
+   private readonly claimsByPerson = computed(() => {
+     const by = new Map<number, Claim[]>();
+     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+@@ -447,6 +458,8 @@ export class People {
+       this.selectedIds.set(new Set());
+       this.bulkOpened.set(null);
+       this.bulkError.set('');
++      this.bulkSettled.set(null);
++      this.bulkSettleError.set('');
+       this.rates.set([]);
+       this.periods.set([]);
+       this.statements.set([]);
+@@ -467,7 +480,7 @@ export class People {
+     return `/api/sheets/${encodeURIComponent(sheet)}/people`;
+   }
+ 
+-  /** A bulk open is under way; another press waits for its answer. */
++  /** A bulk open or settle is under way; another press waits for its answer. */
+   private bulkRunning = false;
+ 
+   private async load(sheet: string): Promise<void> {
+@@ -775,6 +788,30 @@ export class People {
+     }
+   }
+ 
++  /** Settle every selected claim that can be settled, in list order; show how many settled and were refused. */
++  protected async bulkSettle(): Promise<void> {
++    if (this.bulkRunning) return;
++    this.bulkSettled.set(null);
++    this.bulkSettleError.set('');
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const base = `/api/sheets/${encodeURIComponent(sheet)}`;
++    this.bulkRunning = true;
++    try {
++      const result = await firstValueFrom(this.http.post<{ settled: number; refused: number }>(
++        `${base}/claims/settle`, { ids: [...this.selectedIds()] }, { headers: this.headers() }));
++      const claims = await firstValueFrom(this.http.get<Claim[]>(`${base}/claims`, { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.claims.set(claims);
++      this.selectedIds.set(new Set());
++      this.bulkSettled.set(result);
++    } catch {
++      if (this.session.sheetId() === sheet) this.bulkSettleError.set('Could not settle the selected claims.');
++    } finally {
++      this.bulkRunning = false;
++    }
++  }
++
+   protected claimSaved(claim: Claim): void {
+     this.claims.update((list) =>
+       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index c57692c34..dcf3e9c47 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -28,6 +28,18 @@ public class ClaimBulkService {
+ 
+     /** Open each selected claim that can be opened, numbering them in list order. */
+     public Result open(String sheetId, String user, Set<Long> ids) {
++        return change(sheetId, user, ids, ClaimStatus.OPEN);
++    }
++
++    /**
++     * Settle each selected claim that can be settled, by the rules of settling one: a claim over
++     * the user's clerk limit goes to PENDING and counts as settled.
++     */
++    public Result settle(String sheetId, String user, Set<Long> ids) {
++        return change(sheetId, user, ids, ClaimStatus.SETTLED);
++    }
++
++    private Result change(String sheetId, String user, Set<Long> ids, ClaimStatus next) {
+         List<Claim> selected = repository.findBySheetIdOrderByListedDesc(sheetId).stream()
+                 .filter(c -> ids.contains(c.getId()))
+                 .sorted(Comparator.comparing(Claim::getPersonId).thenComparing(Claim::getListed, Comparator.reverseOrder()))
+@@ -35,10 +47,10 @@ public class ClaimBulkService {
+         int done = 0;
+         for (Claim claim : selected) {
+             try {
+-                claims.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN);
++                claims.changeStatus(sheetId, user, claim.getId(), next);
+                 done++;
+-            } catch (ClaimStatusRefusedException | PeriodClosedException | ClaimNotFoundException
+-                    | PersonNotFoundException refused) {
++            } catch (ClaimStatusRefusedException | ClaimSettledByOpenerException | PeriodClosedException
++                    | ClaimNotFoundException | PersonNotFoundException refused) {
+                 // left as it is
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index e6eaa352c..d89006b00 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -87,6 +87,9 @@ public class ClaimController {
+     /** How many of the selected claims a bulk open opened, and how many it refused. */
+     public record BulkOpenView(int opened, int refused) {}
+ 
++    /** How many of the selected claims a bulk settle settled (or sent to PENDING), and how many it refused. */
++    public record BulkSettleView(int settled, int refused) {}
++
+     private final ClaimService service;
+     private final ClaimBulkService bulk;
+ 
+@@ -139,6 +142,15 @@ public class ClaimController {
+         return new BulkOpenView(result.done(), result.refused());
+     }
+ 
++    @PostMapping("/claims/settle")
++    public BulkSettleView bulkSettle(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid BulkRequest request) {
++        ClaimBulkService.Result result = bulk.settle(sheetId, user, request.ids());
++        return new BulkSettleView(result.done(), result.refused());
++    }
++
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
