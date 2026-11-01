@@ -29,12 +29,14 @@ public class PersonController {
      * A person as the screen shows them: grade is the one in force on the sheet's today, grades every
      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
      * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
-     * in the order named; watched whether the signed-in user watches them; terms their own, null for none.
+     * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
+     * active whether they are active on the sheet's today ({@link Person#activeOn}).
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
-            boolean watched, Integer terms) {
-        public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched) {
+            boolean watched, Integer terms, boolean active) {
+        public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
+                boolean active) {
             List<GradeView> grades = new ArrayList<>();
             grades.add(new GradeView(null, person.getGrade()));
             person.getDatedGrades().forEach((from, grade) -> grades.add(new GradeView(from, grade)));
@@ -42,7 +44,7 @@ public class PersonController {
                     today == null ? person.getGrade() : person.gradeOn(today), grades, person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    patronIds, watched, person.getTerms());
+                    patronIds, watched, person.getTerms(), active);
         }
     }
 
@@ -95,9 +97,10 @@ public class PersonController {
         Map<Long, List<Long>> patrons = service.patronIds(sheetId);
         Set<Long> watched = service.watchedIds(sheetId, user);
         LocalDate today = service.today(sheetId);
+        Set<Long> active = service.activeIds(sheetId);
         return service.list(sheetId).stream()
                 .map(p -> PersonView.of(p, today, patrons.getOrDefault(p.getId(), List.of()),
-                        watched.contains(p.getId())))
+                        watched.contains(p.getId()), active.contains(p.getId())))
                 .toList();
     }
 
@@ -160,6 +163,6 @@ public class PersonController {
 
     private PersonView view(Person person, String user) {
         return PersonView.of(person, service.today(person.getSheetId()), service.patronIdsOf(person.getId()),
-                service.watches(person.getId(), user));
+                service.watches(person.getId(), user), service.isActive(person));
     }
 }

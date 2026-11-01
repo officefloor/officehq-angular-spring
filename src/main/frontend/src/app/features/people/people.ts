@@ -52,6 +52,8 @@ interface Person {
   watched: boolean;
   /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
   terms: number | null;
+  /** Whether they have an open claim (OPEN or PENDING) that counts, dated within the 30 days up to and including the sheet's today. */
+  active: boolean;
 }
 
 /** The person's grade in force on the date: the one with the latest from-date on or before it. */
@@ -207,7 +209,7 @@ function trimmedSum(figures: number[]): number {
       }
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -263,6 +265,7 @@ function trimmedSum(figures: number[]): number {
                 <button type="button" data-testid="person-watch" (click)="watch(p)" [attr.aria-pressed]="p.watched"
                         [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name">{{ p.watched ? 'Unwatch' : 'Watch' }}</button>
               </td>
+              <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
                 <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
@@ -307,7 +310,7 @@ function trimmedSum(figures: number[]): number {
       <table>
         <caption>By grade today, retired people excluded</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th><th scope="col">Active</th></tr>
         </thead>
         <tbody>
           @for (g of gradeSummary(); track g.grade) {
@@ -315,6 +318,7 @@ function trimmedSum(figures: number[]): number {
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
@@ -469,11 +473,12 @@ export class People {
     for (const o of this.overdueByPerson().values()) count += o.count;
     return { count, cents: trimmedSum([...this.overdueByPerson().values()].map((o) => o.cents)) };
   });
-  /** Per grade: the people not retired on it today, and their due-totals added up, skipping n/a. */
+  /** Per grade: the people not retired on it today, their due-totals added up, skipping n/a, and how many are active. */
   protected readonly gradeSummary = computed(() =>
     GRADES.map((grade) => {
       const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
-      return { grade, count: on.length, dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)) };
+      return { grade, count: on.length, dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
+        active: on.filter((p) => p.active).length };
     }),
   );
   /** Per status: how many of the sheet's claims have it. */

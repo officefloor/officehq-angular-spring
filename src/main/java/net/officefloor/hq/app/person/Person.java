@@ -159,6 +159,20 @@ public class Person {
         return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
     }
 
+    /**
+     * Whether they are active on the date: they have an open claim (OPEN or PENDING) that counts, dated
+     * within the 30 days up to and including it.
+     */
+    public boolean activeOn(Iterable<Claim> claims, LocalDate today) {
+        if (today == null) return false;
+        LocalDate since = today.minusDays(29);
+        for (Claim claim : claims) {
+            if (!getId().equals(claim.getPersonId()) || !claim.getStatus().isOpen() || !counts(claim, today)) continue;
+            if (!claim.getDate().isBefore(since) && !claim.getDate().isAfter(today)) return true;
+        }
+        return false;
+    }
+
     /** Moved on by each save; an edit is refused unless made from the current version. */
     public long getVersion() { return version; }
 }

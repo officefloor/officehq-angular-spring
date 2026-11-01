@@ -3,12 +3,15 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -37,11 +40,14 @@ public class PersonService {
     private final PersonPatronRepository patrons;
     private final PersonWatchRepository watches;
     private final SheetRepository sheets;
+    private final ClaimRepository claims;
     private final RollupService rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons,
-            PersonWatchRepository watches, SheetRepository sheets, RollupService rollup, Audit audit) {
+            PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
+            Audit audit) {
+        this.claims = claims;
         this.watches = watches;
         this.people = people;
         this.patrons = patrons;
@@ -53,6 +59,25 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** The ids of the sheet's people who are active on its today ({@link Person#activeOn}). */
+    @Transactional(readOnly = true)
+    public Set<Long> activeIds(String sheetId) {
+        LocalDate today = today(sheetId);
+        List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
+        Set<Long> ids = new HashSet<>();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (person.activeOn(all, today)) ids.add(person.getId());
+        }
+        return ids;
+    }
+
+    /** Whether the person is active on their sheet's today. */
+    @Transactional(readOnly = true)
+    public boolean isActive(Person person) {
+        return person.activeOn(claims.findBySheetIdAndPersonIdOrderByIdDesc(person.getSheetId(), person.getId()),
+                today(person.getSheetId()));
     }
 
     /** The sheet's today, or null when there is no such sheet. */
