@@ -76,7 +76,8 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
 
 // The sheet's rates, each for a grade from a from-date (or from the start), with one form to set
 // a grade's rate from a date (and through a date, if it ends); and per grade, the rate in force on the sheet's today
-// (its own, else its nearest ancestor's in force then).
+// (its own, else its nearest ancestor's in force then); and a calendar of the rate in force on the first of each month
+// of the year of the sheet's today.
 @Component({
   selector: 'app-rates',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -146,6 +147,29 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
           }
         </tbody>
       </table>
+      @if (calendar(); as cal) {
+        <table>
+          <caption>Rate calendar {{ cal.year }} (in force on the first of each month)</caption>
+          <thead>
+            <tr>
+              <th scope="col">Grade</th>
+              @for (m of cal.months; track m) {
+                <th scope="col">{{ m }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of cal.rows; track row.grade) {
+              <tr>
+                <th scope="row">{{ row.grade }}</th>
+                @for (cell of row.cells; track cell.month) {
+                  <td [attr.data-testid]="'rate-month-' + row.grade + '-' + cell.month">{{ cell.pct ?? na | figure }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       <table>
         <caption>All rates</caption>
         <thead>
@@ -213,6 +237,20 @@ export class Rates {
       a.grade !== b.grade ? (a.grade < b.grade ? -1 : 1) : (a.from ?? '') < (b.from ?? '') ? -1 : 1,
     ),
   );
+
+  /** For each grade and each month (yyyy-mm) of the year of the sheet's today, the rate in force on the month's first day. */
+  protected readonly calendar = computed(() => {
+    const today = this.today();
+    if (today === null) return null;
+    const year = today.slice(0, 4);
+    const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+    const all = [this.rates(), ...this.inherited()];
+    const rows = GRADES.map((grade) => {
+      const levels = all.map((rates) => rates.filter((r) => r.grade === grade));
+      return { grade, cells: months.map((month) => ({ month, pct: rateInLevels(levels, `${month}-01`)?.pct ?? null })) };
+    });
+    return { year, months, rows };
+  });
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
