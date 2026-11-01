@@ -1,0 +1,221 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index c5cd32aab..a83780e61 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -51,7 +51,7 @@ export class Session {
+   readonly floor = computed(() => this.valueOn('floor', this.today()) ?? '1.00');
+   /** The sheet's terms in days in force today: a claim of a grade without its own is due by its date plus those in force then. */
+   readonly terms = computed(() => Number(this.valueOn('terms', this.today()) ?? '14'));
+-  /** The sheet's late percent in force today, two decimals: an overdue claim's due gains the one in force on its date of its figure every full 30 days. */
++  /** The sheet's late percent in force today, two decimals: an overdue claim's due gains, for each full 30 days, the one in force on that boundary date of its figure. */
+   readonly latePct = computed(() => this.valueOn('late-pct', this.today()) ?? '0.00');
+   /** The clerk limit in force today, two decimals; null when none. */
+   readonly clerkLimit = computed(() => this.valueOn('clerk-limit', this.today()));
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index a9c0dec7b..81fb71cc5 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -148,7 +148,7 @@ function halfUp(basis: string, late: Late): boolean {
+  * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else its figure
+  * — the due bound by its person's last statement, else its amount times its person's rate on its
+  * date (as `pctOn` gives it), at least the floor in force on its date (`floorOn`, in cents) unless a correction —
+- * with its late charge (by the late percent in force on its date) on top;
++ * with its late charge (by the late percent in force on each 30-day boundary) on top;
+  * null when it has none. Its live figures round by the date `basis` (see {@link roundsOn}).
+  */
+ export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: Late, basis: string): number | null {
+@@ -168,14 +168,19 @@ function figureCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, halfUp: boolean):
+ }
+ 
+ /**
+- * The late charge in cents on an overdue claim with the given figure: the late percent in force on its date of it for
+- * every full 30 days past its due-by, rounded like a due; 0 when not overdue or a correction. Never bound
+- * by a statement.
++ * The late charge in cents on an overdue claim with the given figure, worked out per 30-day boundary: for each full
++ * 30 days past its due-by, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of
++ * it, rounded like a due, and the charges added up; 0 when not overdue or a correction. Never bound by a statement.
+  */
+ export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean): number {
+   if (late.today === null || isCorrection(c) || !isOverdue(c, late.today)) return 0;
+-  const days = Math.round((Date.parse(`${late.today}T00:00:00Z`) - Date.parse(`${c.dueBy}T00:00:00Z`)) / 86_400_000);
+-  return dueCents(figureCents * Math.floor(days / 30), late.pctOn(c.date), halfUp);
++  const dueBy = Date.parse(`${c.dueBy}T00:00:00Z`);
++  let total = 0;
++  for (let step = 1; ; step++) {
++    const boundary = new Date(dueBy + step * 30 * 86_400_000).toISOString().slice(0, 10);
++    if (boundary > late.today) return total;
++    total += dueCents(figureCents, late.pctOn(boundary), halfUp);
++  }
+ }
+ 
+ /** Overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 764b4f97a..a0dedf009 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -65,14 +65,14 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
+ // The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, the terms
+ // (the days after its date by which a claim is due, fixed when it is added), the terms of each grade (overriding the
+ // sheet's for a person of that grade on the claim's date), the late percent (charged on an overdue claim's
+-// figure for every full 30 days overdue), the policy date (blank: the sheet's today; a claim dated before it
++// figure for every full 30 days overdue, the one in force on each 30-day boundary), the policy date (blank: the sheet's today; a claim dated before it
+ // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
+ // a claim opened is numbered within its period), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
+ // sheet's today is changed, an open period whose to-date plus them is before it is closed), and the role given to each user name. Saving stores the settings whose
+ // field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from, the cap or the proof threshold (Delete or
+ // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
+ // percent, the cap and the proof threshold are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
+-// other dates; a claim takes the floor, late percent and terms in force on its date, and the clerk limit and cap are those in force on
++// other dates; a claim takes the floor and terms in force on its date, the late percent in force on each 30-day boundary, and the clerk limit and cap are those in force on
+ // the sheet's today. Each shows the value in force on the sheet's today. The permission matrix (not dated) gives, for each
+ // of open, settle, void, reassign, close and reopen, the roles that may take it, comma separated; blank keeps its standing rule.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 082455d1b..43122cfc0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -224,7 +224,7 @@ public class ClaimService {
+         refuseIfClosed(sheetId, claim.getDate());
+         BigDecimal old = claim.getSettledDue();
+         BigDecimal figure = LateCharge.withChargeAsOpen(claim, dueOf(sheetId, person, claim), sheets.today(sheetId),
+-                settings.latePctOn(sheetId, claim.getDate()), roundingOf(sheetId, claim));
++                d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim));
+         claim.setSettledDue(figure);
+         logStatus(sheetId, user, person, claim);
+         Claim saved = claims.saveAndFlush(claim);
+@@ -360,7 +360,7 @@ public class ClaimService {
+         BigDecimal figure = figureOf(sheetId, person, claim);
+         if (claim.getSettledDue() != null) return figure;
+         return LateCharge.withCharge(claim, figure, sheets.today(sheetId),
+-                settings.latePctOn(sheetId, claim.getDate()), roundingOf(sheetId, claim));
++                d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim));
+     }
+ 
+     /** How the claim's live figures round: by its date, or a correction's by its corrected claim's ({@link Rounding}). */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+index b44ab4372..436543cde 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
++++ b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+@@ -3,12 +3,14 @@ package net.officefloor.hq.app.claim;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+-import java.time.temporal.ChronoUnit;
++import java.util.function.Function;
+ 
+ /**
+- * The late charge on an overdue claim: the sheet's late percent of its figure (the due bound by a
+- * statement, else its floored live due) for every full 30 days past its due-by, rounded to cents like
+- * its due ({@link Rounding}). A correction has none. It is never bound by a statement; settling freezes it into the settled due.
++ * The late charge on an overdue claim, worked out per 30-day boundary: for each full 30 days past its
++ * due-by, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of its
++ * figure (the due bound by a statement, else its floored live due), rounded to cents like its due
++ * ({@link Rounding}), and the charges added up; a boundary whose percent is 0.00 adds nothing. A
++ * correction has none. It is never bound by a statement; settling freezes it into the settled due.
+  */
+ public final class LateCharge {
+ 
+@@ -23,33 +25,44 @@ public final class LateCharge {
+                 && !claim.isDeferredOn(today);
+     }
+ 
+-    /** The charge on the claim with the given figure (null: none) as of today; zero when not overdue or a correction. */
+-    public static BigDecimal of(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
+-            RoundingMode rounding) {
+-        BigDecimal zero = BigDecimal.ZERO.setScale(2);
+-        if (figure == null || claim.isCorrection() || !isOverdue(claim, today)) return zero;
+-        long steps = ChronoUnit.DAYS.between(claim.getDueBy(), today) / STEP_DAYS;
+-        return figure.multiply(latePct).multiply(BigDecimal.valueOf(steps)).movePointLeft(2)
+-                .setScale(2, rounding);
++    /**
++     * The charge on the claim with the given figure (null: none) as of today, with the late percent in
++     * force on each date from {@code latePctOn}; zero when not overdue or a correction.
++     */
++    public static BigDecimal of(Claim claim, BigDecimal figure, LocalDate today,
++            Function<LocalDate, BigDecimal> latePctOn, RoundingMode rounding) {
++        if (figure == null || claim.isCorrection() || !isOverdue(claim, today)) return BigDecimal.ZERO.setScale(2);
++        return charge(claim, figure, today, latePctOn, rounding);
+     }
+ 
+     /**
+      * The figure with the charge it would have on top were the claim open now, whatever its status; null
+      * when the figure is.
+      */
+-    public static BigDecimal withChargeAsOpen(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
+-            RoundingMode rounding) {
++    public static BigDecimal withChargeAsOpen(Claim claim, BigDecimal figure, LocalDate today,
++            Function<LocalDate, BigDecimal> latePctOn, RoundingMode rounding) {
+         if (figure == null || claim.isCorrection() || today == null || !claim.getDueBy().isBefore(today)) {
+             return figure;
+         }
+-        long steps = ChronoUnit.DAYS.between(claim.getDueBy(), today) / STEP_DAYS;
+-        return figure.add(figure.multiply(latePct).multiply(BigDecimal.valueOf(steps)).movePointLeft(2)
+-                .setScale(2, rounding));
++        return figure.add(charge(claim, figure, today, latePctOn, rounding));
+     }
+ 
+     /** The figure with its charge added on top; null when the figure is. */
+-    public static BigDecimal withCharge(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
+-            RoundingMode rounding) {
+-        return figure == null ? null : figure.add(of(claim, figure, today, latePct, rounding));
++    public static BigDecimal withCharge(Claim claim, BigDecimal figure, LocalDate today,
++            Function<LocalDate, BigDecimal> latePctOn, RoundingMode rounding) {
++        return figure == null ? null : figure.add(of(claim, figure, today, latePctOn, rounding));
++    }
++
++    /** The charges of each 30-day boundary past the due-by up to today, added up. */
++    private static BigDecimal charge(Claim claim, BigDecimal figure, LocalDate today,
++            Function<LocalDate, BigDecimal> latePctOn, RoundingMode rounding) {
++        BigDecimal total = BigDecimal.ZERO.setScale(2);
++        for (LocalDate boundary = claim.getDueBy().plusDays(STEP_DAYS); !boundary.isAfter(today);
++                boundary = boundary.plusDays(STEP_DAYS)) {
++            BigDecimal pct = latePctOn.apply(boundary);
++            if (pct == null || pct.signum() == 0) continue;
++            total = total.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
++        }
++        return total;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 05104e0a2..f2c2ff6f4 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
+ 
+ /**
+  * The sheet's figures as the screen shows them: each person's claimed and due-total, and the
+- * sheet's claimed-total and due-total, each person's at most the sheet's cap in force today; a claim's floor and late percent are those in force on its date; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
++ * sheet's claimed-total and due-total, each person's at most the sheet's cap in force today; a claim's floor is the one in force on its date, its late percent the one in force on each 30-day boundary; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
+  * anything and calls {@link #recordChanges} once it has, which audits, after the change's own
+  * lines, a ROLLUP line for each person whose figures (overdue-total included) moved (in the order
+  * they were added) and a TOTALS line when the sheet's totals moved.
+@@ -93,12 +93,11 @@ public class RollupService {
+                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
+                 String grade = person.gradeOn(claim.getDate());
+                 RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);
+-                // the floor and late percent in force on the claim's date
++                // the floor in force on the claim's date, the late percent in force on each 30-day boundary
+                 BigDecimal floor = sheet == null ? zero() : sheet.floorOn(claim.getDate());
+-                BigDecimal latePct = sheet == null ? zero() : sheet.latePctOn(claim.getDate());
+                 BigDecimal figure = LateCharge.withCharge(claim,
+                         figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding), today,
+-                        latePct, rounding);
++                        d -> sheet == null ? zero() : sheet.latePctOn(d), rounding);
+                 // a due under a grade they had on its date but not today counts like a fixed one
+                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
+                 // and so does a due under a rate that is not the one in force today
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index c4dcebfc7..b4236b8e8 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -50,8 +50,8 @@ public class Sheet {
+ 
+     /**
+      * The values recorded for its dated settings, each from a from-date: the floor (a claim's live due
+-     * is at least the one in force on its date), the late percent (an overdue claim's due gains the one
+-     * in force on its date of its figure for every full 30 days overdue), the terms of the sheet and of
++     * is at least the one in force on its date), the late percent (an overdue claim's due gains, for each full 30 days overdue,
++     * the one in force on that boundary date of its figure), the terms of the sheet and of
+      * each grade (a claim's due-by is its date plus those in force on it), the clerk limit (a clerk can
+      * settle a claim only when its due is at or below the one in force today) and the cap (a person's
+      * due-total is at most the one in force today).
