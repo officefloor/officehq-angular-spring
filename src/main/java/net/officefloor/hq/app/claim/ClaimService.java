@@ -167,18 +167,26 @@ public class ClaimService {
         BigDecimal figure = figureOf(sheetId, person, claim);
         if (claim.getSettledDue() != null) return figure;
         return LateCharge.withCharge(claim, figure, settings.terms(sheetId), sheets.today(sheetId),
-                settings.latePct(sheetId));
+                settings.latePct(sheetId), roundingOf(sheetId, claim));
+    }
+
+    /** How the claim's live figures round: by its date, or a correction's by its corrected claim's ({@link Rounding}). */
+    private RoundingMode roundingOf(String sheetId, Claim claim) {
+        LocalDate basis = Rounding.basisOf(claim,
+                Rounding.datesByNumber(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId())));
+        return Rounding.of(basis, settings.policyDate(sheetId), sheets.today(sheetId));
     }
 
     /**
-     * A claim's live due: its amount times the rate on its date of its person's grade in force on it, rounded half to even
-     * to cents, and at least the sheet's floor unless a correction; null with no rate.
+     * A claim's live due: its amount times the rate on its date of its person's grade in force on it, rounded to
+     * cents as {@link Rounding} has it, and at least the sheet's floor unless a correction; null with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         BigDecimal floor = claim.isCorrection() ? null : settings.floor(sheetId);
+        RoundingMode rounding = roundingOf(sheetId, claim);
         return rates.on(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .map(due -> floor == null ? due : due.max(floor))
                 .orElse(null);
     }

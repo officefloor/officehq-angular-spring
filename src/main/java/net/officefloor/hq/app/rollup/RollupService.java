@@ -13,6 +13,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.LateCharge;
+import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -66,12 +67,15 @@ public class RollupService {
         BigDecimal floor = sheet == null ? zero() : sheet.getFloor();
         int terms = sheet == null ? 0 : sheet.getTerms();
         BigDecimal latePct = sheet == null ? zero() : sheet.getLatePct();
+        LocalDate policyDate = sheet == null ? null : sheet.getPolicyDate();
         Map<String, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId)) {
             ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
         }
         Map<Long, List<Claim>> claimsByPerson = new LinkedHashMap<>();
-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+        List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
+        Map<Long, LocalDate> datesByNumber = Rounding.datesByNumber(all);
+        for (Claim claim : all) {
             if (claim.getStatus().counts()) {
                 claimsByPerson.computeIfAbsent(claim.getPersonId(), id -> new ArrayList<>()).add(claim);
             }
@@ -88,8 +92,10 @@ public class RollupService {
                 claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());
+                RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);
                 BigDecimal figure = LateCharge.withCharge(claim,
-                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor), terms, today, latePct);
+                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding), terms, today,
+                        latePct, rounding);
                 // a due under a grade they had on its date but not today counts like a fixed one
                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
                 if (figure != null) due = due.add(figure);
@@ -125,14 +131,14 @@ public class RollupService {
 
     /**
      * A claim's figure: its settled due, else its stated due, else its live due, at least the floor
-     * unless a correction; null when it has none.
+     * unless a correction, rounded as given; null when it has none.
      */
-    private static BigDecimal figureOf(Claim claim, List<Rate> rates, BigDecimal floor) {
+    private static BigDecimal figureOf(Claim claim, List<Rate> rates, BigDecimal floor, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isStated()) return claim.getStatedDue();
         BigDecimal pct = pctOn(rates, claim.getDate());
         if (pct == null) return null;
-        BigDecimal due = claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        BigDecimal due = claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding);
         return claim.isCorrection() ? due : due.max(floor);
     }
 

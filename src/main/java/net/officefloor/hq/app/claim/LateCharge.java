@@ -7,8 +7,8 @@ import java.time.temporal.ChronoUnit;
 
 /**
  * The late charge on an overdue claim: the sheet's late percent of its figure (the due bound by a
- * statement, else its floored live due) for every full 30 days past its due-by, rounded half to even
- * to cents like a due. A correction has none. It is never bound by a statement; settling freezes it into the settled due.
+ * statement, else its floored live due) for every full 30 days past its due-by, rounded to cents like
+ * its due ({@link Rounding}). A correction has none. It is never bound by a statement; settling freezes it into the settled due.
  */
 public final class LateCharge {
 
@@ -23,16 +23,18 @@ public final class LateCharge {
     }
 
     /** The charge on the claim with the given figure (null: none) as of today; zero when not overdue or a correction. */
-    public static BigDecimal of(Claim claim, BigDecimal figure, int terms, LocalDate today, BigDecimal latePct) {
+    public static BigDecimal of(Claim claim, BigDecimal figure, int terms, LocalDate today, BigDecimal latePct,
+            RoundingMode rounding) {
         BigDecimal zero = BigDecimal.ZERO.setScale(2);
         if (figure == null || claim.isCorrection() || !isOverdue(claim, terms, today)) return zero;
         long steps = ChronoUnit.DAYS.between(claim.getDate().plusDays(terms), today) / STEP_DAYS;
         return figure.multiply(latePct).multiply(BigDecimal.valueOf(steps)).movePointLeft(2)
-                .setScale(2, RoundingMode.HALF_EVEN);
+                .setScale(2, rounding);
     }
 
     /** The figure with its charge added on top; null when the figure is. */
-    public static BigDecimal withCharge(Claim claim, BigDecimal figure, int terms, LocalDate today, BigDecimal latePct) {
-        return figure == null ? null : figure.add(of(claim, figure, terms, today, latePct));
+    public static BigDecimal withCharge(Claim claim, BigDecimal figure, int terms, LocalDate today, BigDecimal latePct,
+            RoundingMode rounding) {
+        return figure == null ? null : figure.add(of(claim, figure, terms, today, latePct, rounding));
     }
 }

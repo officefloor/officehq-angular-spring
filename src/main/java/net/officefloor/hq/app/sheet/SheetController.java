@@ -22,12 +22,13 @@ public class SheetController {
 
     /**
      * A sheet as the screen shows it; the floor has two decimals, the terms are in days, the late
-     * percent has two decimals.
+     * percent has two decimals; the policy date is null when blank (the sheet's today).
      */
-    public record SheetView(String id, LocalDate today, String floor, int terms, String latePct) {
+    public record SheetView(String id, LocalDate today, String floor, int terms, String latePct,
+            LocalDate policyDate) {
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().setScale(2).toPlainString(),
-                    sheet.getTerms(), sheet.getLatePct().setScale(2).toPlainString());
+                    sheet.getTerms(), sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate());
         }
     }
 

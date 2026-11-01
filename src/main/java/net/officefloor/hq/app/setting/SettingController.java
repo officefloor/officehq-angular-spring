@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,9 +24,11 @@ public class SettingController {
 
     /**
      * The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none,
-     * and so has the floor; the terms are in days; the late percent has two decimals.
+     * and so has the floor; the terms are in days; the late percent has two decimals; the policy date
+     * is null when blank (the sheet's today).
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, List<RoleView> roles) {}
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+            List<RoleView> roles) {}
 
     /** A user name's role, as clerk or steward. */
     public record RoleView(String user, String role) {
@@ -58,6 +61,14 @@ public class SettingController {
         }
     }
 
+    /** A policy date (yyyy-mm-dd); blank or null: the sheet's today. */
+    public record PolicyDateRequest(@Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
+
+        LocalDate policyDateValue() {
+            return value == null || value.isEmpty() ? null : LocalDate.parse(value);
+        }
+    }
+
     /** Terms: a whole number of days. */
     public record TermsRequest(@NotNull @Pattern(regexp = "\\d{1,4}") String value) {
 
@@ -85,7 +96,7 @@ public class SettingController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return new SettingsView(text(service.clerkLimit(sheetId)), text(service.floor(sheetId)),
-                service.terms(sheetId), text(service.latePct(sheetId)),
+                service.terms(sheetId), text(service.latePct(sheetId)), service.policyDate(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList());
     }
 
@@ -122,6 +133,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid LatePctRequest request) {
         service.setLatePct(sheetId, user, request.latePctValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/policy-date")
+    public SettingsView setPolicyDate(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PolicyDateRequest request) {
+        service.setPolicyDate(sheetId, user, request.policyDateValue());
         return get(sheetId, user);
     }
 

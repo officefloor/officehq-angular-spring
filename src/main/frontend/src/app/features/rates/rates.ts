@@ -17,8 +17,8 @@ export const GRADES = ['A', 'B', 'C'];
 /** Shown for a due that has no rate. */
 export const NA = 'n/a';
 
-/** Cents times a percent (two decimals), divided by 100, rounded half to even to whole cents. */
-export function dueCents(amountCents: number, pct: string): number {
+/** Cents times a percent (two decimals), divided by 100, rounded half to even (or half up) to whole cents. */
+export function dueCents(amountCents: number, pct: string, halfUp = false): number {
   const [whole, frac = ''] = pct.split('.');
   const pctHundredths = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
   // Rounded on the size of the product, so a negative due rounds as its positive would.
@@ -26,7 +26,7 @@ export function dueCents(amountCents: number, pct: string): number {
   const product = BigInt(Math.abs(amountCents)) * pctHundredths;
   const quotient = product / 10000n;
   const remainder = product % 10000n;
-  const up = remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n);
+  const up = remainder > 5000n || (remainder === 5000n && (halfUp || quotient % 2n === 1n));
   return sign * Number(up ? quotient + 1n : quotient);
 }
 

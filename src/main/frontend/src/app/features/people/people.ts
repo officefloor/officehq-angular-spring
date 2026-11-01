@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsFor, isOverdue, money } from '../claims/claims';
+import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsFor, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
 
@@ -286,7 +286,7 @@ export class People {
       const period = periodOn(this.periods(), c.date);
       const pctOn = this.pctOnByPerson().get(c.personId);
       if (period === null || pctOn === undefined) continue;
-      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, pctOn, cents(this.session.floor()), this.session.late()) ?? 0));
+      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, pctOn, cents(this.session.floor()), this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
     }
     return by;
   });
@@ -334,8 +334,9 @@ export class People {
     const by = new Map<number, Overdue>();
     for (const p of this.people()) {
       const pctOn = this.pctOnOf(p.id);
-      const overdue = this.claimsOf(p.id).filter((c) => this.counts(c) && isOverdue(c, terms, today));
-      by.set(p.id, { count: overdue.length, cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late) ?? 0), 0) });
+      const theirs = this.claimsOf(p.id);
+      const overdue = theirs.filter((c) => this.counts(c) && isOverdue(c, terms, today));
+      by.set(p.id, { count: overdue.length, cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0), 0) });
     }
     return by;
   });
@@ -464,15 +465,16 @@ export class People {
    * nor a due under another grade they had on its date.
    */
   private dueTotalCents(p: Person): number | null {
-    const counted = this.claimsOf(p.id).filter(this.counts);
+    const theirs = this.claimsOf(p.id);
+    const counted = theirs.filter(this.counts);
     const pctOn = this.pctOnOf(p.id);
     const floor = cents(this.session.floor());
     const late = this.session.late();
     const gradeToday = this.gradeOf(p);
     const fixed = (c: Claim) => c.settledDue !== null || (c.stated && c.statedDue !== null)
-      || (gradeOn(p, c.date) !== gradeToday && claimDueCents(c, pctOn, floor, late) !== null);
+      || (gradeOn(p, c.date) !== gradeToday && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) !== null);
     if (this.pctOf(gradeToday) === null && !counted.some(fixed)) return null;
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late) ?? 0), 0);
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0), 0);
   }
 
   protected overdueOf(p: Person): Overdue {

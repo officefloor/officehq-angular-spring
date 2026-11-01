@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -14,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
  * A sheet's settings: the role each user name has (clerk unless given another) and the clerk
  * limit, the highest due a clerk can settle (none: no limit); and the floor, the least a claim's
  * live due can be; and the terms, the days after its date by which a claim is due; and the late
- * percent, which an overdue claim's due gains of its figure for every full 30 days overdue.
+ * percent, which an overdue claim's due gains of its figure for every full 30 days overdue; and the
+ * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even.
  */
 @Service
 public class SettingService {
@@ -55,6 +57,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public BigDecimal latePct(String sheetId) {
         return sheets.findById(sheetId).map(Sheet::getLatePct).orElseThrow(SheetNotFoundException::new);
+    }
+
+    /** The policy date as set; null when blank, which means the sheet's today. */
+    @Transactional(readOnly = true)
+    public LocalDate policyDate(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPolicyDate();
     }
 
     /** The user's role on the sheet: clerk unless given another. */
@@ -119,5 +127,18 @@ public class SettingService {
                 + latePct.toPlainString());
         rollup.recordChanges(sheetId, user, before);
         return latePct;
+    }
+
+    /** Change the policy date (null: the sheet's today); the live dues it moves are audited after its own line. */
+    @Transactional
+    public LocalDate setPolicyDate(String sheetId, String user, LocalDate policyDate) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setPolicyDate(policyDate);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=policy-date value="
+                + (policyDate == null ? "" : policyDate.toString()));
+        rollup.recordChanges(sheetId, user, before);
+        return policyDate;
     }
 }
