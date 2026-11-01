@@ -15,6 +15,13 @@ interface SheetView {
   lastBatch: number | null;
 }
 
+/** The people-list columns a user can switch off on their screen. */
+export const PEOPLE_COLUMNS = [
+  'claimed', 'due-total', 'excess', 'statement-count', 'stated-total', 'statement-date', 'overdue-count',
+  'overdue-total', 'patrons', 'backing', 'hold', 'retired', 'terms', 'contact', 'aliases',
+] as const;
+export type PeopleColumn = (typeof PEOPLE_COLUMNS)[number];
+
 /** A value recorded for a dated setting from a date (yyyy-mm-dd) on; null when none. */
 export interface DatedValue {
   from: string;
@@ -171,6 +178,18 @@ export class Session {
   readonly showRetired = signal(false);
   /** What the people list is sorted by on this screen: added (list order) when the screen opens, left as it is by loading a sheet. */
   readonly sortBy = signal<PeopleSort>('added');
+  /** The people-list columns switched off on this screen: none when the screen opens, left as they are by loading a sheet. */
+  readonly hiddenColumns = signal<ReadonlySet<PeopleColumn>>(new Set());
+
+  /** Switch a people-list column on or off on this screen. */
+  showColumn(column: PeopleColumn, shown: boolean): void {
+    this.hiddenColumns.update((hidden) => {
+      const next = new Set(hidden);
+      if (shown) next.delete(column);
+      else next.add(column);
+      return next;
+    });
+  }
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<{ name: string; locale: Locale }>('/api/session', { name }));
