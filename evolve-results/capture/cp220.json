@@ -1,0 +1,70 @@
+{
+  "checkpoint": 220,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp220_plan-amount-reaches-drafts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    205,
+    212
+  ],
+  "replaced_tests": [
+    "cp205_plan-history.spec.ts::plan history",
+    "cp212_score-without-corrections.spec.ts::score without corrections scenario 2"
+  ],
+  "request": {
+    "spec": "Changing a plan's amount now also changes the amount of the claims it generated that are still\nDRAFT (each as the claim form would edit it, writing CLAIM_EDITED); claims in any other status keep\ntheirs.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nChanging a plan's amount now also changes the amount of the claims it generated that are still\nDRAFT (each as the claim form would edit it, writing CLAIM_EDITED); claims in any other status keep\ntheirs.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e201053acefff399c990baa030780ea216437890",
+  "reset_sha": "",
+  "preagent_sha": "a61dfa8912b5a27bfeff0923df46d415f68febde",
+  "prev_sha": "a61dfa8912b5a27bfeff0923df46d415f68febde",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7810910000000001,
+    "input_tokens": 6,
+    "output_tokens": 714,
+    "cache_read_tokens": 129918,
+    "cache_creation_tokens": 2353,
+    "num_turns": 2,
+    "duration_ms": 9835,
+    "duration_api_ms": 93782,
+    "model": "claude-opus-5-5",
+    "session_id": "8af5780a-0377-4281-87b9-589f4a565fe7",
+    "stop_reason": "success",
+    "result_text": "Changing a plan's amount now also updates the claims that plan generated which are still DRAFT. Claims in any other status keep their old amount. All 4 tests in `bin/e2e` pass.\n\n**Server** (`plan/PlanService.java`, `plan/PlanController.java`):\n- After writing `PLAN_CHANGED`, `changeAmount` goes through the plan's generated claims in the order they were made. Each one still in DRAFT is saved through the normal claim edit (`ClaimService.update`) with the new amount; its date, note, correction link, reference and tags are kept. That edit writes `CLAIM_EDITED` and updates the rollup, exactly as the claim form would.\n- If a plan makes its claims on a descendant sheet, those drafts are edited on that sheet.\n- The amount endpoint now returns `{ plan, claims }` (the plan plus the drafts it edited on this sheet) instead of just the plan.\n\n**Front end** (`core/plans.ts`, `features/plans/plans.ts`, `features/people/people.ts`): the person's plan section passes the edited claims up to the people screen. It updates them the same way it shows claims after a generate, so the new amounts appear without reloading.\n\n**Decision for you:** if any draft can't be edited, the whole amount change is refused and nothing is saved. That happens when someone else has its editor open, it has line items, it is due in a closed period, or the person had retired by its date. The alternative is to skip those drafts and change the rest. None of the tests cover this case, so it's a judgement call. Skipping is a small change if you'd prefer it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7810910000000001,
+        "num_turns": 2,
+        "duration_ms": 9835,
+        "duration_api_ms": 93782,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp220.agent.jsonl",
+  "agent_diff_file": "cp220.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
