@@ -1,0 +1,161 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index a8e0a1267..4334666b1 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -110,6 +110,12 @@ export interface GradeMergeView {
+   people: PersonView[];
+ }
+ 
++/** What a bulk hold did: how many people it held, and those people as saved. */
++export interface BulkHoldView {
++  held: number;
++  people: PersonView[];
++}
++
+ /** What a bulk retire did: how many people it retired, and those people as saved. */
+ export interface BulkRetireView {
+   retired: number;
+@@ -217,6 +223,11 @@ export class People {
+     return this.http.post<BulkGradeView>(`${this.base(sheetId)}/bulk-grade`, { ids, grade, from });
+   }
+ 
++  /** Hold the selected people from `from` (null takes the sheet's today) to `to` (null: no end), in list order. */
++  bulkHold(sheetId: string, ids: readonly number[], from: string | null, to: string | null): Observable<BulkHoldView> {
++    return this.http.post<BulkHoldView>(`${this.base(sheetId)}/bulk-hold`, { ids, from, to });
++  }
++
+   /** Retire the selected people from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */
+   bulkRetire(sheetId: string, ids: readonly number[], from: string | null): Observable<BulkRetireView> {
+     return this.http.post<BulkRetireView>(`${this.base(sheetId)}/bulk-retire`, { ids, from });
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a949e5a81..d3976bc94 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -351,6 +351,17 @@ function csvField(value: string): string {
+         }
+       </form>
+ 
++      <form [formGroup]="bulkHoldForm" (ngSubmit)="bulkHold()" aria-label="Hold the selected people">
++        <label for="bulk-hold-from">Hold from</label>
++        <input id="bulk-hold-from" type="date" data-testid="bulk-hold-from" formControlName="from" />
++        <label for="bulk-hold-to">to</label>
++        <input id="bulk-hold-to" type="date" data-testid="bulk-hold-to" formControlName="to" />
++        <button type="submit" data-testid="bulk-hold" [disabled]="bulkHolding()">Hold selected people</button>
++        @if (bulkHeld() !== null) {
++          Held <span data-testid="bulk-held">{{ bulkHeld() }}</span>
++        }
++      </form>
++
+       <p>
+         <label for="sort-by">Sort people by</label>
+         <select id="sort-by" data-testid="sort-by" [value]="sortKey()" (change)="sortBy($any($event.target).value)">
+@@ -731,6 +742,15 @@ export class PeopleList {
+   protected readonly bulkRetireForm = new FormGroup({
+     from: new FormControl('', { nonNullable: true }),
+   });
++  /** How many people the last bulk hold held; null while one runs or before any. */
++  protected readonly bulkHeld = signal<number | null>(null);
++  /** Whether a bulk hold is running, so a second press waits for the first. */
++  protected readonly bulkHolding = signal(false);
++  /** The dates the selected people are held over (a blank from-date takes the sheet's today, a blank to-date has no end). */
++  protected readonly bulkHoldForm = new FormGroup({
++    from: new FormControl('', { nonNullable: true }),
++    to: new FormControl('', { nonNullable: true }),
++  });
+   /** Each person's statements, by person; one with none is missing. */
+   private readonly statements = signal<Map<number, StatementSummary>>(new Map());
+   /** Each person's snapshot lines, oldest first, by person; one with none is missing. */
+@@ -1245,6 +1265,8 @@ export class PeopleList {
+           this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
+           this.bulkRetired.set(null);
+           this.bulkRetireForm.reset({ from: '' }, { emitEvent: false });
++          this.bulkHeld.set(null);
++          this.bulkHoldForm.reset({ from: '', to: '' }, { emitEvent: false });
+           this.bulkOpenResult.set(null);
+           this.bulkOpenError.set(null);
+           this.bulkSettleResult.set(null);
+@@ -1895,6 +1917,34 @@ export class PeopleList {
+     });
+   }
+ 
++  /** Hold the selected people together over the dates given, in list order, each as the row's hold would. */
++  protected bulkHold(): void {
++    if (this.bulkHolding()) return;
++    this.bulkHeld.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const ids = this.people().map((p) => p.id).filter((id) => this.selectedPeople().has(id));
++    const first = ids[0];
++    // A bulk hold is the next action on each selected row: no row's old error stays showing.
++    this.personError.set(null);
++    const { from, to } = this.bulkHoldForm.getRawValue();
++    this.bulkHolding.set(true);
++    this.api.bulkHold(sheet.id, ids, from === '' ? null : from, to === '' ? null : to).subscribe({
++      next: ({ held, people }) => {
++        this.bulkHolding.set(false);
++        const byId = new Map(people.map((p) => [p.id, p]));
++        this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
++        this.selectedPeople.set(new Set());
++        this.bulkHeld.set(held);
++      },
++      error: () => {
++        this.bulkHolding.set(false);
++        // The refusal shows on the first selected person's row.
++        if (first !== undefined) this.personError.set({ id: first, message: 'Could not hold the selected people.' });
++      },
++    });
++  }
++
+   /** Open the selected claims together: each that can be is opened, numbered in list order; the rest are left as they are. */
+   protected bulkOpen(): void {
+     if (this.bulkOpening()) return;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 0ccfdd97c..731f1ef1f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -184,6 +184,14 @@ public class PersonController {
+     public record BulkRetireView(int retired, List<PersonView> people) {
+     }
+ 
++    /** People selected to be held together, from {@code from} (missing: the sheet's today) to {@code to} (missing: no end). */
++    public record BulkHold(@NotNull @Size(max = 1000) List<@NotNull Long> ids, LocalDate from, LocalDate to) {
++    }
++
++    /** What a bulk hold did: how many people it held, and those people as saved, in list order. */
++    public record BulkHoldView(int held, List<PersonView> people) {
++    }
++
+     private final PersonService people;
+     private final SheetHistory history;
+     private final RoleService roles;
+@@ -302,6 +310,30 @@ public class PersonController {
+         return new BulkRetireView(retired.size(), retired);
+     }
+ 
++    /** Hold the selected people together, in list order, each as the row's hold would; one refused is left as they are. */
++    @PostMapping("/bulk-hold")
++    public BulkHoldView bulkHold(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkHold request) {
++        if (roles.isViewer(sheetId, user)) {
++            // A viewer's bulk action goes through with nothing done: no selected person is held.
++            return new BulkHoldView(0, List.of());
++        }
++        Set<Long> selected = new HashSet<>(request.ids());
++        List<PersonView> held = new ArrayList<>();
++        for (Person person : people.list(sheetId)) {
++            if (selected.contains(person.getId())) {
++                try {
++                    held.add(view(sheetId, people.hold(sheetId, user, person.getId(), request.from(), request.to())));
++                } catch (ResponseStatusException refusal) {
++                    // Refused for this person: they are left as they are.
++                }
++            }
++        }
++        return new BulkHoldView(held.size(), held);
++    }
++
+     /** Swap the person with the one above or below them: everyone on the sheet, in list order, as moved. */
+     @PostMapping("/{id}/move")
+     public List<PersonView> move(
