@@ -1,0 +1,68 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 462c53dfb..8a921008b 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -173,6 +173,11 @@ export class Session {
+    * Kept by the people section.
+    */
+   readonly dueTotals = signal<ReadonlyMap<number, number | null>>(new Map());
++  /**
++   * Each crew's lead (person id; null when no longer on the sheet) and due-total in cents as the crews
++   * section shows it. Kept by the crews section.
++   */
++  readonly crewTotals = signal<readonly { leadId: number | null; cents: number }[]>([]);
+   /**
+    * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
+    * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 0c87ee3ee..1cb2b1319 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -23,6 +23,7 @@ interface CrewView {
+ /** A crew as shown, with its due-total (two decimals). */
+ interface CrewLine extends CrewView {
+   dueTotal: string;
++  cents: number;
+ }
+ 
+ // The sheet's crews, each name once (trimmed, not blank), each led by a person of the sheet, and their
+@@ -101,12 +102,13 @@ export class Crews {
+     return this.crews().map((c) => {
+       const ids = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
+       const total = ids.reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
+-      return { ...c, dueTotal: money(total) };
++      return { ...c, dueTotal: money(total), cents: total };
+     });
+   });
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
++    effect(() => this.session.crewTotals.set(this.lines().map((c) => ({ leadId: c.lead?.personId ?? null, cents: c.cents }))));
+     effect(() => {
+       const id = this.session.sheetId();
+       this.session.loads();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d890505cc..71c61d767 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -224,6 +224,7 @@ function trimmedSum(figures: number[]): number {
+       <p>Overdue total: <strong data-testid="header-overdue-total">{{ money(overdueTotal().cents) | figure }}</strong></p>
+       <p>My due total: <strong data-testid="my-due-total">{{ (me() ? dueTotalOf(me()!) : '') | figure }}</strong></p>
+       <p>My overdue total: <strong data-testid="my-overdue-total">{{ (me() ? money(overdueOf(me()!).cents) : '') | figure }}</strong></p>
++      <p>My crew total: <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+     </header>
+     <section aria-labelledby="consolidated-heading">
+       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
+@@ -886,6 +887,12 @@ export class People {
+     if (period.closed || period.softClosed) return money(this.periodDueCents(period));
+     return money(this.classicPeriodLiveCents().get(period.id) ?? 0);
+   }
++  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
++  protected readonly myCrewDueTotal = computed(() => {
++    const me = this.me();
++    const led = me ? this.session.crewTotals().filter((c) => c.leadId === me.id) : [];
++    return led.length ? money(led.reduce((sum, c) => sum + c.cents, 0)) : '';
++  });
+   /** Everyone's due-total added up, skipping those whose due-total is n/a, not trimmed. */
+   protected readonly classicDueTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
