@@ -773,6 +773,46 @@ public class ClaimService {
         return changed;
     }
 
+    /** Share a claim with another person on the sheet: they hold a part of its due, their share percent (two
+     *  decimals, more than 0.00) of it. Refused for the claim's own person, a person already holding a share of it,
+     *  shares adding up to more than 100.00, and a SETTLED, VOID or DELETED claim. */
+    @Transactional
+    public Claim share(String sheetId, String user, long id, long withPersonId, BigDecimal share) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        Person with = people.findByIdAndSheetId(withPersonId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be shared");
+        }
+        if (claim.getPersonId().equals(with.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim cannot be shared with its own person");
+        }
+        if (claim.shareOf(with.getId()) != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, with.getName() + " already holds a share of that claim");
+        }
+        if (share.signum() <= 0 || share.stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A share has two decimals and is more than 0.00");
+        }
+        BigDecimal pct = share.setScale(2, RoundingMode.UNNECESSARY);
+        BigDecimal total = claim.getShares().stream().map(ClaimShare::getShare).reduce(pct, BigDecimal::add);
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim's shares add up to at most 100.00");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
+        claim.share(with.getId(), pct);
+        Claim shared = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_SHARED", user, person, shared, shared.getNumber())
+                + " with=" + with.getName() + " share=" + pct.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return shared;
+    }
+
     /** A user whose role may reassign moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date,
      *  takes the next number in the sequence it is numbered in (the sheet's, or its period's; a DRAFT, having no
      *  number, gets none) with its old number never used again, loses any figure a statement bound it to (it is live again until its new person's next statement), and is

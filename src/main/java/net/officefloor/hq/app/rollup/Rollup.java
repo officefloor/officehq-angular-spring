@@ -13,6 +13,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.Period;
@@ -76,6 +77,8 @@ public class Rollup {
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
+        Map<Long, Person> ownerOf = new LinkedHashMap<>();
+        sheetPeople.forEach(p -> ownerOf.put(p.getId(), p));
         for (Person person : sheetPeople) {
             List<Claim> counting = sheetClaims.stream()
                     .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
@@ -90,8 +93,12 @@ public class Rollup {
             claimedTotal = claimedTotal.add(claimed);
             // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade
             // any of their claims is at, and no claim that has a due, the person has no due-total.
-            List<BigDecimal> dues = counting.stream()
-                    .map(c -> dueOf(c, person.gradeOn(c.getDate()), sheetRates, sheet, sheetClaims))
+            // A shared claim's own person counts its due less its holders' parts; each holder counts their part.
+            List<BigDecimal> dues = Stream.concat(counting.stream()
+                    .map(c -> {
+                        BigDecimal claimDue = dueOf(c, person.gradeOn(c.getDate()), sheetRates, sheet, sheetClaims);
+                        return claimDue == null ? null : claimDue.subtract(c.sharedPartOf(claimDue));
+                    }), heldParts(person, ownerOf, today, sheetRates, sheet, sheetClaims).stream())
                     .filter(Objects::nonNull)
                     .toList();
             boolean anyRate = today != null && Stream.concat(Stream.of(person.gradeOn(today)),
@@ -117,6 +124,25 @@ public class Rollup {
         }
         return new Figures(byPerson, claimedTotal.toPlainString(), trimmedSum(dueFigures).toPlainString(),
                 trimmedSum(overdueFigures).toPlainString());
+    }
+
+    /** The parts a person holds of other people's claims that count (as for their own person), each the claim's
+     *  due times the person's share divided by 100, rounded half to even; a claim with no due adds none. */
+    private static List<BigDecimal> heldParts(Person person, Map<Long, Person> ownerOf, LocalDate today,
+            RateChain sheetRates, Sheet sheet, List<Claim> sheetClaims) {
+        List<BigDecimal> parts = new ArrayList<>();
+        for (Claim claim : sheetClaims) {
+            ClaimShare share = claim.shareOf(person.getId());
+            Person owner = ownerOf.get(claim.getPersonId());
+            if (share == null || owner == null || !owner.counts(claim, today) || claim.isDeferredOn(today)) {
+                continue;
+            }
+            BigDecimal due = dueOf(claim, owner.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);
+            if (due != null) {
+                parts.add(share.partOf(due));
+            }
+        }
+        return parts;
     }
 
     /** A person's score, as the screen shows it. */

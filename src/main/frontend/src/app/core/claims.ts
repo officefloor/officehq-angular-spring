@@ -83,6 +83,23 @@ export interface ClaimView {
   batch: number | null;
   /** The claim's lines, in the order added; while it has any, its amount is their totals added up. */
   lines: ClaimLine[];
+  /** The other people holding a part of the claim's due, in the order given; missing on a claim kept before shares
+   *  were. */
+  shares?: ClaimShare[];
+}
+
+/** A share of a claim: the person holding it and their share percent with exactly two decimals. */
+export interface ClaimShare {
+  personId: number;
+  share: string;
+}
+
+/** A holder's part of a due in whole cents: the due times their share divided by 100, rounded half to even. */
+export function sharePartCents(dueCents: number, share: string): number {
+  const exact = dueCents * cents(share);
+  const whole = Math.floor(exact / 10000);
+  const rest = exact - whole * 10000;
+  return rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;
 }
 
 /** A line of a claim: its label, its quantity (a whole number, at least 1) and its unit amount with exactly two
@@ -416,6 +433,11 @@ export class Claims {
    *  longer bound by a statement, and is listed as that person's newest claim. */
   reassign(sheetId: string, id: number, personId: number): Observable<ClaimView> {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/person`, { personId });
+  }
+
+  /** Share a claim with another person on the sheet, at a share percent (two decimals, more than 0.00). */
+  share(sheetId: string, id: number, personId: number, share: string): Observable<ClaimView> {
+    return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/shares`, { personId, share });
   }
 
   /** Split `amount` off an OPEN claim into a new OPEN claim of the same person, date and note. */

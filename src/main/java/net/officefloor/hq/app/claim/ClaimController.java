@@ -47,14 +47,16 @@ public class ClaimController {
      * settled it (null when it was not settled by one); lines are its lines, in the order added; waived is whether
      * a steward waived its late charge; statedLate is the late charge its person's last statement binds with
      * statedDue (null when not bound, or bound with none, when its late charge follows the sheet's today);
-     * proofReceipts and proofPhotos are how many of its proofs are of each kind; held is whether it is held.
+     * proofReceipts and proofPhotos are how many of its proofs are of each kind; held is whether it is held;
+     * shares are the other people holding a part of its due, in the order given.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, LocalDate deferredUntil, List<LogLine> log, int proofs, String splitFrom,
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
             String voidReason, List<CommentLine> comments, String editedBy, Integer batch, List<LineView> lines,
-            boolean waived, String statedLate, int proofReceipts, int proofPhotos, boolean held) {
+            boolean waived, String statedLate, int proofReceipts, int proofPhotos, boolean held,
+            List<ShareView> shares) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -69,7 +71,8 @@ public class ClaimController {
                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(),
                     claim.isWaived(),
                     claim.getBoundLate() == null ? null : claim.getBoundLate().toPlainString(),
-                    claim.getProofReceipts(), claim.getProofPhotos(), claim.isHeld());
+                    claim.getProofReceipts(), claim.getProofPhotos(), claim.isHeld(),
+                    claim.getShares().stream().map(ShareView::of).toList());
         }
     }
 
@@ -89,6 +92,19 @@ public class ClaimController {
         public static CommentLine of(ClaimComment comment) {
             return new CommentLine(comment.getBy(), comment.getOn(), comment.getText());
         }
+    }
+
+    /** A share of a claim: the person holding it and their share percent with exactly two decimals. */
+    public record ShareView(long personId, String share) {
+
+        public static ShareView of(ClaimShare share) {
+            return new ShareView(share.getPersonId(), share.getShare().toPlainString());
+        }
+    }
+
+    /** A share to give a claim: the person to share it with and their share percent; the service refuses what is
+     *  out of range. */
+    public record ShareForm(@NotNull Long personId, @NotNull @Digits(integer = 3, fraction = 2) BigDecimal share) {
     }
 
     /** A line of a claim: its label, its quantity and its unit amount with exactly two decimals. */
@@ -381,6 +397,15 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody Reassignment request) {
         return ClaimView.of(claims.reassign(sheetId, user, id, request.personId()));
+    }
+
+    @PostMapping("/claims/{id}/shares")
+    public ClaimView share(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ShareForm request) {
+        return ClaimView.of(claims.share(sheetId, user, id, request.personId(), request.share()));
     }
 
     @PostMapping("/claims/{id}/split")

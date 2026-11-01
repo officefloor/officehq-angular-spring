@@ -3,7 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, statusAt } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, sharePartCents, statusAt } from '../../core/claims';
 import { GRADES, Grade, People, PersonView, gradeOn, nameWithGrade } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
@@ -88,6 +88,11 @@ function termsText(p: PersonView): string {
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((total, f) => total + f, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+}
+
+/** What a claim's own person counts of its due, in whole cents: the due less its holders' parts. */
+function ownPart(c: ClaimView, due: number): number {
+  return (c.shares ?? []).reduce((rest, sh) => rest - sharePartCents(due, sh.share), due);
 }
 
 function csvField(value: string): string {
@@ -803,12 +808,33 @@ export class PeopleList {
     for (const p of this.people()) {
       const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom));
       const grades = [this.gradeToday(p), ...counting.map((c) => gradeOn(p, c.date))];
-      const dues = counting.map((c) => this.claimDue(p, c, dueTerms)).filter((due) => due !== null);
+      const dues = [
+        ...counting.map((c) => this.claimDue(p, c, dueTerms)).map((due, i) => due === null ? null : ownPart(counting[i], due)),
+        ...(this.heldParts().get(p.id) ?? []).map((h) => h.part),
+      ].filter((due) => due !== null);
       if (!grades.some((g) => today.has(g)) && dues.length === 0) {
         byPerson.set(p.id, null);
         continue;
       }
       byPerson.set(p.id, dues.reduce((sum, due) => sum + due, 0));
+    }
+    return byPerson;
+  });
+  /** The parts each person holds of other people's claims that count (as for their own person), by holder id: each
+   *  the claim's due times the holder's share divided by 100, rounded half to even, in whole cents; a claim with no
+   *  due gives none. */
+  private readonly heldParts = computed(() => {
+    const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
+    const byPerson = new Map<number, { claim: ClaimView; part: number }[]>();
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
+        if (!c.shares?.length) continue;
+        const due = this.claimDue(p, c, dueTerms);
+        if (due === null) continue;
+        for (const sh of c.shares) {
+          byPerson.set(sh.personId, [...(byPerson.get(sh.personId) ?? []), { claim: c, part: sharePartCents(due, sh.share) }]);
+        }
+      }
     }
     return byPerson;
   });
@@ -822,10 +848,14 @@ export class PeopleList {
       for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
         const due = this.claimDue(p, c, dueTerms) ?? 0;
         if (c.status === 'SETTLED') {
-          split.settled += due;
+          split.settled += ownPart(c, due);
           if (c.corrects == null) split.scored += due;
         }
-        else if (c.status === 'OPEN' || c.status === 'PENDING') split.open += due;
+        else if (c.status === 'OPEN' || c.status === 'PENDING') split.open += ownPart(c, due);
+      }
+      for (const h of this.heldParts().get(p.id) ?? []) {
+        if (h.claim.status === 'SETTLED') split.settled += h.part;
+        else if (h.claim.status === 'OPEN' || h.claim.status === 'PENDING') split.open += h.part;
       }
       byPerson.set(p.id, split);
     }

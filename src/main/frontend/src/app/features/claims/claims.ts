@@ -183,6 +183,20 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           </select>
           <button type="button" data-testid="claim-reassign" (click)="reassign(c)"
                   [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date + ' to another person'">Move</button>
+          — shared with <span data-testid="claim-shares">{{ sharesShown(c) }}</span>
+          <label [for]="'claim-share-select-' + c.id">Share with</label>
+          <select [id]="'claim-share-select-' + c.id" data-testid="claim-share-select"
+                  [value]="shareDrafts()[c.id]?.personId ?? ''" (change)="shareChanged(c, 'personId', $any($event.target).value)">
+            <option value="">Choose a person</option>
+            @for (o of others(); track o.id) {
+              <option [value]="o.id">{{ o.name }}</option>
+            }
+          </select>
+          <label [for]="'claim-share-pct-' + c.id">Share percent</label>
+          <input [id]="'claim-share-pct-' + c.id" data-testid="claim-share-pct" inputmode="decimal" autocomplete="off"
+                 [value]="shareDrafts()[c.id]?.share ?? ''" (input)="shareChanged(c, 'share', $any($event.target).value)" />
+          <button type="button" data-testid="claim-share-add" (click)="share(c)"
+                  [attr.aria-label]="'Share claim of ' + c.amount + ' on ' + c.date + ' with another person'">Share</button>
           <label [for]="'claim-inline-amount-' + c.id">New amount</label>
           <input [id]="'claim-inline-amount-' + c.id" data-testid="claim-inline-amount" inputmode="decimal"
                  autocomplete="off" [value]="inlineAmounts()[c.id] ?? ''"
@@ -283,6 +297,8 @@ export class PersonClaims {
   protected readonly timelines = signal<Readonly<Record<number, readonly string[]>>>({});
   /** The comment typed for each claim, by id. */
   protected readonly commentTexts = signal<Readonly<Record<number, string>>>({});
+  /** The person chosen and the share percent typed to share each claim, by claim id. */
+  protected readonly shareDrafts = signal<Readonly<Record<number, { personId: string; share: string }>>>({});
   /** The person chosen to move each claim to, by claim id. */
   protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
   /** The date typed to defer each OPEN claim until, by id. */
@@ -797,6 +813,61 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 403
           ? 'Only a steward or the approver of this person can reject a claim.'
           : this.refusal(err, c, 'rejected'),
+      }),
+    });
+  }
+
+  /** The claim's holders as `<name> <share>`, comma and space separated, in the order given. */
+  protected sharesShown(c: ClaimView): string {
+    const others = this.others();
+    return (c.shares ?? [])
+      .map((sh) => `${others.find((o) => o.id === sh.personId)?.name ?? ''} ${sh.share}`)
+      .join(', ');
+  }
+
+  protected shareChanged(c: ClaimView, field: 'personId' | 'share', value: string): void {
+    this.shareDrafts.update((drafts) => ({
+      ...drafts,
+      [c.id]: { ...(drafts[c.id] ?? { personId: '', share: '' }), [field]: value },
+    }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected share(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const draft = this.shareDrafts()[c.id] ?? { personId: '', share: '' };
+    const personId = Number(draft.personId);
+    const share = draft.share.trim();
+    if (!personId) {
+      this.claimError.set({ id: c.id, message: 'Choose the person to share the claim with.' });
+      return;
+    }
+    if (!/^[0-9]{1,3}(\.[0-9]{1,2})?$/.test(share) || cents(share) <= 0) {
+      this.claimError.set({ id: c.id, message: 'Type a share percent more than 0.00, with up to two decimals.' });
+      return;
+    }
+    const shares = c.shares ?? [];
+    if (shares.some((sh) => sh.personId === personId)) {
+      this.claimError.set({ id: c.id, message: 'That person already holds a share of this claim.' });
+      return;
+    }
+    if (shares.reduce((sum, sh) => sum + cents(sh.share), cents(share)) > 10000) {
+      this.claimError.set({ id: c.id, message: "A claim's shares add up to at most 100.00." });
+      return;
+    }
+    this.api.share(sheet.id, c.id, personId, share).subscribe({
+      next: (saved) => {
+        this.shareDrafts.update((drafts) => ({ ...drafts, [c.id]: { personId: '', share: '' } }));
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 409
+          && c.status !== 'SETTLED' && c.status !== 'VOID' && c.status !== 'DELETED'
+          ? 'This claim cannot be shared with that person at that share.'
+          : `A ${c.status} claim cannot be shared.`,
       }),
     });
   }
