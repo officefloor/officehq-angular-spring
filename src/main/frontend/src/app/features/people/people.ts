@@ -111,6 +111,14 @@ interface StatementSummary {
   count: number;
   lastDueTotal: string | null;
   lastDate: string;
+  /** Each statement standing, oldest first by date. */
+  lines: StatementLine[];
+}
+
+/** A statement as listed: its date and due-total (null when n/a). */
+interface StatementLine {
+  date: string;
+  dueTotal: string | null;
 }
 
 /** Overdue claims that count: how many, and their dues in cents. */
@@ -459,6 +467,11 @@ function trimmedSum(figures: number[]): number {
                 @if (shows('statement-count')) {<span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>}
                 @if (shows('stated-total')) {<span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) | figure }}</span></span>}
                 @if (shows('statement-date')) {<span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span></span>}
+                <ul>
+                  @for (l of statementOf(p.id)?.lines ?? []; track $index) {
+                    <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal ?? 'n/a' }}</li>
+                  }
+                </ul>
                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement for {{ p.name }} as of</label>
                 <input type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof"
                        #statementAsOf (input)="clearPersonError(p.id)" />

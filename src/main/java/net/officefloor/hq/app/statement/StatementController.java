@@ -3,6 +3,7 @@ package net.officefloor.hq.app.statement;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
@@ -20,14 +21,25 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class StatementController {
 
-    /** A person's statements as the screen shows them; the last due-total has two decimals, null when n/a. */
-    public record StatementSummaryView(Long personId, int count, String lastDueTotal, LocalDate lastDate) {
+    /**
+     * A person's statements as the screen shows them, with each one standing, oldest first; due-totals have
+     * two decimals, null when n/a.
+     */
+    public record StatementSummaryView(Long personId, int count, String lastDueTotal, LocalDate lastDate,
+            List<StatementLineView> lines) {
         static StatementSummaryView of(StatementService.Summary summary) {
-            return new StatementSummaryView(summary.personId(), summary.count(),
-                    summary.lastDueTotal() == null ? null : summary.lastDueTotal().setScale(2).toPlainString(),
-                    summary.lastDate());
+            return new StatementSummaryView(summary.personId(), summary.count(), money(summary.lastDueTotal()),
+                    summary.lastDate(),
+                    summary.lines().stream().map(l -> new StatementLineView(l.date(), money(l.dueTotal()))).toList());
+        }
+
+        private static String money(BigDecimal value) {
+            return value == null ? null : value.setScale(2).toPlainString();
         }
     }
+
+    /** A statement as listed: its date and due-total (two decimals, null when n/a). */
+    public record StatementLineView(LocalDate date, String dueTotal) {}
 
     /** A statement just taken: the person's statements and their claims as they now stand. */
     public record StatementTakenView(StatementSummaryView summary, List<ClaimView> claims) {}

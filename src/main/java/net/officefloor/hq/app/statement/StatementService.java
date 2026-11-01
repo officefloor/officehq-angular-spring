@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,8 +43,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class StatementService {
 
-    /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
-    public record Summary(Long personId, int count, BigDecimal lastDueTotal, LocalDate lastDate) {}
+    /**
+     * A person's statements: how many, the last one's due-total (null when n/a) and date, and each one
+     * standing, oldest first by date (in the order taken on the same date).
+     */
+    public record Summary(Long personId, int count, BigDecimal lastDueTotal, LocalDate lastDate, List<Line> lines) {}
+
+    /** A statement as listed: its date and due-total (null when n/a). */
+    public record Line(LocalDate date, BigDecimal dueTotal) {}
 
     /** A statement just taken, with the person's claims as they now stand. */
     public record Taken(Summary summary, List<Claim> claims) {}
@@ -226,8 +233,12 @@ public class StatementService {
     }
 
     private static Summary summaryOf(Long personId, List<Statement> list) {
-        if (list.isEmpty()) return new Summary(personId, 0, null, null);
+        List<Line> lines = list.stream()
+                .sorted(Comparator.comparing(Statement::getDate).thenComparing(Statement::getId))
+                .map(s -> new Line(s.getDate(), s.getDueTotal()))
+                .toList();
+        if (list.isEmpty()) return new Summary(personId, 0, null, null, lines);
         Statement last = list.get(list.size() - 1);
-        return new Summary(personId, list.size(), last.getDueTotal(), last.getDate());
+        return new Summary(personId, list.size(), last.getDueTotal(), last.getDate(), lines);
     }
 }
