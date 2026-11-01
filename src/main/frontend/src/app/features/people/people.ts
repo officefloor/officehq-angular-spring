@@ -866,10 +866,13 @@ export class People {
     }
     return by;
   });
-  /** A person's carried figure for a period: fixed when it was closed or soft-closed (0 for someone added later), else live. */
+  /**
+   * A person's carried figure for a period: fixed when it was closed or soft-closed (0 for someone added later), else
+   * live, with their opening balance for it added.
+   */
   protected personPeriodCarriedOf(p: Person, period: Period): string {
     if (period.closed || period.softClosed) return money(cents(period.closedPersonCarried?.[p.id] ?? '0.00'));
-    return money(this.personPeriodCarriedCents().get(p.id)?.get(period.id) ?? 0);
+    return money((this.personPeriodCarriedCents().get(p.id)?.get(period.id) ?? 0) + cents(period.openings?.[p.id] ?? '0.00'));
   }
   /** A period's due-total: the people's figures for it added up. */
   protected readonly periodDueTotalOf = (period: Period): string =>

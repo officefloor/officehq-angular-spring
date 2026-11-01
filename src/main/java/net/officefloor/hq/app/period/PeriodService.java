@@ -156,6 +156,10 @@ public class PeriodService {
         Map<Long, BigDecimal> personDues = new LinkedHashMap<>();
         for (Long personId : byId.keySet()) personDues.put(personId, BigDecimal.ZERO.setScale(2));
         Map<Long, BigDecimal> personCarried = new LinkedHashMap<>(personDues);
+        // their opening balances for it are part of what they carry into it
+        period.getOpenings().forEach((personId, amount) -> {
+            if (personCarried.containsKey(personId)) personCarried.merge(personId, amount, BigDecimal::add);
+        });
         List<Period> all = periods.findBySheetIdOrderByFromDateAsc(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());

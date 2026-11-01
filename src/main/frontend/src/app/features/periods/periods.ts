@@ -24,6 +24,8 @@ export interface Period {
   closedPersonCarried: Record<string, string>;
   /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
   cap: number | null;
+  /** Each person's opening balance for it, two decimals, by person id; part of their carried figure. */
+  openings: Record<string, string>;
 }
 
 /** Of the sheet's periods, the one whose dates contain the date, or null. */
@@ -87,6 +89,17 @@ export function closedOn(periods: Period[], date: string): boolean {
         <label for="period-generate-fy-year">Fiscal year (yyyy)</label>
         <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year" inputmode="numeric" />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
+      <form [formGroup]="openingForm" (ngSubmit)="importOpenings()" aria-label="Paste opening balances">
+        <label for="opening-import">Opening balances (name,period,amount per line)</label>
+        <textarea id="opening-import" data-testid="opening-import" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="opening-import-submit">Paste opening balances</button>
+        @if (openingDone() !== null) {
+          <output data-testid="opening-import-done" aria-live="polite">{{ openingDone() }}</output>
+        }
+        @if (openingError()) {
+          <p role="alert" class="error" data-testid="opening-error">{{ openingError() }}</p>
+        }
       </form>
       <table>
         <thead>
@@ -156,7 +169,16 @@ export class Periods {
     year: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly openingError = signal('');
+  /** How many lines the last opening paste took; null while one runs or before any. */
+  protected readonly openingDone = signal<number | null>(null);
+  private importingOpenings = false;
+  protected readonly openingForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
+    this.openingForm.valueChanges.subscribe(() => this.openingError.set(''));
     this.fyForm.valueChanges.subscribe(() => this.generateError.set(''));
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
@@ -231,6 +253,48 @@ export class Periods {
       this.generateError.set('Could not generate those periods.');
     } finally {
       this.generating = false;
+    }
+  }
+
+  /**
+   * Add each pasted line of name,period,amount to the person's opening balance for the period. Every line
+   * is checked first; if any is refused, nothing is added.
+   */
+  protected async importOpenings(): Promise<void> {
+    if (this.importingOpenings) return;
+    this.openingError.set('');
+    this.openingDone.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.openingForm.getRawValue().text;
+    const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
+    if (lines.length === 0) {
+      this.openingError.set('Paste at least one line of name,period,amount.');
+      return;
+    }
+    const names = new Set(this.periods().map((p) => p.name));
+    for (const line of lines) {
+      const fields = line.split(',');
+      if (fields.length !== 3 || fields[0].trim() === '' || !names.has(fields[1].trim()) || !/^\d{1,12}\.\d{2}$/.test(fields[2].trim())) {
+        this.openingError.set('Every line must be a person, a period on this sheet and an amount of 0.00 or more; nothing was added.');
+        return;
+      }
+    }
+    this.importingOpenings = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ lines: number; periods: Period[] }>(`/api/sheets/${encodeURIComponent(sheet)}/periods/openings`, { text }, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const period of result.periods) this.saved.emit(period);
+      this.openingDone.set(result.lines);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.openingError.set('Every line must be a person on this sheet, a period on it and an amount of 0.00 or more; nothing was added.');
+    } finally {
+      this.importingOpenings = false;
     }
   }
 

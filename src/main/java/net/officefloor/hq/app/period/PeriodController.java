@@ -31,16 +31,18 @@ public class PeriodController {
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedDueTotal, Map<Long, String> closedPersonDues, Integer cap,
-            Map<Long, String> closedPersonCarried) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> openings) {
         static PeriodView of(Period period) {
             Map<Long, String> personDues = new TreeMap<>();
             period.getClosedPersonDues().forEach((personId, due) -> personDues.put(personId, due.setScale(2).toPlainString()));
             Map<Long, String> carried = new TreeMap<>();
             period.getClosedPersonCarried().forEach((personId, due) -> carried.put(personId, due.setScale(2).toPlainString()));
+            Map<Long, String> openings = new TreeMap<>();
+            period.getOpenings().forEach((personId, amount) -> openings.put(personId, amount.setScale(2).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedDueTotal() == null ? null : period.getClosedDueTotal().setScale(2).toPlainString(),
-                    personDues, period.getCap(), carried);
+                    personDues, period.getCap(), carried, openings);
         }
     }
 
@@ -60,10 +62,18 @@ public class PeriodController {
     /** A fiscal year by the calendar year its first day falls in (yyyy). */
     public record GenerateFiscalYearRequest(@NotNull @Pattern(regexp = "\\d{4}") String year) {}
 
-    private final PeriodService service;
+    /** Lines of name,period,amount to add to people's opening balances. */
+    public record OpeningImportRequest(@NotNull @Size(max = 100_000) String text) {}
 
-    public PeriodController(PeriodService service) {
+    /** How many lines an opening import took, and the periods it changed as the store now holds them. */
+    public record OpeningImportView(int lines, List<PeriodView> periods) {}
+
+    private final PeriodService service;
+    private final OpeningImportService openings;
+
+    public PeriodController(PeriodService service, OpeningImportService openings) {
         this.service = service;
+        this.openings = openings;
     }
 
     @GetMapping
@@ -98,6 +108,16 @@ public class PeriodController {
             @RequestBody @Valid GenerateFiscalYearRequest request) {
         return service.generateFiscalYear(sheetId, user, Integer.parseInt(request.year())).stream()
                 .map(PeriodView::of).toList();
+    }
+
+    /** Add each pasted line's amount to the person's opening balance for the period; any bad line refuses them all. */
+    @PostMapping("/openings")
+    public OpeningImportView importOpenings(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid OpeningImportRequest request) {
+        OpeningImportService.Result result = openings.importOpenings(sheetId, user, request.text());
+        return new OpeningImportView(result.lines(), result.periods().stream().map(PeriodView::of).toList());
     }
 
     @PostMapping("/{id}/close")

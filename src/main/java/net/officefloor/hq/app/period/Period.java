@@ -67,6 +67,13 @@ public class Period {
     @Column(name = "carried", nullable = false, precision = 14, scale = 2)
     private Map<Long, BigDecimal> closedPersonCarried = new TreeMap<>();
 
+    /** Each person's opening balance for it, the pasted amounts added up, by person id; part of their carried figure. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "amount", nullable = false, precision = 14, scale = 2)
+    private Map<Long, BigDecimal> openings = new TreeMap<>();
+
     /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
     @Column(name = "claim_cap")
     private Integer cap;
@@ -106,6 +113,13 @@ public class Period {
     public Map<Long, BigDecimal> getClosedPersonCarried() { return closedPersonCarried; }
 
     public Integer getCap() { return cap; }
+
+    public Map<Long, BigDecimal> getOpenings() { return openings; }
+
+    /** Add the amount to the person's opening balance for it. */
+    public void addOpening(Long personId, BigDecimal amount) {
+        openings.merge(personId, amount, BigDecimal::add);
+    }
 
     /** Close it, fixing each person's due-total and carried figure for it and its own due-total, the sum of theirs. */
     public void close(Map<Long, BigDecimal> personDues, Map<Long, BigDecimal> personCarried) {
