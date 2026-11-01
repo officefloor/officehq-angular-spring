@@ -1,0 +1,186 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index ef2c99b05..024aa9917 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -305,6 +305,12 @@ export class Claims {
+     return this.http.get<ClaimView[]>(`${this.base(sheetId)}/claims`);
+   }
+ 
++  /** The sheet's duplicate claims: one line `<name> <date> <amount> x<count>` per person, date and amount with two
++   *  or more claims, VOID and DELETED ones left out; people in list order, then by date, then by amount. */
++  duplicates(sheetId: string): Observable<string[]> {
++    return this.http.get<string[]>(`${this.base(sheetId)}/duplicates`);
++  }
++
+   add(sheetId: string, personId: number, claim: ClaimForm): Observable<ClaimView> {
+     return this.http.post<ClaimView>(`${this.base(sheetId)}/people/${personId}/claims`, claim);
+   }
+diff --git a/src/main/frontend/src/app/features/claims/duplicates.ts b/src/main/frontend/src/app/features/claims/duplicates.ts
+new file mode 100644
+index 000000000..54535484b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/claims/duplicates.ts
+@@ -0,0 +1,61 @@
++import { Component, inject, signal } from '@angular/core';
++import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
++import { Claims } from '../../core/claims';
++import { Sheets } from '../../core/sheet';
++
++// The sheet's duplicate claims: for each person, date and amount with two or more claims (VOID and DELETED left out),
++// one line, people in list order, then by date, then by amount.
++@Component({
++  selector: 'app-duplicates',
++  template: `
++    <section aria-labelledby="dups-heading">
++      <h3 id="dups-heading">Duplicate claims</h3>
++      <button type="button" data-testid="dups-show" [disabled]="loading()" (click)="show()">Show duplicates</button>
++      @if (error(); as err) {
++        <p role="alert" data-testid="dups-error">{{ err }}</p>
++      }
++      <ul aria-label="Duplicate claims by person, date and amount">
++        @for (line of lines(); track $index) {
++          <li data-testid="dup-line">{{ line }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class DuplicatesPanel {
++  private readonly claims = inject(Claims);
++  private readonly sheets = inject(Sheets);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  protected readonly loading = signal(false);
++
++  constructor() {
++    // Another sheet's duplicates are not left showing once a sheet is (re)loaded.
++    toObservable(this.sheets.loaded)
++      .pipe(takeUntilDestroyed())
++      .subscribe(() => {
++        this.lines.set([]);
++        this.error.set(null);
++      });
++  }
++
++  protected show(): void {
++    if (this.loading()) return;
++    this.error.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.loading.set(true);
++    this.lines.set([]);
++    this.claims.duplicates(sheet.id).subscribe({
++      next: (lines) => {
++        this.loading.set(false);
++        this.lines.set(lines);
++      },
++      error: () => {
++        this.loading.set(false);
++        this.error.set('Could not read the duplicate claims.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 5799ea5be..f93bae56a 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -4,6 +4,7 @@ import { LOCALES, Locale, Session } from '../../core/session';
+ import { Sheets } from '../../core/sheet';
+ import { AuditPanel } from '../audit/audit';
+ import { ActivityPanel } from '../audit/activity';
++import { DuplicatesPanel } from '../claims/duplicates';
+ import { DelegationsPanel } from '../delegations/delegations';
+ import { HolidaysPanel } from '../holidays/holidays';
+ import { NotesPanel } from '../notes/notes';
+@@ -19,7 +20,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+   selector: 'app-home',
+   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
+     VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel,
+-    ActivityPanel],
++    ActivityPanel, DuplicatesPanel],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -91,6 +92,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+         <app-templates />
+         <app-notes />
+         <app-people />
++        <app-duplicates />
+         <app-search />
+         <app-audit />
+         <app-activity />
+diff --git a/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsController.java b/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsController.java
+new file mode 100644
+index 000000000..6a8c1dc16
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/DuplicateClaimsController.java
+@@ -0,0 +1,67 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The sheet's duplicate claims: claims of one person sharing a date and an amount. Reading them records nothing. */
++@RestController
++@Validated
++public class DuplicateClaimsController {
++
++    /** A person's claims of one date and amount. */
++    private record Key(LocalDate date, BigDecimal amount) {
++    }
++
++    private static final Comparator<Key> BY_DATE_THEN_AMOUNT =
++            Comparator.comparing(Key::date).thenComparing(Key::amount);
++
++    private final PersonRepository people;
++    private final ClaimRepository claims;
++
++    public DuplicateClaimsController(PersonRepository people, ClaimRepository claims) {
++        this.people = people;
++        this.claims = claims;
++    }
++
++    /** One line {@code <name> <date> <amount> x<count>} for each person, date and amount with two or more claims,
++     *  VOID and DELETED claims left out: people in list order, then by date, then by amount. Read from the store as
++     *  it holds them now. */
++    @GetMapping("/api/sheets/{sheetId}/duplicates")
++    @Transactional(readOnly = true)
++    public List<String> duplicates(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
++                .filter(c -> c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
++                .collect(Collectors.groupingBy(Claim::getPersonId));
++        List<String> lines = new ArrayList<>();
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            Map<Key, Integer> counts = new TreeMap<>(BY_DATE_THEN_AMOUNT);
++            for (Claim c : byPerson.getOrDefault(person.getId(), List.of())) {
++                counts.merge(new Key(c.getDate(), c.getAmount().setScale(2, RoundingMode.HALF_UP)), 1, Integer::sum);
++            }
++            counts.forEach((key, n) -> {
++                if (n >= 2) {
++                    lines.add(person.getName() + " " + key.date() + " " + key.amount().toPlainString() + " x" + n);
++                }
++            });
++        }
++        return lines;
++    }
++}
