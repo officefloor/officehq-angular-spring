@@ -1,0 +1,64 @@
+{
+  "checkpoint": 105,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp105_pools",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has pools. A pool has a name (unique, surrounding spaces removed, not blank; a form;\nPOOL_ADDED name=<name>) and members: a person chosen from a select, with a share percent (two\ndecimals, more than 0.00 and at most 100.00), added from the pool's row (POOL_MEMBER_ADDED\npool=<pool> name=<person> share=<share>); a person already in the pool, or a bad share, is refused\nwith an error on the pool. Show for each pool its total share and balanced yes/no: balanced when the\nshares total exactly 100.00. A retired member's share (a member with a retirement date set, whatever\nthe date) counts as 0.00 toward the total. A person can be in several pools. Show each member's\nshare on the member's line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has pools. A pool has a name (unique, surrounding spaces removed, not blank; a form;\nPOOL_ADDED name=<name>) and members: a person chosen from a select, with a share percent (two\ndecimals, more than 0.00 and at most 100.00), added from the pool's row (POOL_MEMBER_ADDED\npool=<pool> name=<person> share=<share>); a person already in the pool, or a bad share, is refused\nwith an error on the pool. Show for each pool its total share and balanced yes/no: balanced when the\nshares total exactly 100.00. A retired member's share (a member with a retirement date set, whatever\nthe date) counts as 0.00 toward the total. A person can be in several pools. Show each member's\nshare on the member's line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e8893224205e5a62d6dce3d489f5f3fa3644eab2",
+  "reset_sha": "",
+  "preagent_sha": "07340132013c2b4cc32c16cd41121d74358674e1",
+  "prev_sha": "07340132013c2b4cc32c16cd41121d74358674e1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2915206000000001,
+    "input_tokens": 40,
+    "output_tokens": 15750,
+    "cache_read_tokens": 1243923,
+    "cache_creation_tokens": 90947,
+    "num_turns": 20,
+    "duration_ms": 352490,
+    "duration_api_ms": 173159,
+    "model": "claude-opus-5-5",
+    "session_id": "95d7be3c-9037-4ce8-97b5-8f5075c8fe43",
+    "stop_reason": "success",
+    "result_text": "I've added pools to the sheet, and all 4 tests in `bin/e2e` pass.\n\n**What it does**\n- **Adding a pool:** a form at the top of the new Pools section. Spaces around the name are removed. A blank name or one already in use is refused with `pool-form-error`. A pool that goes through is logged as `POOL_ADDED \u2026 name=<name>`.\n- **Adding a member:** each pool's row has a person select, a share field and an Add button. The share must have at most two decimals, be more than 0.00 and be at most 100.00, so `0.00`, `100.01` and `33.335` are all refused. Adding someone already in that pool is also refused. A refusal shows `pool-error` on that pool's row and goes away as soon as you change that row's form. An add that goes through is logged as `POOL_MEMBER_ADDED \u2026 pool=<pool> name=<person> share=<share>`. One person can be in several pools.\n- **What each pool shows:** its total share and balanced yes/no (balanced only when the total is exactly 100.00). Each member's line shows their share. A retired member's share still shows on their line but counts as 0.00 in the total, whatever their retirement date.\n\n**Where the changes are**\n- **Stored data:** a new migration, `V65__pool.sql`, adds a `pool` table and a `pool_member` table. Both carry the sheet id, so the existing \"view as of a date\" feature covers pools without extra code.\n- **Server:** a new `pool` package with the entities, `PoolService`, `PoolController` and the refusal errors. It is under `/api/sheets/{id}/pools`, so the existing viewer, archived and as-of checks apply to it.\n- **Front end:** a new `features/pools/pools.ts` section, shown below People. People now also writes its list of people to `Session` (`session.people`), which fills the pool select.\n\nThe page also works out each pool's total itself, using the people list already on screen, as well as getting it from the server. So when someone is retired, the totals update without reloading the sheet.\n\nPool names are compared exactly, so \"P1\" and \"p1\" would be two different pools. The request only said \"unique\", so tell me if you want them compared ignoring case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2915206000000001,
+        "num_turns": 20,
+        "duration_ms": 352490,
+        "duration_api_ms": 173159,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp105.agent.jsonl",
+  "agent_diff_file": "cp105.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
