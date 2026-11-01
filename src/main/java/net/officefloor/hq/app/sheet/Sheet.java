@@ -20,7 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /** A sheet: the unit everything else in the app is kept under, chosen by its id. */
 @Entity
@@ -175,6 +177,12 @@ public class Sheet {
     @Column(name = "default_grade", length = 1)
     private String defaultGrade;
 
+    /** The grades retired on the sheet: none can be given to a new person nor chosen in an edit. Not dated. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_grade_retired", joinColumns = @JoinColumn(name = "sheet_id"))
+    @Column(name = "grade", nullable = false, length = 1)
+    private Set<String> retiredGrades = new TreeSet<>();
+
     /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -213,6 +221,7 @@ public class Sheet {
         copy.clonedFrom = this.id;
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
+        copy.retiredGrades.addAll(retiredGrades);
         copy.lastSettleBatch = lastSettleBatch;
         return copy;
     }
@@ -514,9 +523,22 @@ public class Sheet {
         this.defaultGrade = defaultGrade;
     }
 
-    /** The grade a new person takes when none is given: the default grade, A when it sets none. */
+    /** The grade a new person takes when none is given: the default grade, A when it sets none or it is retired. */
     public String defaultGradeOrA() {
-        return defaultGrade == null ? "A" : defaultGrade;
+        return defaultGrade == null || isGradeRetired(defaultGrade) ? "A" : defaultGrade;
+    }
+
+    /** The grades retired on the sheet, in order. */
+    public List<String> getRetiredGrades() {
+        return List.copyOf(new TreeSet<>(retiredGrades));
+    }
+
+    public boolean isGradeRetired(String grade) {
+        return retiredGrades.contains(grade);
+    }
+
+    public void retireGrade(String grade) {
+        retiredGrades.add(grade);
     }
 
     /** The sheet's proof kinds, in the order set; none when it sets none. */

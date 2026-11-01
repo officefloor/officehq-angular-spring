@@ -52,6 +52,7 @@ public class SheetController {
      *  scoreLog is "on" while the score log switch is on, else null;
      *  proofKinds is the sheet's proof kinds, comma separated, null when there are none;
      *  defaultGrade is the sheet's default grade, null when it sets none (then A);
+     *  retiredGrades is the grades retired on the sheet, in order;
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
@@ -60,7 +61,7 @@ public class SheetController {
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimit, Integer scoreMid, Integer scoreHigh,
-            String scoreLog, Integer maxOpen) {
+            String scoreLog, Integer maxOpen, List<String> retiredGrades) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -85,7 +86,7 @@ public class SheetController {
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), sheet.getGradeClerkLimits(), sheet.getScoreMid(), sheet.getScoreHigh(),
-                    sheet.isScoreLog() ? "on" : null, sheet.getMaxOpen());
+                    sheet.isScoreLog() ? "on" : null, sheet.getMaxOpen(), sheet.getRetiredGrades());
         }
     }
 
@@ -452,6 +453,15 @@ public class SheetController {
             @Valid @RequestBody DefaultGradeChange request) {
         String grade = request.defaultGrade() == null || request.defaultGrade().isEmpty() ? null : request.defaultGrade();
         return SheetView.of(sheets.setDefaultGrade(id, user, grade));
+    }
+
+    /** Retire a grade. */
+    @PostMapping("/{id}/grades/{grade}/retire")
+    public SheetView retireGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade) {
+        return SheetView.of(sheets.retireGrade(id, user, grade));
     }
 
     /** Change the sheet's parent sheet. */

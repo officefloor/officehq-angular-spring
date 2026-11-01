@@ -92,6 +92,9 @@ export interface SheetView {
   /** The sheet's default grade (A, B or C): the grade the quick-add bar gives a new person, and the one an imported
    *  line with a blank grade takes; null when it sets none (then A). Not dated. */
   defaultGrade: string | null;
+  /** The grades retired on the sheet, in order: none can be given to a new person nor chosen in an edit; people on
+   *  one keep it. Not dated. */
+  retiredGrades: string[];
   /** The alert threshold (two decimals): a person whose due-total rises from at or below it to above it is alerted;
    *  null when it is off. Not dated. */
   alertThreshold: string | null;
@@ -325,6 +328,13 @@ export class Sheets {
   setDefaultGrade(id: string, defaultGrade: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/default-grade`, { defaultGrade })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Retire a grade on the active sheet; refused for one already retired. */
+  retireGrade(id: string, grade: string): Observable<SheetView> {
+    return this.http
+      .post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/grades/${grade}/retire`, null)
       .pipe(tap((s) => this.active.set(s)));
   }
 

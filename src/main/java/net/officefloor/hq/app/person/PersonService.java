@@ -76,7 +76,9 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             String tags) {
-        sheets.load(sheetId, user);
+        if (sheets.load(sheetId, user).isGradeRetired(grade)) {
+            throw gradeRetired(grade);
+        }
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)
                 || people.findBySheetIdAndAliasIgnoreCase(sheetId, trimmed).isPresent()
@@ -184,11 +186,16 @@ public class PersonService {
     private Person update(String sheetId, String user, long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tags,
             boolean throughForm) {
-        LocalDate today = sheets.load(sheetId, user).getToday();
+        Sheet sheet = sheets.load(sheetId, user);
+        LocalDate today = sheet.getToday();
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (person.getVersion() != version) {
             throw changedSince();
+        }
+        boolean gradeChosen = gradeFrom != null || !grade.equals(person.gradeOn(today));
+        if (gradeChosen && sheet.isGradeRetired(grade)) {
+            throw gradeRetired(grade);
         }
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, id)
@@ -207,7 +214,7 @@ public class PersonService {
         }
         Rollup.Figures before = rollup.of(sheetId);
         person.setName(trimmed);
-        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+        if (gradeChosen) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
         }
         boolean termsChanged;
@@ -408,6 +415,10 @@ public class PersonService {
             return null;
         }
         return contact.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static ResponseStatusException gradeRetired(String grade) {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + grade + " is retired");
     }
 
     private static ResponseStatusException contactInUse() {

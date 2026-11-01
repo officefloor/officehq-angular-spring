@@ -347,6 +347,21 @@ public class SheetService {
         return saved;
     }
 
+    /** Retire a grade (A, B or C), starting the sheet if it has never been loaded: it can no longer be given to a new
+     *  person nor chosen in an edit; people on it keep it. Refused for a grade already retired. Not dated. */
+    @Transactional
+    public Sheet retireGrade(String id, String user, String grade) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        if (sheet.isGradeRetired(grade)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + grade + " is already retired");
+        }
+        sheet.retireGrade(grade);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "GRADE_RETIRED sheet=" + id + " by=" + user + " grade=" + grade);
+        return saved;
+    }
+
     /** Set the sheet's parent sheet (null: none), starting the sheet if it has never been loaded. Not dated. Refused
      *  for the sheet itself, for a sheet never loaded, and for a sheet that has this one as an ancestor. */
     @Transactional
