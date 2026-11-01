@@ -21,6 +21,7 @@ import net.officefloor.hq.app.rate.RateLevels;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The sheet's figures as the screen shows them: each person's claimed and due-total, and the
@@ -64,7 +65,16 @@ public class RollupService {
      * change on the sheet moves the figures between this snapshot and the one after the change.
      */
     public Snapshot snapshot(String sheetId) {
-        Sheet sheet = sheets.findForUpdate(sheetId).orElse(null);
+        return figuresOf(sheetId, sheets.findForUpdate(sheetId).orElse(null));
+    }
+
+    /** The sheet's figures now, as it shows them, without locking it. */
+    @Transactional(readOnly = true)
+    public Snapshot current(String sheetId) {
+        return figuresOf(sheetId, sheets.findById(sheetId).orElse(null));
+    }
+
+    private Snapshot figuresOf(String sheetId, Sheet sheet) {
         LocalDate today = sheet == null ? null : sheet.getToday();
         LocalDate policyDate = sheet == null ? null : sheet.getPolicyDate();
         // its own rates, then its ancestors' for a grade and date it has none in force on

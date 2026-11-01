@@ -74,6 +74,14 @@ function csvField(value: string): string {
 }
 
 /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
+/** The figures of the sheet's descendants added up, each sheet's due-total and overdue-total as it shows them. */
+interface Descendants {
+  sheets: number;
+  people: number;
+  dueTotal: string;
+  overdueTotal: string;
+}
+
 interface StatementSummary {
   personId: number;
   count: number;
@@ -172,6 +180,12 @@ function trimmedSum(figures: number[]): number {
       <p>Due total: <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue total: <strong data-testid="header-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
     </header>
+    <section aria-labelledby="consolidated-heading">
+      <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
+      <p>People: <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
+      <p>Due total: <strong data-testid="consolidated-due-total">{{ money(consolidated().dueCents) }}</strong></p>
+      <p>Overdue total: <strong data-testid="consolidated-overdue-total">{{ money(consolidated().overdueCents) }}</strong></p>
+    </section>
     <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
@@ -505,6 +519,17 @@ export class People {
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
+  /** The sheet's descendants' figures, as the store held them when the sheet was loaded. */
+  private readonly descendants = signal<Descendants | null>(null);
+  /** The sheet's own figures, as shown, and its descendants' added up. */
+  protected readonly consolidated = computed(() => {
+    const d = this.descendants();
+    return {
+      people: this.people().length + (d?.people ?? 0),
+      dueCents: this.dueTotalAllCents() + (d ? cents(d.dueTotal) : 0),
+      overdueCents: this.overdueTotal().cents + (d ? cents(d.overdueTotal) : 0),
+    };
+  });
   /** The people on screen: everyone, less the retired unless show retired is on. */
   protected readonly listed = computed(() =>
     this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
@@ -624,8 +649,11 @@ export class People {
     return by;
   });
   /** Everyone's due-total added up, skipping those whose due-total is n/a, trimmed. */
+  private readonly dueTotalAllCents = computed(() =>
+    trimmedSum(this.people().map((p) => this.dueTotalCents(p)).filter((c): c is number => c !== null)),
+  );
   protected readonly dueTotal = computed(() =>
-    money(trimmedSum(this.people().map((p) => this.dueTotalCents(p)).filter((c): c is number => c !== null))),
+    money(this.dueTotalAllCents()),
   );
   /** Each person's overdue claims that count, by id: how many and their dues in cents. */
   private readonly overdueByPerson = computed(() => {
@@ -812,6 +840,7 @@ export class People {
       const id = this.session.sheetId();
       this.session.loads();
       this.people.set([]);
+      this.descendants.set(null);
       this.claims.set([]);
       this.selectedIds.set(new Set());
       this.selectedPeople.set(new Set());
@@ -871,13 +900,14 @@ export class People {
 
   private async load(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, tags] = await Promise.all([
+      const [list, claims, rates, statements, periods, tags, descendants] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() })),
         firstValueFrom(this.http.get<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`, { headers: this.headers() })),
         firstValueFrom(this.http.get<StatementSummary[]>(`/api/sheets/${encodeURIComponent(sheet)}/statements`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { headers: this.headers() })),
         firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims/tags`, { headers: this.headers() })),
+        firstValueFrom(this.http.get<Descendants>(`/api/sheets/${encodeURIComponent(sheet)}/descendants/figures`, { headers: this.headers() })),
       ]);
       if (this.session.sheetId() !== sheet) return;
       this.people.set(list);
@@ -886,6 +916,7 @@ export class People {
       this.statements.set(statements);
       this.periods.set(periods);
       this.usedTags.set(tags);
+      this.descendants.set(descendants);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not load the people on this sheet.');
     }
