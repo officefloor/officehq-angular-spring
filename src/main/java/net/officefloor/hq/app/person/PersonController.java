@@ -27,22 +27,31 @@ public class PersonController {
     /**
      * A person as the screen shows them: grade is the one in force on the sheet's today, grades every
      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
-     * while not retired; patronIds in the order named.
+     * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
+     * in the order named.
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
-            boolean retired, LocalDate retiredFrom, boolean held, List<Long> patronIds) {
+            boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds) {
             List<GradeView> grades = new ArrayList<>();
             grades.add(new GradeView(null, person.getGrade()));
             person.getDatedGrades().forEach((from, grade) -> grades.add(new GradeView(from, grade)));
             return new PersonView(person.getId(), person.getName(),
                     today == null ? person.getGrade() : person.gradeOn(today), grades, person.getVersion(),
-                    person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds);
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+                    patronIds);
         }
     }
 
     /** A grade in force from a date (null: the beginning of time). */
     public record GradeView(LocalDate from, String grade) {}
+
+    /** A hold from a date (null: the beginning of time) to a date (null: open-ended), both included. */
+    public record HoldView(LocalDate from, LocalDate to) {}
+
+    /** A hold to put on a person: from the date (blank: the sheet's today) to the optional to-date. */
+    public record HoldRequest(LocalDate from, LocalDate to) {}
 
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {}
@@ -104,13 +113,14 @@ public class PersonController {
         return view(service.retire(sheetId, user, id, request.from()));
     }
 
-    /** Put the person on hold, or take them off it when held. */
+    /** Put the person on hold from a date to an optional to-date. */
     @PostMapping("/{id}/hold")
     public PersonView hold(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(service.toggleHold(sheetId, user, id));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody HoldRequest request) {
+        return view(service.hold(sheetId, user, id, request.from(), request.to()));
     }
 
     /** Name another person on the sheet as the person's patron. */

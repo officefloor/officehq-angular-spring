@@ -69,9 +69,12 @@ export function isBound(c: Claim): boolean {
   return c.stated && c.status !== 'PENDING';
 }
 
-/** Whether the claim counts for its person held or not: a held person's open claims do not. */
-export function countsFor(c: Claim, held: boolean): boolean {
-  return held ? c.status === 'SETTLED' : counts(c);
+/**
+ * Whether the claim counts for its person, given whether its date falls within one of their holds:
+ * an open claim dated within a hold does not, unless bound by a statement.
+ */
+export function countsFor(c: Claim, heldOnDate: boolean): boolean {
+  return counts(c) && (!heldOnDate || !isOpen(c) || isBound(c));
 }
 
 /** A claim's amount as cents, so sums are exact; a correction's is negative. */

@@ -77,7 +77,7 @@ public class PeriodService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !claim.getStatus().counts(person.isHeld()) || !period.contains(claim.getDate())) continue;
+            if (person == null || !person.counts(claim) || !period.contains(claim.getDate())) continue;
             BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
             if (figure != null) total = total.add(figure);
         }

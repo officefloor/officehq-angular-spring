@@ -10,18 +10,22 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import net.officefloor.hq.app.claim.Claim;
 
 /**
  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
  * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
  * given a retirement date is retired at once, whatever the date; none of their claims may be dated
- * after it. A person can be put on hold and taken off it again. The grade is dated: the first one
+ * after it. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
  * given is in force from the beginning of time, and each later one from its from-date.
  */
 @Entity
@@ -54,8 +58,11 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** Their holds, earliest from-date first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderBy("fromDate ASC, toDate ASC")
+    private List<PersonHold> holds = new ArrayList<>();
 
     @Version
     @Column(name = "version", nullable = false)
@@ -110,10 +117,25 @@ public class Person {
     /** Whether a claim of theirs may be dated on the date: not after their retirement date. */
     public boolean mayClaimOn(LocalDate date) { return retiredFrom == null || !date.isAfter(retiredFrom); }
 
-    /** While held, their open (OPEN or PENDING) claims count in no live total; their SETTLED claims still do. */
-    public boolean isHeld() { return held; }
+    /** Whether they have any hold, whatever its dates. */
+    public boolean isHeld() { return !holds.isEmpty(); }
 
-    public void setHeld(boolean held) { this.held = held; }
+    /** Their holds, earliest from-date first. */
+    public List<PersonHold> getHolds() { return List.copyOf(holds); }
+
+    public void addHold(PersonHold hold) { holds.add(hold); }
+
+    /** Whether the date falls within any of their holds. */
+    public boolean heldOn(LocalDate date) { return holds.stream().anyMatch(h -> h.contains(date)); }
+
+    /**
+     * Whether a claim of theirs counts in the live totals: it counts by its status, unless it is open
+     * (OPEN or PENDING), dated within a hold and not bound by a statement.
+     */
+    public boolean counts(Claim claim) {
+        if (!claim.getStatus().counts()) return false;
+        return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
+    }
 
     /** Moved on by each save; an edit is refused unless made from the current version. */
     public long getVersion() { return version; }

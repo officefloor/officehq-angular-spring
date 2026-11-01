@@ -19,6 +19,17 @@ interface GradeFrom {
   grade: string;
 }
 
+/** A hold from a date (null: from the start) to a date (null: open-ended), both included. */
+interface Hold {
+  from: string | null;
+  to: string | null;
+}
+
+/** Whether the date falls within the hold. */
+function holdContains(h: Hold, date: string): boolean {
+  return (h.from === null || h.from <= date) && (h.to === null || date <= h.to);
+}
+
 interface Person {
   id: number;
   name: string;
@@ -31,8 +42,10 @@ interface Person {
   /** Retired once given a retirement date, whatever the date; retiredFrom is null while not. */
   retired: boolean;
   retiredFrom: string | null;
-  /** While held, their open (OPEN or PENDING) claims count in no live total; their SETTLED claims still do. */
+  /** Whether they have any hold, whatever its dates. */
   held: boolean;
+  /** Their holds, earliest first; their open claims dated within one, unless bound by a statement, count in no live total. */
+  holds: Hold[];
   /** The other people on the sheet they have named as patrons, in the order named. */
   patronIds: number[];
 }
@@ -82,8 +95,9 @@ interface StatementTaken {
 // statement, which binds their counting claims' dues; the row shows how many statements they have
 // had and the last one's due-total and date. Each person can be retired from a date (blank: the sheet's
 // today); retired people are left out of the list unless show retired is on, but their claims
-// keep counting in every total. Each person can be put on hold and taken off it again; while held,
-// their open (OPEN or PENDING) claims count in no live total (theirs, the sheet's or a period's), their SETTLED ones still do.
+// keep counting in every total. Each person can be put on hold from a from-date (blank: the sheet's
+// today) to an optional to-date, any number of times; their open (OPEN or PENDING) claims dated within
+// a hold count in no live total (theirs, the sheet's or a period's), unless bound by a statement.
 // Each person, and the sheet, shows how many of the claims that count are overdue and their dues' total.
 // A person's grade is dated: the first one given is in force from the start; each save records the
 // form's grade from its from-date (blank: the sheet's today), unless it leaves the grade as the row
@@ -177,8 +191,19 @@ interface StatementTaken {
               </td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
-                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)"
-                        [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
+                <ul>
+                  @for (h of p.holds; track $index) {
+                    <li data-testid="person-hold-line">{{ h.from ?? 'start' }} to {{ h.to ?? 'open' }}</li>
+                  }
+                </ul>
+                <label [for]="'person-hold-from-' + p.id" class="visually-hidden">Hold {{ p.name }} from</label>
+                <input type="date" [id]="'person-hold-from-' + p.id" data-testid="person-hold-from"
+                       #holdFrom (input)="clearPersonError(p.id)" />
+                <label [for]="'person-hold-to-' + p.id" class="visually-hidden">Hold {{ p.name }} to</label>
+                <input type="date" [id]="'person-hold-to-' + p.id" data-testid="person-hold-to"
+                       #holdTo (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
+                        [attr.aria-label]="'Hold ' + p.name">Hold</button>
               </td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
@@ -289,10 +314,11 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  /** The ids of the people on hold. */
-  private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
-  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, and only SETTLED for a held person. */
-  private readonly counts = (c: Claim): boolean => countsFor(c, this.heldIds().has(c.personId));
+  /** Each person's holds, by id, for those with any. */
+  private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones dated within a hold and not bound. */
+  private readonly counts = (c: Claim): boolean =>
+    countsFor(c, (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date)));
   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);
@@ -641,22 +667,27 @@ export class People {
     }
   }
 
-  /** Put the person on hold, or take them off it when held. */
-  protected async toggleHold(p: Person): Promise<void> {
+  /** Put the person on hold from the date (blank: the sheet's today) to the optional to-date. */
+  protected async hold(p: Person, fromDate: string, toDate: string): Promise<void> {
     this.personError.set(null);
     this.clearPatronError(p.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const from = fromDate.trim();
+    const to = toDate.trim();
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    if ((from && !date.test(from)) || (to && !date.test(to))) {
+      this.personError.set({ id: p.id, message: 'Enter dates, or leave the from-date blank for today and the to-date blank for no end.' });
+      return;
+    }
     try {
       const saved = await firstValueFrom(
-        this.http.post<Person>(`${this.url(sheet)}/${p.id}/hold`, null, { headers: this.headers() }),
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/hold`, { from: from || null, to: to || null }, { headers: this.headers() }),
       );
       if (this.session.sheetId() !== sheet) return;
       this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
     } catch {
-      if (this.session.sheetId() === sheet) {
-        this.personError.set({ id: p.id, message: 'Could not ' + (p.held ? 'release ' : 'hold ') + p.name + '.' });
-      }
+      if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not hold ' + p.name + '.' });
     }
   }
 

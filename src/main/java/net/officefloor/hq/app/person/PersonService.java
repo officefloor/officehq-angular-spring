@@ -19,7 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
  * The people on a sheet: listed in the order they were added, added and edited one at a time. A
  * name already used by another person on the sheet (ignoring case and surrounding spaces) is
  * refused, and so is an edit made from a version of the person someone else has saved since. A
- * person can be retired from a date (blank: the sheet's today), and put on hold or taken off it. A
+ * person can be retired from a date (blank: the sheet's today), and put on hold from a from-date (blank: the sheet's today) to an optional to-date, any number of
+ * times. A
  * person can name other people on the sheet as their patrons, one at a time; not themselves, and
  * not the same person twice. A person's grade is dated: the first one given is in force from the
  * beginning of time, and each edit records the grade from its from-date (blank: the sheet's today),
@@ -96,15 +97,21 @@ public class PersonService {
         return saved;
     }
 
-    /** Put the person on hold, or take them off it when held; their open (OPEN or PENDING) claims leave or rejoin the totals. */
+    /**
+     * Put the person on hold from the date (blank: the sheet's today) to the optional to-date; their
+     * open (OPEN or PENDING) claims dated within it, unless bound by a statement, leave the totals.
+     */
     @Transactional
-    public Person toggleHold(String sheetId, String user, Long id) {
+    public Person hold(String sheetId, String user, Long id, LocalDate from, LocalDate to) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
-        person.setHeld(!person.isHeld());
+        LocalDate on = from != null ? from : today(sheetId);
+        if (on == null) throw new SheetNotFoundException();
+        if (to != null && to.isBefore(on)) throw new HoldDatesException();
+        person.addHold(new PersonHold(on, to));
         Person saved = saveUnique(person);
-        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
-                + " by=" + user.strip() + " name=" + saved.getName());
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + saved.getName() + " from=" + on);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
