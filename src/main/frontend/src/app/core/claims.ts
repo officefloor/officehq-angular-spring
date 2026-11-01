@@ -305,6 +305,12 @@ export class Claims {
     return this.http.get<ClaimView[]>(`${this.base(sheetId)}/claims`);
   }
 
+  /** The sheet's duplicate claims: one line `<name> <date> <amount> x<count>` per person, date and amount with two
+   *  or more claims, VOID and DELETED ones left out; people in list order, then by date, then by amount. */
+  duplicates(sheetId: string): Observable<string[]> {
+    return this.http.get<string[]>(`${this.base(sheetId)}/duplicates`);
+  }
+
   add(sheetId: string, personId: number, claim: ClaimForm): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/people/${personId}/claims`, claim);
   }

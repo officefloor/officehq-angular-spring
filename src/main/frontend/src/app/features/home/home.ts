@@ -4,6 +4,7 @@ import { LOCALES, Locale, Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
 import { AuditPanel } from '../audit/audit';
 import { ActivityPanel } from '../audit/activity';
+import { DuplicatesPanel } from '../claims/duplicates';
 import { DelegationsPanel } from '../delegations/delegations';
 import { HolidaysPanel } from '../holidays/holidays';
 import { NotesPanel } from '../notes/notes';
@@ -19,7 +20,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
   selector: 'app-home',
   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
     VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel,
-    ActivityPanel],
+    ActivityPanel, DuplicatesPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -91,6 +92,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-templates />
         <app-notes />
         <app-people />
+        <app-duplicates />
         <app-search />
         <app-audit />
         <app-activity />
