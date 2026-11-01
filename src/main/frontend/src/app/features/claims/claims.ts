@@ -60,6 +60,23 @@ export function claimDueCents(c: Claim, rates: Rate[], floorCents: number): numb
   return pct === null ? null : Math.max(dueCents(cents(c.amount), pct), floorCents);
 }
 
+/** A date (yyyy-mm-dd) the given number of days later. */
+export function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** A claim's due-by: its date plus the sheet's terms in days. */
+export function dueBy(c: Claim, terms: number): string {
+  return addDays(c.date, terms);
+}
+
+/** Overdue: OPEN with its due-by before the sheet's today. */
+export function isOverdue(c: Claim, terms: number, today: string | null): boolean {
+  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
+}
+
 /** Why a change to a claim dated inside a closed period is refused. */
 const CLOSED = 'No claim dated inside a closed period can be changed.';
 
@@ -108,6 +125,8 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+          <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -166,6 +185,14 @@ export class Claims {
   protected dueOf(c: Claim): string {
     const due = claimDueCents(c, this.rates(), cents(this.session.floor()));
     return due === null ? NA : money(due);
+  }
+
+  protected dueByOf(c: Claim): string {
+    return dueBy(c, this.session.terms());
+  }
+
+  protected overdueOf(c: Claim): boolean {
+    return isOverdue(c, this.session.terms(), this.session.today());
   }
 
   /** The name of the period its date falls in, or blank when none. */

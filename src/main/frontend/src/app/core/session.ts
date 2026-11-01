@@ -6,6 +6,7 @@ interface SheetView {
   id: string;
   today: string;
   floor: string;
+  terms: number;
 }
 
 // The signed-in user and the active sheet. Every other feature reads these to scope its calls.
@@ -19,6 +20,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** The sheet's floor, two decimals: a claim's live due is at least it. */
   readonly floor = signal('1.00');
+  /** The sheet's terms in days: a claim's due-by is its date plus them. */
+  readonly terms = signal(14);
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
@@ -40,6 +43,7 @@ export class Session {
     this.sheetId.set(res.id);
     this.today.set(res.today);
     this.floor.set(res.floor);
+    this.terms.set(res.terms);
     this.loads.update((n) => n + 1);
   }
 

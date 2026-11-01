@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * A sheet's settings: the role each user name has (clerk unless given another) and the clerk
  * limit, the highest due a clerk can settle (none: no limit); and the floor, the least a claim's
- * live due can be.
+ * live due can be; and the terms, the days after its date by which a claim is due.
  */
 @Service
 public class SettingService {
@@ -46,6 +46,11 @@ public class SettingService {
         return sheets.findById(sheetId).map(Sheet::getFloor).orElseThrow(SheetNotFoundException::new);
     }
 
+    @Transactional(readOnly = true)
+    public int terms(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getTerms).orElseThrow(SheetNotFoundException::new);
+    }
+
     /** The user's role on the sheet: clerk unless given another. */
     @Transactional(readOnly = true)
     public Role roleOf(String sheetId, String userName) {
@@ -72,6 +77,16 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=clerk-limit value="
                 + (limit == null ? "" : limit.toPlainString()));
         return limit;
+    }
+
+    /** Change the terms; no figure moves with them. */
+    @Transactional
+    public int setTerms(String sheetId, String user, int terms) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setTerms(terms);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=terms value=" + terms);
+        return terms;
     }
 
     /** Change the floor; the live dues it moves are audited after its own line. */

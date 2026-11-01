@@ -17,11 +17,13 @@ interface SettingsView {
   clerkLimit: string | null;
   /** The least a claim's live due can be, two decimals. */
   floor: string;
+  /** The days after its date by which a claim is due. */
+  terms: number;
   roles: RoleView[];
 }
 
-// The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, and the
-// role given to each user name. Saving stores the settings whose field was changed since the last save.
+// The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, the terms
+// (the days after its date by which a claim is due), and the role given to each user name. Saving stores the settings whose field was changed since the last save.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -33,6 +35,8 @@ interface SettingsView {
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" />
         <label for="setting-floor">Floor (least live due)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
+        <label for="setting-terms">Terms (days)</label>
+        <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
@@ -40,6 +44,7 @@ interface SettingsView {
       </form>
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
+      <p>Terms now: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -86,6 +91,7 @@ export class Settings {
   protected readonly form = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
+    terms: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -128,6 +134,7 @@ export class Settings {
     this.clerkLimit.set(view.clerkLimit);
     this.userRoles.set(view.roles);
     this.session.floor.set(view.floor);
+    this.session.terms.set(view.terms);
   }
 
   protected async save(): Promise<void> {
@@ -135,15 +142,20 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor } = this.form.controls;
+    const { clerkLimit, floor, terms } = this.form.controls;
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
+    const termsValue = terms.value.trim();
     if (clerkLimit.dirty && value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
     }
     if (floor.dirty && !/^\d{1,12}(\.\d{1,2})?$/.test(floorValue)) {
       this.error.set('Enter a floor of 0.00 or more, with at most two decimals.');
+      return;
+    }
+    if (terms.dirty && !/^\d{1,4}$/.test(termsValue)) {
+      this.error.set('Enter terms as a whole number of days, 0 or more.');
       return;
     }
     this.submitting.add('save');
@@ -160,6 +172,13 @@ export class Settings {
           this.http.put<SettingsView>(`${this.base(sheet)}/settings/floor`, { value: floorValue }, { headers: this.headers() }),
         );
         floor.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (terms.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/terms`, { value: termsValue }, { headers: this.headers() }),
+        );
+        terms.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
     } catch {

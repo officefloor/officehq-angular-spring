@@ -21,8 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class SettingController {
 
-    /** The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none, and so has the floor. */
-    public record SettingsView(String clerkLimit, String floor, List<RoleView> roles) {}
+    /**
+     * The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none,
+     * and so has the floor; the terms are in days.
+     */
+    public record SettingsView(String clerkLimit, String floor, int terms, List<RoleView> roles) {}
 
     /** A user name's role, as clerk or steward. */
     public record RoleView(String user, String role) {
@@ -47,6 +50,14 @@ public class SettingController {
         }
     }
 
+    /** Terms: a whole number of days. */
+    public record TermsRequest(@NotNull @Pattern(regexp = "\\d{1,4}") String value) {
+
+        int termsValue() {
+            return Integer.parseInt(value);
+        }
+    }
+
     /** A role: clerk or steward. */
     public record RoleRequest(@NotNull @Pattern(regexp = "clerk|steward") String role) {
 
@@ -66,6 +77,7 @@ public class SettingController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return new SettingsView(text(service.clerkLimit(sheetId)), text(service.floor(sheetId)),
+                service.terms(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList());
     }
 
@@ -84,6 +96,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid FloorRequest request) {
         service.setFloor(sheetId, user, request.floorValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/terms")
+    public SettingsView setTerms(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid TermsRequest request) {
+        service.setTerms(sheetId, user, request.termsValue());
         return get(sheetId, user);
     }
 

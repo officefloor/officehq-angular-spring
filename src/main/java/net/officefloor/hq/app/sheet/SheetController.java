@@ -20,10 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    /** A sheet as the screen shows it; the floor has two decimals. */
-    public record SheetView(String id, LocalDate today, String floor) {
+    /** A sheet as the screen shows it; the floor has two decimals, the terms are in days. */
+    public record SheetView(String id, LocalDate today, String floor, int terms) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().setScale(2).toPlainString());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().setScale(2).toPlainString(),
+                    sheet.getTerms());
         }
     }
 

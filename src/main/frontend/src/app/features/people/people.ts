@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, RETIRED, cents, claimDueCents, countsFor, money } from '../claims/claims';
+import { Claim, Claims, RETIRED, cents, claimDueCents, countsFor, isOverdue, money } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
 
@@ -31,6 +31,12 @@ interface StatementSummary {
   lastDate: string;
 }
 
+/** Overdue claims that count: how many, and their dues in cents. */
+interface Overdue {
+  count: number;
+  cents: number;
+}
+
 /** A quick-add done: the person the claim went to, whether they were added for it, and the claim. */
 interface QuickAdded {
   person: Person;
@@ -52,6 +58,7 @@ interface StatementTaken {
 // today); retired people are left out of the list unless show retired is on, but their claims
 // keep counting in every total. Each person can be put on hold and taken off it again; while held,
 // their OPEN claims count in no live total (theirs, the sheet's or a period's), their SETTLED ones still do.
+// Each person, and the sheet, shows how many of the claims that count are overdue and their dues' total.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, Claims, Periods, Rates],
@@ -94,7 +101,7 @@ interface StatementTaken {
       </label>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -128,6 +135,10 @@ interface StatementTaken {
                         [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
               </td>
               <td>
+                <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+                <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+              </td>
+              <td>
                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
                             [periods]="periods()"
                             (saved)="claimSaved($event)" />
@@ -142,6 +153,8 @@ interface StatementTaken {
       </table>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotal().count }}</strong>
+        totalling <strong data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
     </section>
   `,
 })
@@ -209,6 +222,26 @@ export class People {
   protected readonly dueTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
   );
+  /** Each person's overdue claims that count, by id: how many and their dues in cents. */
+  private readonly overdueByPerson = computed(() => {
+    const terms = this.session.terms();
+    const today = this.session.today();
+    const floor = cents(this.session.floor());
+    const by = new Map<number, Overdue>();
+    for (const p of this.people()) {
+      const rates = this.ratesOf(p.grade);
+      const overdue = this.claimsOf(p.id).filter((c) => this.counts(c) && isOverdue(c, terms, today));
+      by.set(p.id, { count: overdue.length, cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0) });
+    }
+    return by;
+  });
+  /** The sheet's overdue claims that count: everyone's added up. */
+  protected readonly overdueTotal = computed(() => {
+    let total: Overdue = { count: 0, cents: 0 };
+    for (const o of this.overdueByPerson().values()) total = { count: total.count + o.count, cents: total.cents + o.cents };
+    return total;
+  });
+  protected readonly money = money;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person being edited, as the form loaded it. */
   private editingVersion = 0;
@@ -307,6 +340,10 @@ export class People {
     const rates = this.ratesOf(p.grade);
     const floor = cents(this.session.floor());
     return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
+  }
+
+  protected overdueOf(p: Person): Overdue {
+    return this.overdueByPerson().get(p.id) ?? { count: 0, cents: 0 };
   }
 
   /** Their due-total, or n/a. */
