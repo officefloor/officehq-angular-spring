@@ -1,0 +1,241 @@
+diff --git a/src/main/frontend/src/app/core/consolidated.ts b/src/main/frontend/src/app/core/consolidated.ts
+index 7744afdb1..d817b9c00 100644
+--- a/src/main/frontend/src/app/core/consolidated.ts
++++ b/src/main/frontend/src/app/core/consolidated.ts
+@@ -2,8 +2,9 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
+-/** A sheet's descendants' figures added up (not the sheet's own): how many people, and each descendant's
+- *  due-total and overdue-total as that sheet shows it (two decimals); per grade, the due-totals of the people not
++/** A sheet's descendants' figures added up (not the sheet's own): how many people (each counted once, those whose
++ *  names or aliases match as names are compared being one), and the due-total and overdue-total of all their people
++ *  trimmed once of the highest and lowest (two decimals); each of those people's names and figures; per grade, the due-totals of the people not
+  *  retired on it (two decimals; a grade no one counts on is missing); and per claim status, how many claims are in
+  *  it (a status no claim is in is missing). */
+ export interface DescendantFigures {
+@@ -12,11 +13,45 @@ export interface DescendantFigures {
+   overdueTotal: string;
+   dueByGrade: Record<string, string>;
+   countByStatus: Record<string, number>;
++  people: TreePerson[];
++}
++
++/** A person of the tree: their name and aliases, their due-total (null with none) and overdue-total as their sheet
++ *  shows them (two decimals). */
++export interface TreePerson {
++  names: string[];
++  dueTotal: string | null;
++  overdueTotal: string;
++}
++
++/** How many distinct people these are: those sharing a name or alias, as names are compared (trimmed, case
++ *  ignored), directly or through others, being one. */
++export function distinctPeople(people: { names: string[] }[]): number {
++  const parent = people.map((_, i) => i);
++  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
++  const firstWithName = new Map<string, number>();
++  let distinct = people.length;
++  people.forEach((p, i) => {
++    for (const name of p.names) {
++      const key = name.trim().toLowerCase();
++      const other = firstWithName.get(key);
++      if (other === undefined) {
++        firstWithName.set(key, i);
++        continue;
++      }
++      const a = root(i), b = root(other);
++      if (a !== b) {
++        parent[a] = b;
++        distinct--;
++      }
++    }
++  });
++  return distinct;
+ }
+ 
+ /** No descendants: nothing to add to a sheet's own figures. */
+ export const NO_DESCENDANTS: DescendantFigures = {
+-  peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', dueByGrade: {}, countByStatus: {},
++  peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', dueByGrade: {}, countByStatus: {}, people: [],
+ };
+ 
+ // A sheet's descendants (its children, the sheets naming it as their parent, and theirs and so on), whose figures
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3e7f88235..3d38c79eb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -13,7 +13,7 @@ import { SnapshotView, Snapshots } from '../../core/snapshots';
+ import { StatementSummary, Statements } from '../../core/statements';
+ import { Watches } from '../../core/watches';
+ import { COLUMNS, Session } from '../../core/session';
+-import { Consolidated, DescendantFigures, NO_DESCENDANTS } from '../../core/consolidated';
++import { Consolidated, DescendantFigures, NO_DESCENDANTS, distinctPeople } from '../../core/consolidated';
+ import { PersonClaims } from '../claims/claims';
+ import { SheetHeader } from '../header/header';
+ import { PeriodsPanel } from '../periods/periods';
+@@ -857,15 +857,30 @@ export class PeopleList {
+   protected readonly dueTotal = computed(() =>
+     money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
+   );
+-  /** The sheet's own people count, due-total and overdue-total, per-grade due-totals and per-status claim counts,
+-   *  as shown here, added to its descendants'; while the sheet is shown as of a date, its descendants' are as they
+-   *  stood then too. */
++  /** Over the sheet's own people as shown here and its descendants': how many distinct people (those whose names or
++   *  aliases match as names are compared being one), and everyone's due-total and overdue-total trimmed once of the
++   *  highest and lowest; the sheet's own per-grade due-totals and per-status claim counts added to its descendants';
++   *  while the sheet is shown as of a date, its descendants' are as they stood then too. */
+   protected readonly consolidated = computed(() => {
+     const d = this.descendants();
++    const dueByPerson = this.dueByPerson();
++    const overdueByPerson = this.overdueByPerson();
++    const tree = [
++      ...this.people().map((p) => ({
++        names: [p.name, ...(p.aliases ?? [])],
++        due: dueByPerson.get(p.id) ?? null,
++        overdue: overdueByPerson.get(p.id)?.cents ?? 0,
++      })),
++      ...d.people.map((p) => ({
++        names: p.names,
++        due: p.dueTotal === null ? null : cents(p.dueTotal),
++        overdue: cents(p.overdueTotal),
++      })),
++    ];
+     return {
+-      peopleCount: this.people().length + d.peopleCount,
+-      dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
+-      overdueTotal: money(this.overdueTotals().cents + cents(d.overdueTotal)),
++      peopleCount: distinctPeople(tree),
++      dueTotal: money(trimmedSum(tree.map((p) => p.due).filter((due) => due !== null))),
++      overdueTotal: money(trimmedSum(tree.map((p) => p.overdue))),
+       grades: this.summaryByGrade().map((g) => ({
+         grade: g.grade,
+         dueTotal: money(cents(g.dueTotal) + cents(d.dueByGrade[g.grade] ?? '0.00')),
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 45df501ea..c85e540bb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -216,7 +216,7 @@ public class PersonService {
+                     t -> t.getFromDate().equals(termsFrom) && Objects.equals(t.getTerms(), terms));
+             person.setTermsFrom(termsFrom, terms);
+         } else {
+-            termsChanged = !Objects.equals(person.termsOn(today), terms);
++            termsChanged = !Objects.equals(person.getTerms(), terms);
+             person.setTerms(terms);
+         }
+         boolean contactChanged = !Objects.equals(person.getContact(), reach);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+index d2e821a8e..88d290fe8 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -6,9 +6,12 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Map;
++import java.util.Objects;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.history.SheetHistory;
+@@ -35,11 +38,18 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ConsolidatedController {
+ 
+     /** The figures of the sheet's descendants (its children, their children and so on; not the sheet itself) added
+-     *  up: how many people, and each one's due-total and overdue-total as that sheet shows it, with two decimals;
+-     *  per grade, the due-totals of the people not retired on it on their sheet's today (none counting as 0), with
++     *  up: how many people, each person counted once however many sheets they are on (people whose names or aliases
++     *  match as names are compared being one); the due-totals and overdue-totals of all their people, trimmed once of
++     *  the single highest and lowest person's figure when three or more have one, with two decimals; each person's
++     *  names and figures, so the screen can count and trim its own people with them; per grade, the due-totals of the people not retired on it on their sheet's today (none counting as 0), with
+      *  two decimals; and per claim status, how many claims are in it. */
+     public record DescendantFigures(int peopleCount, String dueTotal, String overdueTotal,
+-            Map<String, String> dueByGrade, Map<String, Integer> countByStatus) {
++            Map<String, String> dueByGrade, Map<String, Integer> countByStatus, List<PersonFigure> people) {
++    }
++
++    /** A person of the tree: their name and aliases, their due-total (null when they have none) and overdue-total as
++     *  their sheet shows them, with two decimals. */
++    public record PersonFigure(List<String> names, String dueTotal, String overdueTotal) {
+     }
+ 
+     private final SheetRepository sheets;
+@@ -72,9 +82,7 @@ public class ConsolidatedController {
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestParam(defaultValue = "false") boolean self,
+             @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+-        int people = 0;
+-        BigDecimal due = BigDecimal.ZERO.setScale(2);
+-        BigDecimal overdue = BigDecimal.ZERO.setScale(2);
++        List<PersonFigure> treePeople = new ArrayList<>();
+         Map<String, BigDecimal> dueByGrade = new LinkedHashMap<>();
+         Map<String, Integer> countByStatus = new LinkedHashMap<>();
+         List<String> counted = new ArrayList<>(sheets.descendantsOf(sheetId));
+@@ -87,12 +95,16 @@ public class ConsolidatedController {
+                 continue;
+             }
+             Rollup.Figures figures = one.figures();
+-            people += figures.people().size();
+-            due = due.add(new BigDecimal(figures.dueTotal()));
+-            overdue = overdue.add(new BigDecimal(figures.overdueTotal()));
+             LocalDate today = one.sheet() == null ? null : one.sheet().getToday();
+             for (Person person : one.people()) {
+                 Rollup.PersonFigures own = figures.people().get(person.getId());
++                if (own != null) {
++                    List<String> names = new ArrayList<>();
++                    names.add(person.getName());
++                    names.addAll(person.getAliases());
++                    treePeople.add(new PersonFigure(names, "n/a".equals(own.dueTotal()) ? null : own.dueTotal(),
++                            own.overdueTotal()));
++                }
+                 if (person.isRetired() || own == null || "n/a".equals(own.dueTotal())) {
+                     continue;
+                 }
+@@ -104,8 +116,42 @@ public class ConsolidatedController {
+         }
+         Map<String, String> dueByGradeShown = new LinkedHashMap<>();
+         dueByGrade.forEach((grade, total) -> dueByGradeShown.put(grade, total.setScale(2).toPlainString()));
+-        return new DescendantFigures(people, due.toPlainString(), overdue.toPlainString(), dueByGradeShown,
+-                countByStatus);
++        BigDecimal due = Rollup.trimmedSum(treePeople.stream().map(PersonFigure::dueTotal).filter(Objects::nonNull)
++                .map(BigDecimal::new).toList());
++        BigDecimal overdue = Rollup.trimmedSum(treePeople.stream().map(p -> new BigDecimal(p.overdueTotal())).toList());
++        return new DescendantFigures(distinctPeople(treePeople), due.toPlainString(), overdue.toPlainString(),
++                dueByGradeShown, countByStatus, treePeople);
++    }
++
++    /** How many distinct people these are: those sharing a name or alias, as names are compared (trimmed, case
++     *  ignored), directly or through others, being one. */
++    static int distinctPeople(List<PersonFigure> treePeople) {
++        int[] parent = new int[treePeople.size()];
++        for (int i = 0; i < parent.length; i++) {
++            parent[i] = i;
++        }
++        Map<String, Integer> firstWithName = new HashMap<>();
++        int distinct = parent.length;
++        for (int i = 0; i < parent.length; i++) {
++            for (String name : treePeople.get(i).names()) {
++                Integer other = firstWithName.putIfAbsent(name.trim().toLowerCase(Locale.ROOT), i);
++                if (other != null) {
++                    int a = root(parent, i), b = root(parent, other);
++                    if (a != b) {
++                        parent[a] = b;
++                        distinct--;
++                    }
++                }
++            }
++        }
++        return distinct;
++    }
++
++    private static int root(int[] parent, int i) {
++        while (parent[i] != i) {
++            i = parent[i] = parent[parent[i]];
++        }
++        return i;
+     }
+ 
+     /** A sheet as the store holds it now. */
