@@ -41,8 +41,11 @@ public class SheetHistory {
     /** Tables that are not the sheet's data: the schema's history and this history itself. */
     private static final Set<String> NOT_SHEET_DATA = Set.of("FLYWAY_SCHEMA_HISTORY", "SHEET_SNAPSHOT");
 
-    /** A table the sheet owns rows of: its columns and the condition (one parameter, the sheet id) selecting them. */
-    private record Owned(String name, List<String> columns, String owns) {}
+    /**
+     * A table the sheet owns rows of: its columns, its primary key's columns (empty: none) and the
+     * condition (one parameter, the sheet id) selecting them.
+     */
+    private record Owned(String name, List<String> columns, List<String> key, String owns) {}
 
     /** One table's rows in a snapshot. */
     private record TableRows(String name, String[] columns, List<Object[]> rows) implements Serializable {}
@@ -137,9 +140,13 @@ public class SheetHistory {
                     jdbc.update(sql, args.toArray());
                 }
             } else {
-                String sql = "INSERT INTO " + quote(t.name()) + " ("
-                        + String.join(", ", cols.stream().map(SheetHistory::quote).toList()) + ") VALUES ("
-                        + String.join(", ", Collections.nCopies(cols.size(), "?")) + ")";
+                // a row since moved to another sheet (a transferred person, their claims) still holds its
+                // key there, so it is taken back by its key; the caller rolls it all back anyway
+                boolean keyed = !t.key().isEmpty() && cols.containsAll(t.key());
+                String sql = (keyed ? "MERGE INTO " : "INSERT INTO ") + quote(t.name()) + " ("
+                        + String.join(", ", cols.stream().map(SheetHistory::quote).toList()) + ")"
+                        + (keyed ? " KEY (" + String.join(", ", t.key().stream().map(SheetHistory::quote).toList()) + ")" : "")
+                        + " VALUES (" + String.join(", ", Collections.nCopies(cols.size(), "?")) + ")";
                 List<Object[]> args = new ArrayList<>();
                 for (Object[] row : rows.rows()) {
                     Object[] values = new Object[at.length];
@@ -176,6 +183,14 @@ public class SheetHistory {
                 Map<Integer, String> ordered = new TreeMap<>();
                 while (rs.next()) ordered.put(rs.getInt("ORDINAL_POSITION"), rs.getString("COLUMN_NAME"));
                 e.getValue().addAll(ordered.values());
+            }
+        }
+        Map<String, List<String>> keys = new HashMap<>();
+        for (String table : columns.keySet()) {
+            try (ResultSet rs = meta.getPrimaryKeys(null, schema, table)) {
+                Map<Integer, String> ordered = new TreeMap<>();
+                while (rs.next()) ordered.put(rs.getInt("KEY_SEQ"), rs.getString("COLUMN_NAME"));
+                keys.put(table, List.copyOf(ordered.values()));
             }
         }
         // each table's references: referencing column -> referenced table and column
@@ -225,7 +240,7 @@ public class SheetHistory {
             }
             if (cond == null) continue;
             owns.put(table, cond);
-            owned.add(new Owned(table, List.copyOf(cols), cond));
+            owned.add(new Owned(table, List.copyOf(cols), keys.get(table), cond));
         }
         return List.copyOf(owned);
     }

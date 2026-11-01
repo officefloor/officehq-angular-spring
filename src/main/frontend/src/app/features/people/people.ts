@@ -371,7 +371,18 @@ function trimmedSum(figures: number[]): number {
                 <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
                         [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
               </td>
-              <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+              <td>
+                <span data-testid="person-grade">{{ gradeOf(p) }}</span>
+                <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade for {{ p.name }}</label>
+                <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
+                        (change)="clearPersonError(p.id)">
+                  @for (g of grades; track g) {
+                    <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-inline-grade-save" (click)="saveGrade(p, inlineGrade.value)"
+                        [attr.aria-label]="'Save grade for ' + p.name">Save grade</button>
+              </td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
@@ -1565,6 +1576,38 @@ export class People {
       this.session.holdChanges.update((n) => n + 1);
     } catch {
       if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not hold ' + p.name + '.' });
+    }
+  }
+
+  /**
+   * Record the grade for the person from the sheet's today, as the person form would: their other
+   * values kept, made from the version shown.
+   */
+  protected async saveGrade(p: Person, grade: string): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (!this.grades.includes(grade)) {
+      this.personError.set({ id: p.id, message: 'Choose a grade.' });
+      return;
+    }
+    const body = {
+      name: p.name, grade, gradeFrom: null, terms: p.terms?.toString() ?? '', contact: p.contact ?? '',
+      tags: p.tags.join(', '), version: p.version,
+    };
+    try {
+      const saved = await firstValueFrom(
+        this.http.put<Person>(`${this.url(sheet)}/${p.id}`, body, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 412
+        ? 'Someone else saved ' + p.name + ' meanwhile; load the sheet again to see their values.'
+        : 'Could not save the grade for ' + p.name + '.';
+      this.personError.set({ id: p.id, message });
     }
   }
 
