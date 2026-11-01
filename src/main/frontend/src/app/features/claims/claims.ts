@@ -185,7 +185,8 @@ function figureCents(c: Claim, pctOn: PctOn, halfUp: boolean): number | null {
 /**
  * The late charge in cents on an overdue claim with the given figure, worked out per 30-day boundary: for each full
  * 30 days past its due-by plus its grace days, the late percent in force on that boundary date (the due-by plus the
- * grace plus 30, 60, 90 ... days) of it, rounded like a due, and the charges added up; 0 when not overdue or a
+ * grace plus 30, 60, 90 ... days) of it plus the charges of the boundaries before it (compounding), rounded like a
+ * due, and the charges added up; 0 when not overdue or a
  * correction. Never bound by a statement.
  */
 export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean, graceOn: GraceOn): number {
@@ -195,7 +196,7 @@ export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfU
   for (let step = 1; ; step++) {
     const boundary = new Date(dueBy + step * 30 * 86_400_000).toISOString().slice(0, 10);
     if (boundary > late.today) return total;
-    total += dueCents(figureCents, late.pctOn(boundary), halfUp);
+    total += dueCents(figureCents + total, late.pctOn(boundary), halfUp);
   }
 }
 

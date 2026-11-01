@@ -9,8 +9,8 @@ import java.util.function.Function;
  * The late charge on an overdue claim, worked out per 30-day boundary: for each full 30 days past its
  * due-by plus its grace days (those of its person's grade on its date, in force on its date; 0 when none), the
  * late percent in force on that boundary date (the due-by plus the grace plus 30, 60, 90 ... days) of its
- * figure (the rate figure bound by a statement, else its rate figure, with no floor), rounded to cents like its due
- * ({@link Rounding}), and the charges added up; a boundary whose percent is 0.00 adds nothing. A
+ * figure (the rate figure bound by a statement, else its rate figure, with no floor) plus the charges of the
+ * boundaries before it (compounding), rounded to cents like its due ({@link Rounding}), and the charges added up; a boundary whose percent is 0.00 adds nothing. A
  * correction has none. It is never bound by a statement; settling freezes it into the settled due.
  */
 public final class LateCharge {
@@ -62,7 +62,10 @@ public final class LateCharge {
         return claim.getDueBy().plusDays(graceDays);
     }
 
-    /** The charges of each 30-day boundary past the due-by plus the grace up to today, added up. */
+    /**
+     * The charges of each 30-day boundary past the due-by plus the grace up to today, each on the figure plus the
+     * charges before it, added up.
+     */
     private static BigDecimal charge(Claim claim, BigDecimal figure, LocalDate today, int graceDays,
             Function<LocalDate, BigDecimal> latePctOn, RoundingMode rounding) {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
@@ -70,7 +73,7 @@ public final class LateCharge {
                 boundary = boundary.plusDays(STEP_DAYS)) {
             BigDecimal pct = latePctOn.apply(boundary);
             if (pct == null || pct.signum() == 0) continue;
-            total = total.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
+            total = total.add(figure.add(total).multiply(pct).movePointLeft(2).setScale(2, rounding));
         }
         return total;
     }
