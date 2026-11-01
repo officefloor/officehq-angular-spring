@@ -1,0 +1,64 @@
+{
+  "checkpoint": 29,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp29_reopen-period",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again: the claims in it show and total their current\nfigures, bound ones at their bound figure. Reopening writes PERIOD_REOPENED period=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again: the claims in it show and total their current\nfigures, bound ones at their bound figure. Reopening writes PERIOD_REOPENED period=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "23ded6645f9be5c1a79f4fefa662d237e473471b",
+  "reset_sha": "",
+  "preagent_sha": "d954c7f119f949d9681e9433c1980eb6bfe9feaa",
+  "prev_sha": "d954c7f119f949d9681e9433c1980eb6bfe9feaa",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6283067999999999,
+    "input_tokens": 6,
+    "output_tokens": 615,
+    "cache_read_tokens": 113523,
+    "cache_creation_tokens": 3498,
+    "num_turns": 2,
+    "duration_ms": 10112,
+    "duration_api_ms": 83525,
+    "model": "claude-opus-5-5",
+    "session_id": "d02e5f90-fd7f-4213-8332-6021a43804a8",
+    "stop_reason": "success",
+    "result_text": "A steward can now reopen a closed period, and all 4 tests in `bin/e2e` pass.\n\n**Server (`period/`)**\n- There is a new `POST /api/sheets/{sheet}/periods/{id}/reopen` endpoint in `PeriodController`, which calls `PeriodService.reopen`.\n- If the user isn't a steward, the request is refused (403). Reopening a period that's already open is refused too (409). A refusal writes nothing to the store or the audit file.\n- On success, `Period.reopen()` marks the period open and clears its fixed due-total. It then writes `PERIOD_REOPENED sheet=<id> by=<user> period=<name>` to the audit file.\n- No database migration was needed, because the existing columns already cover an open period.\n\n**Front end (`periods.ts`)**\n- Each period row has a `period-reopen` button. A refusal shows its message in the row's existing `period-error` element: \"Only a steward can reopen a period.\" or \"That period is not closed.\"\n- Once a period is reopened, its due-total comes from the same live calculation used for open periods. The claims in it show their current figures, and bound (stated) ones keep their bound figure. In the main test this gives 11.00 after reopening, against 6.00 while closed.\n\nThe Reopen button shows on every row, open or closed. The test presses it on an open period and expects the error, so it can't be hidden there.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6283067999999999,
+        "num_turns": 2,
+        "duration_ms": 10112,
+        "duration_api_ms": 83525,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp29.agent.jsonl",
+  "agent_diff_file": "cp29.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
