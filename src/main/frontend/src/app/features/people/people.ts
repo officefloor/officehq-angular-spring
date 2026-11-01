@@ -86,6 +86,17 @@ function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
 
+/** Downloads the lines as a CSV file, each field quoted as needed and each line ended by a line feed. */
+function downloadCsv(lines: string[][], filename: string): void {
+  const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url));
+}
+
 /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
 /** The figures of the sheet's descendants added up, each sheet's due-total and overdue-total as it shows them. */
 interface Descendants {
@@ -281,6 +292,7 @@ function trimmedSum(figures: number[]): number {
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export CSV</button>
+      <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims CSV</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
       @if (bulkOpened(); as result) {
         <p role="status">Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
@@ -1142,13 +1154,26 @@ export class People {
    */
   protected exportCsv(): void {
     const lines = [['name', 'grade', 'retired-from', 'due-total'], ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)])];
-    const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'people.csv';
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url));
+    downloadCsv(lines, 'people.csv');
+  }
+
+  /**
+   * Downloads every claim as CSV, people in list order (retired people included) and each person's
+   * claims oldest first: person, number, date, amount, due, status and period, as the screen shows them.
+   */
+  protected exportClaims(): void {
+    const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
+    for (const p of this.people()) {
+      const theirs = this.claimsOf(p.id);
+      const pctOn = this.pctOnOf(p.id);
+      const graceOn = this.graceOnOf(p.id);
+      for (const c of [...theirs].reverse()) {
+        const due = claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, theirs), graceOn);
+        lines.push([p.name, c.number ?? '', c.date, c.amount, due === null ? NA : money(due), c.status,
+          periodOn(this.periods(), c.dueBy)?.name ?? '']);
+      }
+    }
+    downloadCsv(lines, 'claims.csv');
   }
 
   /** Their patrons as <name> <share>, sorted by name, comma and space separated. */
