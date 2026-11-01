@@ -1,0 +1,64 @@
+{
+  "checkpoint": 218,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp218_review-assignment",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can assign a REVIEW claim to a user (an entry and a button on the claim;\nREVIEW_ASSIGNED naming the claim and ending user=<user>; a blank user, any other status or anyone\nelse is refused). The claim shows the assigned user, and the header shows the signed-in user the\ncount of REVIEW claims assigned to them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can assign a REVIEW claim to a user (an entry and a button on the claim;\nREVIEW_ASSIGNED naming the claim and ending user=<user>; a blank user, any other status or anyone\nelse is refused). The claim shows the assigned user, and the header shows the signed-in user the\ncount of REVIEW claims assigned to them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "37c3f727358429c4ac3aa83cf553bcc6d798d2ad",
+  "reset_sha": "",
+  "preagent_sha": "3030cad03893d31f243f922bde0f6317bc08a69e",
+  "prev_sha": "3030cad03893d31f243f922bde0f6317bc08a69e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7793345999999999,
+    "input_tokens": 42,
+    "output_tokens": 9750,
+    "cache_read_tokens": 841713,
+    "cache_creation_tokens": 51978,
+    "num_turns": 22,
+    "duration_ms": 354950,
+    "duration_api_ms": 118206,
+    "model": "claude-opus-5-5",
+    "session_id": "46a26d69-95ac-4546-8c16-e0ab7fb269cd",
+    "stop_reason": "success",
+    "result_text": "A steward can now assign a REVIEW claim to a user, and `bin/e2e` passes all 4 acceptance tests in the spec.\n\n**How it behaves**\n- Each claim row has a \"Reviewer\" entry and an \"Assign review\" button, and shows who the claim is assigned to (`claim-review-assigned`).\n- It's refused, with an error shown on the row and nothing written, when:\n  - the user is blank (the screen catches this before sending anything);\n  - the claim isn't in REVIEW;\n  - the person acting isn't a steward.\n\n  A user acting under a steward's delegation is allowed, and their audit line gets `for=<steward>` at the end.\n- A successful assignment writes `REVIEW_ASSIGNED sheet=\u2026 by=\u2026 person=\u2026 amount=\u2026 date=\u2026 user=<user>`.\n- The header shows the signed-in user how many REVIEW claims are assigned to them (`my-reviews-count`). Names are matched ignoring case and surrounding spaces.\n- Once a claim is reviewed and goes back to OPEN, it still shows who it was assigned to (the test expects this), but it no longer counts in that user's header number.\n\n**Changes**\n- **Database:** new migration `V115__claim_review_assigned.sql` adds a `review_assigned` column to the claim table.\n- **Server:** the claim entity carries the new field, and it's copied along with the rest when a claim is copied. `ClaimService.assignReview` does the checks and the audit record. The new endpoint is `PUT /claims/{id}/review-assigned`. The field is also kept in the sheet history snapshots, so older snapshots without it just read as unassigned.\n- **Front end:** the API call and field in `core/claims.ts`, the entry, button and error on the claim row in `features/claims/claims.ts`, and the header count in `features/header/header.ts` and `features/people/people.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7793345999999999,
+        "num_turns": 22,
+        "duration_ms": 354950,
+        "duration_api_ms": 118206,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp218.agent.jsonl",
+  "agent_diff_file": "cp218.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
